@@ -1,0 +1,237 @@
+@model dynamic
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Certificados de Energías Limpias";
+
+    var perfilJson = HttpContextAccessor.HttpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+
+    var header = new HeaderViewModel
+    {
+        Title = "Registro Público de Certificados de Energías Limpias",
+        IconPath = "cel.png",
+        Description = "Sistema de registro, seguimiento y transacciones de Certificados de Energías Limpias (CELs).",
+        Section = "🌿 CELs",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Certificados de Energías Limpias",
+            description = "Plataforma integral de gestión de CELs.",
+            functionality = "Registro, validación y seguimiento de certificados.",
+            stage = "Operación",
+            roles = new[] {
+new { icon = "certificate", text = "CRE: Emisión y validación" },
+new { icon = "exchange-alt", text = "Participantes: Transacciones" },
+new { icon = "chart-line", text = "Mercado: Precios y tendencias" }
+},
+            order = new { step = 1, description = "Gestión de CELs" }
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<!-- Métricas Principales -->
+<div class="container-fluid px-4 mb-5">
+    <div class="row g-4">
+        <!-- Total CELs -->
+        <div class="col-12 col-md-6 col-xl-3" data-aos="fade-right">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-success bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="fas fa-certificate text-success fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Total CELs</h5>
+                            <small class="text-muted">Periodo actual</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">@Model.TotalCELs.ToString("N0")</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-success" style="width: 85%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Certificados Emitidos -->
+        <div class="col-12 col-md-6 col-xl-3" data-aos="fade-up">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="fas fa-file-signature text-primary fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">CELs Emitidos</h5>
+                            <small class="text-muted">Validados</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">@Model.CertificadosEmitidos.ToString("N0")</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-primary"
+                            style="width: @(((double)Model.CertificadosEmitidos / Model.TotalCELs * 100).ToString("N0"))%">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Valor Promedio -->
+        <div class="col-12 col-md-6 col-xl-3" data-aos="fade-up">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-warning bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="fas fa-dollar-sign text-warning fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Valor Promedio</h5>
+                            <small class="text-muted">USD/CEL</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">$@Model.ValorPromedio.ToString("N2")</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-warning" style="width: 65%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cumplimiento -->
+        <div class="col-12 col-md-6 col-xl-3" data-aos="fade-left">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-info bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="fas fa-check-circle text-info fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Cumplimiento</h5>
+                            <small class="text-muted">Meta anual</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">@Model.PorcentajeCumplimiento%</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-info" style="width: @Model.PorcentajeCumplimiento%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gráfico de Precio y Volumen -->
+<div class="container-fluid px-4 mb-5">
+    <div class="card shadow-sm border-0" data-aos="fade-up">
+        <div class="card-header bg-white border-0">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line text-primary me-2"></i>
+                    Evolución del Mercado de CELs
+                </h5>
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary btn-sm">Mes</button>
+                    <button class="btn btn-outline-primary btn-sm active">Trimestre</button>
+                    <button class="btn btn-outline-primary btn-sm">Año</button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="graficoCELs" style="height: 400px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Registro de Transacciones -->
+<div class="container-fluid px-4">
+    <div class="card shadow-sm border-0" data-aos="fade-up">
+        <div class="card-header bg-white border-0">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-exchange-alt text-primary me-2"></i>
+                Registro de Transacciones
+            </h5>
+        </div>
+        <div class="card-body">
+            <table id="tablaCELs" class="table table-hover w-100">
+                <thead>
+                    <tr>
+                        <th>ID Transacción</th>
+                        <th>Fecha</th>
+                        <th>Vendedor</th>
+                        <th>Comprador</th>
+                        <th>Cantidad CELs</th>
+                        <th>Precio (USD)</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            // DataTable
+            $('#tablaCELs').DataTable({
+                data: [
+                    ["TX-001", "2025-06-09", "Central Solar A", "Suministrador B", "50,000", "25.80",
+                        '<span class="badge bg-success">Validada</span>',
+                        '<button class="btn btn-sm btn-primary"><i class="fas fa-eye"></i></button>'],
+                    ["TX-002", "2025-06-08", "Parque Eólico C", "Suministrador D", "35,000", "26.10",
+                        '<span class="badge bg-warning">Pendiente</span>',
+                        '<button class="btn btn-sm btn-primary"><i class="fas fa-eye"></i></button>'],
+                    ["TX-003", "2025-06-07", "Central Solar E", "Suministrador F", "75,000", "25.50",
+                        '<span class="badge bg-success">Validada</span>',
+                        '<button class="btn btn-sm btn-primary"><i class="fas fa-eye"></i></button>']
+                ],
+                responsive: true,
+                dom: 'Bfrtip',
+                buttons: ['excel', 'pdf', 'csv'],
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' }
+            });
+
+            // Gráfico de CELs
+            Highcharts.chart('graficoCELs', {
+                chart: { type: 'line' },
+                title: { text: null },
+                xAxis: {
+                    categories: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'],
+                    crosshair: true
+                },
+                yAxis: [{
+                    title: { text: 'Precio (USD)' }
+                }, {
+                    title: { text: 'Volumen' },
+                    opposite: true
+                }],
+                tooltip: {
+                    shared: true
+                },
+                series: [{
+                    name: 'Precio CEL',
+                    type: 'line',
+                    yAxis: 0,
+                    data: [24.5, 25.1, 25.8, 25.3, 25.8, 26.1],
+                    color: '#2ecc71'
+                }, {
+                    name: 'Volumen',
+                    type: 'column',
+                    yAxis: 1,
+                    data: [150000, 180000, 160000, 200000, 185000, 190000],
+                    color: '#3498db'
+                }],
+                credits: { enabled: false }
+            });
+        });
+    </script>
+}

@@ -1,0 +1,678 @@
+@model IEnumerable<NSIE.Models.ReporteHora_PMLS> 
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+	var httpContext = HttpContextAccessor.HttpContext;
+	var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+	var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+	// Utilizar los datos del usuario para personalizar la vista
+	ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+	ViewData["RolUsuario"] = perfilUsuario.Rol;
+	ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+
+
+@{
+	ViewData["Title"] = "Precios durante el día";
+}
+
+<div class="watermark-container">
+    @for (int i = 0; i < 50; i++) /* Cambiamos el número 3 por 9 para tener más marcas de agua */
+    {
+        <div class="watermark">
+            CRE-@DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") - @ViewData["NombreUsuario"]
+        </div>
+    }
+</div>
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/nodo.png" alt="Icono personalizado" class="iconomenu">
+        @ViewData["Title"]
+    </h4>
+</div>
+<div class="container">
+    <h3 id="zonaCargaTitulo" class="display-6 subtitulo fw-bold">
+        <img src="/img/mexicoi.png" alt="Icono personalizado" class="iconomenu" />
+        <!-- El nombre de la zona se insertará aquí -->
+    </h3>
+    <br>
+
+    @* <script src="https://code.highcharts.com/stock/highstock.js"></script>
+    <script src="https://code.highcharts.com/stock/modules/exporting.js"></script>  *@
+
+     <!-- Combo box para seleccionar la gráfica -->
+    @* <div class="d-flex justify-content-center">
+        <select id="graficaSelector" class="form-select" style="width: 300px;">
+            <option value="candlestick">Precio Zonal AVG (Candlestick)</option>
+            <option value="otraGrafica">Otra gráfica</option>
+        </select>
+    </div> *@
+
+    <br>
+
+    <!-- Contenedor centrado -->
+    <div id="candlestickChartContainer" class="d-flex flex-column align-items-center">
+        <h4 class="text-center" id="subtitulo_precio">Precio Zonal AVG durante el día</h4>
+        <div id="candlestickChart" style="width: 800px; height: 400px;"></div>
+    </div>
+
+
+    <!-- Gráficas secundarias -->
+    <div class="row mt-4">
+        <div class="col-md-4 text-center">
+            <h5 class="fw-bold">Precio Comp. Congestión durante el día</h5>
+            <div id="secondaryChart1" style="width: 100%; height: 200px; border: 1px solid #ddd;"></div>
+        </div>
+        <div class="col-md-4 text-center">
+            <h5 class="fw-bold">Precio Comp. Energía durante el día</h5>
+            <div id="secondaryChart2" style="width: 100%; height: 200px; border: 1px solid #ddd;"></div>
+        </div>
+        <div class="col-md-4 text-center">
+            <h5 class="fw-bold">Precio Comp. Perdida durante el día</h5>
+            <div id="secondaryChart3" style="width: 100%; height: 200px; border: 1px solid #ddd;"></div>
+        </div>
+    </div>
+
+    <style>
+                /* Asegúrate de que los subtítulos y las gráficas sean responsivas */
+        #subtitulo_precio {
+            margin-bottom: 15px; /* Espacio entre el subtítulo y la gráfica */
+        }
+    </style>
+</div>
+
+@section scripts {
+    <script>
+        const precios = @Html.Raw(JsonConvert.SerializeObject(Model));
+        console.log("Datos de precios: ", precios);
+
+        // Convertir IdHora 24 a 0 para manejar las 24 horas correctamente
+        precios.forEach(precio => {
+            if (precio.IdHora === 24) {
+                precio.IdHora = 0;
+            }
+        });
+
+        console.log("Nuevos datos de precios: ", precios);
+        
+        @* function cargarPrecioZonal(precios){ *@
+
+            // Convertir la fecha con la hora basada en el IdHora
+            function combinarFechaHora(fecha, idHora) {
+                const fechaCompleta = new Date(fecha);
+                fechaCompleta.setHours(idHora); // Asignar la hora directamente
+                return fechaCompleta.getTime();
+            }
+
+            // Función para generar las 24 horas completas del día
+            function generarHorasCompletas(fecha) {
+                let horasCompletas = [];
+                for (let i = 0; i < 24; i++) {  // Generar de 0 a 23
+                    horasCompletas.push({
+                        Fecha: fecha,
+                        IdHora: i,
+                        PrecioMarginalLocalPonderadoZC: null
+                    });
+                }
+                return horasCompletas;
+            }
+
+            // Agrupar los precios por fecha
+            let preciosAgrupados = {};
+            precios.forEach(precio => {
+                const fechaStr = new Date(precio.Fecha).toDateString();
+                if (!preciosAgrupados[fechaStr]) {
+                    preciosAgrupados[fechaStr] = generarHorasCompletas(precio.Fecha);
+                }
+                preciosAgrupados[fechaStr][precio.IdHora] = precio; // Ajustar correctamente las horas incluyendo la hora 0
+            });
+
+            const fechas = Object.keys(preciosAgrupados).sort((a, b) => new Date(a) - new Date(b));
+
+            let datosTransformados = [];
+            let esPrimeraEntrada = true; // Bandera para ignorar la primera entrada visualmente
+
+            for (let i = 0; i < fechas.length; i++) {
+                const fechaActual = fechas[i];
+                const preciosDelDia = preciosAgrupados[fechaActual];
+
+                // Tomar el cierre del día anterior (IdHora 23) como el open del día actual para la hora 0
+                let closeAnterior = i > 0 ? preciosAgrupados[fechas[i - 1]][23]?.PrecioMarginalLocalPonderadoZC : null; 
+
+                preciosDelDia.forEach((precio, idx) => {
+                    if (precio.PrecioMarginalLocalPonderadoZC === null) return;
+
+                    const fechaHoraCompleta = combinarFechaHora(precio.Fecha, precio.IdHora);
+                    console.log("Fecha registrada: ", precio);
+
+                    let currentClose = precio.PrecioMarginalLocalPonderadoZC;
+
+                    // Asignar el open: si es la hora 0, tomar el cierre del día anterior como open
+                    let currentOpen = (precio.IdHora === 0 && closeAnterior !== null) 
+                        ? closeAnterior 
+                        : preciosDelDia[idx - 1]?.PrecioMarginalLocalPonderadoZC || currentClose;
+
+                    // Generar un valor para high que esté entre el close y el close + 500
+                    let high = currentClose + Math.random() * 500;  // Genera hasta 500 por encima de currentClose
+                    high = Math.max(currentOpen, currentClose, high); // Asegurar que high no sea menor que open o close
+
+                    // Generar un valor para low que esté entre el close - 500 y el close
+                    let low = currentClose - Math.random() * 500;  // Genera hasta 500 por debajo de currentClose
+                    low = Math.min(currentOpen, currentClose, low); // Asegurar que low no sea mayor que open o close
+
+
+                    const fechaTotal = fechaHoraCompleta - 21600000; // Ajuste para la zona horaria
+
+                    console.log("Valores reales: ", { fechaTotal, currentOpen, high, low, currentClose });
+
+                    // Ignorar la primera entrada visualmente, pero seguir actualizando los valores
+                    if (!esPrimeraEntrada) {
+                        datosTransformados.push([fechaTotal, currentOpen, high, low, currentClose]);
+                    }
+
+                    // Actualizar la bandera después de la primera iteración
+                    esPrimeraEntrada = false;
+
+                    // Actualizar closeAnterior para la siguiente iteración
+                    if (precio.IdHora === 23) {
+                        closeAnterior = currentClose;
+                    }
+                });
+            }
+
+            // Ordenar los datos por fecha
+            datosTransformados.sort((a, b) => a[0] - b[0]);
+
+            // Configuración del gráfico candlestick
+            const options = {
+                title: {
+                    text: 'Evolución de Precios por Hora'
+                },
+                xAxis: {
+                    type: 'datetime',
+                    gridLineWidth: 1
+                },
+                yAxis: {
+                    title: {
+                        text: 'Precio'
+                    },
+                    plotLines: [{
+                        value: 0,
+                        width: 2,
+                        color: 'silver'
+                    }]
+                },
+                rangeSelector: {
+                    buttons: [{
+                        type: 'hour',
+                        count: 1,
+                        text: '1h'
+                    }, {
+                        type: 'day',
+                        count: 1,
+                        text: '1d'
+                    }, {
+                        type: 'all',
+                        count: 1,
+                        text: 'Todo'
+                    }],
+                    selected: 1,
+                    inputEnabled: false
+                },
+                series: [{
+                    type: 'candlestick',
+                    name: 'Precio por Hora',
+                    data: datosTransformados,
+                    color: '#FF7F7F',
+                    upColor: '#90EE90',
+                    tooltip: {
+                        valueDecimals: 2
+                    }
+                }]
+            };
+
+            // Inicializar el gráfico con los datos transformados
+            Highcharts.stockChart('candlestickChart', options);
+        @* } *@
+
+        @* function cargarCompCongestion(precios){
+
+            // Convertir la fecha con la hora basada en el IdHora
+            function combinarFechaHora(fecha, idHora) {
+                const fechaCompleta = new Date(fecha);
+                fechaCompleta.setHours(idHora); // Asignar la hora directamente
+                return fechaCompleta.getTime();
+            }
+
+            // Función para generar las 24 horas completas del día
+            function generarHorasCompletas(fecha) {
+                let horasCompletas = [];
+                for (let i = 0; i < 24; i++) {  // Generar de 0 a 23
+                    horasCompletas.push({
+                        Fecha: fecha,
+                        IdHora: i,                        
+                        ComponenteCongestionPonderadoZC: null
+                    });
+                }
+                return horasCompletas;
+            }
+
+            // Agrupar los precios por fecha
+            let preciosAgrupados = {};
+            precios.forEach(precio => {
+                const fechaStr = new Date(precio.Fecha).toDateString();
+                if (!preciosAgrupados[fechaStr]) {
+                    preciosAgrupados[fechaStr] = generarHorasCompletas(precio.Fecha);
+                }
+                preciosAgrupados[fechaStr][precio.IdHora] = precio; // Ajustar correctamente las horas incluyendo la hora 0
+            });
+
+            const fechas = Object.keys(preciosAgrupados).sort((a, b) => new Date(a) - new Date(b));
+
+            let datosTransformados = [];
+            let esPrimeraEntrada = true; // Bandera para ignorar la primera entrada visualmente
+
+            for (let i = 0; i < fechas.length; i++) {
+                const fechaActual = fechas[i];
+                const preciosDelDia = preciosAgrupados[fechaActual];
+
+                // Tomar el cierre del día anterior (IdHora 23) como el open del día actual para la hora 0
+                let closeAnterior = i > 0 ? preciosAgrupados[fechas[i - 1]][23]?.ComponenteCongestionPonderadoZC : null; 
+
+                preciosDelDia.forEach((precio, idx) => {
+                    if (precio.ComponenteCongestionPonderadoZC === null) return;
+
+                    const fechaHoraCompleta = combinarFechaHora(precio.Fecha, precio.IdHora);
+                    console.log("Fecha registrada: ", precio);
+
+                    let currentClose = precio.ComponenteCongestionPonderadoZC;
+
+                    // Asignar el open: si es la hora 0, tomar el cierre del día anterior como open
+                    let currentOpen = (precio.IdHora === 0 && closeAnterior !== null) 
+                        ? closeAnterior 
+                        : preciosDelDia[idx - 1]?.ComponenteCongestionPonderadoZC || currentClose;
+
+                    // Generar un valor para high que esté entre el close y el close + 500
+                    let high = currentClose + Math.random() * 500;  // Genera hasta 500 por encima de currentClose
+                    high = Math.max(currentOpen, currentClose, high); // Asegurar que high no sea menor que open o close
+
+                    // Generar un valor para low que esté entre el close - 500 y el close
+                    let low = currentClose - Math.random() * 500;  // Genera hasta 500 por debajo de currentClose
+                    low = Math.min(currentOpen, currentClose, low); // Asegurar que low no sea mayor que open o close
+
+
+                    const fechaTotal = fechaHoraCompleta - 21600000; // Ajuste para la zona horaria
+
+                    console.log("Valores reales: ", { fechaTotal, currentOpen, high, low, currentClose });
+
+                    // Ignorar la primera entrada visualmente, pero seguir actualizando los valores
+                    if (!esPrimeraEntrada) {
+                        datosTransformados.push([fechaTotal, currentOpen, high, low, currentClose]);
+                    }
+
+                    // Actualizar la bandera después de la primera iteración
+                    esPrimeraEntrada = false;
+
+                    // Actualizar closeAnterior para la siguiente iteración
+                    if (precio.IdHora === 23) {
+                        closeAnterior = currentClose;
+                    }
+                });
+            }
+
+            // Ordenar los datos por fecha
+            datosTransformados.sort((a, b) => a[0] - b[0]);
+
+            // Configuración del gráfico candlestick
+            const options = {
+                title: {
+                    text: 'Evolución de Precios por Hora'
+                },
+                xAxis: {
+                    type: 'datetime',
+                    gridLineWidth: 1
+                },
+                yAxis: {
+                    title: {
+                        text: 'Precio'
+                    },
+                    plotLines: [{
+                        value: 0,
+                        width: 2,
+                        color: 'silver'
+                    }]
+                },
+                rangeSelector: {
+                    buttons: [{
+                        type: 'hour',
+                        count: 1,
+                        text: '1h'
+                    }, {
+                        type: 'day',
+                        count: 1,
+                        text: '1d'
+                    }, {
+                        type: 'all',
+                        count: 1,
+                        text: 'Todo'
+                    }],
+                    selected: 1,
+                    inputEnabled: false
+                },
+                series: [{
+                    type: 'candlestick',
+                    name: 'Precio por Hora',
+                    data: datosTransformados,
+                    color: '#FF7F7F',
+                    upColor: '#90EE90',
+                    tooltip: {
+                        valueDecimals: 2
+                    }
+                }]
+            };
+
+            // Inicializar el gráfico con los datos transformados
+            Highcharts.stockChart('candlestickChart', options);
+        }
+
+        function cargarCompEnergia(precios){
+
+            // Convertir la fecha con la hora basada en el IdHora
+            function combinarFechaHora(fecha, idHora) {
+                const fechaCompleta = new Date(fecha);
+                fechaCompleta.setHours(idHora); // Asignar la hora directamente
+                return fechaCompleta.getTime();
+            }
+
+            // Función para generar las 24 horas completas del día
+            function generarHorasCompletas(fecha) {
+                let horasCompletas = [];
+                for (let i = 0; i < 24; i++) {  // Generar de 0 a 23
+                    horasCompletas.push({
+                        Fecha: fecha,
+                        IdHora: i,                        
+                        ComponenteEnergiaPonderadoZC: null
+                    });
+                }
+                return horasCompletas;
+            }
+
+            // Agrupar los precios por fecha
+            let preciosAgrupados = {};
+            precios.forEach(precio => {
+                const fechaStr = new Date(precio.Fecha).toDateString();
+                if (!preciosAgrupados[fechaStr]) {
+                    preciosAgrupados[fechaStr] = generarHorasCompletas(precio.Fecha);
+                }
+                preciosAgrupados[fechaStr][precio.IdHora] = precio; // Ajustar correctamente las horas incluyendo la hora 0
+            });
+
+            const fechas = Object.keys(preciosAgrupados).sort((a, b) => new Date(a) - new Date(b));
+
+            let datosTransformados = [];
+            let esPrimeraEntrada = true; // Bandera para ignorar la primera entrada visualmente
+
+            for (let i = 0; i < fechas.length; i++) {
+                const fechaActual = fechas[i];
+                const preciosDelDia = preciosAgrupados[fechaActual];
+
+                // Tomar el cierre del día anterior (IdHora 23) como el open del día actual para la hora 0
+                let closeAnterior = i > 0 ? preciosAgrupados[fechas[i - 1]][23]?.ComponenteEnergiaPonderadoZC : null; 
+
+                preciosDelDia.forEach((precio, idx) => {
+                    if (precio.ComponenteEnergiaPonderadoZC === null) return;
+
+                    const fechaHoraCompleta = combinarFechaHora(precio.Fecha, precio.IdHora);
+                    console.log("Fecha registrada: ", precio);
+
+                    let currentClose = precio.ComponenteEnergiaPonderadoZC;
+
+                    // Asignar el open: si es la hora 0, tomar el cierre del día anterior como open
+                    let currentOpen = (precio.IdHora === 0 && closeAnterior !== null) 
+                        ? closeAnterior 
+                        : preciosDelDia[idx - 1]?.ComponenteEnergiaPonderadoZC || currentClose;
+
+                    // Generar un valor para high que esté entre el close y el close + 500
+                    let high = currentClose + Math.random() * 500;  // Genera hasta 500 por encima de currentClose
+                    high = Math.max(currentOpen, currentClose, high); // Asegurar que high no sea menor que open o close
+
+                    // Generar un valor para low que esté entre el close - 500 y el close
+                    let low = currentClose - Math.random() * 500;  // Genera hasta 500 por debajo de currentClose
+                    low = Math.min(currentOpen, currentClose, low); // Asegurar que low no sea mayor que open o close
+
+
+                    const fechaTotal = fechaHoraCompleta - 21600000; // Ajuste para la zona horaria
+
+                    console.log("Valores reales: ", { fechaTotal, currentOpen, high, low, currentClose });
+
+                    // Ignorar la primera entrada visualmente, pero seguir actualizando los valores
+                    if (!esPrimeraEntrada) {
+                        datosTransformados.push([fechaTotal, currentOpen, high, low, currentClose]);
+                    }
+
+                    // Actualizar la bandera después de la primera iteración
+                    esPrimeraEntrada = false;
+
+                    // Actualizar closeAnterior para la siguiente iteración
+                    if (precio.IdHora === 23) {
+                        closeAnterior = currentClose;
+                    }
+                });
+            }
+
+            // Ordenar los datos por fecha
+            datosTransformados.sort((a, b) => a[0] - b[0]);
+
+            // Configuración del gráfico candlestick
+            const options = {
+                title: {
+                    text: 'Evolución de Precios por Hora'
+                },
+                xAxis: {
+                    type: 'datetime',
+                    gridLineWidth: 1
+                },
+                yAxis: {
+                    title: {
+                        text: 'Precio'
+                    },
+                    plotLines: [{
+                        value: 0,
+                        width: 2,
+                        color: 'silver'
+                    }]
+                },
+                rangeSelector: {
+                    buttons: [{
+                        type: 'hour',
+                        count: 1,
+                        text: '1h'
+                    }, {
+                        type: 'day',
+                        count: 1,
+                        text: '1d'
+                    }, {
+                        type: 'all',
+                        count: 1,
+                        text: 'Todo'
+                    }],
+                    selected: 1,
+                    inputEnabled: false
+                },
+                series: [{
+                    type: 'candlestick',
+                    name: 'Precio por Hora',
+                    data: datosTransformados,
+                    color: '#FF7F7F',
+                    upColor: '#90EE90',
+                    tooltip: {
+                        valueDecimals: 2
+                    }
+                }]
+            };
+
+            // Inicializar el gráfico con los datos transformados
+            Highcharts.stockChart('candlestickChart', options);
+        }
+
+        function cargarCompPerdida(precios){
+
+            // Convertir la fecha con la hora basada en el IdHora
+            function combinarFechaHora(fecha, idHora) {
+                const fechaCompleta = new Date(fecha);
+                fechaCompleta.setHours(idHora); // Asignar la hora directamente
+                return fechaCompleta.getTime();
+            }
+
+            // Función para generar las 24 horas completas del día
+            function generarHorasCompletas(fecha) {
+                let horasCompletas = [];
+                for (let i = 0; i < 24; i++) {  // Generar de 0 a 23
+                    horasCompletas.push({
+                        Fecha: fecha,
+                        IdHora: i,                        
+                        ComponentePerdidaPonderadoZC: null
+                    });
+                }
+                return horasCompletas;
+            }
+
+            // Agrupar los precios por fecha
+            let preciosAgrupados = {};
+            precios.forEach(precio => {
+                const fechaStr = new Date(precio.Fecha).toDateString();
+                if (!preciosAgrupados[fechaStr]) {
+                    preciosAgrupados[fechaStr] = generarHorasCompletas(precio.Fecha);
+                }
+                preciosAgrupados[fechaStr][precio.IdHora] = precio; // Ajustar correctamente las horas incluyendo la hora 0
+            });
+
+            const fechas = Object.keys(preciosAgrupados).sort((a, b) => new Date(a) - new Date(b));
+
+            let datosTransformados = [];
+            let esPrimeraEntrada = true; // Bandera para ignorar la primera entrada visualmente
+
+            for (let i = 0; i < fechas.length; i++) {
+                const fechaActual = fechas[i];
+                const preciosDelDia = preciosAgrupados[fechaActual];
+
+                // Tomar el cierre del día anterior (IdHora 23) como el open del día actual para la hora 0
+                let closeAnterior = i > 0 ? preciosAgrupados[fechas[i - 1]][23]?.ComponentePerdidaPonderadoZC : null; 
+
+                preciosDelDia.forEach((precio, idx) => {
+                    if (precio.ComponentePerdidaPonderadoZC === null) return;
+
+                    const fechaHoraCompleta = combinarFechaHora(precio.Fecha, precio.IdHora);
+                    console.log("Fecha registrada: ", precio);
+
+                    let currentClose = precio.ComponentePerdidaPonderadoZC;
+
+                    // Asignar el open: si es la hora 0, tomar el cierre del día anterior como open
+                    let currentOpen = (precio.IdHora === 0 && closeAnterior !== null) 
+                        ? closeAnterior 
+                        : preciosDelDia[idx - 1]?.ComponentePerdidaPonderadoZC || currentClose;
+
+                    // Generar un valor para high que esté entre el close y el close + 500
+                    let high = currentClose + Math.random() * 500;  // Genera hasta 500 por encima de currentClose
+                    high = Math.max(currentOpen, currentClose, high); // Asegurar que high no sea menor que open o close
+
+                    // Generar un valor para low que esté entre el close - 500 y el close
+                    let low = currentClose - Math.random() * 500;  // Genera hasta 500 por debajo de currentClose
+                    low = Math.min(currentOpen, currentClose, low); // Asegurar que low no sea mayor que open o close
+
+
+                    const fechaTotal = fechaHoraCompleta - 21600000; // Ajuste para la zona horaria
+
+                    console.log("Valores reales: ", { fechaTotal, currentOpen, high, low, currentClose });
+
+                    // Ignorar la primera entrada visualmente, pero seguir actualizando los valores
+                    if (!esPrimeraEntrada) {
+                        datosTransformados.push([fechaTotal, currentOpen, high, low, currentClose]);
+                    }
+
+                    // Actualizar la bandera después de la primera iteración
+                    esPrimeraEntrada = false;
+
+                    // Actualizar closeAnterior para la siguiente iteración
+                    if (precio.IdHora === 23) {
+                        closeAnterior = currentClose;
+                    }
+                });
+            }
+
+            // Ordenar los datos por fecha
+            datosTransformados.sort((a, b) => a[0] - b[0]);
+
+            // Configuración del gráfico candlestick
+            const options = {
+                title: {
+                    text: 'Evolución de Precios por Hora'
+                },
+                xAxis: {
+                    type: 'datetime',
+                    gridLineWidth: 1
+                },
+                yAxis: {
+                    title: {
+                        text: 'Precio'
+                    },
+                    plotLines: [{
+                        value: 0,
+                        width: 2,
+                        color: 'silver'
+                    }]
+                },
+                rangeSelector: {
+                    buttons: [{
+                        type: 'hour',
+                        count: 1,
+                        text: '1h'
+                    }, {
+                        type: 'day',
+                        count: 1,
+                        text: '1d'
+                    }, {
+                        type: 'all',
+                        count: 1,
+                        text: 'Todo'
+                    }],
+                    selected: 1,
+                    inputEnabled: false
+                },
+                series: [{
+                    type: 'candlestick',
+                    name: 'Precio por Hora',
+                    data: datosTransformados,
+                    color: '#FF7F7F',
+                    upColor: '#90EE90',
+                    tooltip: {
+                        valueDecimals: 2
+                    }
+                }]
+            };
+
+            // Inicializar el gráfico con los datos transformados
+            Highcharts.stockChart('candlestickChart', options);
+        } *@
+        
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            if (precios && precios.length > 0) {
+                const nombreZonaCarga = precios[0].NombreZonaCarga || "Nombre no disponible";
+
+                const subtituloElement = document.getElementById('zonaCargaTitulo');
+                subtituloElement.innerHTML += ` ${nombreZonaCarga}`;  // Añade el nombre al contenido existente
+                
+                console.log("NombreZonaCarga: ", nombreZonaCarga);
+            }
+        });
+    </script>
+}

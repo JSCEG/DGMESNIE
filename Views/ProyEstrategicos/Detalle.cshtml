@@ -1,0 +1,147 @@
+﻿@model NSIE.Models.ProyectoEstrategico
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+    ViewData["IdUsuario"] = perfilUsuario.IdUsuario;
+}
+
+@{
+    ViewData["Title"] = "Detalle del Proyecto";
+}
+
+<div class="text-center">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/dashboard.png" alt="Icono personalizado" class="iconomenu" />@ViewData["Title"]
+    </h3>
+</div>
+<!-- Miga de Pan -->
+<div class="alert alert-light" role="alert">
+    <nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);" aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="@Url.Action("MenuPE", "ProyEstrategicos" )">Menú de Proyectos Estratégicos</a></li>
+            @if (ViewBag.VistaOrigen == "ProyectosEstrategicos")
+            {
+                <li class="breadcrumb-item"><a href="@Url.Action("ProyectosEstrategicos", "ProyEstrategicos" )">Proyectos Estratégicos</a></li>
+            }
+            else if (ViewBag.VistaOrigen == "ListaProyectos")
+            {
+                <li class="breadcrumb-item"><a href="@Url.Action("ListaProyectos", "ProyEstrategicos")">Lista de Proyectos</a></li>
+            }
+            <li class="breadcrumb-item active" aria-current="page">@Model.NombreProyecto</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="container">
+    <div class="text-left pb-3">
+        <h6 class="subtitulo pb-3">
+            <img src="@Cdn.Url/img_snier/vistas/buscar.png" alt="Icono personalizado" class="iconomenu"> @Model.NombreProyecto
+        </h6>
+    </div>
+    <br>
+    <h4 class="pb-3">Detalles del Proyecto</h4>
+
+    <div class="alert alert-success alert-dismissible fade show pt-3" role="alert">
+        <p>@Model.Descripción</p> <!-- Aquí se muestra la descripción del proyecto -->
+    </div>
+    
+    <div class="table-responsive pt-6">
+        <table id="Detalle" class="table table-hover table-responsive table-bordered">
+            <thead>
+                <tr>
+                    <th>Id Trámite</th>
+                    <th>Trámite</th>
+                    <th>Ubicación</th>
+                    <th>Fecha de Ingreso</th>
+                    <th>Avance (%)</th>
+                    <th>Comentarios</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var tramite in Model.Tramites)
+                {
+                    <tr>
+                        <td class="text-wrap w-30">@tramite.IDTramite</td>
+                        <td class="text-wrap w-30">@tramite.Tramite</td>
+                        <td class="text-wrap w-30">@tramite.Ubicación</td>
+                        <td class="text-wrap w-30">@tramite.FechaIngreso.ToString("yyyy-MM-dd")</td>
+                        <td class="text-wrap w-30">
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" style="width: @tramite.CalcularAvance()%" aria-valuenow="@tramite.CalcularAvance()" aria-valuemin="0" aria-valuemax="100">
+                                    @tramite.CalcularAvance()%
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-wrap w-30">
+                            @foreach (var comentario in tramite.Comentarios)
+                            {
+                                <div>@comentario.FechaComentario.ToString("yyyy-MM-dd") - @comentario.ComentarioNuevo por @comentario.NombreUsuario</div>
+                            }
+                            <form asp-action="AgregarComentario" method="post" class="mt-2">
+                                <input type="hidden" name="IDTramite" value="@tramite.IDTramite" />
+                                <input type="hidden" name="IdUsuario" value="@perfilUsuario.IdUsuario" />
+                                <input type="hidden" name="NombreUsuario" value="@perfilUsuario.Nombre" />
+                                <textarea name="ComentarioNuevo" class="form-control" placeholder="Agregar comentario..."></textarea>
+                                <button type="submit" class="btn btn-primary mt-2">Agregar</button>
+                            </form>
+                        </td>
+                        <td>
+                            <a href="@Url.Action("EditarTramite", "ProyEstrategicos", new { id = tramite.IDTramite })" class="btn btn-primary">Editar</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        $(document).ready(function () {
+            var table = $('#Detalle').DataTable({
+                lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                dom: 'Blfrtip',
+                buttons: [
+                    {
+                        extend: 'copyHtml5',
+                        title: 'EnergeoCRE-Proyectos Estratégicos'
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: 'EnergeoCRE-Proyectos Estratégicos'
+                    },
+                    {
+                        extend: 'csvHtml5',
+                        title: 'EnergeoCRE-Proyectos Estratégicos'
+                    },
+                    {
+                        extend: 'pdfHtml5',
+                        title: 'EnergeoCRE-Proyectos Estratégicos',
+                        customize: function (doc) {
+                            doc.styles.tableHeader.color = '#9fa1a4';
+                            doc.defaultStyle.alignment = 'center';
+                            doc.styles.tableHeader.fillColor = '#4c1922';
+                        }
+                    }
+                ],
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
+                }
+            });
+        });
+    </script>
+}

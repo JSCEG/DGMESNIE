@@ -1,0 +1,185 @@
+
+
+@model dynamic
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Registro Nacional de Instalaciones";
+
+    var perfilJson = HttpContextAccessor.HttpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+    var header = new HeaderViewModel
+    {
+        Title = "Registro Nacional de Instalaciones",
+        IconPath = "analisis.png",
+        Description = "Sistema integral para el registro y consulta de instalaciones, empresas y productos del sector energético.",
+        Section = "🏭 Instalaciones",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Registro de Instalaciones",
+            description = "Base de datos nacional de instalaciones energéticas.",
+            functionality = "Permite registrar y consultar instalaciones por tipo y ubicación.",
+            stage = "Consulta y Registro",
+            roles = new[] {
+                new { icon = "building", text = "CRE: Control regulatorio" },
+                new { icon = "industry", text = "Industria: Registro" },
+                new { icon = "search", text = "Público: Consulta" }
+            },
+            order = new { step = 1, description = "Gestión de instalaciones" }
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<!-- Cards Resumen con AOS -->
+<div class="container-fluid px-4 mb-5">
+    <div class="row g-4">
+        <!-- Card Total -->
+        <div class="col-12 col-md-4" data-aos="fade-right">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="fas fa-industry text-primary fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Total Instalaciones</h5>
+                            <small class="text-muted">Registros activos</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">1,234</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-primary" style="width: 75%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card Distribución -->
+        <div class="col-12 col-md-8" data-aos="fade-left">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div id="distribucionInstalaciones" style="height: 200px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtros Mejorados -->
+<div class="container-fluid px-4 mb-4" data-aos="fade-up">
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label"><i class="fas fa-filter me-2"></i>Tipo</label>
+                    <select class="form-select" id="tipoFiltro">
+                        <option value="">Todos los tipos</option>
+                        <option>Generación</option>
+                        <option>Consumo</option>
+                        <option>Eficiencia</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label"><i class="fas fa-map-marker-alt me-2"></i>Estado</label>
+                    <select class="form-select" id="estadoFiltro">
+                        <option value="">Todos los estados</option>
+                        <option>Sonora</option>
+                        <option>CDMX</option>
+                        <option>Jalisco</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label"><i class="fas fa-search me-2"></i>Búsqueda</label>
+                    <input type="text" class="form-control" id="busquedaFiltro" placeholder="Buscar instalación...">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label d-block">&nbsp;</label>
+                    <button class="btn btn-primary w-100" onclick="aplicarFiltros()">
+                        <i class="fas fa-filter me-2"></i>Filtrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla Mejorada -->
+<div class="container-fluid px-4" data-aos="fade-up">
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
+            <table id="tablaInstalaciones" class="table table-hover w-100">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>Ubicación</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // Inicializar DataTable
+            $('#tablaInstalaciones').DataTable({
+                responsive: true,
+                dom: 'Bfrtip',
+                buttons: ['excel', 'pdf', 'csv'],
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json'
+                }
+            });
+
+            // Gráfico de distribución
+            Highcharts.chart('distribucionInstalaciones', {
+                chart: {
+                    type: 'column'
+                },
+                title: {
+                    text: 'Distribución por Tipo y Estado'
+                },
+                xAxis: {
+                    categories: ['Sonora', 'CDMX', 'Jalisco']
+                },
+                yAxis: {
+                    title: {
+                        text: 'Cantidad'
+                    }
+                },
+                series: [{
+                    name: 'Generación',
+                    data: [45, 30, 25]
+                }, {
+                    name: 'Consumo',
+                    data: [35, 40, 30]
+                }, {
+                    name: 'Eficiencia',
+                    data: [20, 25, 35]
+                }],
+                credits: {
+                    enabled: false
+                }
+            });
+        });
+
+        // Función para aplicar filtros
+        function aplicarFiltros() {
+            // ... existing filtering logic ...
+        }
+
+        // ... resto de tu código JavaScript existente ...
+    </script>
+}

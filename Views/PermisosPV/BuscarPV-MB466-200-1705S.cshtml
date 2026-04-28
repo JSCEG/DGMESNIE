@@ -1,0 +1,184 @@
+﻿@model NSIE.Models.BusquedaPermisoViewModel
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+}
+
+
+@{
+    ViewData["Title"] = "Consulta de Permisos Vigentes de Parque Vehicular";
+}
+
+
+
+@*<partial name="_Marquesina"class="display-4 titulo fw-bold " />*@
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/proyecto.png" alt="Icono personalizado" class="iconomenu">
+        Consulta de Permisos Vigentes de Parque Vehicular
+    </h4>
+</div>
+<!-- Miga de Pan -->
+<div class="alert alert-light" role="alert">
+    <nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+        aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div>
+
+
+<div class="container ps-5 pe-5">
+
+
+    <div class="text-left pb-3">
+        <h6 class="subtitulo pb-3"> <img src="@Cdn.Url/img_snier/vistas/buscar.png" alt="Icono personalizado" class="iconomenu">Buscador de
+            Permisos Vigentes de Parque Vehicular de de Gas Licuado de Petróleo</h6>
+
+    </div>
+
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <strong>Instrucciones:</strong> En esta sección podrá consultar los Permisos de Transporte de Gas Licuado de
+        Petróleo por <strong>Medios Distintos a Ductos</strong> asi como <strong>mediante Planta de Distribución y por
+            Medio de Autotanques.</strong> Lo único
+        que debe hacer es escribir el número de permiso, placa o número de placa del recipiente.
+
+    </div>
+
+
+    <form asp-action="BuscarPermisos" method="get">
+        <div class="mb-3">
+            <label for="busqueda" class="form-label"><strong>Buscar por Permiso, Número de Placa o Número de Placa del
+                    Recipiente:</strong></label>
+            <input type="text" class="form-control" id="busqueda" name="Busqueda"
+                placeholder="Ingrese el número de permiso o placa" value="@Model.Busqueda" required />
+            <span asp-validation-for="Busqueda" class="text-danger"></span>
+        </div>
+        <button type="submit" class="btn btn-primary">Buscar</button>
+    </form>
+
+    <br>
+
+    @{
+        var permisosUnicos = new HashSet<string>();
+    }
+    @if (Model.Permisos != null && Model.Permisos.Any())
+    {
+
+        <div class="alert alert-info fade show" role="alert">
+            <strong>Fecha de Última Actualización:</strong> @ViewBag.UltimaFechaActualizacion
+        </div>
+
+        <div class="table-responsive pt-6">
+
+            <table id="BUS_GLP" class="table table-striped table-hover table-responsive table-bordered">
+
+                <thead>
+                    <tr>
+                        <th>Permiso</th>
+                        <th>Tipo de Vehículo</th>
+                        <th>Número de Placa del Recipiente / Placas del Vehículo</th>
+                        <th>Capacidad del Recipiente (Litros)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var permiso in Model.Permisos)
+                    {
+                        // Añadir permiso al HashSet para asegurar unicidad
+                        permisosUnicos.Add(permiso.Permiso);
+
+                        <tr>
+                            <td>@permiso.Permiso</td>
+                            <td>@permiso.TIPO_DE_VEHICULO</td>
+                            <td>@permiso.NUMERO_DE_PLACA_DEL_RECIPIENTE</td>
+                            <td>@permiso.CAPACIDAD_DEL_RECIPIENTE_LITROS.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        //SECCIÓN PARA MOSTRAR EL TOTAL DE PERMISOS
+        <br>
+        <h3 class="subtitulo display-9 fw-bold pt-3 pb-3">Total de permisos en la busqueda</h3>
+        <br>
+        <div class="navbarmapag" id="totales_en_isocrona" class="pt-3">
+            <a id="coches" class="active icono-texto">
+                <img src="/img/checkindi.png" alt="Icono personalizado" class="iconomenu" />
+                <span>Total de Permisos</span>
+
+                <div id="total_permisos" style="font-size: 20px;">@permisosUnicos.Count</div>
+            </a>
+        </div>
+
+
+    }
+    else if (!string.IsNullOrEmpty(ViewBag.Mensaje))
+    {
+        <div class="alert alert-danger mt-3">@ViewBag.Mensaje</div>
+    }
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        document.getElementById('busquedaForm').addEventListener('submit', function (event) {
+            var busquedaInput = document.getElementById('busqueda');
+            busquedaInput.value = busquedaInput.value.trim();
+        });
+    </script>
+
+    <script>
+        $(document).ready(function () {
+            var table = $('#BUS_GLP').DataTable({
+                lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                pageLength: -1, // Muestra todos los registros por defecto
+                dom: 'Blfrtip',
+                buttons: [
+                    {
+                        extend: 'copyHtml5',
+                        title: 'EnergeoCRE-Consulta de Parque Vehicular G.L.P.'
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: 'EnergeoCRE-Consulta de Parque Vehicular G.L.P.'
+                    },
+                    {
+                        extend: 'csvHtml5',
+                        title: 'EnergeoCRE-Consulta de Parque Vehicular G.L.P.'
+                    },
+                    {
+                        extend: 'pdfHtml5',
+                        title: 'EnergeoCRE-Consulta de Parque Vehicular G.L.P.',
+                        customize: function (doc) {
+                            doc.styles.tableHeader.color = '#9fa1a4';
+                            doc.defaultStyle.alignment = 'center';
+                            doc.styles.tableHeader.fillColor = '#4c1922';
+                        }
+                    }
+                ],
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
+                }
+            });
+        });
+    </script>
+    @* <script>
+        // Actualizar totales de vehículos
+            $('#total_permisos').text("13");
+    </script> *@
+}

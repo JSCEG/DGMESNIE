@@ -1,0 +1,3038 @@
+@model Mep
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+}
+
+
+
+@{
+    ViewData["Title"] = " Permisos e Infraestructura por Radiode 3 Km";
+}
+
+@* Modal de Alertas *@
+<!-- Modal para Alerta del Formulario -->
+
+<div class="modal fade" id="alertModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <!-- Clase modal-dialog-centered para centrar -->
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title subtitulo">EnerGeoCRE-Mensaje</h5>
+                <button type="button" class="close btn btn-primary" data-dismiss="modal" aria-label="Close" onclick="cerraModal()">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Aquí se mostrará el mensaje -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal" onclick="cerraModal()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="print01">
+
+    <div class="text-center">
+        <h3 class="cp-section cp-grouping-section">
+            <img src="@Cdn.Url/img_snier/vistas/mexico.png" alt="Icono personalizado" class="iconomenu">
+            @ViewData["Title"]
+        </h3>
+    </div>
+    <!-- Miga de Pan -->
+    <nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+         aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+
+    <div class="watermark-container">
+        @for (int i = 0; i < 30; i++) /* Cambiamos el número 3 por 9 para tener más marcas de agua */
+        {
+            <div class="watermark">
+                CRE-@DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") - @ViewData["NombreUsuario"]
+            </div>
+        }
+    </div>
+
+
+
+    <div class="container">
+        <div class="row pt-3">
+            <h3 class="subtitulo">Permisos por Radio</h3>
+        </div>
+    </div>
+
+
+
+    @* Formulario *@
+    <div class="container mt-5 bg-white shadow p-3 mb-5 bg-body rounded">
+        @* <h3 class="subtitulo cp-section cp-grouping-section"><img src="@Cdn.Url/img_snier/vistas/mexicoi.png" alt="Icono personalizado"
+            class="iconomenu pt-3">Consulta Preliminar de la Calidad de la Ubicación</h3> *@
+        <br>
+        <div id="alertPlaceholder" style="display:none">
+            <!-- Aquí se mostrará el mensaje -->
+        </div>
+
+        <div id="instrucciones" class="alert alert-info" role="alert">
+            <p style="text-align:justify">
+                <strong>Instrucciones:</strong> Sobre el mapa
+                seleccione una ubicación, finalmente presione el botón "buscar".
+            </p>
+        </div>
+
+
+        <!-- Paso 1: Radio -->
+        <div>
+
+
+
+            <div id="message" class="alert alert-info mb-3 d-none" role="alert">
+                <!-- Aquí se mostrará el mensaje -->
+            </div>
+            <div id="results">
+                <div class="search-container ">
+
+                    @* <label class="form-label">Buscar en el Mapa:</label> *@
+                    <input type="text" id="busquedaGeneralInput" class="form-control"
+                           placeholder="Escriba las coordenadas de la ubicación">
+                    <div id="autocomplete-list" class="autocomplete-items"></div>
+                    <!-- El resto de tu código -->
+
+                    <button class="btn btn-cre-rojo-home" onclick="buscarGeneral()" style="width:15% !important">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+                <div class="mb-3">
+                    <!-- Información que va al controlador -->
+                    <input type="hidden" id="cvegeo">
+                    <input type="hidden" id="cve_ent">
+                    <input type="hidden" id="cve_mun">
+                    <input type="hidden" id="lat">
+                    <input type="hidden" id="lon">
+                    <div class="row">
+                        <div class="col-12 col-md-6">
+                            <div id="map" style="height:400px !important"></div>
+                            <div class="form-buttons">
+
+                                <!-- Botón que activará el modal -->
+                                <button type="button" onclick="openModal()" class="btn btn-danger">Ver Guía</button>
+                                <!-- Modal para mostrar el video -->
+                                <div id="videoModal"
+                                     style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:3000">
+                                    <video width="80%" controls>
+                                        <source src="/video/guia.mp4" type="video/mp4">
+                                        Tu navegador no soporta el elemento video.
+                                    </video>
+                                    <button onclick="closeModal()" class="btn btn-cre-rojo"
+                                            style="position:absolute; top:10px; right:10px;z-index:3000; width:300px!important">
+                                        Cerrar
+                                    </button>
+                                </div>
+
+                                @* Botón ejecutar *@
+
+                                <button id="pdf" type="button" class="btn btn-secondary btn-print is-btn-print01">PDF</button>
+
+                                <button type="button" id="btnEjecutar" class="btn btn-primary">Ejecutar Evaluación</button>
+
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+            </div> <!-- Aquí se mostrarían los resultados de la evaluación -->
+
+
+
+            <div class="alert alert-light" role="alert">
+                <div id="datos_ubicacion" class="scrollable-container row" style="display:none">
+                    <h3 class="subtitulo display-9 fw-bold mb-2">
+                        <img src="@Cdn.Url/img_snier/vistas/evaluar.png" alt="Icono personalizado"
+                             class="iconomenu pt-3">Datos de la Ubicación
+                    </h3>
+                    <br><br>
+                    <div class="row">
+                        <div class="col-6">
+                            <label class="form-label"><strong>Entidad Federativa:</strong></label>
+                        </div>
+                        <div class="col-6">
+                            <input type="text" id="entidad" class="form-control" readonly />
+                        </div>
+                    </div>
+
+                    <div class="row">
+
+                        <br>
+                        <div class="col-6">
+                            <label class="form-label"><strong>Municipio:</strong></label>
+                        </div>
+                        <div class="col-6">
+                            <input type="text" id="municipio" class="form-control" readonly />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-6">
+                            <label class="form-label"><strong>Coordenada: (lat,lon)</strong></label>
+                        </div>
+                        <div class="col-6">
+                            <input type="text" id="coordenada" class="form-control" readonly />
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+
+            <br />
+
+        </div>
+    </div>
+
+</div>
+</div>
+
+
+
+@*Ductos*@
+@*Petrolíferos*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_petroliferos_4326_0.js"></script>
+@*Gas L.P.*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_glp_4326_0.js"></script>
+
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosmin.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosmin.js"></script>
+
+
+
+<script src="@Cdn.Url/Geovisualizador/dist/bundle.js"></script>
+
+
+
+
+
+@*Configuraciones del Mapa Inicial*@
+<script>
+      // Variable que almacena los permisos
+    var permisosGlobales = [];
+    //Distancia de 3 km
+     function calcularDistancia(lat1, lon1, lat2, lon2) {
+        var R = 6371;
+        var dLat = (lat2 - lat1) * (Math.PI / 180);
+        var dLon = (lon2 - lon1) * (Math.PI / 180);
+        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        var distancia = R * c;
+        return distancia;
+    }
+       // Reiniciando availableTerms y las demas variables
+       availableTerms = [];
+       //  datosExpendios = [];
+       camposVisiblesGlobal = [];
+
+       var map = L.map('map', {
+           zoomControl: true,
+           maxZoom: 28,
+           minZoom: 5
+       }).fitBounds([
+           [16.515297504744552, -116.01198143543994],
+           [31.280203931152798, -90.79533052556764]
+       ]);
+
+       var hash = new L.Hash(map);
+       map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+       var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+       var bounds_group = new L.featureGroup([]);
+       function setBounds() {
+       }
+
+       // Crea los Iconos y Define su tamaño
+       var iconoBase = L.Icon.extend({
+           options: {
+               iconSize: [46, 46],
+               iconAnchor: [23, 46],
+               popupAnchor: [-3, -76]
+           }
+       });
+
+       // Asignación de Iconos
+       var iconoSolicitudes = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Solicitudes.png' });
+       iconoAprobado = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Aprobado_.png' });
+       iconoNoaprobado = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/NoAprobado_.png' });
+
+
+       var currentMarker = null; // Referencia al marcador actual
+       // var seleccionado = 'estado'; // Estado inicial
+       var municipiosFiltrados = null;
+
+
+
+       //Colores
+       var initialStyle = {
+           color: '#187A8C', // Color de línea
+           fillColor: '#187A8C', // Color de relleno
+           fillOpacity: 0.3, // Opacidad del relleno
+           weight: 3 // Ancho de la línea
+       };
+
+       // Estilo para el hover
+       var highlightStyle = {
+           color: '#FFDB2EC',
+           fillColor: '#FFDB2E', // Color de relleno
+           fillOpacity: 0.3, // Opacidad del relleno
+           weight: 3
+       };
+       // Capa de estados
+       var estadosLayer = L.geoJSON(estados, {
+           style: initialStyle, // Aplicar estilo inicial
+           onEachFeature: function (feature, layer) {
+               layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOMGEO + '</div>');
+               layer.on('click', function (e) {
+                   cargarMunicipios(feature.properties.CVE_ENT);
+                   map.fitBounds(layer.getBounds(), { maxZoom: 15 }); // Centra el mapa en el estado
+               });
+               // Efecto de hover
+               layer.on('mouseover', function (e) {
+                   layer.setStyle(highlightStyle);
+               });
+               layer.on('mouseout', function (e) {
+                   estadosLayer.resetStyle(layer);
+               });
+           }
+       }).addTo(map);
+
+       // Capa de municipios (inicialmente vacía)
+       var municipiosLayer = L.geoJSON(null, {
+           style: initialStyle, // Aplicar estilo inicial
+           onEachFeature: onEachMunicipio
+       }).addTo(map);
+       var mapaMunicipios = {};
+       function onEachMunicipio(feature, layer) {
+
+           // Construir mapaMunicipios con la información del municipio
+           var cveEntMun = feature.properties.CVE_ENT + feature.properties.CVE_MUN;
+           var nomMun = feature.properties.NOM_MUN;
+           mapaMunicipios[cveEntMun] = nomMun;
+
+           layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOM_MUN + ', ' + feature.properties.NOMGEO + '</div>');
+           // Efecto de hover
+           layer.on('mouseover', function (e) {
+               layer.setStyle(highlightStyle);
+           });
+           layer.on('mouseout', function (e) {
+               municipiosLayer.resetStyle(layer);
+           });
+           layer.on('click', function (e) { // Click en el municipio
+               if (currentMarker) {
+                   map.removeLayer(currentMarker);
+               }
+               currentMarker = L.marker(e.latlng, { icon: iconoSolicitudes }).addTo(map);
+               // map.setView(e.latlng, 15); // Zoom en la ubicación
+               // Establece los valores
+               document.getElementById('entidad').value = feature.properties.NOMGEO;
+               document.getElementById('municipio').value = feature.properties.NOM_MUN;
+               document.getElementById('coordenada').value = '(' + e.latlng.lat + ', ' + e.latlng.lng + ')';
+               document.getElementById('cvegeo').value = feature.properties.CVEGEO;
+               document.getElementById('cve_ent').value = feature.properties.CVE_ENT;
+               document.getElementById('cve_mun').value = feature.properties.CVE_MUN;
+               document.getElementById('lat').value = e.latlng.lat;
+               document.getElementById('lon').value = e.latlng.lng;
+           });
+       }
+
+       // Función para cargar los municipios correspondientes a un estado
+       function cargarMunicipios(cveEnt) {
+           if (municipiosLayer) {
+               map.removeLayer(municipiosLayer);
+           }
+           if (currentMarker) {
+               map.removeLayer(currentMarker);
+               currentMarker = null;
+           }
+           municipiosFiltrados = {
+               type: "FeatureCollection",
+               features: municipios_mapa.features.filter(function (feature) {
+                   return feature.properties.CVE_ENT === cveEnt;
+               })
+           };
+           municipiosLayer = L.geoJSON(municipiosFiltrados, {
+               style: initialStyle,
+               onEachFeature: onEachMunicipio
+           }).addTo(map);
+       }
+
+
+
+       map.on('click', function (e) {
+
+           if (currentMarker) {
+               map.removeLayer(currentMarker);
+           }
+           //Habilita de nuevo los combos
+
+           //  $("#mercadoSelect").prop('disabled', false);
+           // $("#yearSelect").prop('disabled', false);
+           var point = turf.point([e.latlng.lng, e.latlng.lat]);
+           var found = false;
+           var messageDiv = document.getElementById('message');
+
+           municipiosFiltrados.features.forEach(function (feature) {
+               if (turf.booleanPointInPolygon(point, feature)) {
+                   currentMarker = L.marker(e.latlng, { icon: iconoSolicitudes }).addTo(map);
+                   //map.setView(e.latlng, 15);
+                   document.getElementById('datos_ubicacion').style.display = 'block'; // Muestra el sidebar
+                   var municipio = feature.properties.NOM_MUN;
+                   var entidad = feature.properties.NOMGEO;
+                   var latitud = e.latlng.lat;
+                   var longitud = e.latlng.lng;
+                   var cvegeo = feature.properties.CVEGEO;
+                   var cve_ent = feature.properties.CVE_ENT;
+                   var cve_mun = feature.properties.CVE_MUN;
+                   document.getElementById('entidad').value = entidad;
+                   document.getElementById('municipio').value = municipio;
+                   document.getElementById('coordenada').value = '(' + latitud + ', ' + longitud + ')';
+                   document.getElementById('cvegeo').value = cvegeo;
+                   document.getElementById('cve_ent').value = cve_ent;
+                   document.getElementById('cve_mun').value = cve_mun;
+                   document.getElementById('lat').value = latitud;
+                   document.getElementById('lon').value = longitud;
+                   // messageDiv.classList.add('d-none'); // Oculta el mensaje si está visible
+                   $("#resultadoAlert").html(''); // Limpiar el contenido del div que contiene la alerta
+                   //document.getElementById('instrucciones').classList.add('d-none'); // Oculta el contenido del div que contiene la alerta
+                   $("#grafico").hide(); //Oculta el grafico
+                    $("#highcharts-data-table").hide();
+
+                   $("#btnEjecutar").show(); // Muestra el botón
+                   messageDiv.classList.add('d-none');
+                   found = true;
+                   return;
+               }
+           });
+
+           if (!found) {
+               $("#message").show();
+               var messageDiv = document.getElementById('message');
+               messageDiv.innerHTML = 'Por favor, seleccione una ubicación dentro del territorio nacional.';
+               messageDiv.classList.remove('d-none'); // Muestra el mensaje
+               // Opcional: Ocultar el mensaje después de 5 segundos
+               setTimeout(function () {
+                   messageDiv.classList.add('d-none'); // Oculta el mensaje
+               }, 1000); // 5 segundos
+               document.getElementById('datos_ubicacion').style.display = 'none'; // Oculto el sidebar
+               $("#resultadoAlert").html(''); // Limpiar el contenido del div que contiene la alerta
+               $("#btnEjecutar").hide(); // Oculta el botón
+           }
+       });
+
+       // Asignando a la búsqueda de términos
+       estadosLayer.eachLayer(function (layer) {
+           if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+               availableTerms.push(layer.feature.properties.NOMGEO);
+           }
+       });
+
+       for (var i = 0; i < municipios_mapa.features.length; i++) {
+           var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+           var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+           // Asegúrate de que ambas propiedades existen antes de concatenar
+           if (municipio && estado) {
+               var nombreCompleto = municipio + ", " + estado;
+               availableTerms.push(nombreCompleto);
+           }
+       }
+
+
+
+       //Busquedas
+       var lastSearchedEstadoLayer = null; // para almacenar la última entidad federativa buscada
+       var lastSearchedMunicipioLayer = null; // para almacenar el último municipio buscado
+
+
+       function buscarGeneral() {
+               var terminoBuscado = document.getElementById('busquedaGeneralInput').value.trim();
+
+               if (!terminoBuscado) {
+                   alert("Por favor, introduce un término de búsqueda.");
+                   return;  // Termina la ejecución de la función si el campo está vacío
+               }
+
+                // Asumiendo que las coordenadas se ingresan en formato "lat, lon"
+                    var coords = terminoBuscado.split(',');
+                    if (coords.length === 2) {
+                        var lat = parseFloat(coords[0].trim());
+                        var lon = parseFloat(coords[1].trim());
+
+                        // Verifica que las coordenadas sean números válidos
+                        if (!isNaN(lat) && !isNaN(lon)) {
+                            // Coloca un marcador en las coordenadas especificadas
+                            var marker = L.marker([lat, lon]).addTo(map);
+                            map.setView([lat, lon], 15);  // Ajusta el zoom y el centro del mapa
+
+                            // Dibuja un círculo de 3 km de radio alrededor del marcador
+                            var circle = L.circle([lat, lon], {
+                                color: '#1e3143', // Color del círculo
+                                fillColor: '#1e3143', // Color de relleno del círculo
+                                fillOpacity: 0.2, // Opacidad del relleno del círculo
+                                radius: 3000       // Radio en metros
+                            }).addTo(map);
+
+                            // Aquí puedes agregar cualquier otra lógica que necesites...
+                            // ...
+                          //  return; // Finaliza la función después de colocar el marcador y el círculo
+                        }
+                    }
+               // Intenta buscar por número de permiso primero
+               var encontrado = false;
+                    @* for (var i = 0; i < datosExpendios.length; i++) {
+                        var expendio = datosExpendios[i];
+                        if (expendio.numeroPermiso === terminoBuscado) {
+                        var lat = expendio.latitudGeo;
+                        var lon = expendio.longitudGeo;
+                        map.setView([lat, lon], 15);
+                        encontrado = true;
+                        break;
+                        }
+                        } *@
+
+               // Si no se encontró por número de permiso, busca por entidad federativa
+               if (!encontrado) {
+                   estadosLayer.eachLayer(function (layer) {
+                       if (layer.feature.properties.NOMGEO === terminoBuscado) {
+                           map.fitBounds(layer.getBounds());
+
+                           // Si ya había una entidad federativa buscada anteriormente, restablecemos su estilo
+                           if (lastSearchedEstadoLayer) {
+                               estadosLayer.resetStyle(lastSearchedEstadoLayer);
+                           }
+
+                           // Resalta la entidad federativa encontrada
+                           layer.setStyle({
+                               color: '#FF0000',
+                               fillColor: '#FF0000',
+                               fillOpacity: 0.5
+                           });
+
+                           lastSearchedEstadoLayer = layer;
+
+                           // Reiniciar el estilo de la entidad después de 5 segundos
+                           setTimeout(function () {
+                               estadosLayer.resetStyle(lastSearchedEstadoLayer);
+                               lastSearchedEstadoLayer = null;
+                           }, 1000);
+
+                           encontrado = true;
+                       }
+                   });
+               }
+
+               // Si aún no se encontró, busca por municipio en la fuente de datos completa
+               if (!encontrado) {
+                   // Divide el término de búsqueda en municipio y estado
+                   var terminos = terminoBuscado.split(',');
+                   var buscadoMunicipio = terminos[0].trim();
+                   var buscadoEstado = terminos.length > 1 ? terminos[1].trim() : '';
+
+
+                   for (var i = 0; i < municipios_mapa.features.length; i++) {
+                       var municipio = municipios_mapa.features[i];
+                       var nombreMunicipio = municipio.properties.NOM_MUN;
+                       var nombreEstado = municipio.properties.NOMGEO;
+
+                       // Comprueba si el nombre del municipio y del estado coinciden con el término de búsqueda
+                       if (nombreMunicipio === buscadoMunicipio && (buscadoEstado === '' || nombreEstado === buscadoEstado)) {
+                           var bounds = L.geoJSON(municipio).getBounds();
+                           map.fitBounds(bounds);
+
+                           // Si ya había un municipio buscado anteriormente, lo elimina
+                           if (lastSearchedMunicipioLayer) {
+                               map.removeLayer(lastSearchedMunicipioLayer);
+                           }
+
+                           // Agrega el municipio encontrado al mapa y lo resalta
+                           lastSearchedMunicipioLayer = L.geoJSON(municipio, {
+                               style: {
+                                   color: '#FF0000',
+                                   fillColor: '#FF0000',
+                                   fillOpacity: 0.5
+                               }
+                           }).addTo(map);
+
+                           // Reiniciar el estilo y eliminar el municipio después de 5 segundos
+                           setTimeout(function () {
+                               map.removeLayer(lastSearchedMunicipioLayer);
+                               lastSearchedMunicipioLayer = null;
+                           }, 1000);
+
+                           encontrado = true;
+                           break;
+                       }
+                   }
+               }
+
+
+               if (!encontrado) {
+                   alert("Término no encontrado.");
+               }
+
+
+                CargaPetrolíferos();
+                CargaGN();
+                CargaGLP();
+                CargaElectricidad();
+
+
+       }
+
+       map.createPane('pane_GoogleSatellite_0');
+       map.getPane('pane_GoogleSatellite_0').style.zIndex = 0;
+       var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+           pane: 'pane_GoogleSatellite_0',
+           opacity: 1.0,
+           attribution: '<a href="https://www.google.at/permissions/geoguidelines/attr-guide.html">Map data ©2015 Google</a>',
+           minZoom: 1,
+           maxZoom: 28,
+           minNativeZoom: 0,
+           maxNativeZoom: 20
+       });
+
+       //Configura los Base Layers
+       var baseLayers = {
+           "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+               attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+           }),
+           "Vista Satélite": layer_GoogleSatellite_0
+       };
+
+       // Control de capas para seleccionar la vista del mapa
+       L.control.layers(baseLayers).addTo(map);
+
+       // Activa una capa de mosaicos como vista inicial
+       baseLayers["OpenStreetMap"].addTo(map);
+
+
+    @*Herramientas Mapa*@
+
+           // Redibujar la capa cuando se seleccione
+           map.on('baselayerchange', function (eventLayer) {
+               if (eventLayer.name === "Vista Satélite") {
+                   layer_GoogleSatellite_0.redraw();
+               }
+           });
+
+       L.control.scale().addTo(map); // Agregar la escala gráfica al mapa
+
+       //ZOOM
+    @* var resetZoomControl = L.control({ position: 'topleft' });
+
+        resetZoomControl.onAdd = function (map) {
+        var div = L.DomUtil.create('div', 'reset-zoom-control');
+        div.innerHTML = '<button class="btn btn-cre-rojo-home" onclick="resetZoom()"><i class="bi bi-house-door"></i></button>';
+        return div;
+        };
+
+        resetZoomControl.addTo(map);
+
+        function resetZoom() {
+        map.setView([24.572503, -101.768257], 5);
+        } *@
+
+
+
+       // Añadir easyPrint al mapa
+    //   L.easyPrint({
+
+      //     title: 'Imprimir mapa',
+
+        //   position: 'topright',
+
+       // sizeModes: ['A4Landscape', 'A4Portrait'],
+         //  exportOnly: true, // Cambia a false si deseas que también maneje la impresión
+          // filename: 'MiMapa',
+           //hideControlContainer: true
+       //}).addTo(map);
+
+
+                   /////////////DISTANCIAS/////////////////////
+           // Configura las opciones de dibujo
+           //var drawControl = new L.Control.Draw({
+           //    draw: {
+           //        polygon: false,
+           //        polyline: true,
+           //        rectangle: false,
+           //        circle: false,
+           //        marker: false,
+           //        circlemarker: false
+           //    },
+           //    edit: false
+           //});
+
+           //map.addControl(drawControl);
+
+           //// Cuando se dibuja una línea, calcula la distancia
+           //map.on('draw:created', function (e) {
+           //    var type = e.layerType,
+           //        layer = e.layer;
+
+           //    if (type === 'polyline') {
+           //        var latlngs = layer.getLatLngs();
+           //        var distance = 0;
+           //        for (var i = 1; i < latlngs.length; i++) {
+           //            distance += latlngs[i - 1].distanceTo(latlngs[i]);
+           //        }
+           //        // Convertir la distancia a km y redondear a 2 decimales
+           //        distance = Math.round((distance / 1000) * 100) / 100;
+           //        // Crear un popup con la distancia
+           //        layer.bindPopup('Distancia: ' + distance + ' km').openPopup();
+           //        // Añadir la línea al mapa
+           //        layer.addTo(map);
+           //    }
+           //});
+</script>
+
+
+
+
+@*Funciones del Mapa*@
+<script>
+    function limpiarMarcadores() {
+        // Limpiar todas las capas de marcadores y círculos
+        map.eachLayer(function (layer) {
+            if (layer instanceof L.Marker || layer instanceof L.MarkerClusterGroup || layer instanceof L.Circle) {
+                map.removeLayer(layer);
+            }
+        });
+
+
+    }
+    function handleNull(value) {
+        return value ? value : "S/D-Sin Dato";
+    }
+    Highcharts.setOptions({
+        lang: {
+            decimalPoint: '.',
+            thousandsSep: ','
+        }
+    });
+
+
+    //Petrolíferos
+    function CargaPetrolíferos() {
+        // Reiniciando availableTerms y las demas variables
+        availableTerms = [];
+        datosExpendios = [];
+        camposVisiblesGlobal = [];
+
+
+        // Asignando a la búsqueda de términos
+        estadosLayer.eachLayer(function (layer) {
+            if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+                availableTerms.push(layer.feature.properties.NOMGEO);
+            }
+        });
+
+        for (var i = 0; i < municipios_mapa.features.length; i++) {
+            var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+            var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+            // Asegúrate de que ambas propiedades existen antes de concatenar
+            if (municipio && estado) {
+                var nombreCompleto = municipio + ", " + estado;
+                availableTerms.push(nombreCompleto);
+            }
+        }
+
+
+
+
+        // Primera llamada AJAX como una promesa
+        function cargarCamposVisibles() {
+            return new Promise((resolve, reject) => {
+                $.ajax({
+                    url: '/Indicadores/GetCamposVisiblesPET_Infra',
+                    type: 'GET',
+                    contentType: 'application/json',
+                    success: function (camposVisibles) {
+                        camposVisiblesGlobal = camposVisibles;
+                        resolve(camposVisibles);  // Resuelve la promesa con los campos visibles
+                    },
+                    error: function (error) {
+                        console.error("Error al obtener campos visibles", error);
+                        reject(error);  // Rechaza la promesa si hay un error
+                    }
+                });
+            });
+        }
+        //Carga Ductos de Petrolíferos
+        function pop_ductos_petroliferos_4326_0(feature, layer) {
+            var popupContent = '<table>\
+                                                    <tr>\
+                                                        <th scope="row">Región: </th>\
+                                                        <td>' + (feature.properties['regin'] !== null ? autolinker.link(feature.properties['regin'].toLocaleString()) : '') + '</td>\
+                                                    </tr>\
+                                                    <tr>\
+                                                        <th scope="row">Ducto: </th>\
+                                                        <td>' + (feature.properties['ducto'] !== null ? autolinker.link(feature.properties['ducto'].toLocaleString()) : '') + '</td>\
+                                                    </tr>\
+                                                    <tr>\
+                                                        <th scope="row">Servicio: </th>\
+                                                        <td>' + (feature.properties['servicio'] !== null ? autolinker.link(feature.properties['servicio'].toLocaleString()) : '') + '</td>\
+                                                    </tr>\
+                                                    <tr>\
+                                                        <th scope="row">Longitud (km): </th>\
+                                                        <td>' + (feature.properties['longitud_'] !== null ? autolinker.link(feature.properties['longitud_'].toLocaleString()) : '') + '</td>\
+                                                    </tr>\
+                                                    <tr>\
+                                                        <th scope="row">Capacidad nominal (B): </th>\
+                                                        <td>' + (feature.properties['capa_n'] !== null ? autolinker.link(feature.properties['capa_n'].toLocaleString()) : '') + '</td>\
+                                                    </tr>\
+                                                    <tr>\
+                                                        <th scope="row">Capacidad opertiva (B): </th>\
+                                                        <td>' + (feature.properties['capa_o'] !== null ? autolinker.link(feature.properties['capa_o'].toLocaleString()) : '') + '</td>\
+                                                    </tr>\
+                                                </table>';
+            layer.bindPopup(popupContent, { maxHeight: 400 });
+        }
+
+        function style_ductos_petroliferos_4326_0_0() {
+            return {
+                pane: 'pane_ductos_petroliferos_4326_0',
+                opacity: 1,
+                color: '#a77c50',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 4.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_ductos_petroliferos_4326_0');
+        map.getPane('pane_ductos_petroliferos_4326_0').style.zIndex = 400;
+        map.getPane('pane_ductos_petroliferos_4326_0').style['mix-blend-mode'] = 'normal';
+        var layer_ductos_petroliferos_4326_0 = new L.geoJson(json_ductos_petroliferos_4326_0, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_ductos_petroliferos_4326_0',
+            layerName: 'layer_ductos_petroliferos_4326_0',
+            pane: 'pane_ductos_petroliferos_4326_0',
+            onEachFeature: pop_ductos_petroliferos_4326_0,
+            style: style_ductos_petroliferos_4326_0_0,
+        });
+        bounds_group.addLayer(layer_ductos_petroliferos_4326_0);
+        map.addLayer(layer_ductos_petroliferos_4326_0);
+        setBounds();
+
+        cargarCamposVisibles().then(camposVisibles => {
+            // Limpiar marcadores existentes
+          //  limpiarMarcadores()
+            // Carga los Marcadores y Ductos
+
+            $.ajax({
+                url: '/Indicadores/GetExpendiosAutorizadosPET_Infra',
+                type: 'GET',
+                // data: JSON.stringify(datos_mun),
+                contentType: 'application/json',
+                success: function (response) {
+                    console.log("Estos son los Expendios Autorizados:", response); // ver la respuesta en consola
+                    datosExpendios = response; // Guarda la respuesta en la variable global
+
+
+                    //Guardo los terminos en la  búsqueda
+                    for (var i = 0; i < datosExpendios.length; i++) {
+                        availableTerms.push(datosExpendios[i].numeroPermiso);
+                    }
+                      // Asumiendo que tienes las coordenadas del punto buscado en alguna parte
+                       var terminoBuscado = document.getElementById('busquedaGeneralInput').value.trim();
+
+             
+
+                // Asumiendo que las coordenadas se ingresan en formato "lat, lon"
+                    var coords = terminoBuscado.split(',');
+                    if (coords.length === 2) {
+                        var lat = parseFloat(coords[0].trim());
+                        var lon = parseFloat(coords[1].trim());
+
+                    var permisosDentroDelRadio = []; 
+                    response.forEach(function(permiso) {
+                        var permLat = permiso.latitudGeo;
+                        var permLon = permiso.longitudGeo;
+                        var distancia = calcularDistancia(lat, lon, permLat, permLon);
+                        if (distancia <= 3) {
+                            permisosDentroDelRadio.push(permiso);
+                            // Crear un marcador para este permiso y añadirlo al mapa
+                            var markerPermiso = L.marker([permLat, permLon], { icon: iconoExpendio }).addTo(map);
+                            console.log("Distancia al permiso", permiso.numeroPermiso, ":", distancia);
+                        }
+                         });
+                    }
+
+                    function generarContenidoPopup(coordenada) {
+                        var contenido = "<style>" +
+                            ".popup-content {" +
+                            "    width: 280px;" +
+                            "    max-height: 180px;" +
+                            "    overflow-y: auto;" +
+                            "    padding: 10px;" +
+                            "}" +
+                            "h2, h3, h4, p, li {" +
+                            "    margin: 0 0 10px 0;" +
+                            "}" +
+                            "ul {" +
+                            "    padding-left: 20px;" +
+                            "}" +
+                            "img {" +
+                            "    vertical-align: middle;" +
+                            "    margin-right: 10px;" +
+                            "}" +
+                            "</style>";
+
+                        contenido += "<div class='popup-content'>";
+
+
+                        if (camposVisiblesGlobal.includes("RazonSocial")) {
+                            var imgSrc; // La URL de la imagen que se mostrará en el pop-up
+                            switch (coordenada.tipoPermiso) {
+                                case "Expendios":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/gasolinera.png';
+                                    break;
+                                case "Autoconsumo":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/autoconsumo.png';
+                                    break;
+                                case "Almacenamiento en aeródromos":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/alacenamientogasolina.png';
+                                    break;
+                                case "Almacenamiento":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/alacenamientogasolina.png';
+                                    break;
+                                case "Distribución por otros medios distintos a ducto":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/distribuciongasolina.png';
+                                    break;
+
+                                default:
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/gasolinera.png'; // Ícono por defecto si no hay coincidencia
+                                    break;
+                            }
+                            contenido += "<h2 class='subtitulo'><img src='" + imgSrc + "' style='height: 24px; width: 24px;'/><strong>" + handleNull(coordenada.razonSocial) + "</strong></h2><br>";
+                        }
+
+                        contenido += "<ul>";
+
+                        if (camposVisiblesGlobal.includes("EfId")) {//NO TENEMOS EL NOMBRE DE LA EF EN CAMPOS VISIBLES SOLO EL ID LO CRUZO EN LA CONSULTA DEL REPOSITORIO
+                            contenido += "<li><strong>Entidad Federativa:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                            contenido += "<li><strong>NúmeroPermiso:</strong> " + handleNull(coordenada.numeroPermiso) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("EfId")) {
+                            contenido += "<li><strong>EF ID:</strong> " + handleNull(coordenada.efId) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("EfNombre")) {
+                            contenido += "<li><strong>EFNombre:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("MpoId")) {
+                            contenido += "<li><strong>Mpo ID:</strong> " + handleNull(coordenada.mpoId) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("NumeroDeExpediente")) {
+                            contenido += "<li><strong>Número de Expediente:</strong> " + handleNull(coordenada.numeroDeExpediente) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("RazonSocial")) {
+                            contenido += "<li><strong>RazonSocial:</strong> " + handleNull(coordenada.razonSocial) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("FechaOtorgamiento")) {
+                            contenido += "<li><strong>FechaOtorgamiento:</strong> " + handleNull(coordenada.fechaOtorgamiento) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("LatitudGeo")) {
+                            contenido += "<li><strong> la titudGeo:</strong> " + handleNull(coordenada.latitudGeo) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("LongitudGeo")) {
+                            contenido += "<li><strong>LongitudGeo:</strong> " + handleNull(coordenada.longitudGeo) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("CalleNumEs")) {
+                            contenido += "<li><strong>CalleNumEs:</strong> " + handleNull(coordenada.calleNumEs) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("ColoniaEs")) {
+                            contenido += "<li><strong>ColoniaEs:</strong> " + handleNull(coordenada.coloniaEs) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("CodigoPostal")) {
+                            contenido += "<li><strong>CodigoPostal:</strong> " + handleNull(coordenada.codigoPostal) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("Estatus")) {
+                            contenido += "<li><strong>Estatus:</strong> " + handleNull(coordenada.estatus) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("Rfc")) {
+                            contenido += "<li><strong>Rfc:</strong> " + handleNull(coordenada.rfc) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("FechaRecepcion")) {
+                            contenido += "<li><strong>FechaRecepcion:</strong> " + handleNull(coordenada.fechaRecepcion) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("EstatusInstalacion")) {
+                            contenido += "<li><strong>EstatusInstalacion:</strong> " + handleNull(coordenada.estatusInstalacion) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("CausaSuspension")) {
+                            contenido += "<li><strong>CausaSuspension:</strong> " + handleNull(coordenada.causaSuspension) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("Marca")) {
+                            contenido += "<li><strong>Marca:</strong> " + handleNull(coordenada.marca) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("TipoPermiso")) {
+                            contenido += "<li><strong>TipoPermiso:</strong> " + handleNull(coordenada.tipoPermiso) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("InicioVigencia")) {
+                            contenido += "<li><strong>InicioVigencia:</strong> " + handleNull(coordenada.inicioVigencia) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("TerminoVigencia")) {
+                            contenido += "<li><strong>TerminoVigencia:</strong> " + handleNull(coordenada.terminoVigencia) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("InicioOperaciones")) {
+                            contenido += "<li><strong>InicioOperaciones:</strong> " + handleNull(coordenada.inicioOperaciones) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("CapacidadAutorizadaBarriles")) {
+                            contenido += "<li><strong>CapacidadAutorizadaBarriles:</strong> " + handleNull(coordenada.capacidadAutorizadaBarriles) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("InversionEstimada")) {
+                            contenido += "<li><strong>InversionEstimada:</strong> " + handleNull(coordenada.inversionEstimada) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("Productos")) {
+                            contenido += "<li><strong>Productos:</strong> " + handleNull(coordenada.productos) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("Comentarios")) {
+                            contenido += "<li><strong>Comentarios:</strong> " + handleNull(coordenada.comentarios) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("TipoPersona")) {
+                            contenido += "<li><strong>TipoPersona:</strong> " + handleNull(coordenada.tipoPersona) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("NumeroDeEstacionesDeServicio")) {
+                            contenido += "<li><strong>Número de Estaciones de Servicio:</strong> " + handleNull(coordenada.numeroDeEstacionesDeServicio) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("TipoDeEstacion")) {
+                            contenido += "<li><strong>Tipo de Estacion:</strong> " + handleNull(coordenada.tipoDeEstacion) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("FechaDeAcuse")) {
+                            contenido += "<li><strong>Fecha de Acuse:</strong> " + handleNull(coordenada.fechaDeAcuse) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("FechaEntregaEstadosFinancieros")) {
+                            contenido += "<li><strong>FechaEntregaEstadosFinancieros:</strong> " + handleNull(coordenada.fechaEntregaEstadosFinancieros) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("Propietario")) {
+                            contenido += "<li><strong>Propietario:</strong> " + handleNull(coordenada.propietario) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("CapacidadMaximaDeLaBomba")) {
+                            contenido += "<li><strong>CapacidadMaxima de  la Bomba:</strong> " + handleNull(coordenada.capacidadMaximaDeLaBomba) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("CapacidadOperativaReal")) {
+                            contenido += "<li><strong>CapacidadOperativaReal:</strong> " + handleNull(coordenada.capacidadOperativaReal) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("ServicioDeRegadera")) {
+                            contenido += "<li><strong>Servicio de Regadera:</strong> " + handleNull(coordenada.servicioDeRegadera) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("ServicioDeRestaurante")) {
+                            contenido += "<li><strong>Servicio de Restaurante:</strong> " + handleNull(coordenada.servicioDeRestaurante) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("ServicioDeSanitario")) {
+                            contenido += "<li><strong>Servicio de Sanitario:</strong> " + handleNull(coordenada.servicioDeSanitario) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("OtrosServicios")) {
+                            contenido += "<li><strong>OtrosServicios:</strong> " + handleNull(coordenada.otrosServicios) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("TiendaDeConveniencia")) {
+                            contenido += "<li><strong>Tienda de Conveniencia:</strong> " + handleNull(coordenada.tiendaDeConveniencia) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("NumeroDeModulosDespachadores")) {
+                            contenido += "<li><strong>Número de Modulos de spachadores:</strong> " + handleNull(coordenada.numeroDeModulosDespachadores) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("TipoDeEstacionId")) {
+                            contenido += "<li><strong>Tipo de Estacion ID:</strong> " + handleNull(coordenada.tipoDeEstacionId) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("TipoDePersona")) {
+                            contenido += "<li><strong>Tipo de Persona:</strong> " + handleNull(coordenada.tipoDePersona) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("TipoDePermiso")) {
+                            contenido += "<li><strong>Tipo de Permiso:</strong> " + handleNull(coordenada.tipoDePermiso) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("EstadoDePermiso")) {
+                            contenido += "<li><strong>Estado de Permiso:</strong> " + handleNull(coordenada.estadoDePermiso) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("EstatusDeLaInstalacion")) {
+                            contenido += "<li><strong>Estatus de  la Instalacion:</strong> " + handleNull(coordenada.estatusDeLaInstalacion) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("ImagenCorporativa")) {
+                            contenido += "<li><strong>ImagenCorporativa:</strong> " + handleNull(coordenada.imagenCorporativa) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("CausaSuspencionInstalacionId")) {
+                            contenido += "<li><strong>CausaSuspencionInstalacion ID:</strong> " + handleNull(coordenada.causaSuspencionInstalacionId) + "</li>";
+                        }
+
+                        contenido += "</ul>";
+
+                        if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                            contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
+                        }
+
+                        contenido += "</div>";
+
+                        return contenido;
+                    }
+                    //Mapa de Resultados/////////////////////////////////////////////////////////////////////
+                    // Crea un grupo de marcadores
+                    var markers = L.markerClusterGroup();
+                    // Crea los iconos
+                    var iconoBase = L.Icon.extend({
+                        options: {
+                            iconSize: [36, 36],
+                            iconAnchor: [18, 16],
+                            popupAnchor: [0, -26]
+                        }
+                    });
+
+                    var iconoExpendio = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/gasolinera.png' });
+                    var iconoAutoConsumo = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/autoconsumo.png' });
+                    var iconoAlmacenamiento = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/alacenamientogasolina.png' });
+                    var iconoDistribucion = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/distribuciongasolina.png' });
+                    // Agrega los marcadores para las coordenadas del mapa actual
+                    for (var j = 0; j < response.length; j++) {
+                        var coordenada = response[j];
+                        //Determina el icono a Usar
+                        // Determinar el ícono basado en tipoPermiso
+                        var iconoActual;
+                        switch (coordenada.tipoPermiso) {
+                            case "Expendios":
+                                iconoActual = iconoExpendio;
+                                break;
+                            case "Autoconsumo":
+                                iconoActual = iconoAutoConsumo;
+                                break;
+                            case "Almacenamiento en aeródromos":
+                                iconoActual = iconoAlmacenamiento;
+                                break;
+                            case "Almacenamiento":
+                                iconoActual = iconoAlmacenamiento;
+                                break;
+                            case "Distribución por otros medios distintos a ducto":
+                                iconoActual = iconoDistribucion;
+                                break;
+
+                            default:
+                                iconoActual = iconoExpendio; // Ícono por defecto si no hay coincidencia
+                                break;
+                        }
+
+                          //Circulo de Radio de 3km
+                         
+
+                        //var marker = L.marker([coordenada.latitudGeo, coordenada.longitudGeo], { icon: iconoActual });
+                        //var contenidoPopup = generarContenidoPopup(coordenada);
+                        //marker.bindPopup(contenidoPopup);
+
+
+
+                        markers.addLayer(marker);
+                    }
+
+                    map.addLayer(markers);
+
+
+                   
+                    // Función para inicializar el autocompletar
+                    function autocomplete(inp, arr) {
+                        var currentFocus;
+
+                        inp.addEventListener("input", function (e) {
+                            var a, b, i, val = this.value;
+                            closeAllLists();
+                            if (!val) { return false; }
+                            currentFocus = -1;
+
+                            a = document.getElementById("autocomplete-list");
+                            a.innerHTML = "";
+
+                            for (i = 0; i < arr.length; i++) {
+                                if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                                    b = document.createElement("DIV");
+                                    b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                                    b.innerHTML += arr[i].substr(val.length);
+                                    b.addEventListener("click", function (e) {
+                                        inp.value = this.innerText;
+                                        closeAllLists();
+                                        buscarGeneral(); // Llama a tu función de búsqueda aquí
+                                    });
+                                    a.appendChild(b);
+                                }
+                            }
+                        });
+
+                        function closeAllLists(elmnt) {
+                            var x = document.getElementById("autocomplete-list");
+                            if (elmnt != x && elmnt != inp) {
+                                x.innerHTML = "";
+                            }
+                        }
+
+                        document.addEventListener("click", function (e) {
+                            closeAllLists(e.target);
+                        });
+                    }
+                    // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+                    var uniqueTerms = [...new Set(availableTerms)];
+
+                    // Inicializa el autocompletar
+                    autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+                },
+                error: function (error) {
+                    // Maneja el error si ocurre.
+                }
+            });
+        }).catch(error => {
+            // Manejo de errores del primer AJAX
+        });
+
+
+
+    }
+
+    //Gas L.P.
+    function CargaGLP() {
+        // Reiniciando availableTerms y las demas variables
+        availableTerms = [];
+        datosExpendios = [];
+        camposVisiblesGlobal = [];
+
+
+        // Asignando a la búsqueda de términos
+        estadosLayer.eachLayer(function (layer) {
+            if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+                availableTerms.push(layer.feature.properties.NOMGEO);
+            }
+        });
+
+        for (var i = 0; i < municipios_mapa.features.length; i++) {
+            var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+            var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+            // Asegúrate de que ambas propiedades existen antes de concatenar
+            if (municipio && estado) {
+                var nombreCompleto = municipio + ", " + estado;
+                availableTerms.push(nombreCompleto);
+            }
+        }
+
+
+
+
+        // Primera llamada AJAX como una promesa
+        function cargarCamposVisiblesGLP() {
+            return new Promise((resolve, reject) => {
+                $.ajax({
+                    url: '/Indicadores/GetCamposVisiblesGLP_Infra', // Asegúrate de actualizar con el nombre de tu controlador
+                    type: 'GET',
+                    contentType: 'application/json',
+                    success: function (camposVisibles) {
+                        // Aquí tienes la lista de campos visibles
+                        console.log("campos GLP", camposVisibles);
+                        camposVisiblesGlobal = camposVisibles;
+
+                        resolve(camposVisibles); // Agrega esta línea
+
+                    },
+                    error: function (error) {
+                        console.error("Error al obtener campos visibles", error);
+                    }
+                });
+            });
+        }
+        //Carga Ductos de GLP
+        function pop_ductos_glp_4326_0(feature, layer) {
+            var popupContent = '<table>\
+                                        <tr>\
+                                            <th scope="row">Región: </th>\
+                                            <td>' + (feature.properties['Región: '] !== null ? autolinker.link(feature.properties['regin'].toLocaleString()) : '') + '</td>\
+                                        </tr>\
+                                        <tr>\
+                                            <th scope="row">Ducto: </th>\
+                                            <td>' + (feature.properties['Ducto: '] !== null ? autolinker.link(feature.properties['ducto'].toLocaleString()) : '') + '</td>\
+                                        </tr>\
+                                        <tr>\
+                                            <th scope="row">Servicio: </th>\
+                                            <td>' + (feature.properties['Servicio: '] !== null ? autolinker.link(feature.properties['servicio'].toLocaleString()) : '') + '</td>\
+                                        </tr>\
+                                        <tr>\
+                                            <th scope="row">Longitud (km): </th>\
+                                            <td>' + (feature.properties['Longitud (km): '] !== null ? autolinker.link(feature.properties['lon'].toLocaleString()) : '') + '</td>\
+                                        </tr>\
+                                        <tr>\
+                                            <th scope="row">Capa nominal (B): </th>\
+                                            <td>' + (feature.properties['Capacidad nominal (B): '] !== null ? autolinker.link(feature.properties['capa_n'].toLocaleString()) : '') + '</td>\
+                                        </tr>\
+                                        <tr>\
+                                            <th scope="row">Capa operativa (B): </th>\
+                                            <td>' + (feature.properties['Capacidad operativa (B): '] !== null ? autolinker.link(feature.properties['capa_o'].toLocaleString()) : '') + '</td>\
+                                        </tr>\
+                                    </table>';
+            layer.bindPopup(popupContent, { maxHeight: 400 });
+        }
+
+        function style_ductos_glp_4326_0_0() {
+            return {
+                pane: 'pane_ductos_glp_4326_0',
+                opacity: 1,
+                color: 'rgba(128,64,0,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 2.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_ductos_glp_4326_0');
+        map.getPane('pane_ductos_glp_4326_0').style.zIndex = 400;
+        map.getPane('pane_ductos_glp_4326_0').style['mix-blend-mode'] = 'normal';
+        var layer_ductos_glp_4326_0 = new L.geoJson(json_ductos_glp_4326_0, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_ductos_glp_4326_0',
+            layerName: 'layer_ductos_glp_4326_0',
+            pane: 'pane_ductos_glp_4326_0',
+            onEachFeature: pop_ductos_glp_4326_0,
+            style: style_ductos_glp_4326_0_0,
+        });
+        bounds_group.addLayer(layer_ductos_glp_4326_0);
+        map.addLayer(layer_ductos_glp_4326_0);
+        setBounds();
+
+        cargarCamposVisiblesGLP().then(camposVisibles => {
+            // Limpiar marcadores existentes
+            //limpiarMarcadores()
+            // Carga los Marcadores y Ductos
+
+            $.ajax({
+                url: '/Indicadores/GetExpendiosAutorizadosGLP_Infra',
+                type: 'GET',
+                // data: JSON.stringify(datos_mun),
+                contentType: 'application/json',
+                success: function (response) {
+                    console.log("Estos son los Expendios Autorizados de GLP:", response); // ver la respuesta en consola
+                    datosExpendios = response; // Guarda la respuesta en la variable global
+
+                    //Guardo los terminos en la  búsqueda
+                    for (var i = 0; i < datosExpendios.length; i++) {
+                        availableTerms.push(datosExpendios[i].numeroPermiso);
+                    }
+
+                    function generarContenidoPopup(coordenada) {
+                        var contenido = "<style>" +
+                            ".popup-content {" +
+                            "    width: 280px;" +
+                            "    max-height: 180px;" +
+                            "    overflow-y: auto;" +
+                            "    padding: 10px;" +
+                            "}" +
+                            "h2, h3, h4, p, li {" +
+                            "    margin: 0 0 10px 0;" +
+                            "}" +
+                            "ul {" +
+                            "    padding-left: 20px;" +
+                            "}" +
+                            "img {" +
+                            "    vertical-align: middle;" +
+                            "    margin-right: 10px;" +
+                            "}" +
+                            "</style>";
+
+                        contenido += "<div class='popup-content'>";
+
+                        if (camposVisiblesGlobal.includes("RazonSocial")) {
+                            var imgSrc; // La URL de la imagen que se mostrará en el pop-up
+                            switch (coordenada.tipoPermiso) {
+                                case "Almacenamiento de Gas Licuado de Petróleo":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/glpmapa_alma.png';
+                                    break;
+                                case "Distribución de Gas Licuado de Petróleo mediante Planta de Distribución":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/glpmapa_dist.png';
+                                    break;
+                                case "Expendio al Público de Gas Licuado de Petróleo mediante Estación de Servicio con fin Específico":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/glpmapa.png';
+                                    break;
+                                default:
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/glpmapa.png'; // Ícono por defecto si no hay coincidencia
+                                    break;
+                            }
+                            contenido += "<h2 class='subtitulo'><img src='" + imgSrc + "' style='height: 24px; width: 24px;'/><strong>" + handleNull(coordenada.razonSocial) + "</strong></h2><br>";
+                        }
+
+                        contenido += "<ul>";
+
+                        if (camposVisiblesGlobal.includes("EfId")) {//NO TENEMOS EL NOMBRE DE LA EF EN CAMPOS VISIBLES SOLO EL ID LO CRUZO EN LA CONSULTA DEL REPOSITORIO
+                            contenido += "<li><strong>Entidad Federativa:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                            contenido += "<li><strong>NumeroPermiso:</strong> " + handleNull(coordenada.numeroPermiso) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("EfId")) {
+                            contenido += "<li><strong>EfId:</strong> " + handleNull(coordenada.efId) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("MpoId")) {
+                            contenido += "<li><strong>MpoId:</strong> " + handleNull(coordenada.mpoId) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Expediente")) {
+                            contenido += "<li><strong>Expediente:</strong> " + handleNull(coordenada.expediente) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("RazonSocial")) {
+                            contenido += "<li><strong>RazonSocial:</strong> " + handleNull(coordenada.razonSocial) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("FechaDeOtorgamiento")) {
+                            contenido += "<li><strong>FechaDeOtorgamiento:</strong> " + handleNull(coordenada.fechaDeOtorgamiento) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("LatitudGeo")) {
+                            contenido += "<li><strong>LatitudGeo:</strong> " + handleNull(coordenada.latitudGeo) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("LongitudGeo")) {
+                            contenido += "<li><strong>LongitudGeo:</strong> " + handleNull(coordenada.longitudGeo) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Calle")) {
+                            contenido += "<li><strong>Calle:</strong> " + handleNull(coordenada.calle) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Colonia")) {
+                            contenido += "<li><strong>Colonia:</strong> " + handleNull(coordenada.colonia) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("CodigoPostal")) {
+                            contenido += "<li><strong>CodigoPostal:</strong> " + handleNull(coordenada.codigoPostal) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Estatus")) {
+                            contenido += "<li><strong>Estatus:</strong> " + handleNull(coordenada.estatus) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Rfc")) {
+                            contenido += "<li><strong>Rfc:</strong> " + handleNull(coordenada.rfc) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("FechaRecepcion")) {
+                            contenido += "<li><strong>FechaRecepcion:</strong> " + handleNull(coordenada.fechaRecepcion) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Marca")) {
+                            contenido += "<li><strong>Marca:</strong> " + handleNull(coordenada.marca) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("TipoPermiso")) {
+                            contenido += "<li><strong>TipoPermiso:</strong> " + handleNull(coordenada.tipoPermiso) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("inicioOperaciones")) {
+                            contenido += "<li><strong>inicioOperaciones:</strong> " + handleNull(coordenada.inicioOperaciones) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("CapacidadInstalacion")) {
+                            contenido += "<li><strong>CapacidadInstalacion:</strong> " + handleNull(coordenada.capacidadInstalacion) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("VigenciaAnos")) {
+                            contenido += "<li><strong>VigenciaAnos:</strong> " + handleNull(coordenada.vigenciaAnos) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("NumeroSENER")) {
+                            contenido += "<li><strong>NumeroSENER:</strong> " + handleNull(coordenada.numeroSENER) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("SubTipo")) {
+                            contenido += "<li><strong>SubTipo:</strong> " + handleNull(coordenada.subTipo) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("SiglasTipo")) {
+                            contenido += "<li><strong>SiglasTipo:</strong> " + handleNull(coordenada.siglasTipo) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Otorgamiento")) {
+                            contenido += "<li><strong>Otorgamiento:</strong> " + handleNull(coordenada.otorgamiento) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("FechaAcuse")) {
+                            contenido += "<li><strong>FechaAcuse:</strong> " + handleNull(coordenada.fechaAcuse) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("EstatusSAT")) {
+                            contenido += "<li><strong>EstatusSAT:</strong> " + handleNull(coordenada.estatusSAT) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("SuspensionInicio")) {
+                            contenido += "<li><strong>SuspensionInicio:</strong> " + handleNull(coordenada.suspensionInicio) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("SuspensionFin")) {
+                            contenido += "<li><strong>SuspensionFin:</strong> " + handleNull(coordenada.suspensionFin) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("NumeroTanques")) {
+                            contenido += "<li><strong>NumeroTanques:</strong> " + handleNull(coordenada.numeroTanques) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("CapacidadLitros")) {
+                            contenido += "<li><strong>CapacidadLitros:</strong> " + handleNull(coordenada.capacidadLitros) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("NumeroUnidades")) {
+                            contenido += "<li><strong>NumeroUnidades:</strong> " + handleNull(coordenada.numeroUnidades) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("NumeroDeCentralesDeGuarda")) {
+                            contenido += "<li><strong>NumeroDeCentralesDeGuarda:</strong> " + handleNull(coordenada.numeroDeCentralesDeGuarda) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("DomicilioDeGuarda")) {
+                            contenido += "<li><strong>DomicilioDeGuarda:</strong> " + handleNull(coordenada.domicilioDeGuarda) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("SuministroRecepcion")) {
+                            contenido += "<li><strong>SuministroRecepcion:</strong> " + handleNull(coordenada.suministroRecepcion) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("PermisoSuministro")) {
+                            contenido += "<li><strong>PermisoSuministro:</strong> " + handleNull(coordenada.permisoSuministro) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("CompartenTanques")) {
+                            contenido += "<li><strong>CompartenTanques:</strong> " + handleNull(coordenada.compartenTanques) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Modificacion")) {
+                            contenido += "<li><strong>Modificacion:</strong> " + handleNull(coordenada.modificacion) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Asociacion")) {
+                            contenido += "<li><strong>Asociacion:</strong> " + handleNull(coordenada.asociacion) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Gie")) {
+                            contenido += "<li><strong>Gie:</strong> " + handleNull(coordenada.gie) + "</li>";
+                        }
+
+                        contenido += "</ul>";
+
+                        if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                            contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
+                        }
+
+
+                        contenido += "</div>";
+
+                        return contenido;
+                    }
+                    //Mapa de Resultados/////////////////////////////////////////////////////////////////////
+                    // Crea un grupo de marcadores
+                    var markers = L.markerClusterGroup();
+                    // Crea los iconos
+                    var iconoBase = L.Icon.extend({
+                        options: {
+                            iconSize: [36, 36],
+                            iconAnchor: [18, 16],
+                            popupAnchor: [0, -26]
+                        }
+                    });
+
+                    var iconoExpendio = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/glpmapa.png' });
+                    var iconoAlmacenamiento = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/glpmapa_alma.png' });
+                    var iconoDistribucion = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/glpmapa_dist.png' });
+                    // Agrega los marcadores para las coordenadas del mapa actual
+                    for (var j = 0; j < response.length; j++) {
+                        var coordenada = response[j];
+                        //Determina el icono a Usar
+                        // Determinar el ícono basado en tipoPermiso
+                        var iconoActual;
+                        switch (coordenada.tipoPermiso) {
+                            case "Almacenamiento de Gas Licuado de Petróleo":
+                                iconoActual = iconoAlmacenamiento;
+                                break;
+                            case "Distribución de Gas Licuado de Petróleo mediante Planta de Distribución":
+                                iconoActual = iconoDistribucion;
+                                break;
+                            case "Expendio al Público de Gas Licuado de Petróleo mediante Estación de Servicio con fin Específico":
+                                iconoActual = iconoExpendio;
+                                break;
+                            default:
+                                iconoActual = iconoExpendio; // Ícono por defecto si no hay coincidencia
+                                break;
+                        }
+
+
+
+                        var marker = L.marker([coordenada.latitudGeo, coordenada.longitudGeo], { icon: iconoActual });
+                        var contenidoPopup = generarContenidoPopup(coordenada);
+                        marker.bindPopup(contenidoPopup);
+
+
+
+                        markers.addLayer(marker);
+                    }
+
+                    map.addLayer(markers);
+
+
+                    ////Grafico de Columnas
+                    //// Paso 1: Procesa la respuesta
+                    //var counts = {};
+                    //response.forEach(function (coordenada) {
+                    //    if (!counts[coordenada.efNombre]) {
+                    //        counts[coordenada.efNombre] = 0;
+                    //    }
+                    //    counts[coordenada.efNombre]++;
+                    //});
+
+                    //// Paso 2: Extrae categorías y datos
+                    //var categories = [];
+                    //var dataPermisos = [];
+                    //for (var entidad in counts) {
+                    //    categories.push(entidad);
+                    //    dataPermisos.push(counts[entidad]);
+                    //}
+
+                    //// Paso 3: Configura las opciones del gráfico
+                    //var options = {
+                    //    chart: {
+                    //        type: 'column',
+                    //        backgroundColor: '#efefee'  // Color de fondo del gráfico
+                    //    },
+                    //    title: {
+                    //        text: 'Total de Permisos Vigentes por Entidad Federativa'
+                    //    },
+                    //    xAxis: {
+                    //        categories: categories
+                    //    },
+                    //    yAxis: {
+                    //        title: {
+                    //            text: 'Número de permisos'
+                    //        }
+                    //    },
+                    //    series: [{
+                    //        name: 'Permisos',
+                    //        data: dataPermisos,
+                    //        color: '#59b25d',
+                    //        dataLabels: {
+                    //            enabled: true,   // Habilita las etiquetas de datos
+                    //            rotation: 0,     // Rota las etiquetas (en este caso, no hay rotación)
+                    //            color: '#000000', // Color del texto de las etiquetas
+                    //            align: 'center',  // Alinea las etiquetas al centro
+                    //            format: '{point.y:,.0f}',  // Formato con separador de miles
+                    //            y: 10, // Posiciona las etiquetas un poco arriba del tope de la columna
+                    //            style: {
+                    //                fontSize: '13px', // Tamaño de la fuente de las etiquetas
+                    //                fontFamily: 'Verdana, sans-serif' // Tipo de letra de las etiquetas
+                    //            }
+                    //        }
+                    //    }],
+                    //    tooltip: {
+                    //        formatter: function () {
+                    //            return '<b>' + this.x + '</b><br/>' +
+                    //                this.series.name + ': ' + Highcharts.numberFormat(this.y, 0);  // Usando separador de miles
+
+                    //        }
+                    //    }
+                    //};
+
+                    //// Renderizar el gráfico en el contenedor con el ID 'grafico'
+                    //Highcharts.chart('grafico', options);
+                    //Mete el autocompetar ala busqueda
+                    // Función para inicializar el autocompletar
+                    function autocomplete(inp, arr) {
+                        var currentFocus;
+
+                        inp.addEventListener("input", function (e) {
+                            var a, b, i, val = this.value;
+                            closeAllLists();
+                            if (!val) { return false; }
+                            currentFocus = -1;
+
+                            a = document.getElementById("autocomplete-list");
+                            a.innerHTML = "";
+
+                            for (i = 0; i < arr.length; i++) {
+                                if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                                    b = document.createElement("DIV");
+                                    b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                                    b.innerHTML += arr[i].substr(val.length);
+                                    b.addEventListener("click", function (e) {
+                                        inp.value = this.innerText;
+                                        closeAllLists();
+                                        buscarGeneral(); // Llama a tu función de búsqueda aquí
+                                    });
+                                    a.appendChild(b);
+                                }
+                            }
+                        });
+
+                        function closeAllLists(elmnt) {
+                            var x = document.getElementById("autocomplete-list");
+                            if (elmnt != x && elmnt != inp) {
+                                x.innerHTML = "";
+                            }
+                        }
+
+                        document.addEventListener("click", function (e) {
+                            closeAllLists(e.target);
+                        });
+                    }
+                    // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+                    var uniqueTerms = [...new Set(availableTerms)];
+
+                    // Inicializa el autocompletar
+                    autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+                },
+                error: function (error) {
+                    // Maneja el error si ocurre.
+                }
+            });
+        }).catch(error => {
+            // Manejo de errores del primer AJAX
+        });
+
+
+
+    }
+
+    //Gas Natural
+    function CargaGN() {
+        // Reiniciando availableTerms y las demas variables
+        availableTerms = [];
+        datosExpendios = [];
+        camposVisiblesGlobal = [];
+
+
+        // Asignando a la búsqueda de términos
+        estadosLayer.eachLayer(function (layer) {
+            if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+                availableTerms.push(layer.feature.properties.NOMGEO);
+            }
+        });
+
+        for (var i = 0; i < municipios_mapa.features.length; i++) {
+            var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+            var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+            // Asegúrate de que ambas propiedades existen antes de concatenar
+            if (municipio && estado) {
+                var nombreCompleto = municipio + ", " + estado;
+                availableTerms.push(nombreCompleto);
+            }
+        }
+
+        // Primera llamada AJAX como una promesa
+        function cargarCamposVisibles() {
+            return new Promise((resolve, reject) => {
+                $.ajax({
+                    url: '/Indicadores/GetCamposVisiblesGN_Infra',
+                    type: 'GET',
+                    contentType: 'application/json',
+                    success: function (camposVisibles) {
+                        camposVisiblesGlobal = camposVisibles;
+                        resolve(camposVisibles);  // Resuelve la promesa con los campos visibles
+                    },
+                    error: function (error) {
+                        console.error("Error al obtener campos visibles", error);
+                        reject(error);  // Rechaza la promesa si hay un error
+                    }
+                });
+            });
+        }
+        function pop_ductos_glp_4326_0(feature, layer) {
+            var popupContent = '<table>\
+                                                <tr>\
+                                                    <th scope="row">Región: </th>\
+                                                    <td>' + (feature.properties['Región: '] !== null ? autolinker.link(feature.properties['regin'].toLocaleString()) : '') + '</td>\
+                                                </tr>\
+                                                <tr>\
+                                                    <th scope="row">Ducto: </th>\
+                                                    <td>' + (feature.properties['Ducto: '] !== null ? autolinker.link(feature.properties['ducto'].toLocaleString()) : '') + '</td>\
+                                                </tr>\
+                                                <tr>\
+                                                    <th scope="row">Servicio: </th>\
+                                                    <td>' + (feature.properties['Servicio: '] !== null ? autolinker.link(feature.properties['servicio'].toLocaleString()) : '') + '</td>\
+                                                </tr>\
+                                                <tr>\
+                                                    <th scope="row">Longitud (km): </th>\
+                                                    <td>' + (feature.properties['Longitud (km): '] !== null ? autolinker.link(feature.properties['lon'].toLocaleString()) : '') + '</td>\
+                                                </tr>\
+                                                <tr>\
+                                                    <th scope="row">Capa nominal (B): </th>\
+                                                    <td>' + (feature.properties['Capacidad nominal (B): '] !== null ? autolinker.link(feature.properties['capa_n'].toLocaleString()) : '') + '</td>\
+                                                </tr>\
+                                                <tr>\
+                                                    <th scope="row">Capa operativa (B): </th>\
+                                                    <td>' + (feature.properties['Capacidad operativa (B): '] !== null ? autolinker.link(feature.properties['capa_o'].toLocaleString()) : '') + '</td>\
+                                                </tr>\
+                                            </table>';
+            layer.bindPopup(popupContent, { maxHeight: 400 });
+        }
+
+        function style_ductos_glp_4326_0_0() {
+            return {
+                pane: 'pane_ductos_glp_4326_0',
+                opacity: 1,
+                color: 'rgba(128,64,0,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 2.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_ductos_glp_4326_0');
+        map.getPane('pane_ductos_glp_4326_0').style.zIndex = 400;
+        map.getPane('pane_ductos_glp_4326_0').style['mix-blend-mode'] = 'normal';
+        var layer_ductos_glp_4326_0 = new L.geoJson(json_ductos_glp_4326_0, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_ductos_glp_4326_0',
+            layerName: 'layer_ductos_glp_4326_0',
+            pane: 'pane_ductos_glp_4326_0',
+            onEachFeature: pop_ductos_glp_4326_0,
+            style: style_ductos_glp_4326_0_0,
+        });
+        bounds_group.addLayer(layer_ductos_glp_4326_0);
+        map.addLayer(layer_ductos_glp_4326_0);
+        setBounds();
+
+
+        cargarCamposVisibles().then(camposVisibles => {
+            // Limpiar marcadores existentes
+           // limpiarMarcadores()
+            // Carga los Marcadores y Ductos
+
+            $.ajax({
+                url: '/Indicadores/GetExpendiosAutorizadosGN_Infra',
+                type: 'GET',
+                // data: JSON.stringify(datos_mun),
+                contentType: 'application/json',
+                success: function (response) {
+                    console.log("Estos son los Expendios Autorizados de GN:", response); // ver la respuesta en consola
+                    datosExpendios = response; // Guarda la respuesta en la variable global
+
+                    //Guardo los terminos en la  búsqueda
+                    for (var i = 0; i < datosExpendios.length; i++) {
+                        availableTerms.push(datosExpendios[i].numeroPermiso);
+                    }
+
+                    function generarContenidoPopup(coordenada) {
+                        var contenido = "<style>" +
+                            ".popup-content {" +
+                            "    width: 280px;" +
+                            "    max-height: 180px;" +
+                            "    overflow-y: auto;" +
+                            "    padding: 10px;" +
+                            "}" +
+                            "h2, h3, h4, p, li {" +
+                            "    margin: 0 0 10px 0;" +
+                            "}" +
+                            "ul {" +
+                            "    padding-left: 20px;" +
+                            "}" +
+                            "img {" +
+                            "    vertical-align: middle;" +
+                            "    margin-right: 10px;" +
+                            "}" +
+                            "</style>";
+
+                        contenido += "<div class='popup-content'>";
+
+                        if (camposVisiblesGlobal.includes("RazonSocial")) {
+                            var imgSrc; // La URL de la imagen que se mostrará en el pop-up
+                            switch (coordenada.tipoPermiso) {
+                                case "SD":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/gasnaturali.png';
+                                    break;
+                                /* case "Distribución de Gas Licuado de Petróleo mediante Planta de Distribución":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/glpmapa_dist.png';
+                                    break;
+                                case "Expendio al Público de Gas Licuado de Petróleo mediante Estación de Servicio con fin Específico":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/glpmapa.png';
+                                    break; */
+                                default:
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/gasnaturali.png'; // Ícono por defecto si no hay coincidencia
+                                    break;
+                            }
+                            contenido += "<h2 class='subtitulo'><img src='" + imgSrc + "' style='height: 24px; width: 24px;'/><strong>" + handleNull(coordenada.razonSocial) + "</strong></h2><br>";
+                        }
+
+                        contenido += "<ul>";
+
+                        if (camposVisiblesGlobal.includes("EfId")) {//NO TENEMOS EL NOMBRE DE LA EF EN CAMPOS VISIBLES SOLO EL ID LO CRUZO EN LA CONSULTA DEL REPOSITORIO
+                            contenido += "<li><strong>Entidad Federativa:</strong> " + handleNull(coordenada.efId) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                            contenido += "<li><strong>NumeroPermiso:</strong> " + handleNull(coordenada.numeroPermiso) + "</li>";
+                        }
+
+                        //if (camposVisiblesGlobal.includes("EfId")) {
+                        //  contenido += "<li><strong>EfId:</strong> " + handleNull(coordenada.efId) + "</li>";
+                        //}
+
+                        if (camposVisiblesGlobal.includes("MpoId")) {
+                            contenido += "<li><strong>Municipio:</strong> " + handleNull(coordenada.mpoId) + "</li>";
+                        }
+
+                        /* if (camposVisiblesGlobal.includes("Expediente")) {
+                             contenido += "<li><strong>Expediente:</strong> " + handleNull(coordenada.expediente) + "</li>";
+                         }*/
+
+
+                        if (camposVisiblesGlobal.includes("RazonSocial")) {
+                            contenido += "<li><strong>RazonSocial:</strong> " + handleNull(coordenada.razonSocial) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("FechaOtorgamiento")) {
+                            contenido += "<li><strong>Fecha de Otorgamiento:</strong> " + handleNull(coordenada.fechaOtorgamiento) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("LatitudGeo")) {
+                            contenido += "<li><strong>LatitudGeo:</strong> " + handleNull(coordenada.latitudGeo) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("LongitudGeo")) {
+                            contenido += "<li><strong>LongitudGeo:</strong> " + handleNull(coordenada.longitudGeo) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("CalleNumEs")) {
+                            contenido += "<li><strong>Calle:</strong> " + handleNull(coordenada.calleNumEs) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("ColoniaEs")) {
+                            contenido += "<li><strong>Colonia:</strong> " + handleNull(coordenada.coloniaEs) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("CodigoPostal")) {
+                            contenido += "<li><strong>Codigo Postal:</strong> " + handleNull(coordenada.codigoPostal) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Estatus")) {
+                            contenido += "<li><strong>Estatus:</strong> " + handleNull(coordenada.estatus) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Rfc")) {
+                            contenido += "<li><strong>Rfc:</strong> " + handleNull(coordenada.rfc) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("EstatusInstalacion")) {
+                            contenido += "<li><strong>Estatus de la Instalación:</strong> " + handleNull(coordenada.estatusInstalacion) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("InversionEstimada")) {
+                            contenido += "<li><strong>InversionEstimada:</strong> " + handleNull(coordenada.inversionEstimada) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("TipoPermiso")) {
+                            contenido += "<li><strong>Tipo de Permiso:</strong> " + handleNull(coordenada.tipoPermiso) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("PermisoSuministrador")) {
+                            contenido += "<li><strong>Permiso de Suministrador:</strong> " + handleNull(coordenada.permisoSuministrador) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("PermisoDistribuidor")) {
+                            contenido += "<li><strong>Permiso de Distribuidor:</strong> " + handleNull(coordenada.permisoDistribuidor) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Comentarios")) {
+                            contenido += "<li><strong>Comentarios:</strong> " + handleNull(coordenada.comentarios) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("NumeroDeExpediente")) {
+                            contenido += "<li><strong>Numero de Expediente:</strong> " + handleNull(coordenada.numeronumeroDeExpediente) + "</li>";
+                        }
+
+                        /* if (camposVisiblesGlobal.includes("SubTipo")) {
+                             contenido += "<li><strong>SubTipo:</strong> " + handleNull(coordenada.subTipo) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("SiglasTipo")) {
+                             contenido += "<li><strong>SiglasTipo:</strong> " + handleNull(coordenada.siglasTipo) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("Otorgamiento")) {
+                             contenido += "<li><strong>Otorgamiento:</strong> " + handleNull(coordenada.otorgamiento) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("FechaAcuse")) {
+                             contenido += "<li><strong>FechaAcuse:</strong> " + handleNull(coordenada.fechaAcuse) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("EstatusSAT")) {
+                             contenido += "<li><strong>EstatusSAT:</strong> " + handleNull(coordenada.estatusSAT) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("SuspensionInicio")) {
+                             contenido += "<li><strong>SuspensionInicio:</strong> " + handleNull(coordenada.suspensionInicio) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("SuspensionFin")) {
+                             contenido += "<li><strong>SuspensionFin:</strong> " + handleNull(coordenada.suspensionFin) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("NumeroTanques")) {
+                             contenido += "<li><strong>NumeroTanques:</strong> " + handleNull(coordenada.numeroTanques) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("CapacidadLitros")) {
+                             contenido += "<li><strong>CapacidadLitros:</strong> " + handleNull(coordenada.capacidadLitros) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("NumeroUnidades")) {
+                             contenido += "<li><strong>NumeroUnidades:</strong> " + handleNull(coordenada.numeroUnidades) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("NumeroDeCentralesDeGuarda")) {
+                             contenido += "<li><strong>NumeroDeCentralesDeGuarda:</strong> " + handleNull(coordenada.numeroDeCentralesDeGuarda) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("DomicilioDeGuarda")) {
+                             contenido += "<li><strong>DomicilioDeGuarda:</strong> " + handleNull(coordenada.domicilioDeGuarda) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("SuministroRecepcion")) {
+                             contenido += "<li><strong>SuministroRecepcion:</strong> " + handleNull(coordenada.suministroRecepcion) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("PermisoSuministro")) {
+                             contenido += "<li><strong>PermisoSuministro:</strong> " + handleNull(coordenada.permisoSuministro) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("CompartenTanques")) {
+                             contenido += "<li><strong>CompartenTanques:</strong> " + handleNull(coordenada.compartenTanques) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("Modificacion")) {
+                             contenido += "<li><strong>Modificacion:</strong> " + handleNull(coordenada.modificacion) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("Asociacion")) {
+                             contenido += "<li><strong>Asociacion:</strong> " + handleNull(coordenada.asociacion) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("Gie")) {
+                             contenido += "<li><strong>Gie:</strong> " + handleNull(coordenada.gie) + "</li>";
+                         }
+                           */
+                         contenido += "</ul>";
+
+                        if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                            contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
+                        }
+
+
+                        contenido += "</div>";
+
+                        return contenido;
+                    }
+                    //Mapa de Resultados/////////////////////////////////////////////////////////////////////
+                    // Crea un grupo de marcadores
+                    var markers = L.markerClusterGroup();
+                    // Crea los iconos
+                    var iconoBase = L.Icon.extend({
+                        options: {
+                            iconSize: [36, 36],
+                            iconAnchor: [12, 18],
+                            popupAnchor: [0, -26]
+                        }
+                    });
+
+                    var iconoExpendio = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/gasnaturali.png' });
+                    /*  var iconoAlmacenamiento = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/glpmapa_alma.png' });
+                      var iconoDistribucion = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/glpmapa_dist.png' });*/
+                    // Agrega los marcadores para las coordenadas del mapa actual
+                    for (var j = 0; j < response.length; j++) {
+                        var coordenada = response[j];
+                        //Determina el icono a Usar
+                        // Determinar el ícono basado en tipoPermiso
+                        var iconoActual;
+                        switch (coordenada.tipoPermiso) {
+                            /*  case "SD":
+                                  iconoActual = iconoAlmacenamiento;
+                                  break;
+                              case "Distribución de Gas Licuado de Petróleo mediante Planta de Distribución":
+                                  iconoActual = iconoDistribucion;
+                                  break; */
+                            case "SD":
+                                iconoActual = iconoExpendio;
+                                break;
+                            default:
+                                iconoActual = iconoExpendio; // Ícono por defecto si no hay coincidencia
+                                break;
+                        }
+
+
+
+                        var marker = L.marker([coordenada.latitudGeo, coordenada.longitudGeo], { icon: iconoActual });
+                        var contenidoPopup = generarContenidoPopup(coordenada);
+                        marker.bindPopup(contenidoPopup);
+
+
+
+                        markers.addLayer(marker);
+                    }
+
+                    map.addLayer(markers);
+
+
+                    ////Grafico de Columnas
+                    //// Paso 1: Procesa la respuesta
+                    //var counts = {};
+                    //response.forEach(function (coordenada) {
+                    //    if (!counts[coordenada.efId]) {
+                    //        counts[coordenada.efId] = 0;
+                    //    }
+                    //    counts[coordenada.efId]++;
+                    //});
+
+                    //// Paso 2: Extrae categorías y datos
+                    //var categories = [];
+                    //var dataPermisos = [];
+                    //for (var entidad in counts) {
+                    //    categories.push(entidad);
+                    //    dataPermisos.push(counts[entidad]);
+                    //}
+
+                    //// Paso 3: Configura las opciones del gráfico
+                    //var options = {
+                    //    chart: {
+                    //        type: 'column',
+                    //        backgroundColor: '#efefee'  // Color de fondo del gráfico
+                    //    },
+                    //    title: {
+                    //        text: 'Total de Permisos Vigentes por Entidad Federativa'
+                    //    },
+                    //    xAxis: {
+                    //        categories: categories
+                    //    },
+                    //    yAxis: {
+                    //        title: {
+                    //            text: 'Número de permisos'
+                    //        }
+                    //    },
+                    //    series: [{
+                    //        name: 'Permisos',
+                    //        data: dataPermisos,
+                    //        color: '#59b25d',
+                    //        dataLabels: {
+                    //            enabled: true,   // Habilita las etiquetas de datos
+                    //            rotation: 0,     // Rota las etiquetas (en este caso, no hay rotación)
+                    //            color: '#000000', // Color del texto de las etiquetas
+                    //            align: 'center',  // Alinea las etiquetas al centro
+                    //            format: '{point.y:,.0f}',  // Formato con separador de miles
+                    //            y: 10, // Posiciona las etiquetas un poco arriba del tope de la columna
+                    //            style: {
+                    //                fontSize: '13px', // Tamaño de la fuente de las etiquetas
+                    //                fontFamily: 'Verdana, sans-serif' // Tipo de letra de las etiquetas
+                    //            }
+                    //        }
+                    //    }],
+                    //    tooltip: {
+                    //        formatter: function () {
+                    //            return '<b>' + this.x + '</b><br/>' +
+                    //                this.series.name + ': ' + Highcharts.numberFormat(this.y, 0);  // Usando separador de miles
+
+                    //        }
+                    //    }
+                    //};
+
+                    //// Renderizar el gráfico en el contenedor con el ID 'grafico'
+                    //Highcharts.chart('grafico', options);
+                    //Mete el autocompetar ala busqueda
+                    // Función para inicializar el autocompletar
+                    function autocomplete(inp, arr) {
+                        var currentFocus;
+
+                        inp.addEventListener("input", function (e) {
+                            var a, b, i, val = this.value;
+                            closeAllLists();
+                            if (!val) { return false; }
+                            currentFocus = -1;
+
+                            a = document.getElementById("autocomplete-list");
+                            a.innerHTML = "";
+
+                            for (i = 0; i < arr.length; i++) {
+                                if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                                    b = document.createElement("DIV");
+                                    b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                                    b.innerHTML += arr[i].substr(val.length);
+                                    b.addEventListener("click", function (e) {
+                                        inp.value = this.innerText;
+                                        closeAllLists();
+                                        buscarGeneral(); // Llama a tu función de búsqueda aquí
+                                    });
+                                    a.appendChild(b);
+                                }
+                            }
+                        });
+
+                        function closeAllLists(elmnt) {
+                            var x = document.getElementById("autocomplete-list");
+                            if (elmnt != x && elmnt != inp) {
+                                x.innerHTML = "";
+                            }
+                        }
+
+                        document.addEventListener("click", function (e) {
+                            closeAllLists(e.target);
+                        });
+                    }
+                    // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+                    var uniqueTerms = [...new Set(availableTerms)];
+
+                    // Inicializa el autocompletar
+                    autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+                },
+                error: function (error) {
+                    // Maneja el error si ocurre.
+                }
+            });
+        }).catch(error => {
+            // Manejo de errores del primer AJAX
+        });
+
+
+
+    }
+
+
+    //Electricidad
+    function CargaElectricidad() {
+        // Reiniciando availableTerms y las demas variables
+        availableTerms = [];
+        datosExpendios = [];
+        camposVisiblesGlobal = [];
+
+
+        // Asignando a la búsqueda de términos
+        estadosLayer.eachLayer(function (layer) {
+            if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+                availableTerms.push(layer.feature.properties.NOMGEO);
+            }
+        });
+
+        for (var i = 0; i < municipios_mapa.features.length; i++) {
+            var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+            var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+            // Asegúrate de que ambas propiedades existen antes de concatenar
+            if (municipio && estado) {
+                var nombreCompleto = municipio + ", " + estado;
+                availableTerms.push(nombreCompleto);
+            }
+        }
+
+        // Primera llamada AJAX como una promesa
+        function cargarCamposVisibles() {
+            return new Promise((resolve, reject) => {
+                $.ajax({
+                    url: '/Indicadores/GetCamposVisiblesElectricidad_Infra',
+                    type: 'GET',
+                    contentType: 'application/json',
+                    success: function (camposVisibles) {
+                        camposVisiblesGlobal = camposVisibles;
+                        resolve(camposVisibles);  // Resuelve la promesa con los campos visibles
+                    },
+                    error: function (error) {
+                        console.error("Error al obtener campos visibles", error);
+                        reject(error);  // Rechaza la promesa si hay un error
+                    }
+                });
+            });
+        }
+         //No hay ductos
+
+
+        cargarCamposVisibles().then(camposVisibles => {
+            // Limpiar marcadores existentes
+          //  limpiarMarcadores()
+            // Carga los Marcadores y Ductos
+
+            $.ajax({
+                url: '/Indicadores/GetExpendiosAutorizadosElectricidad_Infra',
+                type: 'GET',
+                // data: JSON.stringify(datos_mun),
+                contentType: 'application/json',
+                success: function (response) {
+                    console.log("Estos son los Expendios Autorizados de Electricidad:", response); // ver la respuesta en consola
+                    datosExpendios = response; // Guarda la respuesta en la variable global
+
+                    //Guardo los terminos en la  búsqueda
+                    for (var i = 0; i < datosExpendios.length; i++) {
+                        availableTerms.push(datosExpendios[i].numeroPermiso);
+                    }
+
+                    function generarContenidoPopup(coordenada) {
+                        var contenido = "<style>" +
+                            ".popup-content {" +
+                            "    width: 280px;" +
+                            "    max-height: 180px;" +
+                            "    overflow-y: auto;" +
+                            "    padding: 10px;" +
+                            "}" +
+                            "h2, h3, h4, p, li {" +
+                            "    margin: 0 0 10px 0;" +
+                            "}" +
+                            "ul {" +
+                            "    padding-left: 20px;" +
+                            "}" +
+                            "img {" +
+                            "    vertical-align: middle;" +
+                            "    margin-right: 10px;" +
+                            "}" +
+                            "</style>";
+
+                        contenido += "<div class='popup-content'>";
+
+                        if (camposVisiblesGlobal.includes("RazonSocial")) {
+                            var imgSrc; // La URL de la imagen que se mostrará en el pop-up
+                            switch (coordenada.tipoPermiso) {
+                                case "vacío":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/central_electrica.png';
+                                    break;
+                                /* case "Distribución de Gas Licuado de Petróleo mediante Planta de Distribución":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/glpmapa_dist.png';
+                                    break;
+                                case "Expendio al Público de Gas Licuado de Petróleo mediante Estación de Servicio con fin Específico":
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/glpmapa.png';
+                                    break; */
+                                default:
+                                    imgSrc = '@Cdn.Url/img_snier/vistas/central_electrica.png'; // Ícono por defecto si no hay coincidencia
+                                    break;
+                            }
+                            contenido += "<h2 class='subtitulo'><img src='" + imgSrc + "' style='height: 24px; width: 24px;'/><strong>" + handleNull(coordenada.razonSocial) + "</strong></h2><br>";
+                        }
+
+                        contenido += "<ul>";
+
+                        if (camposVisiblesGlobal.includes("EfId")) {//NO TENEMOS EL NOMBRE DE LA EF EN CAMPOS VISIBLES SOLO EL ID LO CRUZO EN LA CONSULTA DEL REPOSITORIO
+                            contenido += "<li><strong>Clave y Entidad Federativa:</strong> " + handleNull(coordenada.efId) + "</li>";
+                        }
+                        if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                            contenido += "<li><strong>NumeroPermiso:</strong> " + handleNull(coordenada.numeroPermiso) + "</li>";
+                        }
+
+
+                        if (camposVisiblesGlobal.includes("MpoId")) {
+                            contenido += "<li><strong>Clave y Municipio:</strong> " + handleNull(coordenada.mpoId) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("NumeroDeExpediente")) {
+                            contenido += "<li><strong>Numero de Expediente:</strong> " + handleNull(coordenada.numeroDeExpediente) + "</li>";
+                        }
+
+                                               //if (camposVisiblesGlobal.includes("EfId")) {
+                        //  contenido += "<li><strong>EfId:</strong> " + handleNull(coordenada.efId) + "</li>";
+                        //}
+
+                        /* if (camposVisiblesGlobal.includes("Expediente")) {
+                             contenido += "<li><strong>Expediente:</strong> " + handleNull(coordenada.expediente) + "</li>";
+                         }*/
+
+
+                        if (camposVisiblesGlobal.includes("RazonSocial")) {
+                            contenido += "<li><strong>RazonSocial:</strong> " + handleNull(coordenada.razonSocial) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("FechaOtorgamiento")) {
+                            contenido += "<li><strong>Fecha de Otorgamiento:</strong> " + handleNull(coordenada.fechaOtorgamiento) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("LatitudGeo")) {
+                            contenido += "<li><strong>LatitudGeo:</strong> " + handleNull(coordenada.latitudGeo) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("LongitudGeo")) {
+                            contenido += "<li><strong>LongitudGeo:</strong> " + handleNull(coordenada.longitudGeo) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Dirección")) {
+                            contenido += "<li><strong>Dirección:</strong> " + handleNull(coordenada.direccion) + "</li>";
+                        }
+
+                          if (camposVisiblesGlobal.includes("Estatus")) {
+                            contenido += "<li><strong>Estatus:</strong> " + handleNull(coordenada.estatus) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Rfc")) {
+                            contenido += "<li><strong>Rfc:</strong> " + handleNull(coordenada.rfc) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("FechaRecepcion")) {
+                            contenido += "<li><strong>Fecha de Recepción:</strong> " + handleNull(coordenada.fechaRecepcion) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("EstatusInstalacion")) {
+                            contenido += "<li><strong>Estatus de Instalación:</strong> " + handleNull(coordenada.estatusInstalacion) + "</li>";
+                        }
+
+                       if (camposVisiblesGlobal.includes("TipoPermiso")) {
+                            contenido += "<li><strong>Tipo de Permiso:</strong> " + handleNull(coordenada.tipoPermiso) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("InicioVigencia")) {
+                            contenido += "<li><strong>Inicio de Vigencia:</strong> " + handleNull(coordenada.inicioVigencia) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("InicioOperaciones")) {
+                            contenido += "<li><strong>Inicio  de Operaciones:</strong> " + handleNull(coordenada.inicioOperaciones) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("CapacidadAutorizadaMW")) {
+                            contenido += "<li><strong>Capacidad Autorizada  en MW:</strong> " + handleNull(coordenada.capacidadAutorizadaMW) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Generación_estimada_anual")) {
+                            contenido += "<li><strong>Generación Estimada Anual:</strong> " + handleNull(coordenada.generacion_estimada_anual) + "</li>";
+                        }
+
+
+                        if (camposVisiblesGlobal.includes("Inversion_estimada_mdls")) {
+                             contenido += "<li><strong>Inversión Estimada en mdls:</strong> " + handleNull(coordenada.inversion_estimada_mdls) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("Energetico_primario")) {
+                            contenido += "<li><strong>Energético Primario:</strong> " + handleNull(coordenada.energetico_primario) + "</li>";
+                        }
+
+                          if (camposVisiblesGlobal.includes("Actividad_economica")) {
+                            contenido += "<li><strong>Actividad Económica:</strong> " + handleNull(coordenada.actividad_economica) + "</li>";
+                        }
+
+                        if (camposVisiblesGlobal.includes("Tecnología")) {
+                            contenido += "<li><strong>Tecnología:</strong> " + handleNull(coordenada.tecnologia) + "</li>";
+                        }
+                          if  (camposVisiblesGlobal.includes("EmpresaLíder")) {
+                            contenido += "<li><strong>Empresa Líder:</strong> " + handleNull(coordenada.empresaLider) + "</li>";
+                        }
+                         if  (camposVisiblesGlobal.includes("PaísDeOrigen")) {
+                            contenido += "<li><strong>País de Origen:</strong> " + handleNull(coordenada.paisDeOrigen) + "</li>";
+                        }
+                         if  (camposVisiblesGlobal.includes("Subasta")) {
+                            contenido += "<li><strong>Subasta:</strong> " + handleNull(coordenada.subasta) + "</li>";
+                        }
+
+                        if  (camposVisiblesGlobal.includes("Comentarios")) {
+                            contenido += "<li><strong>Comentarios:</strong> " + handleNull(coordenada.comentarios) + "</li>";
+                        }
+
+
+                        /*
+                         if (camposVisiblesGlobal.includes("SiglasTipo")) {
+                             contenido += "<li><strong>SiglasTipo:</strong> " + handleNull(coordenada.siglasTipo) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("Otorgamiento")) {
+                             contenido += "<li><strong>Otorgamiento:</strong> " + handleNull(coordenada.otorgamiento) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("FechaAcuse")) {
+                             contenido += "<li><strong>FechaAcuse:</strong> " + handleNull(coordenada.fechaAcuse) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("EstatusSAT")) {
+                             contenido += "<li><strong>EstatusSAT:</strong> " + handleNull(coordenada.estatusSAT) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("SuspensionInicio")) {
+                             contenido += "<li><strong>SuspensionInicio:</strong> " + handleNull(coordenada.suspensionInicio) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("SuspensionFin")) {
+                             contenido += "<li><strong>SuspensionFin:</strong> " + handleNull(coordenada.suspensionFin) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("NumeroTanques")) {
+                             contenido += "<li><strong>NumeroTanques:</strong> " + handleNull(coordenada.numeroTanques) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("CapacidadLitros")) {
+                             contenido += "<li><strong>CapacidadLitros:</strong> " + handleNull(coordenada.capacidadLitros) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("NumeroUnidades")) {
+                             contenido += "<li><strong>NumeroUnidades:</strong> " + handleNull(coordenada.numeroUnidades) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("NumeroDeCentralesDeGuarda")) {
+                             contenido += "<li><strong>NumeroDeCentralesDeGuarda:</strong> " + handleNull(coordenada.numeroDeCentralesDeGuarda) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("DomicilioDeGuarda")) {
+                             contenido += "<li><strong>DomicilioDeGuarda:</strong> " + handleNull(coordenada.domicilioDeGuarda) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("SuministroRecepcion")) {
+                             contenido += "<li><strong>SuministroRecepcion:</strong> " + handleNull(coordenada.suministroRecepcion) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("PermisoSuministro")) {
+                             contenido += "<li><strong>PermisoSuministro:</strong> " + handleNull(coordenada.permisoSuministro) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("CompartenTanques")) {
+                             contenido += "<li><strong>CompartenTanques:</strong> " + handleNull(coordenada.compartenTanques) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("Modificacion")) {
+                             contenido += "<li><strong>Modificacion:</strong> " + handleNull(coordenada.modificacion) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("Asociacion")) {
+                             contenido += "<li><strong>Asociacion:</strong> " + handleNull(coordenada.asociacion) + "</li>";
+                         }
+
+                         if (camposVisiblesGlobal.includes("Gie")) {
+                             contenido += "<li><strong>Gie:</strong> " + handleNull(coordenada.gie) + "</li>";
+                         }
+                         */
+                         contenido += "</ul>";
+
+                        if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                            contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
+                        }
+
+
+                        contenido += "</div>";
+
+                        return contenido;
+                    }
+                    //Mapa de Resultados/////////////////////////////////////////////////////////////////////
+                    // Crea un grupo de marcadores
+                    var markers = L.markerClusterGroup();
+                    // Crea los iconos
+                    var iconoBase = L.Icon.extend({
+                        options: {
+                            iconSize: [36, 36],
+                            iconAnchor: [12, 18],
+                            popupAnchor: [0, -26]
+                        }
+                    });
+
+                    var iconoExpendio = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/central_electrica.png' });
+                    /*  var iconoAlmacenamiento = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/glpmapa_alma.png' });
+                      var iconoDistribucion = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/glpmapa_dist.png' });*/
+                    // Agrega los marcadores para las coordenadas del mapa actual
+                    for (var j = 0; j < response.length; j++) {
+                        var coordenada = response[j];
+                        //Determina el icono a Usar
+                        // Determinar el ícono basado en tipoPermiso
+                        var iconoActual;
+                        switch (coordenada.tipoPermiso) {
+                            /*  case "SD":
+                                  iconoActual = iconoAlmacenamiento;
+                                  break;
+                              case "Distribución de Gas Licuado de Petróleo mediante Planta de Distribución":
+                                  iconoActual = iconoDistribucion;
+                                  break; */
+                            case "vacío":
+                                iconoActual = iconoExpendio;
+                                break;
+                            default:
+                                iconoActual = iconoExpendio; // Ícono por defecto si no hay coincidencia
+                                break;
+                        }
+
+
+
+                        var marker = L.marker([coordenada.latitudGeo, coordenada.longitudGeo], { icon: iconoActual });
+                        var contenidoPopup = generarContenidoPopup(coordenada);
+                        marker.bindPopup(contenidoPopup);
+
+
+
+                        markers.addLayer(marker);
+                    }
+
+                    map.addLayer(markers);
+
+
+                    ////Grafico de Columnas
+                    //// Paso 1: Procesa la respuesta
+                    //var counts = {};
+                    //response.forEach(function (coordenada) {
+                    //    if (!counts[coordenada.efId]) {
+                    //        counts[coordenada.efId] = 0;
+                    //    }
+                    //    counts[coordenada.efId]++;
+                    //});
+
+                    //// Paso 2: Extrae categorías y datos
+                    //var categories = [];
+                    //var dataPermisos = [];
+                    //for (var entidad in counts) {
+                    //    categories.push(entidad);
+                    //    dataPermisos.push(counts[entidad]);
+                    //}
+
+                    //// Paso 3: Configura las opciones del gráfico
+                    //var options = {
+                    //    chart: {
+                    //        type: 'column',
+                    //        backgroundColor: '#fafafa'  // Color de fondo del gráfico
+                    //    },
+                    //    title: {
+                    //        text: 'Total de Permisos Vigentes por Entidad Federativa'
+                    //    },
+                    //    xAxis: {
+                    //        categories: categories
+                    //    },
+                    //    yAxis: {
+                    //        title: {
+                    //            text: 'Número de permisos'
+                    //        }
+                    //    },
+                    //    series: [{
+                    //        name: 'Permisos',
+                    //        data: dataPermisos,
+                    //        color: '#1a8092ff',
+                    //        dataLabels: {
+                    //            enabled: true,   // Habilita las etiquetas de datos
+                    //            rotation: 0,     // Rota las etiquetas (en este caso, no hay rotación)
+                    //            color: '#000000', // Color del texto de las etiquetas
+                    //            align: 'center',  // Alinea las etiquetas al centro
+                    //            format: '{point.y:,.0f}',  // Formato con separador de miles
+                    //            y: 10, // Posiciona las etiquetas un poco arriba del tope de la columna
+                    //            style: {
+                    //                fontSize: '13px', // Tamaño de la fuente de las etiquetas
+                    //                fontFamily: 'Verdana, sans-serif' // Tipo de letra de las etiquetas
+                    //            }
+                    //        }
+                    //    }],
+                    //    tooltip: {
+                    //        formatter: function () {
+                    //            return '<b>' + this.x + '</b><br/>' +
+                    //                this.series.name + ': ' + Highcharts.numberFormat(this.y, 0);  // Usando separador de miles
+
+                    //        }
+                    //    }
+                    //};
+
+                    //// Renderizar el gráfico en el contenedor con el ID 'grafico'
+                    //Highcharts.chart('grafico', options);
+                    //Mete el autocompetar ala busqueda
+                    // Función para inicializar el autocompletar
+                    function autocomplete(inp, arr) {
+                        var currentFocus;
+
+                        inp.addEventListener("input", function (e) {
+                            var a, b, i, val = this.value;
+                            closeAllLists();
+                            if (!val) { return false; }
+                            currentFocus = -1;
+
+                            a = document.getElementById("autocomplete-list");
+                            a.innerHTML = "";
+
+                            for (i = 0; i < arr.length; i++) {
+                                if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                                    b = document.createElement("DIV");
+                                    b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                                    b.innerHTML += arr[i].substr(val.length);
+                                    b.addEventListener("click", function (e) {
+                                        inp.value = this.innerText;
+                                        closeAllLists();
+                                        buscarGeneral(); // Llama a tu función de búsqueda aquí
+                                    });
+                                    a.appendChild(b);
+                                }
+                            }
+                        });
+
+                        function closeAllLists(elmnt) {
+                            var x = document.getElementById("autocomplete-list");
+                            if (elmnt != x && elmnt != inp) {
+                                x.innerHTML = "";
+                            }
+                        }
+
+                        document.addEventListener("click", function (e) {
+                            closeAllLists(e.target);
+                        });
+                    }
+                    // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+                    var uniqueTerms = [...new Set(availableTerms)];
+
+                    // Inicializa el autocompletar
+                    autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+                },
+                error: function (error) {
+                    // Maneja el error si ocurre.
+                }
+            });
+        }).catch(error => {
+            // Manejo de errores del primer AJAX
+        });
+
+
+
+    }
+
+
+
+</script>
+
+@* Funcionalidades de Búsqueda y Menú*@
+<script>
+
+    // Función para inicializar el autocompletar
+    function autocomplete(inp, arr) {
+        var currentFocus;
+
+        inp.addEventListener("input", function (e) {
+            var a, b, i, val = this.value;
+            closeAllLists();
+            if (!val) { return false; }
+            currentFocus = -1;
+
+            a = document.getElementById("autocomplete-list");
+            a.innerHTML = "";
+
+            for (i = 0; i < arr.length; i++) {
+                if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                    b = document.createElement("DIV");
+                    b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                    b.innerHTML += arr[i].substr(val.length);
+                    b.addEventListener("click", function (e) {
+                        inp.value = this.innerText;
+                        closeAllLists();
+                        buscarGeneral(); // Llama a tu función de búsqueda aquí
+                    });
+                    a.appendChild(b);
+                }
+            }
+        });
+
+        function closeAllLists(elmnt) {
+            var x = document.getElementById("autocomplete-list");
+            if (elmnt != x && elmnt != inp) {
+                x.innerHTML = "";
+            }
+        }
+
+        document.addEventListener("click", function (e) {
+            closeAllLists(e.target);
+        });
+    }
+    // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+    var uniqueTerms = [...new Set(availableTerms)];
+
+    // Inicializa el autocompletar
+    autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+
+    @*Links activos*@
+        function activarElemento(elementoID) {
+            // Obtén todos los elementos de tu menú
+            var elementos = document.querySelectorAll('.navbarmapag a');
+
+            // Itera sobre ellos para eliminar la clase 'active'
+            elementos.forEach(function (el) {
+                el.classList.remove('active');
+            });
+
+            // Añade la clase 'active' al elemento clickeado
+            var elementoActivo = document.getElementById(elementoID);
+            if (elementoActivo) {
+                elementoActivo.classList.add('active');
+            }
+        }
+</script>
+
+
+
+
+
+@*Funcion para Evaluar La Solicitud*@
+<script>
+
+    $("#btnEjecutar").click(function (event) {
+        // Obtener el nombre de la entidad federativa seleccionada
+        var nombreEntidad = $('#entidad').val(); // Asegúrate de que este campo se actualiza con el nombre correcto
+        $("#grafico").show(); // Muestra el grafico
+           $("#highcharts-data-table").show();
+        //event.preventDefault(); // Evita que el botón envíe el formulario
+        // Obtener las variables
+        var cvegeo = $('#cvegeo').val();
+        var cve_ent = $('#cve_ent').val();
+        var cve_mun = $('#cve_mun').val();
+        var latitud = $('#lat').val();
+        var longitud = $('#lon').val();
+        var mercadoSelect = $('#mercadoSelect').val();
+        var messageDiv = document.getElementById('message');
+        // Validar que ninguna de las variables esté vacía o nula
+        if (!cvegeo || !cve_ent || !cve_mun || !latitud || !longitud) {
+
+            messageDiv.innerHTML = 'Debes seleccionar una coordenada primero antes de ejecutar la evaluación.';
+            messageDiv.classList.remove('d-none'); // Muestra el mensaje
+            // Opcional: Ocultar el mensaje después de 5 segundos
+            setTimeout(function () {
+                messageDiv.classList.add('d-none'); // Oculta el mensaje
+            }, 2000); // 5 segundos
+            return; // Termina la función aquí para no enviar la solicitud AJAX
+        }
+        $("#btnEjecutar").hide(); // Oculta el botón
+        //$("#mercadoSelect").prop('disabled', true);
+        // $("#yearSelect").prop('disabled', true);
+        //$("#message").text("Para realizar otra evaluación haga click en el Mapa nuevamente.");
+    @* messageDiv.innerHTML = 'Para realizar otra evaluación haga click en el Mapa nuevamente.'; *@
+        messageDiv.innerHTML = '¡Para realizar otra evaluación haga click en el Mapa</strong> nuevamente!<strong>';
+
+        messageDiv.classList.remove('d-none'); // Muestra el mensaje
+
+
+
+        var datos_solicitud = {
+            cvegeo: $('#cvegeo').val(),
+            cve_ent: $('#cve_ent').val(),
+            cve_mun: $('#cve_mun').val(),
+            yearSelect: $('#yearSelect').val(),
+            mercadoSelect: $('#mercadoSelect').val(),
+            latitud: $('#lat').val(),
+            longitud: $('#lon').val()
+
+
+            //DEBEN LLAMARSE IGUAL EN LA CLASE CLASE CALIFICACION FINAL
+        };
+
+        var mercadoSelect = $('#mercadoSelect').val();
+
+        // Lógica condicional basada en el valor de mercadoSelect
+        if (mercadoSelect === "petroliferos") {
+            CargaPetrolíferos(); // Llama a esta función si el valor es "petroliferos"
+        } else if (mercadoSelect === "gas_lp") {
+            CargaGLP(); // Llama a esta función si el valor es "gas_lp"
+        }
+
+
+
+
+        // Tabla de Resultados
+        $.ajax({
+            url: '/Indicadores/evalua_SolicitudPublica',
+            type: 'POST',
+            data: JSON.stringify(datos_solicitud),
+
+            contentType: 'application/json',
+            success: function (response) {
+                console.log("Resultado de la Evaluación a Solicitud Pública:", response); // ver la respuesta en consola del navegador
+
+                var resultadoFinal = response[0].resultadoFinal;
+                var alertClass = resultadoFinal === "Factible" ? "alert-success" : "alert-danger";
+                var mercadoSelectText = $("#mercadoSelect option:selected").text();
+
+                //  var textoAdicional = "La ubicación elegida actualmente es '<strong>" + resultadoFinal + "</strong>', en términos de los indicadores de atención al usuario final, densidad vehicular, densidad en expendios de combustibles, eventual saturación de la cadena de valor en los elementos adyacentes a expendios (especialmente distribución) o los indicadores asociados a las políticas públicas vigentes.<br><br> Para conseguir el otorgamiento de un permiso de expendios de gasolinas, en una ubicación viable, los requisitos son los estipulados en la DACG. De no contar con un resultado viable en la ubicación seleccionada puede realizar una nueva consulta en otra ubicación.<br><br> Nota: La valoración de viabilidad positiva se restringe exclusivamente a criterios asociados al Sector de Energía y se entiende que el usuario elige ubicaciones para localizar expendios con el propósito de realizar dicha actividad en lugares lícitos (zonas ecológicas, escuelas, ....).La ubicación viable en una zona ecológica no indica que es posible otorgar un permiso (visualmente hay restricciones lógicas acerca del uso de suelo).<br>";
+                //  var textoAdicional = "La ubicación elegida actualmente es '<strong>" + resultadoFinal + "</strong>', en términos de los indicadores de atención al usuario final, densidad vehicular, densidad en expendios de combustibles, eventual saturación de la cadena de valor en los elementos adyacentes a expendios (especialmente distribución) o los indicadoNota: La valoración de viabilidad positiva se restringe exclusivamente a criterios asociados al Sector de Energía y se entiende que el usuario elige ubicaciones para localizar expendios con el propósito de realizar dicha acta ecológica <br>";
+                var textoAdicional = "La ubicación elegida para el mercado de '<strong>" + mercadoSelectText + "</strong>' actualmente es '<strong>" + resultadoFinal + "</strong>', en términos de los indicadores de atención al usuario final, densidad vehicular, densidad en expendios de combustibles, eventual saturación de la cadena de valor en los elementos adyacentes a expendios (especialmente distribución) o los indicadores asociados a las políticas públicas vigentes.<br><br>Para conseguir el otorgamiento de un permiso de expendios de gasolinas, en una ubicación factible, los requisitos son los estipulados en la DACG. Por lo que, un resultado positivo en cuanto a la ubicación no garantiza el otorgamiento del permiso. De no contar con un resultado factible puede realizar una nueva consulta en otra ubicación o año. <br><br><strong>Nota:</strong> La valoración de una factibilidad positiva está restringida exclusivamente a criterios asociados al Sector de Energía, y se entiende que el usuario elige ubicaciones, para localizar expendios, con el propósito de realizar dicha actividad en lugares que no incumplen los requisitos de seguridad o uso de suelo locales (visualmente hay restricciones lógicas acerca de las ubicaciones seleccionadas).";
+
+                var alertMessage = '<div class="alert ' + alertClass + ' alert-dismissible fade show" role="alert" style="text-align: justify;">' + // Agrega estilo para justificar el texto
+                    textoAdicional +
+                 //   '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                    '<br>' +
+                    //'<br><button type="button" class="btn btn-secundary" onclick="printWithCustomTitle()">Imprimir</button>' +
+                    //'<button type="button" class="btn btn-primary" onclick="genPDF()">Este Imagen</button>' +
+                     // '<button id="pdf" type="button" class="btn btn-primary" >Este Imagen</button>' +
+                    //'<br><button type="button" class="btn btn-primary" onclick="saveMapAsPDF()>Guardar como PDF</button>' +
+                    '</div>';
+
+                $("#resultadoAlert").html(alertMessage);
+
+                // Verifica el resultado y establece el icono correspondiente
+                if (response[0].resultadoFinal === "Factible") {
+                    currentMarker.setIcon(iconoAprobado);
+                } else if (response[0].resultadoFinal === "No Factible") {
+                    currentMarker.setIcon(iconoNoaprobado);
+                }
+
+
+            },
+            error: function (error) {
+                // Maneja el error si ocurre.
+            }
+
+
+        });
+
+
+
+
+
+    });
+
+</script>
+
+
+@* Funcionalidades de Búsqueda y Menú*@
+<script>
+
+    // Función para inicializar el autocompletar
+    function autocomplete(inp, arr) {
+        var currentFocus;
+
+        inp.addEventListener("input", function (e) {
+            var a, b, i, val = this.value;
+            closeAllLists();
+            if (!val) { return false; }
+            currentFocus = -1;
+
+            a = document.getElementById("autocomplete-list");
+            a.innerHTML = "";
+
+            for (i = 0; i < arr.length; i++) {
+                if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                    b = document.createElement("DIV");
+                    b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                    b.innerHTML += arr[i].substr(val.length);
+                    b.addEventListener("click", function (e) {
+                        inp.value = this.innerText;
+                        closeAllLists();
+                        buscarGeneral(); // Llama a tu función de búsqueda aquí
+                    });
+                    a.appendChild(b);
+                }
+            }
+        });
+
+        function closeAllLists(elmnt) {
+            var x = document.getElementById("autocomplete-list");
+            if (elmnt != x && elmnt != inp) {
+                x.innerHTML = "";
+            }
+        }
+
+        document.addEventListener("click", function (e) {
+            closeAllLists(e.target);
+        });
+    }
+    // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+    var uniqueTerms = [...new Set(availableTerms)];
+
+    // Inicializa el autocompletar
+    autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+
+
+</script>
+
+
+
+@*Guia*@
+<script>
+    function openModal() {
+        document.getElementById('videoModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('videoModal').style.display = 'none';
+    }
+
+    function printWithCustomTitle() {
+        // Guardar el título original
+        var originalTitle = document.title;
+
+        // Obtener la fecha y hora actuales y formatearlas
+        var currentDate = new Date();
+        var formattedDate = currentDate.getFullYear() +
+            '-' + (currentDate.getMonth() + 1).toString().padStart(2, '0') +
+            '-' + currentDate.getDate().toString().padStart(2, '0') +
+            '_' + currentDate.getHours().toString().padStart(2, '0') +
+            '-' + currentDate.getMinutes().toString().padStart(2, '0') +
+            '-' + currentDate.getSeconds().toString().padStart(2, '0');
+
+        // Cambiar el título de la página
+        document.title = 'CRE-Evaluación-' + formattedDate;
+
+        // Llamar a window.print()
+        window.print();
+
+        // Restaurar el título original después de un pequeño retraso
+        setTimeout(function () {
+            document.title = originalTitle;
+        }, 500);
+    }
+    var nombreUsuario = '@ViewData["NombreUsuario"]';
+    function obtenerFechaHora() {
+        const ahora = new Date();
+        return ahora.toLocaleDateString() + ' ' + ahora.toLocaleTimeString();
+    }
+
+
+
+
+
+
+</script>
+<script>
+            // Configuración de L.easyPrint
+            var printPlugin = L.easyPrint({
+                title: 'Imprimir mapa',
+                position: 'topright',
+                sizeModes: ['A4Portrait', 'A4Landscape'],
+                exportOnly: true,
+                hideControlContainer: false
+            }).addTo(map);
+
+
+       //function genPDF(){
+       //         var doc=new jsPDF();
+       //         let mensaje=document.getElementById('step3');
+       //         doc.text(20,20,mensaje);
+       //         doc.addPage();
+       //         doc.text(20,20,'Mi trabajo!!');
+       //         doc.save('Test.pdf');
+       //     }
+
+    // Llamar a la función principal saveMapAsPDF();
+
+
+
+</script>
+<script>
+    $(function() {
+      $('.is-btn-print01').click(function(){
+        // Centrar el mapa en 'currentMarker' con un nivel de zoom específico
+        if (currentMarker) {
+          map.setView(currentMarker.getLatLng(), 18);
+        }
+
+        // Retrasar la impresión por 1 segundo para asegurar que el mapa se haya centrado
+        setTimeout(function() {
+          $('.print01').printThis();
+        }, 1000);  // 1000 milisegundos = 1 segundo
+      });
+    });
+
+
+</script>

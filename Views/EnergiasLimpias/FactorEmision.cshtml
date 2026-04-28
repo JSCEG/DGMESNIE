@@ -1,0 +1,295 @@
+@model NSIE.Models.FactorEmisionViewModel
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Factor de Emisión";
+}
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Factor de Emisión",
+        IconPath = "emision.png",
+        Description = "Consulta indicadores de emisión del SEN",
+        Section = "📊 Datos Públicos",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Factor de Emisión",
+            description = "Sistema de consulta de indicadores ambientales del SEN.",
+            functionality = "Permite análisis de huella ambiental y eficiencia del sistema.",
+            stage = "Indicadores Ambientales",
+            roles = new[] {
+new { icon = "building", text = "SENER: Validación oficial" },
+new { icon = "graduation-cap", text = "Universidades: Investigación" },
+new { icon = "chart-bar", text = "INEGI: Estadísticas" },
+new { icon = "users", text = "OSC: Monitoreo" },
+new { icon = "microscope", text = "Investigadores: Análisis" },
+new { icon = "newspaper", text = "Medios: Difusión" }
+},
+            order = new { step = 1, description = "Mide eficiencia ambiental del SEN" }
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container px-2 px-md-5">
+    <div class="row mb-4">
+        <div class="col-12 text-center" data-aos="fade-down">
+            <img src="@Cdn.Url/img_snier/vistas/banner/12.png" alt="Factor de Emisión SEN"
+                class="img-fluid rounded shadow-sm mb-3" style="max-width: 100%; height: auto;">
+        </div>
+    </div>
+
+    <!-- Cards resumen de métricas -->
+    <div class="row g-3 mb-4" data-aos="fade-up">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center h-100">
+                <div class="card-body">
+                    <div class="mb-2">
+                        <span class="badge bg-primary bg-opacity-75 fs-6"><i class="bi bi-calendar-event me-1"></i>
+                            Último año</span>
+                    </div>
+                    <h5 class="card-title mb-1">Año @Model.FactoresEmision.Max(f => f.Anio)</h5>
+                    <p class="display-6 fw-bold mb-0">@Model.FactoresEmision.OrderByDescending(f =>
+                                                f.Anio).FirstOrDefault()?.Valor.ToString("0.000")</p>
+                    <small class="text-muted">tCO2e/MWh</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center h-100">
+                <div class="card-body">
+                    <div class="mb-2">
+                        <span class="badge bg-success bg-opacity-75 fs-6"><i class="bi bi-graph-up-arrow me-1"></i>
+                            Mínimo</span>
+                    </div>
+                    <h5 class="card-title mb-1">Valor más bajo</h5>
+                    <p class="display-6 fw-bold mb-0">@Model.FactoresEmision.Min(f => f.Valor).ToString("0.000")</p>
+                    <small class="text-muted">tCO2e/MWh</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center h-100">
+                <div class="card-body">
+                    <div class="mb-2">
+                        <span class="badge bg-warning bg-opacity-75 fs-6"><i class="bi bi-graph-down-arrow me-1"></i>
+                            Máximo</span>
+                    </div>
+                    <h5 class="card-title mb-1">Valor más alto</h5>
+                    <p class="display-6 fw-bold mb-0">@Model.FactoresEmision.Max(f => f.Valor).ToString("0.000")</p>
+                    <small class="text-muted">tCO2e/MWh</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm text-center h-100">
+                <div class="card-body">
+                    <div class="mb-2">
+                        <span class="badge bg-info bg-opacity-75 fs-6"><i class="bi bi-bar-chart-line me-1"></i>
+                            Promedio</span>
+                    </div>
+                    <h5 class="card-title mb-1">Promedio</h5>
+                    <p class="display-6 fw-bold mb-0">@Model.FactoresEmision.Average(f => f.Valor).ToString("0.000")</p>
+                    <small class="text-muted">tCO2e/MWh</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráfico Highcharts -->
+    <div class="card shadow-sm mb-4" data-aos="fade-up">
+        <div class="card-body">
+            <h5 class="card-title mb-3"><i class="bi bi-bar-chart-line me-2"></i>Tendencia de Factores de Emisión
+                (2017-2030)</h5>
+            <div id="grafico-factor" style="width:100%; height:400px;"></div>
+        </div>
+    </div>
+
+    <!-- Alert informativa -->
+    <div class="alert alert-info" role="alert" data-aos="fade-right">
+        <h4 class="alert-heading">Tendencia de Factores de Emisión</h4>
+        <p>El gráfico muestra la tendencia de los factores de emisión del Sistema Eléctrico Nacional desde 2017 hasta
+            2023. La línea discontinua de color <span style="color: #ff5733;">naranja</span> representa un pronóstico
+            para el año 2024.</p>
+        <hr>
+        <p class="mb-0">Este pronóstico se ha calculado utilizando una regresión lineal simple basada en los valores de
+            los años anteriores. La regresión lineal es una técnica estadística que permite estimar el valor futuro
+            basándose en la relación lineal observada entre las variables del tiempo (años) y el factor de emisión. El
+            valor pronosticado para 2024 es un estimado basado en esta tendencia media y debe interpretarse con
+            precaución.</p>
+    </div>
+
+    <!-- Tabla de factores de emisión -->
+    <div class="card shadow-sm mb-4" data-aos="fade-up">
+        <div class="card-body">
+            <h5 class="card-title mb-3"><i class="bi bi-table me-2"></i>Histórico de Factores de Emisión</h5>
+            <div class="table-responsive">
+                <table id="tablaFactores" class="table table-striped table-hover w-100">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Año</th>
+                            <th>Valor (tCO2e/MWh)</th>
+                            <th>PDF Oficial</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var factor in Model.FactoresEmision.OrderByDescending(f => f.Anio))
+                        {
+                            <tr>
+                                <td>@factor.Anio</td>
+                                <td>@factor.Valor.ToString("0.000")</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(factor.PdfUrl))
+                                    {
+                                        <a href="@factor.PdfUrl" target="_blank" class="btn btn-sm btn-outline-primary"
+                                            data-bs-toggle="tooltip" title="Ver PDF oficial">
+                                            <i class="bi bi-file-earmark-pdf"></i> PDF
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Sin PDF</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enlaces rápidos a PDFs -->
+    <div class="card shadow-sm mb-4" data-aos="fade-up">
+        <div class="card-body">
+            <h5 class="card-title mb-3"><i class="bi bi-link-45deg me-2"></i>Enlaces a Avisos Oficiales (PDFs)</h5>
+            <ul class="list-group list-group-flush">
+                @foreach (var factor in Model.FactoresEmision.OrderByDescending(f => f.Anio))
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>Factor de Emisión <strong>@factor.Anio</strong> - <span
+                                class="badge bg-secondary">@factor.Valor.ToString("0.000") tCO2e/MWh</span></span>
+                        @if (!string.IsNullOrEmpty(factor.PdfUrl))
+                        {
+                            <a href="@factor.PdfUrl" target="_blank" class="btn btn-sm btn-outline-primary"
+                                data-bs-toggle="tooltip" title="Ver PDF oficial">
+                                <i class="bi bi-file-earmark-pdf"></i>
+                            </a>
+                        }
+                        else
+                        {
+                            <span class="badge bg-light text-muted">Sin PDF</span>
+                        }
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+    <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // DataTables
+            $('#tablaFactores').DataTable({
+                responsive: true,
+                scrollX: true,
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+                dom: 'Bfrtip',
+                buttons: [
+                    {
+                        extend: 'collection',
+                        text: '<i class="bi bi-download"></i> Exportar',
+                        buttons: [
+                            {
+                                extend: 'excel',
+                                className: 'btn btn-success'
+                            },
+                            {
+                                extend: 'csv',
+                                className: 'btn btn-outline-primary'
+                            },
+                            {
+                                extend: 'pdf',
+                                className: 'btn btn-outline-danger'
+                            },
+                            {
+                                extend: 'print',
+                                className: 'btn btn-outline-secondary'
+                            }
+                        ]
+                    }
+                ]
+            });
+
+            // Tooltips Bootstrap
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+
+            // Highcharts
+            const categories = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030];
+
+            Highcharts.chart('grafico-factor', {
+                chart: {
+                    type: 'line',
+                    backgroundColor: '#fff'
+                },
+                title: {
+                    text: 'Tendencia de Factores de Emisión (2017-2030)'
+                },
+                xAxis: {
+                    categories: categories
+                },
+                yAxis: {
+                    title: {
+                        text: 'Factor de Emisión (tCO2e/MWh)'
+                    }
+                },
+                series: [{
+                    name: 'Factor de Emisión (2017-2023)',
+                    data: [
+                                                        @Html.Raw(JsonConvert.SerializeObject(Model.FactoresEmision.Where(f => f.Anio == 2017).Select(f => (double?)f.Valor).FirstOrDefault())),
+                                                        @Html.Raw(JsonConvert.SerializeObject(Model.FactoresEmision.Where(f => f.Anio == 2018).Select(f => (double?)f.Valor).FirstOrDefault())),
+                                                        @Html.Raw(JsonConvert.SerializeObject(Model.FactoresEmision.Where(f => f.Anio == 2019).Select(f => (double?)f.Valor).FirstOrDefault())),
+                                                        @Html.Raw(JsonConvert.SerializeObject(Model.FactoresEmision.Where(f => f.Anio == 2020).Select(f => (double?)f.Valor).FirstOrDefault())),
+                                                        @Html.Raw(JsonConvert.SerializeObject(Model.FactoresEmision.Where(f => f.Anio == 2021).Select(f => (double?)f.Valor).FirstOrDefault())),
+                                                        @Html.Raw(JsonConvert.SerializeObject(Model.FactoresEmision.Where(f => f.Anio == 2022).Select(f => (double?)f.Valor).FirstOrDefault())),
+                                                        @Html.Raw(JsonConvert.SerializeObject(Model.FactoresEmision.Where(f => f.Anio == 2023).Select(f => (double?)f.Valor).FirstOrDefault())),
+                        null, null, null, null, null, null, null
+                    ],
+                    color: '#7cb5ec',
+                    dashStyle: 'Solid'
+                }, {
+                    name: 'Pronóstico (2024-2030)',
+                    data: [
+                        null, null, null, null, null, null, null,
+                                                        @Html.Raw(JsonConvert.SerializeObject(Model.FactoresEmision.Where(f => f.Anio == 2024).Select(f => (double?)f.Valor).FirstOrDefault())),
+                        null, null, null, null, null, null
+                    ],
+                    color: '#ff5733',
+                    dashStyle: 'Dash'
+                }]
+            });
+        });
+    </script>
+}

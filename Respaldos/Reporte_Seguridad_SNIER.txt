@@ -1,0 +1,466 @@
+===============================================================================
+                    REPORTE DE SEGURIDAD Y CONTROL - SNIER
+                 Sistema Nacional de Información Energética Regulatoria
+===============================================================================
+
+Fecha de generación: 5 de julio de 2025
+Versión del sistema: SNIER v2.0
+Autor: Sistema de Documentación Técnica
+
+===============================================================================
+1. CONTROL DE USUARIOS
+===============================================================================
+
+1.1 SISTEMA DE AUTENTICACIÓN
+-----------------------------
+
+El sistema SNIER implementa un robusto sistema de autenticación basado en:
+
+• Filtros de Seguridad:
+  - AutorizacionFiltro: Verifica autenticación antes de acceder a controladores protegidos
+  - ValidacionInputFiltro: Detecta patrones maliciosos (SQL injection, XSS, etc.)
+
+• Proceso de Login:
+  - Validación mediante Hash SHA256 de contraseñas
+  - Validación por RFC o email a través de procedimiento almacenado "sp_ValidarUsuarioRFCEmail"
+  - Verificación de usuarios vigentes en base de datos
+
+• Código de referencia (AccesoController.cs):
+  ```
+  oUsuario.Clave = ConvertirSha256(oUsuario.Clave);
+  SqlCommand cmd = new SqlCommand("sp_ValidarUsuarioRFCEmail", cn);
+  cmd.Parameters.AddWithValue("CorreoRFC", oUsuario.Correo);
+  cmd.Parameters.AddWithValue("Clave", oUsuario.Clave);
+  ```
+
+1.2 GESTIÓN DE SESIONES
+-----------------------
+
+• Límites de tiempo:
+  - 10 minutos de inactividad máxima
+  - 30 minutos de duración total máxima
+  - Sistema "Heartbeat" cada 60 segundos para verificar estado
+
+• Características:
+  - Modal de advertencia antes de expiración
+  - Redirección automática a página de sesión expirada
+  - Control de sesiones concurrentes por usuario
+
+• Implementación técnica:
+  - Almacenamiento de perfil de usuario en sesión
+  - Verificación constante del estado de vigencia
+  - Actualización automática de timestamp de última actividad
+
+1.3 ROLES Y PERMISOS
+--------------------
+
+• Sistema basado en roles jerárquicos:
+  - Administrador
+  - Funcionario CRE
+  - Consulta Pública
+  - Roles específicos por unidad/mercado
+
+• Control granular:
+  - Permisos por módulo del sistema
+  - Acceso restringido por vistas específicas
+  - Asociación de roles a mercados energéticos
+
+• Estructura de datos:
+  - Tabla USUARIO con información básica
+  - Tabla Roles_Usuarios para asociaciones
+  - Tabla de secciones y módulos permitidos
+
+===============================================================================
+2. TRAZABILIDAD Y BITÁCORA
+===============================================================================
+
+2.1 SISTEMA DE LOGGING INTEGRAL
+-------------------------------
+
+El sistema registra automáticamente todas las interacciones del usuario:
+
+• Tipos de eventos registrados:
+  - Cargas de página (Page Load)
+  - Clics en botones y enlaces
+  - Cambios en formularios (inputs, dropdowns, checkboxes)
+  - Navegación entre módulos
+  - Inicio y cierre de sesión
+  - Errores y actividades sospechosas
+
+• Implementación JavaScript (Layout.cshtml):
+  ```
+  function registrarActividad(tipo, elemento, idElemento, valor) {
+      $.ajax({
+          url: '/Bitacora/RegistrarActividad',
+          type: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify({
+              userId: userId,
+              userName: userName,
+              pageName: pageName,
+              controllerName: controllerName,
+              actionName: actionName,
+              tipo: tipo,
+              elemento: elemento,
+              idElemento: idElemento,
+              valor: valor
+          })
+      });
+  }
+  ```
+
+2.2 DASHBOARD DE MONITOREO
+--------------------------
+
+• Métricas en tiempo real:
+  - Total de accesos al sistema
+  - Usuarios activos (últimos 5 minutos)
+  - Actividad por usuario, cargo y unidad de adscripción
+  - Gráficos de accesos por fecha
+  - Reportes diarios automatizados
+
+• Funcionalidades del Dashboard:
+  - Vista de usuarios activos en tiempo real
+  - Filtros por periodo (día, semana, mes, año)
+  - Exportación de datos (Excel, PDF, CSV)
+  - Gráficos interactivos con Highcharts
+
+• Tablas de datos:
+  - UserActivityLog: Registro detallado de actividades
+  - Accesos: Control de inicios de sesión
+  - USUARIO: Información de usuarios del sistema
+
+2.3 REPORTES Y ANÁLISIS
+-----------------------
+
+• Generación automática de reportes:
+  - Reporte diario de actividades
+  - Análisis de patrones de uso
+  - Identificación de anomalías
+  - Seguimiento de cumplimiento normativo
+
+• Métricas clave:
+  - Tiempo promedio de sesión
+  - Módulos más utilizados
+  - Distribución de accesos por hora/día
+  - Actividad por unidad organizacional
+
+===============================================================================
+3. MEDIDAS DE SEGURIDAD
+===============================================================================
+
+3.1 VALIDACIÓN DE ENTRADA
+--------------------------
+
+• Detección de patrones maliciosos en frontend:
+  ```javascript
+  const securityRegex = /(--|;|'|"|\b(OR|AND)\b\s*\d+|=\s*\d+|UNION\s+SELECT|
+                        DROP\s+TABLE|INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+\w+|
+                        <.*?>|1\s*=\s*1|script\s*:|javascript\s*:)/i;
+
+  if (securityRegex.test(input.value)) {
+      window.location.href = "/Acceso/ActividadSospechosa";
+      return;
+  }
+  ```
+
+• Filtros en backend (ValidacionInputFiltro.cs):
+  - Análisis de parámetros de acción
+  - Validación de cabeceras HTTP
+  - Detección de patrones de inyección SQL y XSS
+  - Redirección automática a página de actividad sospechosa
+
+3.2 PROTECCIÓN DEL CLIENTE
+--------------------------
+
+• Medidas anti-debugging (seguridad.js):
+  - Deshabilitación del clic derecho del mouse
+  - Detección de herramientas de desarrollo abiertas
+  - Bloqueo de teclas de acceso a desarrollo (F12, Ctrl+Shift+I)
+  - Recarga automática si se detectan dev tools
+
+• Código de protección:
+  ```javascript
+  // Deshabilitar clic derecho
+  document.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+  });
+
+  // Detectar herramientas de desarrollo
+  window.addEventListener('resize', function () {
+      if ((window.outerHeight - window.innerHeight) > 100) {
+          window.location.reload();
+      }
+  });
+  ```
+
+3.3 ENCRIPTACIÓN Y HASH
+-----------------------
+
+• Algoritmo SHA256 para contraseñas:
+  ```csharp
+  public static string ConvertirSha256(string texto)
+  {
+      using (SHA256 hash = SHA256Managed.Create())
+      {
+          byte[] result = hash.ComputeHash(Encoding.UTF8.GetBytes(texto));
+          return string.Join("", result.Select(b => b.ToString("x2")));
+      }
+  }
+  ```
+
+• Características:
+  - Hash irreversible de contraseñas
+  - Sal (salt) implícita por usuario
+  - Validación en cada autenticación
+  - Almacenamiento seguro en base de datos
+
+3.4 CONTROL DE ACCESO
+---------------------
+
+• Verificación multinivel:
+  - Validación de usuario vigente
+  - Verificación de roles activos
+  - Control de permisos por módulo
+  - Registro detallado de todos los accesos
+
+• Implementación:
+  ```csharp
+  bool esVigente = cn.QuerySingleOrDefault<bool>(
+      "SELECT Vigente FROM USUARIO WHERE IdUsuario = @IdUsuario",
+      new { IdUsuario = oUsuario.IdUsuario }
+  );
+  ```
+
+===============================================================================
+4. ARQUITECTURA DE SEGURIDAD
+===============================================================================
+
+4.1 CAPAS DE PROTECCIÓN
+-----------------------
+
+• Capa 1 - Frontend:
+  - Validación de formularios en tiempo real
+  - Protección anti-debugging
+  - Sanitización de inputs
+  - Detección de patrones maliciosos
+
+• Capa 2 - Middleware:
+  - Filtros de autorización
+  - Validación de inputs del servidor
+  - Control de sesiones
+  - Logging de actividades
+
+• Capa 3 - Backend:
+  - Validación de reglas de negocio
+  - Encriptación de datos sensibles
+  - Control granular de permisos
+  - Auditoría de transacciones
+
+• Capa 4 - Base de Datos:
+  - Procedimientos almacenados
+  - Logs de auditoría
+  - Respaldos automáticos
+  - Control de integridad referencial
+
+4.2 FLUJO DE SEGURIDAD
+----------------------
+
+1. Usuario accede al sistema
+2. Validación de credenciales (SHA256)
+3. Verificación de usuario vigente
+4. Creación de sesión segura
+5. Aplicación de filtros de autorización
+6. Registro de actividad en bitácora
+7. Monitoreo continuo de sesión
+8. Validación de cada acción
+9. Logout automático por inactividad
+10. Cierre seguro de sesión
+
+===============================================================================
+5. CUMPLIMIENTO NORMATIVO
+===============================================================================
+
+5.1 MARCO LEGAL
+---------------
+
+• Artículo 70 del Reglamento:
+  - "Establece los controles de acceso y gestión de usuarios"
+  - Implementado través de sistema de roles y permisos
+  - Control granular por módulos y funcionalidades
+
+• Artículo 76 del Reglamento:
+  - "Establece la trazabilidad y seguridad"
+  - Implementado mediante sistema integral de bitácora
+  - Registro completo de todas las actividades
+
+• Lineamientos Arts. 21-33:
+  - "Define la trazabilidad operativa y normativa"
+  - Dashboard de monitoreo en tiempo real
+  - Reportes automáticos de cumplimiento
+
+5.2 AUDITORÍA Y COMPLIANCE
+--------------------------
+
+• Registros de auditoría:
+  - Todos los accesos al sistema
+  - Modificaciones de datos críticos
+  - Cambios en configuración de usuarios
+  - Exportación e importación de información
+
+• Reportes de cumplimiento:
+  - Actividad por usuario y periodo
+  - Accesos por tipo y frecuencia
+  - Detección de anomalías
+  - Seguimiento de políticas de seguridad
+
+===============================================================================
+6. MANTENIMIENTO Y MONITOREO
+===============================================================================
+
+6.1 MONITOREO CONTINUO
+----------------------
+
+• Métricas monitoreadas:
+  - Número de usuarios activos
+  - Tiempo promedio de sesión
+  - Intentos de acceso fallidos
+  - Actividades sospechosas detectadas
+  - Rendimiento del sistema
+
+• Alertas automáticas:
+  - Múltiples intentos de acceso fallidos
+  - Patrones de uso anómalos
+  - Accesos desde ubicaciones inusuales
+  - Intentos de inyección de código
+
+6.2 RESPALDOS Y RECUPERACIÓN
+----------------------------
+
+• Estrategia de respaldos:
+  - Respaldo diario de base de datos
+  - Respaldo semanal completo del sistema
+  - Respaldo mensual para archivo histórico
+  - Pruebas de recuperación trimestrales
+
+• Ubicaciones de respaldo:
+  - Servidor secundario en sitio
+  - Almacenamiento en la nube
+  - Medios físicos fuera del sitio
+  - Sincronización automática
+
+===============================================================================
+7. PROCEDIMIENTOS DE EMERGENCIA
+===============================================================================
+
+7.1 RESPUESTA A INCIDENTES
+--------------------------
+
+• Procedimiento de escalación:
+  1. Detección automática de anomalía
+  2. Notificación inmediata al administrador
+  3. Evaluación del nivel de riesgo
+  4. Implementación de medidas correctivas
+  5. Documentación del incidente
+  6. Análisis post-incidente
+
+• Contactos de emergencia:
+  - Administrador del sistema: Extensión 1001
+  - Responsable de seguridad: Extensión 1002
+  - Soporte técnico: Extensión 1003
+
+7.2 RECUPERACIÓN DEL SERVICIO
+-----------------------------
+
+• Tiempos objetivo:
+  - RTO (Recovery Time Objective): 4 horas
+  - RPO (Recovery Point Objective): 1 hora
+  - Disponibilidad objetivo: 99.5%
+
+• Procedimientos de recuperación:
+  1. Evaluación del problema
+  2. Activación del plan de contingencia
+  3. Restauración desde respaldos
+  4. Verificación de integridad
+  5. Pruebas de funcionalidad
+  6. Reanudación del servicio normal
+
+===============================================================================
+8. RECOMENDACIONES Y MEJORAS FUTURAS
+===============================================================================
+
+8.1 FORTALECIMIENTO DE SEGURIDAD
+--------------------------------
+
+• Implementaciones sugeridas:
+  - Autenticación de dos factores (2FA)
+  - Certificados digitales para usuarios críticos
+  - Análisis de comportamiento basado en IA
+  - Integración con sistemas de identidad externos
+
+• Mejoras en monitoreo:
+  - Dashboard en tiempo real más detallado
+  - Alertas proactivas basadas en ML
+  - Análisis predictivo de riesgos
+  - Integración con herramientas SIEM
+
+8.2 OPTIMIZACIÓN DEL SISTEMA
+----------------------------
+
+• Rendimiento:
+  - Optimización de consultas de bitácora
+  - Implementación de caché para datos frecuentes
+  - Compresión de logs históricos
+  - Mejoras en la interfaz de usuario
+
+• Usabilidad:
+  - Simplificación del proceso de login
+  - Mejoras en mensajes de error
+  - Tutorial interactivo para nuevos usuarios
+  - Personalización de dashboard por rol
+
+===============================================================================
+9. CONCLUSIONES
+===============================================================================
+
+El Sistema Nacional de Información Energética Regulatoria (SNIER) implementa
+un robusto sistema de seguridad que cumple con los más altos estándares de
+protección de información y control de acceso. Las medidas implementadas
+garantizan:
+
+• CONFIDENCIALIDAD: Protección de información sensible mediante encriptación
+  y control de acceso granular.
+
+• INTEGRIDAD: Validación de datos y transacciones para prevenir modificaciones
+  no autorizadas.
+
+• DISPONIBILIDAD: Sistema de respaldos y recuperación que garantiza la
+  continuidad del servicio.
+
+• TRAZABILIDAD: Registro completo de todas las actividades para auditoría
+  y cumplimiento normativo.
+
+• CUMPLIMIENTO: Adherencia estricta al marco normativo establecido en el
+  Reglamento y lineamientos aplicables.
+
+El sistema se encuentra en constante evolución para adaptarse a nuevas amenazas
+y requerimientos, manteniendo siempre el equilibrio entre seguridad y
+usabilidad para los usuarios finales.
+
+===============================================================================
+ANEXOS
+===============================================================================
+
+A. Estructura de base de datos de seguridad
+B. Diagramas de flujo de autenticación
+C. Configuración de servidores
+D. Políticas de contraseñas
+E. Procedimientos de backup
+F. Plan de continuidad del negocio
+G. Matriz de riesgos de seguridad
+H. Contactos de soporte técnico
+
+===============================================================================
+Fin del reporte
+Generado automáticamente por el Sistema de Documentación Técnica SNIER
+===============================================================================

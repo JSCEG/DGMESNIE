@@ -1,0 +1,397 @@
+@inject IHttpContextAccessor HttpContextAccessor
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    ViewData["Title"] = "Prospectivas - Sector Eléctrico";
+    ViewData["NombreUsuario"] = perfilUsuario?.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario?.Rol;
+    ViewData["IDUsuario"] = perfilUsuario?.IdUsuario;
+
+    var header = new HeaderViewModel
+    {
+        Title = "Prospectivas del Sector Eléctrico",
+        IconPath = "conding.png",
+        Description = "Panel interactivo con datos de proyecciones y tendencias del sector eléctrico mexicano",
+        Section = "🧬 SNIEr > 📊 Prospectivas Energéticas > ⚡ Sector Eléctrico",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Prospectivas del Sector Eléctrico",
+            description = "Visualización interactiva de datos prospectivos del sector eléctrico nacional mediante PowerBI.",
+            functionality = "Panel que presenta proyecciones de demanda, capacidad instalada, generación y tendencias tecnológicas del sector eléctrico.",
+            stage = "Operativo",
+            roles = new[] {
+                new { icon = "graph-up-arrow", text = "Análisis Prospectivo: Modelos de planificación energética" },
+                new { icon = "lightning", text = "Sector Eléctrico: Proyecciones y tendencias" },
+                new { icon = "bar-chart", text = "Visualización: Dashboard interactivo PowerBI" }
+            },
+            order = new { step = 1, description = "Panel de prospectivas energéticas disponible" },
+            manualUrl = "#"
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<style>
+    /* Estilos específicos para PowerBI responsivo */
+    .powerbi-container {
+        position: relative;
+        width: 100%;
+        height: 0;
+        padding-bottom: 62.25%;
+        /* Ratio 16:10 para PowerBI */
+        background: var(--white);
+        border-radius: var(--border-radius-lg);
+        box-shadow: var(--shadow-soft);
+        overflow: hidden;
+        border: 1px solid var(--gray-200);
+    }
+
+    .powerbi-iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border: none;
+        border-radius: var(--border-radius-lg);
+    }
+
+    .powerbi-loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        color: var(--gray-500);
+        z-index: 1;
+    }
+
+    .powerbi-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--gray-50);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.3s ease;
+        z-index: 2;
+    }
+
+    .powerbi-overlay.hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* Responsive adjustments */
+    @@media (max-width: 768px) {
+        .powerbi-container {
+            padding-bottom: 75%;
+            /* Ratio más cuadrado para móviles */
+        }
+    }
+
+    @@media (max-width: 576px) {
+        .powerbi-container {
+            padding-bottom: 80%;
+            border-radius: var(--border-radius);
+        }
+    }
+
+    /* Tooltip para información adicional */
+    .info-tooltip {
+        position: relative;
+        display: inline-block;
+        cursor: help;
+    }
+
+    .info-tooltip .tooltip-text {
+        visibility: hidden;
+        width: 300px;
+        background-color: var(--gray-800);
+        color: var(--white);
+        text-align: center;
+        border-radius: var(--border-radius);
+        padding: 10px;
+        position: absolute;
+        z-index: 1000;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -150px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        font-size: var(--font-size-sm);
+        line-height: 1.4;
+    }
+
+    .info-tooltip:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
+    }
+
+    .stats-mini-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-mini-item {
+        background: linear-gradient(135deg, var(--white) 0%, var(--gray-50) 100%);
+        padding: 1rem;
+        border-radius: var(--border-radius);
+        text-align: center;
+        border: 1px solid var(--gray-200);
+        transition: var(--transition);
+        border-left: 3px solid var(--snier-primary);
+    }
+
+    .stat-mini-item:hover {
+        box-shadow: var(--shadow-soft);
+        transform: translateY(-2px);
+    }
+
+    .stat-mini-value {
+        font-size: var(--font-size-xl);
+        font-weight: var(--font-weight-bold);
+        color: var(--snier-primary);
+        margin-bottom: 0.25rem;
+    }
+
+    .stat-mini-label {
+        font-size: var(--font-size-xs);
+        color: var(--gray-600);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+</style>
+
+<!-- Contenido principal -->
+<div class="container-fluid p-4">
+    <!-- Mini estadísticas -->
+    <div class="stats-mini-grid">
+        <div class="stat-mini-item">
+            <div class="stat-mini-value">2030</div>
+            <div class="stat-mini-label">Horizonte Principal</div>
+        </div>
+        <div class="stat-mini-item">
+            <div class="stat-mini-value">5+</div>
+            <div class="stat-mini-label">Escenarios Modelados</div>
+        </div>
+        <div class="stat-mini-item">
+            <div class="stat-mini-value">Nacional</div>
+            <div class="stat-mini-label">Cobertura Territorial</div>
+        </div>
+        <div class="stat-mini-item">
+            <div class="stat-mini-value">PowerBI</div>
+            <div class="stat-mini-label">Plataforma de Análisis</div>
+        </div>
+    </div>
+
+    <!-- Botones de acción -->
+    <div class="d-flex justify-content-end gap-2 mb-3">
+        <button class="btn btn-primary btn-sm" onclick="toggleFullscreen()">
+            <i class="bi bi-arrows-fullscreen me-1"></i>
+            Pantalla Completa
+        </button>
+    </div>
+
+    <!-- Contenedor del PowerBI -->
+    <div class="powerbi-container" id="powerbiContainer">
+        <!-- Overlay de carga -->
+        <div class="powerbi-overlay" id="powerbiOverlay">
+            <div class="powerbi-loading">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Cargando...</span>
+                </div>
+                <div>
+                    <h5 class="mb-2">Cargando Panel de Prospectivas</h5>
+                    <p class="small text-muted mb-0">Preparando visualización de datos...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- iframe del PowerBI -->
+        <iframe id="powerbiFrame" class="powerbi-iframe" title="Sector Eléctrico v.02.03"
+            src="https://app.powerbi.com/view?r=eyJrIjoiMjAyOTk2YzktZmMwNi00MGVhLWI5ZTgtNzc2YTExYTAxZmVjIiwidCI6IjczMzY5OTZkLTMzNjctNDBhNC04NGFmLWRkMTI3NDY4YzA3OCIsImMiOjR9"
+            allowfullscreen="true" onload="hideLoadingOverlay()" style="display: none;">
+        </iframe>
+    </div>
+
+    <!-- Información adicional -->
+    <div class="row mt-4">
+        <div class="col-md-8">
+            <div class="alert alert-info border-0" style="background: rgba(24, 156, 144, 0.1);">
+                <div class="d-flex">
+                    <i class="bi bi-lightbulb text-warning me-3 fs-4"></i>
+                    <div>
+                        <h6 class="alert-heading mb-2">Información sobre los Datos</h6>
+                        <p class="mb-1">
+                            <strong>Fuente:</strong> Modelos de prospectiva energética SENER - Secretaría de Energía
+                        </p>
+                        <p class="mb-1">
+                            <strong>Actualización:</strong> Los datos se actualizan periódicamente conforme a los
+                            ejercicios de planeación
+                        </p>
+                        <p class="mb-0">
+                            <strong>Metodología:</strong> Basado en modelos econométricos y análisis de tendencias del
+                            sector eléctrico
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0" style="background: var(--gray-50);">
+                <div class="card-body">
+                    <h6 class="card-title">
+                        <i class="bi bi-download me-2"></i>Recursos Adicionales
+                    </h6>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary btn-sm" onclick="downloadReport()">
+                            <i class="bi bi-file-earmark-pdf me-1"></i>
+                            Descargar Reporte
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="shareReport()">
+                            <i class="bi bi-share me-1"></i>
+                            Compartir Panel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Función para ocultar el overlay de carga
+    function hideLoadingOverlay() {
+        const overlay = document.getElementById('powerbiOverlay');
+        const iframe = document.getElementById('powerbiFrame');
+
+        if (overlay && iframe) {
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                iframe.style.display = 'block';
+            }, 1500); // Pequeño delay para mejor UX
+        }
+    }
+
+    // Función para pantalla completa
+    function toggleFullscreen() {
+        const container = document.getElementById('powerbiContainer');
+
+        if (!document.fullscreenElement) {
+            container.requestFullscreen().then(() => {
+                container.style.position = 'fixed';
+                container.style.top = '0';
+                container.style.left = '0';
+                container.style.width = '100vw';
+                container.style.height = '100vh';
+                container.style.zIndex = '9999';
+                container.style.paddingBottom = '0';
+            }).catch(err => {
+                console.log('Error al entrar en pantalla completa:', err);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    }
+
+    // Listener para salir de pantalla completa
+    document.addEventListener('fullscreenchange', function () {
+        const container = document.getElementById('powerbiContainer');
+        if (!document.fullscreenElement) {
+            // Restaurar estilos originales
+            container.style.position = '';
+            container.style.top = '';
+            container.style.left = '';
+            container.style.width = '';
+            container.style.height = '';
+            container.style.zIndex = '';
+            container.style.paddingBottom = '62.25%';
+        }
+    });
+
+    // Función para descargar reporte (placeholder)
+    function downloadReport() {
+        Swal.fire({
+            title: 'Descarga de Reporte',
+            text: 'Esta funcionalidad estará disponible próximamente.',
+            icon: 'info',
+            confirmButtonText: 'Entendido',
+            confirmButtonColor: 'var(--snier-primary)'
+        });
+    }
+
+    // Función para compartir (placeholder)
+    function shareReport() {
+        if (navigator.share) {
+            navigator.share({
+                title: 'Prospectivas del Sector Eléctrico - SNIER',
+                text: 'Panel interactivo de prospectivas energéticas del sector eléctrico',
+                url: window.location.href
+            });
+        } else {
+            // Fallback para navegadores que no soportan Web Share API
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                Swal.fire({
+                    title: 'Enlace Copiado',
+                    text: 'El enlace ha sido copiado al portapapeles',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            });
+        }
+    }
+
+    // Inicialización cuando el DOM esté listo
+    document.addEventListener('DOMContentLoaded', function () {
+        // Verificar si el iframe se carga correctamente
+        const iframe = document.getElementById('powerbiFrame');
+
+        // Timeout de seguridad para ocultar el loading si el iframe no responde
+        setTimeout(() => {
+            if (document.getElementById('powerbiOverlay').style.opacity !== '0') {
+                hideLoadingOverlay();
+            }
+        }, 10000); // 10 segundos de timeout
+
+        // Manejo responsive del iframe
+        function adjustIframeHeight() {
+            const container = document.getElementById('powerbiContainer');
+            if (window.innerWidth <= 768) {
+                container.style.paddingBottom = '75%';
+            } else if (window.innerWidth <= 576) {
+                container.style.paddingBottom = '80%';
+            } else {
+                container.style.paddingBottom = '62.25%';
+            }
+        }
+
+        // Ajustar al cargar y al redimensionar
+        adjustIframeHeight();
+        window.addEventListener('resize', adjustIframeHeight);
+    });
+</script>
+                        
+                                                                                                                                                                                           
+                                                                                                                                                                                                                                                                                       
+                       
+                           
+                                           
+                                    
+                                                                                                                                                                                                                                                                  
+                    
+                                        
+            

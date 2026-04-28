@@ -1,0 +1,96 @@
+@model List<Credito>;
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+
+    var ordenSecciones = new List<string> { "Líder del Proyecto", "Desarrollo del Proyecto", "Colaboradores del Proyecto" };
+
+    // Agrupa los créditos por sección y luego ordénalos por CreditoID de manera descendente
+    var creditosAgrupados = Model
+    .GroupBy(c => c.Seccion)
+    .OrderBy(g => ordenSecciones.IndexOf(g.Key))
+    .Select(g => new { Seccion = g.Key, Creditos = g.OrderBy(c => c.CreditoID) })
+    .ToList();
+}
+
+@{
+    ViewData["Title"] = "Créditos";
+}
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/creditos.png" alt="Icono personalizado" class="iconomenu" />
+        @ViewData["Title"]
+    </h4>
+</div>
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+
+
+
+<div class="container">
+    <div class="alert alert-success" role="alert">
+        <h5 class="alert-heading">EnerGeoCRE</h5>
+        <hr>
+        <p class="mb-0"><strong> Número de registro ante INDAUTOR:</strong> 03-2023-081012481700-01</p>
+        <br>
+        <p class="mb-0"><strong> IMPI:</strong> 2985463</p><br>
+
+    </div>
+
+    <section class="creditos">
+        @foreach (var grupo in creditosAgrupados)
+        {
+            if (ordenSecciones.Contains(grupo.Seccion))
+            {
+                <h3 class="subtitulo">@grupo.Seccion</h3>
+                <div class="row">
+                    @foreach (var credito in grupo.Creditos)
+                    {
+                        <div class="col-lg-5">
+                            <div class="media">
+                                @* <a class="pull-left" href="@Url.Action("Resena", "Usuarios", new { id = credito.CreditoID })"> *@
+
+                                <a class="pull-left">
+                                    <img class="media-object dp img-circle" src="@credito.ImagenUrl"
+                                        style="width: 180px;height:180px; ">
+                                </a>
+
+
+                                <div class="media-body">
+                                    <h4 class="media-heading">@credito.Nombre</h4>
+                                    <h5>@credito.Cargo <a href="@credito.PaginaWeb">@credito.PaginaWeb</a></h5>
+                                    <hr style="margin:8px auto">
+                                    <p class="">@credito.Actividades</p>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </section>
+</div>
+
+
+
+@section scripts {
+
+
+}

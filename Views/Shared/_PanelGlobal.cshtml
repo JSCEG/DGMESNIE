@@ -1,0 +1,395 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{  
+     @* var cdn = "https://cdn.sassoapps.com"; *@
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    var seccionesUsuarioJson = httpContext.Session.GetString("SeccionesUsuario");
+    var seccionesUsuario = JsonConvert.DeserializeObject<List<SeccionSNIER>>(seccionesUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Unidad_de_Adscripcion"] = perfilUsuario.Unidad_de_Adscripcion;
+    ViewData["Mercado_ID"] = perfilUsuario.Mercado_ID;
+ var currentController = ViewContext.RouteData.Values["Controller"].ToString();
+    var currentAction = ViewContext.RouteData.Values["Action"].ToString(); 
+        @* var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+    var currentAction = ViewContext.RouteData.Values["action"]?.ToString(); *@
+}
+ 
+ 
+ <!-- Header -->
+    <header class="header-custom navbar navbar-expand-lg navbar-light fixed-top>
+        <div class="container-fluid px-3">
+            <!-- Botón toggle -->
+            <button id="sidebarToggle" class="btn sidebar-toggle-pro me-3" type="button" aria-label="Toggle Menu">
+                <span class="line line-1"></span>
+                <span class="line line-2"></span>
+                <span class="line line-3"></span>
+            </button>
+
+            <!-- Logo/Marca SNIER -->
+            <a class="navbar-brand d-flex align-items-center" href="@Url.Action("Index", "Home")">
+                <span class="bg-whitep-2 me-2">
+                    <img src="@Cdn.Url/img_snier/login/logo_snier.png" alt="Logo SNIER" style="height:64px;width:auto;" />
+                </span>
+                @* <span class="fw-bold d-none d-md-inline">SNIER</span> *@
+            </a>
+
+            <!-- Contenido derecho del header -->
+            <div class="d-flex flex-wrap justify-content-end align-items-center ms-auto gap-2">
+
+                <!-- Buscador -->
+                <form class="d-none d-md-flex me-3" role="search">
+                    <div class="input-group input-group-sm">
+                        <input class="form-control" type="search" placeholder="Buscar..." aria-label="Buscar">
+                        <button class="btn btn-header" type="submit">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </form>
+
+                @* <button id="generate-test-notification" class="btn btn-header">Prueba Notificaciones</button> *@
+
+                <!-- Notificaciones -->
+                @if (perfilUsuario.Rol != "0")
+                {
+                    <div class="app-utility-item app-notifications-dropdown dropdown me-3">
+                        <a class="btn btn-header position-relative dropdown-toggle no-toggle-arrow"
+                            id="notifications-dropdown-toggle" data-bs-toggle="dropdown" href="#" role="button"
+                            aria-expanded="false" title="Notificaciones">
+
+                            <!-- Ícono blanco -->
+                            <i class="bi bi-bell"></i>
+
+                            <!-- Badge dinámico -->
+                            <span class="icon-badge" id="notification-count">0</span>
+                        </a>
+
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm"
+                            aria-labelledby="notifications-dropdown-toggle">
+                            <li>
+                                <h6 class="dropdown-header">Avisos Importantes</h6>
+                            </li>
+
+                            <li id="notifications-list">
+                                <a class="dropdown-item" href="#">
+                                    <i class="bi bi-info-circle text-info me-2"></i>Ejemplo de notificación
+                                </a>
+                            </li>
+
+                            <li>
+                                <hr class="dropdown-divider" />
+                            </li>
+
+                            <li>
+                                <a class="dropdown-item text-center small snier-link"
+                                    href="@Url.Action("AllNotifications", "Usuarios", new { userId = ViewData["IDUsuario"] })">
+                                    Ver todas las notificaciones
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                }
+
+
+                <!-- Fin Notificaciones -->
+
+                <!-- Perfil de usuario -->
+                <div class="dropdown">
+                    <button class="btn btn-header dropdown-toggle" type="button" id="userDropdown"
+                        data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-person-circle me-2"></i>
+                        <span class="d-none d-md-inline">@ViewData["NombreUsuario"]</span>
+                    </button>
+
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                    @if (perfilUsuario.Rol != "0")
+                    {
+                        <li>
+                            <h6 class="dropdown-header">@ViewData["NombreUsuario"]</h6>
+                        </li>
+                        <li><span class="dropdown-item-text small text-muted">@ViewData["RolUsuario"]</span></li>
+                        <li><span class="dropdown-item-text small text-muted">@ViewData["Unidad_de_Adscripcion"]</span>
+                        </li>
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li><a class="dropdown-item"
+                                href="@Url.Action("ModeloCuentaCompuesto", "Usuarios", new { id = ViewData["IDUsuario"] })"><i
+                                    class="bi bi-person me-2"></i>Mi Perfil</a></li>
+                        <li><a class="dropdown-item" href="#"><i class="bi bi-gear me-2"></i>Configuración</a></li>
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                    }
+                        <li><a class="dropdown-item text-danger" asp-area="" asp-controller="Acceso"
+                                asp-action="CerrarSesion"> 🚪 Salir</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </header>
+    <script src="~/js/header-scroll.js"></script>
+    <script>
+        window.addEventListener('scroll', function () {
+            const header = document.querySelector('.header-fijo');
+            if (!header) return;
+            if (window.scrollY > 50) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+        });
+    </script>
+    <!-- Sidebar para móviles (Offcanvas) -->
+   <!-- SIDEBAR PARA MÓVILES - Sin iconos solo en secciones -->
+<div class="offcanvas offcanvas-start offcanvas-custom d-lg-none" tabindex="-1" id="sidebarMobile">
+    <div class="offcanvas-header border-bottom">
+        <h5 class="offcanvas-title text-dark">
+            <i class="bi bi-speedometer2 me-2"></i>Menú Principal
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+
+    <div class="offcanvas-body p-0 custom-scroll">
+        <nav class="nav flex-column py-3">
+            <a class="nav-link @(currentController == "Home" ? "active" : "")" href="@Url.Action("Index", "Home")">
+                <i class="bi bi-house me-3"></i>Inicio
+            </a>
+            <a class="nav-link" href="https://sie.energia.gob.mx/inicio/#/" target="_blank" rel="noopener noreferrer">
+                🌐 SIE Público
+            </a>
+            <a class="nav-link" href="https://cdn.sassoapps.com/video/SIE20.mp4" target="_blank" rel="noopener noreferrer">
+                🌐 SIE 2.0
+            </a>
+
+            @if (seccionesUsuario != null && seccionesUsuario.Any())
+            {
+                <hr class="my-3 mx-3 border-secondary" />
+                <div class="px-3 pb-2">
+                    <small class="section-header">Secciones Especializadas</small>
+                </div>
+
+                @foreach (var seccion in seccionesUsuario)
+                {
+                    var seccionIdMobile = $"mobile-seccion-{seccion.Id}";
+                    <li class="nav-item">
+                        <button class="nav-link d-flex justify-content-between align-items-center w-100 border-0 bg-transparent text-start"
+                                type="button"
+                                data-bs-toggle="collapse" 
+                                data-bs-target="#@seccionIdMobile" 
+                                aria-expanded="false">
+                            <span>@seccion.Titulo</span>
+                            <i class="bi bi-chevron-down"></i>
+                        </button>
+
+                        <div class="collapse" id="@seccionIdMobile">
+                            <ul class="nav flex-column ms-3">
+                                @foreach (var modulo in seccion.Modulos)
+                                {
+                                    var isVistaActiva = modulo.Vistas?.Any(v => v.VistaController == currentController && v.VistaAction == currentAction) ?? false;
+                                    var isModuloActivo = (modulo.Controller == currentController && modulo.Action == currentAction) || isVistaActiva;
+                                    var moduloIdMobile = $"mobile-modulo-{modulo.ModuloId}";
+
+                                    <li class="nav-item @(isModuloActivo ? "active" : "")">
+                                        @if (modulo.Vistas != null && modulo.Vistas.Any())
+                                        {
+                                            <button class="nav-link d-flex justify-content-between align-items-center w-100 border-0 bg-transparent text-start @(isModuloActivo ? "active" : "")"
+                                                    type="button"
+                                                    data-bs-toggle="collapse" 
+                                                    data-bs-target="#@moduloIdMobile"
+                                                    aria-expanded="@(isModuloActivo.ToString().ToLower())">
+                                                <span><i class=""></i>@modulo.Title</span>
+                                                <i class="bi bi-chevron-down"></i>
+                                            </button>
+
+                                            <div class="collapse @(isModuloActivo ? "show" : "")" id="@moduloIdMobile">
+                                                <ul class="nav flex-column ms-3">
+                                                    @foreach (var vista in modulo.Vistas)
+                                                    {
+                                                        var esVistaActiva = vista.VistaController == currentController && vista.VistaAction == currentAction;
+                                                        <li class="nav-item">
+                                                            <a class="nav-link @(esVistaActiva ? "active" : "")"
+                                                               asp-controller="@vista.VistaController"
+                                                               asp-action="@vista.VistaAction">
+                                                                <i class="bi bi-dot"></i> @vista.VistaTitle
+                                                            </a>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            @if (modulo.EsExterno)
+                                            {
+                                                <a class="nav-link" href="@modulo.Action" target="_blank" rel="noopener noreferrer">
+                                                    <i class=""></i>@modulo.Title <i class="bi bi-box-arrow-up-right ms-1"></i>
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <a class="nav-link @(isModuloActivo ? "active" : "")"
+                                                   asp-controller="@modulo.Controller"
+                                                   asp-action="@modulo.Action">
+                                                    <i class=""></i>@modulo.Title
+                                                </a>
+                                            }
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </li>
+                }
+            }
+                @if (perfilUsuario.IdUsuario == "1" || perfilUsuario.IdUsuario == "31")
+                {
+                <hr class="my-3 mx-3 border-secondary" />
+                    <div class="px-3 pb-2">
+                        <small class="section-header">Sistema</small>
+                    </div>
+                    <a class="nav-link @(currentController == "Usuarios" ? "active" : "")" href="@Url.Action("AdministrarUsuarios", "Usuarios")">
+                        <i class="bi bi-people-fill me-3"></i>Usuarios
+                    </a>
+                    <a class="nav-link @(currentController == "Secciones" ? "active" : "")" href="@Url.Action("Index", "Secciones")">
+                        <i class="bi bi-ui-checks-grid me-3"></i>Secciones
+                    </a>
+                }
+
+                <a class="nav-link @(currentController == "Acceso" ? "active" : "")" href="@Url.Action("CerrarSesion", "Acceso")">
+                    <i class="bi  bi-box-arrow-right me-3"></i>Salir
+                </a>
+        </nav>
+    </div>
+</div>
+
+<!-- SIDEBAR PARA ESCRITORIO - IDs únicos -->
+<aside id="sidebarDesktop" class="sidebar-desktop position-fixed top-0 start-0 d-none d-lg-block vh-100 custom-scroll pb-7" style="padding-top: var(--header-height);">
+    <div class="p-0 h-100">
+        <nav class="nav flex-column py-4">
+            <a class="nav-link @(currentController == "Home" ? "active" : "")" href="@Url.Action("Index", "Home")">
+                <i class="bi bi-house"></i>Inicio
+            </a>
+            <a class="nav-link" href="https://sie.energia.gob.mx/inicio/#/" target="_blank" rel="noopener noreferrer">
+                🌐 SIE Público
+            </a>
+
+            <a class="nav-link" href="https://cdn.sassoapps.com/video/SIE20.mp4" target="_blank" rel="noopener noreferrer">
+                🌐 SIE 2.0
+            </a>
+
+            @foreach (var seccion in seccionesUsuario)
+            {
+                var modulosVisibles = seccion.Modulos
+                    .Where(m => string.IsNullOrEmpty(m.Roles) || m.Roles.ToString().Split(',').Contains((string)perfilUsuario.Rol))
+                    .ToList();
+
+                var isActiveSection = modulosVisibles.Any(m =>
+                    (m.Vistas != null && m.Vistas.Any(v => currentController == v.VistaController && currentAction == v.VistaAction)) ||
+                    (currentController == m.Controller && currentAction == m.Action));
+
+                var submenuIdDesktop = $"desktop-submenu-{seccion.Id}";
+                var sectionId = seccion.Titulo.Replace(" ", "-").ToLowerInvariant();
+
+                @if (modulosVisibles.Any())
+                {
+                    <li class="nav-item has-submenu">
+                        <button type="button"
+                                class="nav-link submenu-toggle d-flex align-items-center justify-content-between w-100 border-0 bg-transparent text-start @(isActiveSection ? "active-section" : "collapsed")"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#@submenuIdDesktop"
+                                aria-expanded="@(isActiveSection.ToString().ToLower())"
+                                aria-controls="@submenuIdDesktop"
+                                data-section="@sectionId">
+                            <span class="d-flex align-items-center">
+                                <span class="nav-icon me-2">@seccion.Titulo.Substring(0, 2)</span>
+                                <span class="nav-link-text">@seccion.Titulo.Substring(2)</span>
+                            </span>
+                            <span class="submenu-arrow"><i class="bi bi-chevron-down"></i></span>
+                        </button>
+
+                        <div id="@submenuIdDesktop" class="collapse submenu @(isActiveSection ? "show" : "")" data-bs-parent="#sidebarDesktop">
+                            <ul class="submenu-list list-unstyled">
+                                @foreach (var mod in modulosVisibles)
+                                {
+                                    var isVistaActiva = mod.Vistas != null && mod.Vistas.Any(v => currentController == v.VistaController && currentAction == v.VistaAction);
+                                    var isModuloActivo = (mod.Controller == currentController && mod.Action == currentAction) || isVistaActiva;
+                                    var subVistaIdDesktop = $"desktop-vistas-{mod.ModuloId}";
+
+                                    if (mod.Vistas != null && mod.Vistas.Any())
+                                    {
+                                        <li class="submenu-item has-submenu">
+                                            <button type="button"
+                                                    class="submenu-link d-flex justify-content-between w-100 border-0 bg-transparent text-start @(isModuloActivo ? "active" : "collapsed")"
+                                                    data-bs-toggle="collapse"
+                                                    data-bs-target="#@subVistaIdDesktop"
+                                                    aria-expanded="@(isModuloActivo.ToString().ToLower())"
+                                                    aria-controls="@subVistaIdDesktop">
+                                                <span>@mod.Title</span>
+                                                <i class="bi bi-chevron-down"></i>
+                                            </button>
+                                            <ul class="collapse list-unstyled ps-3 @(isModuloActivo ? "show" : "")" id="@subVistaIdDesktop">
+                                                @foreach (var vista in mod.Vistas)
+                                                {
+                                                    var esVistaActiva = currentController == vista.VistaController && currentAction == vista.VistaAction;
+                                                    <li>
+                                                        <a class="submenu-link @(esVistaActiva ? "active" : "")"
+                                                           href="@Url.Action((string)vista.VistaAction, (string)vista.VistaController)">
+                                                            @vista.VistaTitle
+                                                        </a>
+                                                    </li>
+                                                }
+                                            </ul>
+                                        </li>
+                                    }
+                                    else
+                                    {
+                                        <li class="submenu-item">
+                                            @if (mod.EsExterno)
+                                            {
+                                                <a class="submenu-link" href="@mod.Action" target="_blank" rel="noopener noreferrer">
+                                                    @mod.Title <i class="bi bi-box-arrow-up-right ms-1"></i>
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <a class="submenu-link @(isModuloActivo ? "active" : "")"
+                                                   href="@Url.Action((string)mod.Action, (string)mod.Controller)">
+                                                    @mod.Title
+                                                </a>
+                                            }
+                                        </li>
+                                    }
+                                }
+                            </ul>
+                        </div>
+                    </li>
+                }
+            }
+                @if (perfilUsuario.IdUsuario == "1" || perfilUsuario.IdUsuario == "31")
+                {
+                   <div class="px-3 pb-3">
+                        <small class="section-header">Sistema</small>
+                    </div>
+                    <a class="nav-link @(currentController == "Usuarios" ? "active" : "")" href="@Url.Action("AdministrarUsuarios", "Usuarios")">
+                        <i class="bi bi-people-fill me-2"></i>Usuarios
+                    </a>
+                    <a class="nav-link @(currentController == "Secciones" ? "active" : "")" href="@Url.Action("Index", "Secciones")">
+                        <i class="bi bi-ui-checks-grid me-2"></i>Secciones
+                    </a>
+                }
+                <a class="nav-link" href="@Url.Action("CerrarSesion", "Acceso")">
+                     🚪 Salir
+                </a>
+        </nav>
+    </div>
+</aside>
+
+
+    

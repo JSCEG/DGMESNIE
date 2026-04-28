@@ -1,0 +1,948 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    var seccionesUsuarioJson = httpContext.Session.GetString("SeccionesUsuario");
+    var seccionesUsuario = JsonConvert.DeserializeObject<List<SeccionSNIER>>(seccionesUsuarioJson);
+
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Unidad_de_Adscripcion"] = perfilUsuario.Unidad_de_Adscripcion;
+    ViewData["Mercado_ID"] = perfilUsuario.Mercado_ID;
+
+    var currentController = ViewContext.RouteData.Values["Controller"].ToString();
+    var currentAction = ViewContext.RouteData.Values["Action"].ToString();
+}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <!-- Meta tags -->
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>@ViewData["Title"] - SNIE</title>
+    <!-- Google Tag Manager -->
+    <script>(function (w, d, s, l, i) {
+            w[l] = w[l] || []; w[l].push({
+                'gtm.start':
+                    new Date().getTime(), event: 'gtm.js'
+            }); var f = d.getElementsByTagName(s)[0],
+                j = d.createElement(s), dl = l != 'dataLayer' ? '&l=' + l : ''; j.async = true; j.src =
+                    'https://www.googletagmanager.com/gtm.js?id=' + i + dl; f.parentNode.insertBefore(j, f);
+        })(window, document, 'script', 'dataLayer', 'GTM-NXLZHRMM');</script>
+    <!-- End Google Tag Manager -->
+
+    <!-- Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@200;300;400;500;600;700&amp;family=Fira+Sans+Extra+Condensed:wght@200;300;400;500;600;700&amp;family=Montserrat:wght@200;300;400;500;600;700&amp;display=swap">
+    <link rel="preload" href="/fonts/Noto Sans ENERGIA/NotoSans-Regular.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="/fonts/Patria ENERGIA/Patria_Regular.otf" as="font" type="font/otf" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700&family=Nunito:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+
+    <!-- Core CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @* <link rel="stylesheet" href="~/css/portal.css" asp-append-version="true" /> *@
+    @* <link rel="stylesheet" href="~/css/main.css" asp-append-version="true" /> *@
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Geovisualizador CSS -->
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/css/qgis2web.css">
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/css/fontawesome-all.min.css">
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/css/leaflet-control-geocoder.Geocoder.css">
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/css/leaflet-search.css">
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/css/leaflet-measure.css">
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/css/MarkerCluster.css">
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/css/MarkerCluster.Default.css">
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/css/leaflet.css">
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/css/L.Control.Layers.Tree.css">
+
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" rel="stylesheet" />
+    <link rel="stylesheet" href="@Cdn.Url/Geovisualizador/dist/leaflet-routing-machine.css" />
+
+    <!-- Owl Carousel -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/assets/owl.carousel.min.css">
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/assets/owl.theme.default.min.css">
+
+    <!-- DataTables -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+    <link href="//cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" rel="stylesheet" />
+    <link href="//cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css" rel="stylesheet" />
+
+    <!-- jQuery y plugins -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/maphilight/1.4.0/jquery.maphilight.min.js"></script>
+
+    <!-- D3.js -->
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+
+    <!-- Highcharts -->
+    <script src="https://code.highcharts.com/stock/highstock.js"></script>
+    <script src="https://code.highcharts.com/stock/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/heatmap.js"></script>
+    <script src="https://code.highcharts.com/modules/treemap.js"></script>
+    <script src="https://code.highcharts.com/modules/treegraph.js"></script>
+    <script src="https://code.highcharts.com/highcharts-3d.js"></script>
+    <script src="https://code.highcharts.com/modules/wordcloud.js"></script>
+    <script src="https://code.highcharts.com/highcharts-more.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
+    <script src="https://code.highcharts.com/modules/networkgraph.js"></script>
+    <script src="https://code.highcharts.com/modules/price-indicator.js"></script>
+    <script src="https://code.highcharts.com/modules/pictorial.js"></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
+    <script src="https://code.highcharts.com/gantt/modules/gantt.js"></script>
+
+
+    <!-- HTML2PDF -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+
+    <!-- Geovisualizador JS -->
+    <script src="@Cdn.Url/Geovisualizador/js/qgis2web_expressions.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/leaflet-svg-shape-markers.min.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/Autolinker.min.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/leaflet.rotatedMarker.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/leaflet-hash.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/rbush.min.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/labelgun.min.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/labels.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/L.Control.Layers.Tree.min.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/leaflet.pattern.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/leaflet-control-geocoder.Geocoder.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/leaflet-measure.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/leaflet.markercluster.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-omnivore/0.3.4/leaflet-omnivore.min.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/dist/leaflet-routing-machine.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/dist/Control.Geocoder.js"></script>
+    <script src="@Cdn.Url/Geovisualizador/js/turf.min.js"></script>
+
+    <!-- AmCharts -->
+    <script src="https://cdn.amcharts.com/lib/4/core.js"></script>
+    <script src="https://cdn.amcharts.com/lib/4/charts.js"></script>
+    <script src="https://cdn.amcharts.com/lib/4/themes/animated.js"></script>
+
+    <!-- Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="~/js/carousel.js"></script>
+    <script src="~/js/sections-carousel.js"></script>
+
+    <!-- DOM Observer -->
+    <script>
+        var observer = new MutationObserver(function (mutations) {
+        });
+        var observerOptions = {
+            childList: true,
+            subtree: true
+        };
+        var targetNode = document.documentElement;
+        observer.observe(targetNode, observerOptions);
+    </script>
+
+    <!-- Configuración de Mapas -->
+    <script src="~/js/configura_mapa.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Estilos existentes -->
+    @RenderSection("Styles", required: false)
+
+</head>
+
+<body class="app">
+    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-NXLZHRMM" height="0" width="0"
+            style="display:none;visibility:hidden"></iframe></noscript>
+
+    <!-- HEADER -->
+    <header class="app-header fixed-top">
+        <div class="app-header-inner bg-verde">
+            <div class="container-fluid py-2">
+                <div class="app-header-content">
+                    <div class="row justify-content-between align-items-center">
+
+                        <div class="col-auto">
+                            <a id="sidepanel-toggler"
+                                class="sidepanel-toggler d-inline-block d-xl-none btn btn-cre-rojo" href="#">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"
+                                    role="img">
+                                    <title>Menu</title>
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10"
+                                        stroke-width="2" d="M4 7h22M4 15h22M4 23h22"></path>
+                                </svg>
+                            </a>
+                        </div><!--//col-->
+                        <div class="search-mobile-trigger d-sm-none col">
+                            <i class="search-mobile-trigger-icon fa-solid fa-magnifying-glass"></i>
+                        </div><!--//col-->
+                        <div class="app-search-box col">
+                            <img src="@Cdn.Url/img_snier/vistas/b1.png" alt="" class="img_logo">
+                            @*   <form class="app-search-form">
+                                <input type="text" placeholder="Search..." name="search"
+                                class="form-control search-input">
+                                <button type="submit" class="btn search-btn btn-primary" value="Search">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                </button>
+                                </form>*@
+                        </div><!--//app-search-box-->
+                        <div class="app-utilities col-auto">
+                            <style>
+                                .hidden {
+                                    display: none !important;
+                                }
+
+                                /* Agregar estos estilos para eliminar el marcador */
+                                .nav-item {
+                                    list-style: none;
+                                    /* Elimina los marcadores de lista */
+                                }
+
+                                .submenu-list {
+                                    list-style: none;
+                                    /* Elimina los marcadores de sublistas */
+                                    padding-left: 0;
+                                    /* Elimina el padding izquierdo que puede causar espacios */
+                                }
+                            </style>
+
+                            @if (perfilUsuario.Rol != "0")
+                            {
+                                <div class="app-utility-item app-notifications-dropdown dropdown">
+                                    <a class="dropdown-toggle no-toggle-arrow" id="notifications-dropdown-toggle"
+                                        data-bs-toggle="dropdown" href="#" role="button" aria-expanded="false"
+                                        title="Notificaciones">
+                                        <svg width="1em" height="1em" viewBox="0 0 16 16" class="bi bi-bell icon"
+                                            fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2z" />
+                                            <path fill-rule="evenodd"
+                                                d="M8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628-.134 2.197-.459 3.742.16.767.376 1.566.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4.002 4.002 0 0 0-3.203-3.92L8 1.917zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5.002 5.002 0 0 1 13 6c0 .88.32 4.2 1.22 6z" />
+                                        </svg>
+                                        <span class="icon-badge hidden" id="notification-count">0</span>
+                                    </a>
+
+                                    <div class="dropdown-menu p-0" aria-labelledby="notifications-dropdown-toggle">
+                                        <div class="dropdown-menu-header p-3">
+                                            <h5 class="dropdown-menu-title mb-0">Avisos Importantes</h5>
+                                            <hr>
+                                        </div>
+                                        <div class="dropdown-menu-content" id="notifications-list">
+                                        </div>
+                                        <div class="dropdown-menu-footer p-2 text-center">
+                                            <a
+                                                href="@Url.Action("AllNotifications", "Usuarios", new { userId = ViewData["IDUsuario"] })">Ver
+                                                Todas las Notificaciones</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            <div class="app-utility-item app-user-dropdown dropdown">
+                                <a class="dropdown-toggle text-white" id="user-dropdown-toggle"
+                                    data-bs-toggle="dropdown" href="#" role="button" aria-expanded="false">
+                                    <span>
+                                        @if (perfilUsuario.Rol != "0")
+                                        {
+                                            @:¡Bienvenida/o, @ViewData["NombreUsuario"]!
+                                        }
+                                        else
+                                        {
+                                            @:¡Bienvenida/o a Consulta Pública!
+                                        }
+                                    </span>
+                                </a>
+                                <ul class="dropdown-menu" aria-labelledby="user-dropdown-toggle">
+                                    @if (perfilUsuario.Rol != "0")
+                                    {
+                                        <li><a class="dropdown-item"
+                                                href="@Url.Action("ModeloCuentaCompuesto", "Usuarios", new { id = ViewData["IDUsuario"] })">Cuenta
+                                                de Usuario</a></li>
+                                        <li><a class="dropdown-item" href="#">Configuraciones</a></li>
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                    }
+                                    <li>
+                                        <a class="dropdown-item" asp-area="" asp-controller="Acceso"
+                                            asp-action="CerrarSesion">
+                                            <i class="bi bi-box-arrow-right"></i>
+                                            Salir
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <img src="@Cdn.Url/img_snier/vistas/logo_cre.png" alt="Logo CRE" class="img_logo">
+                        </div>
+                    </div><!--//row-->
+                </div>
+            </div>
+        </div>
+        <!-- SIDEPANEL -->
+        <div id="app-sidepanel" class="app-sidepanel">
+            <div class="sidepanel-inner d-flex flex-column">
+                <div class="app-branding">
+                    <a href="#"><span class="subtitulo display-9 fw-bold">Menú</span></a>
+                </div>
+                <nav id="app-nav-main" class="app-nav app-nav-main flex-grow-1">
+                    <ul class="app-menu list-unstyled accordion" id="menu-accordion">
+                        <!-- Menú principal -->
+                        <li class="nav-item">
+                            <a class="nav-link @(currentAction == "Index" && currentController == "Home" ? "active" : "")"
+                                href="@Url.Action("Index", "Home")" title="Ir al inicio">
+                                <span class="nav-icon">@* ...icono... *@</span>
+                                <span class="nav-link-text">Inicio</span>
+                            </a>
+                        </li>
+                        @foreach (var seccion in seccionesUsuario)
+                        {
+                            var modulosVisibles = seccion.Modulos
+                            .Where(m => string.IsNullOrEmpty(m.Roles) || m.Roles.Split(',').Contains(perfilUsuario.Rol))
+                            .ToList();
+                            var isActiveSection = modulosVisibles.Any(m => currentController == m.Controller &&
+                            currentAction == m.Action);
+                            var submenuId = "submenu-" + seccion.Titulo.GetHashCode();
+                            if (modulosVisibles.Any())
+                            {
+                                <li class="nav-item has-submenu">
+                                    <a class="nav-link submenu-toggle d-flex align-items-center justify-content-between @(isActiveSection ? "" : "collapsed")"
+                                        href="#" data-bs-toggle="collapse" data-bs-target="#@submenuId"
+                                        aria-expanded="@(isActiveSection.ToString().ToLower())" aria-controls="@submenuId">
+                                        <span class="d-flex align-items-center">
+                                            <span class="nav-icon me-2">@seccion.Titulo.Substring(0, 2)</span>
+                                            <span class="nav-link-text">@seccion.Titulo.Substring(2)</span>
+                                        </span>
+                                        <span class="submenu-arrow">@* ...icono... *@</span>
+                                    </a>
+                                    <div id="@submenuId" class="collapse submenu @(isActiveSection ? "show" : "")"
+                                        data-bs-parent="#menu-accordion">
+                                        <ul class="submenu-list list-unstyled">
+                                            @foreach (var mod in modulosVisibles)
+                                            {
+                                                <li class="submenu-item">
+                                                    <a class="submenu-link @(currentAction == mod.Action && currentController == mod.Controller ? "active" : "")"
+                                                        href="@Url.Action(mod.Action, mod.Controller)">
+                                                        @mod.Title
+                                                    </a>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                </li>
+                            }
+                        }
+                        <!-- Ayuda y Salir -->
+                        <li class="nav-item">
+                            <a class="nav-link @(currentAction == "Ayuda" && currentController == "Usuarios" ? "active" : "")"
+                                href="@Url.Action("Ayuda", "Usuarios")">
+                                <span class="nav-icon">@* ...icono... *@</span>
+                                <span class="nav-link-text">Ayuda</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link @(currentAction == "CerrarSesion" && currentController == "Acceso" ? "active" : "")"
+                                href="@Url.Action("CerrarSesion", "Acceso")">
+                                <span class="nav-icon">@* ...icono... *@</span>
+                                <span class="nav-link-text">Salir</span>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+                <!-- FOOTER del panel lateral -->
+                <div class="app-sidepanel-footer">
+                       <nav class="app-nav app-nav-footer">
+                        <ul class="app-menu footer-menu list-unstyled">
+                            @if (perfilUsuario.Rol == "1" && perfilUsuario.IdUsuario == "1" || perfilUsuario.IdUsuario ==
+                                                        "3")
+                            {
+                                <li class="nav-item has-submenu">
+                                    <!--//Bootstrap Icons: https://icons.getbootstrap.com/ -->
+                                    <a class="nav-link submenu-toggle @(ViewContext.RouteData.Values["Controller"].ToString() == "Usuarios" && ViewContext.RouteData.Values["Action"].ToString() == "AdministrarUsuarios" || ViewContext.RouteData.Values["Controller"].ToString() == "Acceso" || ViewContext.RouteData.Values["Action"].ToString() == "Cargar_SE" && ViewContext.RouteData.Values["Controller"].ToString() == "Indicadores" ? "active" : "")"
+                                        href="#" data-bs-toggle="collapse" data-bs-target="#submenu-7" aria-expanded="false"
+                                        aria-controls="submenu-7">
+                                        <span class="nav-icon">
+                                            <!--//Bootstrap Icons: https://icons.getbootstrap.com/ -->
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                                fill="currentColor" class="bi bi-gear" viewBox="0 0 16 16">
+                                                <path
+                                                    d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z" />
+                                                <path
+                                                    d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z" />
+                                            </svg>
+                                        </span>
+                                        <span class="nav-link-text">Panel de Administración</span>
+                                        <span class="submenu-arrow">
+                                            <svg width="1em" height="1em" viewBox="0 0 16 16" class="bi bi-chevron-down"
+                                                fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                                <path fill-rule="evenodd"
+                                                    d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z" />
+                                            </svg>
+                                        </span><!--//submenu-arrow-->
+                                    </a><!--//nav-link-->
+                                    <div id="submenu-7" class="collapse submenu submenu-7" data-bs-parent="#menu-accordion">
+                                        <ul class="submenu-list list-unstyled">
+                                            <li class="submenu-item"><a
+                                                    class="submenu-link @(ViewContext.RouteData.Values["Action"].ToString() == "AdministrarUsuarios" && ViewContext.RouteData.Values["Controller"].ToString() == "Usuarios" ? "active" : "")"
+                                                    href="@Url.Action("AdministrarUsuarios", "Usuarios")">Administarción de
+                                                    Usuarios</a></li>
+                                            <li class="submenu-item"><a
+                                                    class="submenu-link @(ViewContext.RouteData.Values["Action"].ToString() == "Monitoreo" && ViewContext.RouteData.Values["Controller"].ToString() == "Acceso" ? "active" : "")"
+                                                    href="@Url.Action("Monitoreo", "Acceso")">Monitoreo y Uso</a></li>
+
+                                        </ul>
+                                    </div>
+                                </li>
+
+
+                            }
+
+
+                        </ul><!--//footer-menu-->
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </header>
+    <!-- MAIN CONTENT -->
+    <div>
+        <main role="main" class="pb-25">
+            <div id="page-preloader" style="display:flex;">
+                <div class="spinner"></div>
+                <img src="@Cdn.Url/img_snier/vistas/lc6.png" alt="Logo de la empresa" class="preloader-logo">
+                <div class="loading-text">Cargando la página, por favor espere<span id="page-dots">...</span></div>
+            </div>
+            <div id="ajax-preloader" style="display:none;">
+                <div class="spinner"></div>
+                <img src="@Cdn.Url/img_snier/vistas/lc6.png" alt="Logo de la empresa" class="preloader-logo">
+                <div class="loading-text">Cargando los datos, por favor espere<span id="ajax-dots">...</span></div>
+            </div>
+            @RenderBody()
+        </main>
+    </div>
+    <footer class="footer text-muted bg-verde-footer ">
+        <div class="container text-white footer-container">
+            &copy; SENER @DateTime.Now.Year - SNIE
+            @await Component.InvokeAsync("Visitas")
+        </div>
+        <div class="cinta"></div>
+    </footer>
+    <!-- MODAL DE SESIÓN EXPIRADA -->
+    @* <!-- Modal de advertencia de expiración de sesión --> *@
+    <div class="modal fade" id="sessionExpireModal" tabindex="-1" role="dialog"
+        aria-labelledby="sessionExpireModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sessionExpireModalLabel">Advertencia de Expiración de Sesión</h5>
+                </div>
+                <div class="modal-body">
+                    Su sesión está a punto de expirar. ¿Desea continuar trabajando o cerrar la sesión?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btnCerrarSesion">Cerrar Sesión</button>
+                    <button type="button" class="btn btn-primary" id="btnContinuarSesion">Continuar Sesión</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS agrupados al final por performance -->
+    <script>
+        $(document).ready(function () {
+            // Definir las variables utilizando Razor
+            // Definir las variables utilizando Razor
+            var userId = "@ViewData["IDUsuario"]";
+            var userName = "@ViewData["NombreUsuario"]";
+            var pageName = "@ViewData["Title"]";
+            var controllerName = "@ViewContext.RouteData.Values["controller"]";
+            var actionName = "@ViewContext.RouteData.Values["action"]";
+            var additionalData = "@(ViewData["NombreUsuario"] + " - " + ViewData["Unidad_de_Adscripcion"])";
+
+
+            // Imprimir los datos en la consola antes de enviarlos
+            console.log({
+                userId: userId,
+                userName: userName,
+                pageName: pageName,
+                controllerName: controllerName,
+                actionName: actionName,
+                additionalData: additionalData
+            });
+
+            // Verificar que las variables no estén vacías
+            if (userId && userId !== "N/A") {
+                registrarActividad("Sin Dato", "Sin Dato", "Sin Dato", "Sin Dato");  // Registrar la acción de carga de página
+            } else {
+                console.log('No se registró la acción debido a valores faltantes o usuario no autenticado.');
+            }
+
+            // Función de debounce para evitar múltiples registros en base a la escritura del usuario
+            function debounce(func, delay) {
+                let debounceTimer;
+                return function () {
+                    const context = this;
+                    const args = arguments;
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => func.apply(context, args), delay);
+                };
+            }
+
+            // Función para registrar actividades (acciones e interacciones)
+            function registrarActividad(tipo, elemento, idElemento, valor) {
+                console.log({
+                    userId: userId,
+                    userName: userName,
+                    pageName: pageName,
+                    controllerName: controllerName,
+                    actionName: actionName,
+                    tipo: tipo,
+                    elemento: elemento,
+                    idElemento: idElemento,
+                    valor: valor,
+                    additionalData: additionalData
+                });
+
+                $.ajax({
+                    url: '/Bitacora/RegistrarActividad',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        userId: userId,
+                        userName: userName,
+                        pageName: pageName,
+                        controllerName: controllerName,
+                        actionName: actionName,
+                        tipo: tipo,
+                        elemento: elemento,
+                        idElemento: idElemento,
+                        valor: valor,
+                        additionalData: additionalData
+                    }),
+                    success: function (response) {
+                        console.log('Actividad registrada exitosamente:', response);
+                    },
+                    error: function (xhr, status, error) {
+                        console.log('Error al registrar la actividad:', error);
+                    }
+                });
+            }
+
+            // Usar delegación de eventos en un contenedor que siempre esté en el DOM
+            $(document).on('click', 'table button', function () {
+                registrarActividad('click', 'button', this.id, $(this).text());
+            });
+
+            $(document).on('blur', 'table input[type="text"]', debounce(function () {
+                registrarActividad('input', 'textbox', this.id, $(this).val());
+            }, 1000));
+
+            $(document).on('change', 'table input[type="checkbox"]', function () {
+                registrarActividad('click', 'checkbox', this.id, this.checked ? 'checked' : 'unchecked');
+            });
+
+            $(document).on('change', 'table input[type="radio"]', function () {
+                registrarActividad('click', 'radio', this.id, $(this).val());
+            });
+
+            $(document).on('change', 'table select', function () {
+                registrarActividad('change', 'dropdown', this.id, $(this).val());
+            });
+
+            // Capturar clics en todos los botones fuera de la tabla
+            $(document).on('click', 'button', function () {
+                if (!$(this).closest('table').length) {
+                    registrarActividad('click', 'button', this.id, $(this).text());
+                }
+            });
+
+            // Capturar cuando el usuario deja el campo de texto (blur) con retraso de 1 segundo
+            $(document).on('blur', 'input[type="text"]', function () {
+                if (!$(this).closest('table').length) {
+                    var inputElement = this;
+                    setTimeout(function () {
+                        registrarActividad('input', 'textbox', inputElement.id, $(inputElement).val());
+                    }, 2000);
+                }
+            });
+
+            // Capturar cambios en checkboxes fuera de la tabla
+            $(document).on('change', 'input[type="checkbox"]', function () {
+                if (!$(this).closest('table').length) {
+                    registrarActividad('click', 'checkbox', this.id, this.checked ? 'checked' : 'unchecked');
+                }
+            });
+
+            // Capturar cambios en radio buttons fuera de la tabla
+            $(document).on('change', 'input[type="radio"]', function () {
+                if (!$(this).closest('table').length) {
+                    registrarActividad('click', 'radio', this.id, $(this).val());
+                }
+            });
+
+            // Capturar selección en dropdowns fuera de la tabla
+            $(document).on('change', 'select', function () {
+                if (!$(this).closest('table').length) {
+                    registrarActividad('change', 'dropdown', this.id, $(this).val());
+                }
+            });
+
+
+        });
+    </script>
+
+
+
+    <!-- Tablas -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Obtener referencias a elementos
+            const tableContainer = document.querySelector('.table-container');
+            const table = document.querySelector('.table');
+
+            // Verificar que existan los elementos necesarios
+            if (table && tableContainer) {
+                // Manejar evento de scroll
+                tableContainer.addEventListener('scroll', function () {
+                    // Obtener elementos a fijar
+                    const ths = table.querySelectorAll('thead th');
+                    const tds = table.querySelectorAll('tbody td:first-child');
+                    const thFirstColumn = table.querySelector('thead th:first-child');
+
+                    // Aplicar transformaciones
+                    // 1. Fijar encabezados
+                    ths.forEach(th => {
+                        th.style.transform = `translateY(${tableContainer.scrollTop}px)`;
+                    });
+
+                    // 2. Fijar primera columna
+                    tds.forEach(td => {
+                        td.style.transform = `translateX(${tableContainer.scrollLeft}px)`;
+                    });
+
+                    // 3. Fijar esquina superior izquierda
+                    if (thFirstColumn) {
+                        thFirstColumn.style.transform = `translate(${tableContainer.scrollLeft}px, ${tableContainer.scrollTop}px)`;
+                    }
+                });
+            }
+        });
+    </script>
+
+    @*Manda cada min un toque ala BD *@
+    <script>
+        $(document).ready(function () {
+
+            // Inicializar el modal con opciones para evitar el cierre al hacer clic fuera o con la tecla Esc
+            $('#sessionExpireModal').modal({
+                backdrop: 'static', // No permitir cerrar el modal al hacer clic fuera de él
+                keyboard: false,    // No permitir cerrar el modal con la tecla Esc
+                show: false         // No mostrar automáticamente al cargar la página
+            });
+
+            // Función para manejar el Heartbeat
+            setInterval(function () {
+                $.ajax({
+                    url: '/Acceso/Heartbeat',
+                    method: 'POST',
+                    success: function (data) {
+                        if (data.expiracionCercana) {
+                            // Mostrar modal de advertencia
+                            $('#sessionExpireModalLabel').text('Advertencia de Expiración de Sesión');
+                            $('#sessionExpireModal .modal-body').text('Su sesión está a punto de expirar. ¿Desea continuar trabajando o cerrar la sesión?');
+                            $('#btnCerrarSesion').show();
+                            $('#btnContinuarSesion').show();
+                            $('#sessionExpireModal').modal('show');
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        if (xhr.status === 401) {
+                            // Mostrar modal de sesión expirada
+                            $('#sessionExpireModalLabel').text('Sesión Expirada');
+                            $('#sessionExpireModal .modal-body').text('Su sesión ha expirado. Será redirigido a la página de inicio de sesión.');
+                            $('#btnCerrarSesion').hide(); // Ocultar botón innecesario
+                            $('#btnContinuarSesion').text('Ir a Login').off('click').on('click', function () {
+                                window.location.href = '/Acceso/Login';
+                            });
+                            $('#sessionExpireModal').modal('show');
+                        } else {
+                            console.error("Error en la solicitud Heartbeat:", error);
+                        }
+                    }
+                });
+            }, 60000); // Cada 60 segundos
+
+            // Cerrar sesión
+            $('#btnCerrarSesion').on('click', function () {
+                window.location.href = '/Acceso/SesionExpirada';
+            });
+
+            // Continuar sesión
+            $('#btnContinuarSesion').on('click', function () {
+                $.ajax({
+                    url: '/Acceso/ActualizarInicioSesion',
+                    method: 'POST',
+                    success: function () {
+                        $('#sessionExpireModal').modal('hide');
+                        // Se ha actualizado la sesión, el usuario puede continuar trabajando
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Error al actualizar la sesión:", error);
+                    }
+                });
+            });
+        });
+
+    </script>
+    <script src="~/js/validacion-formulario.js"></script>
+    <!-- JavaScript -->
+    @if (perfilUsuario.Rol != "1")
+    {
+        <script src="~/js/seguridad.js"></script>
+    }
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    @* <script src="//code.jquery.com/jquery-3.5.1.js"></script> *@
+    <script src="//cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="//cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+    <script src="//cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
+    <script src="~/js/jquery.maphilight.min.js"></script>
+
+    @* <script  src="~/js/jspdf.min.js"></script> *@
+    <script src="~/js/printThis.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+
+
+
+
+    <!-- Owl Carousel JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
+
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <!-- Page Specific JS -->
+    <script src="~/js/app.js" asp-append-version="true"></script>
+    @* html2pdf *@
+    @* <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.2/html2pdf.bundle.min.js"></script> *@
+
+    @*Preloader*@
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Mostrar el preloader de carga de página
+            document.getElementById('page-preloader').style.display = 'flex';
+
+            // Ocultar el preloader de carga de página cuando la página ha terminado de cargarse
+            window.addEventListener('load', function () {
+                document.getElementById('page-preloader').style.display = 'none';
+            });
+
+            // Animar los puntos de carga para el preloader de página
+            var pageDots = 0;
+            setInterval(function () {
+                var pageDotsElement = document.getElementById('page-dots');
+                if (pageDotsElement) {
+                    pageDotsElement.innerHTML = '.'.repeat(pageDots);
+                    pageDots = (pageDots + 1) % 4; // Ciclo de 0 a 3 puntos
+                }
+            }, 500);
+
+            // Mostrar el preloader al enviar el formulario
+            $('form').on('submit', function (e) {
+                var form = $(this);
+                if (form.attr('id') === 'form-upload-files' || form.valid()) {
+                    $('#page-preloader').show();
+                }
+            });
+
+            // Ocultar el preloader si hay errores de validación en el servidor
+            var validationSummary = document.querySelector('.validation-summary-errors');
+            if (validationSummary && validationSummary.innerHTML.trim().length > 0) {
+                document.getElementById('page-preloader').style.display = 'none';
+                alert('Por favor, complete todos los campos obligatorios.');
+            }
+        });
+
+        // Preloader para solicitudes AJAX
+        $(document).ajaxStart(function () {
+            $("#ajax-preloader").show();
+        }).ajaxStop(function () {
+            $("#ajax-preloader").hide();
+        });
+
+        // Animar los puntos de carga para el preloader de AJAX
+        var ajaxDots = 0;
+        setInterval(function () {
+            var ajaxDotsElement = document.getElementById('ajax-dots');
+            if (ajaxDotsElement) {
+                ajaxDotsElement.innerHTML = '.'.repeat(ajaxDots);
+                ajaxDots = (ajaxDots + 1) % 4; // Ciclo de 0 a 3 puntos
+            }
+        }, 500);
+
+    </script>
+
+    <!-- Sección de notificaciones -->
+    <script>
+        $(document).ready(function () {
+            function loadNotifications() {
+                $.ajax({
+                    url: '@Url.Action("GetNotifications", "Usuarios")',
+                    type: 'GET',
+                    data: { userId: '@ViewData["IDUsuario"]' },
+                    success: function (data) {
+                        console.log("Tabla de notificaciones: ", data);
+                        var notificationCount = data.totalUnreadCount;
+                        var notifications = data.notifications;
+                        var notificationBadge = $('#notification-count');
+
+                        if (notificationCount > 0) {
+                            notificationBadge.text(notificationCount);
+                            notificationBadge.removeClass('hidden');
+                        } else {
+                            notificationBadge.addClass('hidden');
+                        }
+
+                        var notificationsList = $('#notifications-list');
+                        notificationsList.empty();
+
+                        notifications.forEach(function (notification) {
+                            var maxLength = 100;
+                            var shortMessage = notification.mensaje.length > maxLength
+                                ? notification.mensaje.substring(0, maxLength) + '...'
+                                : notification.mensaje;
+
+                            var notificationItem = `
+                                <div class="item p-3" data-id="${notification.id}">
+                                    <div class="row gx-2 justify-content-between align-items-center">
+                                        <div class="col-auto">
+                                            <img class="profile-image" src="/img/notificaciones.png" alt="">
+                                        </div>
+                                        <div class="col">
+                                            <div class="info">
+                                                <div class="title"><strong>${notification.titulo_Notificacion}</strong></div>
+                                                <div class="desc">${shortMessage}</div>
+                                                <div class="meta">${notification.timeAgo}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <a class="link-mask" href="@Url.Action("NotificationDetails", "Usuarios")?titulo=${encodeURIComponent(notification.titulo_Notificacion)}&mensaje=${encodeURIComponent(notification.mensaje)}&fecha=${encodeURIComponent(notification.fecha_Notificacion)}&link=${encodeURIComponent(notification.link)}" target="_blank" onclick="markAsRead(${notification.id}, this)"></a>
+                                </div>`;
+                            notificationsList.append(notificationItem);
+                        });
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Error al cargar las notificaciones:", error);
+                    }
+                });
+            }
+
+            loadNotifications();
+
+            setInterval(loadNotifications, 60000);
+
+            $('#generate-test-notification').on('click', function () {
+                $.ajax({
+                    url: '@Url.Action("GenerateTestNotification", "Usuarios")',
+                    type: 'POST',
+                    data: { userId: '@ViewData["IDUsuario"]' },
+                    success: function (response) {
+                        if (response.success) {
+                            loadNotifications();
+                            alert("Notificación de prueba generada con éxito.");
+                        } else {
+                            alert("Error al generar la notificación de prueba.");
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Error al generar la notificación de prueba:", error);
+                    }
+                });
+            });
+        });
+
+        function markAsRead(notificationId, linkElement) {
+            $.ajax({
+                url: '@Url.Action("MarkNotificationAsRead", "Usuarios")',
+                type: 'POST',
+                data: { notificationId: notificationId },
+                success: function (response) {
+                    if (response.success) {
+                        var notificationItem = $(linkElement).closest('.item');
+                        notificationItem.remove();
+
+                        var notificationBadge = $('#notification-count');
+                        var currentCount = parseInt(notificationBadge.text());
+                        var newCount = currentCount - 1;
+
+                        if (newCount > 0) {
+                            notificationBadge.text(newCount);
+                        } else {
+                            notificationBadge.addClass('hidden');
+                        }
+
+                        loadNotifications();
+
+                        var url = $(linkElement).attr('href');
+                        window.open(url, '_blank');
+                    } else {
+                        console.error("Error al marcar la notificación como leída.");
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Error al marcar la notificación como leída:", error);
+                }
+            });
+        }
+    </script>
+
+    <style>
+        /* Esto bloqueará la selección de texto en todo el documento HTML */
+        body {
+            -webkit-user-select: none;
+            /* Safari */
+            -moz-user-select: none;
+            /* Firefox */
+            -ms-user-select: none;
+            /* Internet Explorer/Edge */
+            user-select: none;
+            /* Chrome, Opera y otras versiones de Firefox */
+        }
+    </style>
+    @*Rutas*@
+    @await RenderSectionAsync("Scripts", required: false)
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    @section Scripts {
+        <script src="~/js/module-help.js"></script>
+    }
+</body>
+
+</html>

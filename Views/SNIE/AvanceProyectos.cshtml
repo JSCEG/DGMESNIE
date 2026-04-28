@@ -1,0 +1,240 @@
+@model dynamic
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+
+@{
+    ViewData["Title"] = "Avance Proyectos";
+    var perfilJson = HttpContextAccessor.HttpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+
+    var header = new HeaderViewModel
+    {
+        Title = "Avance en el Desarrollo de Proyectos",
+        IconPath = "indicadores.png",
+        Description = "Sistema integral de seguimiento y monitoreo del avance en el desarrollo de proyectos energéticos.",
+        Section = "📊 Proyectos",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Avance de Proyectos",
+            description = "Plataforma de monitoreo de desarrollo de proyectos.",
+            functionality = "Seguimiento de avances, inversiones y estados.",
+            stage = "Monitoreo",
+            roles = new[] {
+new { icon = "chart-line", text = "SENER: Seguimiento integral" },
+new { icon = "project-diagram", text = "Técnico: Avance físico" },
+new { icon = "dollar-sign", text = "Financiero: Inversiones" }
+},
+            order = new { step = 1, description = "Visualización de avances" }
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<!-- Cards Resumen -->
+<div class="container-fluid px-4 mb-5">
+    <div class="row g-4">
+        <!-- Proyectos Totales -->
+        <div class="col-12 col-md-6 col-xl-3" data-aos="fade-right">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="fas fa-clipboard-list text-primary fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Total Proyectos</h5>
+                            <small class="text-muted">Registrados en sistema</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">@Model.TotalProyectos</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-primary" style="width: 85%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inversión -->
+        <div class="col-12 col-md-6 col-xl-3" data-aos="fade-up">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-success bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="fas fa-dollar-sign text-success fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Inversión Total</h5>
+                            <small class="text-muted">Millones USD</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">$@Model.InversionTotal.ToString("N0")</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-success" style="width: 75%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Avance -->
+        <div class="col-12 col-md-6 col-xl-3" data-aos="fade-up">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-warning bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="fas fa-tasks text-warning fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Avance Promedio</h5>
+                            <small class="text-muted">Global</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">@Model.AvancePromedio%</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-warning" style="width: @Model.AvancePromedio%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activos -->
+        <div class="col-12 col-md-6 col-xl-3" data-aos="fade-left">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-info bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="fas fa-play-circle text-info fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Proyectos Activos</h5>
+                            <small class="text-muted">En desarrollo</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">@Model.ProyectosActivos</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-info"
+                            style="width: @(((double)Model.ProyectosActivos / Model.TotalProyectos * 100).ToString("N0"))%">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gráfico Principal -->
+<div class="container-fluid px-4 mb-5">
+    <div class="card shadow-sm border-0" data-aos="fade-up">
+        <div class="card-header bg-white border-0">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line text-primary me-2"></i>
+                    Avance por Tipo de Proyecto
+                </h5>
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary btn-sm active">Mes</button>
+                    <button class="btn btn-outline-primary btn-sm">Trimestre</button>
+                    <button class="btn btn-outline-primary btn-sm">Año</button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="graficoAvance" style="height: 400px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla de Proyectos -->
+<div class="container-fluid px-4">
+    <div class="card shadow-sm border-0" data-aos="fade-up">
+        <div class="card-header bg-white border-0">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-list text-primary me-2"></i>
+                Listado de Proyectos
+            </h5>
+        </div>
+        <div class="card-body">
+            <table id="tablaProyectos" class="table table-hover w-100">
+                <thead>
+                    <tr>
+                        <th>Proyecto</th>
+                        <th>Tipo</th>
+                        <th>Inversión (USD)</th>
+                        <th>Avance</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            // Inicializar DataTable
+            $('#tablaProyectos').DataTable({
+                data: [
+                    ["Parque Solar Sonora", "Solar", "120M", "85%",
+                        '<span class="badge bg-success">En tiempo</span>',
+                        '<button class="btn btn-sm btn-primary"><i class="fas fa-eye"></i></button>'],
+                    ["Eólica Oaxaca", "Eólico", "180M", "60%",
+                        '<span class="badge bg-warning">Retraso menor</span>',
+                        '<button class="btn btn-sm btn-primary"><i class="fas fa-eye"></i></button>'],
+                    ["Central Ciclo Combinado", "Convencional", "450M", "40%",
+                        '<span class="badge bg-danger">Retraso crítico</span>',
+                        '<button class="btn btn-sm btn-primary"><i class="fas fa-eye"></i></button>']
+                ],
+                responsive: true,
+                dom: 'Bfrtip',
+                buttons: ['excel', 'pdf', 'csv'],
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json' }
+            });
+
+            // Gráfico de Avance
+            Highcharts.chart('graficoAvance', {
+                chart: { type: 'column' },
+                title: { text: null },
+                xAxis: {
+                    categories: ['Solar', 'Eólico', 'Hidro', 'Convencional'],
+                    crosshair: true
+                },
+                yAxis: {
+                    min: 0,
+                    title: { text: 'Porcentaje de Avance' },
+                    labels: { format: '{value}%' }
+                },
+                tooltip: {
+                    headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
+                    pointFormat: '<tr><td style="padding:0"><b>{series.name}: </b></td>' +
+                        '<td style="padding:0">{point.y:.1f}%</td></tr>',
+                    footerFormat: '</table>',
+                    shared: true
+                },
+                plotOptions: {
+                    column: {
+                        pointPadding: 0.2,
+                        borderWidth: 0
+                    }
+                },
+                series: [{
+                    name: 'Avance Real',
+                    data: [85, 60, 45, 40],
+                    color: '#2ecc71'
+                }, {
+                    name: 'Avance Planeado',
+                    data: [90, 70, 60, 55],
+                    color: '#3498db'
+                }],
+                credits: { enabled: false }
+            });
+        });
+    </script>
+}

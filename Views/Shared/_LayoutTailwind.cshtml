@@ -1,0 +1,659 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{  
+     @* var cdn = "https://cdn.sassoapps.com"; *@
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    var seccionesUsuarioJson = httpContext.Session.GetString("SeccionesUsuario");
+    var seccionesUsuario = JsonConvert.DeserializeObject<List<SeccionSNIER>>(seccionesUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Unidad_de_Adscripcion"] = perfilUsuario.Unidad_de_Adscripcion;
+    ViewData["Mercado_ID"] = perfilUsuario.Mercado_ID;
+ var currentController = ViewContext.RouteData.Values["Controller"].ToString();
+    var currentAction = ViewContext.RouteData.Values["Action"].ToString(); 
+        @* var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+    var currentAction = ViewContext.RouteData.Values["action"]?.ToString(); *@
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <title>@ViewData["Title"] - SNIER</title>
+
+     <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Tailwind -->
+    <link href="~/css/tailwind.css" rel="stylesheet" />
+</head>
+<body>
+    @Html.Partial("_PanelGlobal")
+    <!-- CONTENIDO PRINCIPAL -->
+    <main class="main-content content flex-fill">
+        <div id="page-preloader" style="display:flex;">
+            <div class="spinner"></div>
+            <img src="@Cdn.Url/img_snier/login/logo_snier.png" alt="Logo de la empresa" class="preloader-logo">
+            <div class="loading-text">Cargando la página, por favor espere<span id="page-dots">...</span></div>
+        </div>
+        <div id="ajax-preloader" style="display:none;">
+            <div class="spinner"></div>
+            <img src="@Cdn.Url/img_snier/login/logo_snier.png" alt="Logo de la empresa" class="preloader-logo">
+            <div class="loading-text">Cargando los datos, por favor espere<span id="ajax-dots">...</span></div>
+        </div>
+
+
+        @RenderBody()
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer-snier text-white pt-4 pb-0  footer-content" style="background: linear-gradient(to right, #022336, #0b8aae); position: relative;">
+        <div class="container-fluid px-5">
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <img src="@Cdn.Url/img_snier/vistas/logo_sener_blanco.png" alt="Logo SENER" class="mb-2" style="max-height: 60px;">
+                    <p class="small mb-1">Av. Insurgentes Sur 890, Col. Del Valle Centro,<br> Benito Juárez, C.P. 03100, Ciudad de México</p>
+                    <p class="small mb-0">Tel: 55 5000 6000</p>
+                    <p class="small mb-2">&copy; 2025 Secretaría de Energía - Gobierno de México</p>
+                    <p class="small">@await Component.InvokeAsync("Visitas")</p>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <h6 class="fw-bold mb-3 text-white">Enlaces</h6>
+                    <ul class="list-unstyled small">
+                        <li><a href="/Publico/MarcoJuridico" class="footer-link">Marco Jurídico</a></li>
+                        <li><a href="/Publico/Publicaciones" class="footer-link">Publicaciones Oficiales</a></li>
+                        <li><a href="https://www.gob.mx/plataformadetransparencia" target="_blank" class="footer-link">Transparencia</a></li>
+                        <li><a href="/Contacto" class="footer-link">Contacto</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-4 mb-4" style="margin-bottom: 100px;">
+                    <h6 class="fw-bold mb-3 text-white">¿Qué es gob.mx?</h6>
+                    <p class="small text-white">Portal único de trámites, información y participación ciudadana.</p>
+                    <ul class="list-unstyled small">
+                        <li><a href="https://datos.gob.mx" target="_blank" class="footer-link">Datos Abiertos</a></li>
+                        <li><a href="#" class="footer-link">Términos y Condiciones</a></li>
+                        <li><a href="#" class="footer-link">Aviso de Privacidad</a></li>
+                    </ul>
+                    <div class="mt-2"style="margin-bottom: 50px;">
+                        <span class="me-2 text-white">Síguenos:</span>
+                        <a href="https://facebook.com/SENERmx" target="_blank" class="footer-social"><i class="bi bi-facebook"></i></a>
+                        <a href="https://x.com/SENER_mx" target="_blank" class="footer-social"><i class="bi bi-twitter-x"></i></a>
+                        <a href="https://instagram.com/sener_mx" target="_blank" class="footer-social"><i class="bi bi-instagram"></i></a>
+                        <a href="https://www.youtube.com/SENERMexico" target="_blank" class="footer-social"><i class="bi bi-youtube"></i></a>
+                    </div>
+                </div>
+                <br>
+                <br>
+            </div>
+        </div>
+        <div class="cinta"></div>
+    </footer>
+
+    <style>
+        /* Ajustar el espacio debajo del header fijo */
+        .main-content {
+            padding-top: 65px; /* misma altura que .header-custom */
+        }
+    </style>
+
+
+    @* <!-- Modal de advertencia de expiración de sesión --> *@
+    <div class="modal fade" id="sessionExpireModal" tabindex="-1" role="dialog"
+        aria-labelledby="sessionExpireModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sessionExpireModalLabel">Advertencia de Expiración de Sesión</h5>
+                </div>
+                <div class="modal-body">
+                    Su sesión está a punto de expirar. ¿Desea continuar trabajando o cerrar la sesión?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btnCerrarSesion">Cerrar Sesión</button>
+                    <button type="button" class="btn btn-primary" id="btnContinuarSesion">Continuar Sesión</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @*Preloader*@
+    <script>
+        // ⏳ Ocultar preloader de página cuando todo (scripts, imágenes, etc.) ha cargado
+        $(window).on('load', function () {
+            $('#page-preloader').fadeOut('slow');
+        });
+
+        // ✅ Cuando el DOM está listo (solo estructura HTML, no scripts externos)
+        $(document).ready(function () {
+            // Animación puntos page preloader
+            let pageDots = 0;
+            setInterval(() => {
+                $('#page-dots').text('.'.repeat(pageDots));
+                pageDots = (pageDots + 1) % 4;
+            }, 500);
+
+            // Mostrar preloader si se envía formulario válido
+            $('form').on('submit', function () {
+                if ($(this).attr('id') === 'form-upload-files' || $(this).valid()) {
+                    $('#page-preloader').show();
+                }
+            });
+
+            // Si hay errores en servidor, ocultar preloader y alertar
+            if ($('.validation-summary-errors').length > 0) {
+                $('#page-preloader').hide();
+                alert('Por favor, completa todos los campos obligatorios.');
+            }
+
+            // Animar los puntos del preloader AJAX
+            let ajaxDots = 0;
+            setInterval(() => {
+                $('#ajax-dots').text('.'.repeat(ajaxDots));
+                ajaxDots = (ajaxDots + 1) % 4;
+            }, 500);
+
+            // Mostrar/ocultar preloader AJAX
+            $(document).ajaxStart(function () {
+                $('#ajax-preloader').show();
+            }).ajaxStop(function () {
+                $('#ajax-preloader').hide();
+            });
+        });
+    </script>
+
+    <style>
+        .link-mask {
+            position: absolute;
+            inset: 0; /* ocupa todo el contenedor padre */
+            z-index: 10;
+        }
+        .item {
+            position: relative; /* necesario para que el link-mask se posicione dentro */
+            cursor: pointer;
+        }
+    </style>
+
+    <!-- Sección de notificaciones -->
+    <script>
+        $(document).ready(function () {
+            function loadNotifications() {
+                $.ajax({
+                    url: '@Url.Action("GetNotifications", "Usuarios")',
+                    type: 'GET',
+                    data: { userId: '@ViewData["IDUsuario"]' },
+                    success: function (data) {
+                        console.log("Tabla de notificaciones: ", data);
+                        var notificationCount = data.totalUnreadCount;
+                        var notifications = data.notifications;
+                        var notificationBadge = $('#notification-count');
+
+                        if (notificationCount > 0) {
+                            notificationBadge.text(notificationCount);
+                            notificationBadge.removeClass('hidden');
+                        } else {
+                            notificationBadge.addClass('hidden');
+                        }
+
+                        var notificationsList = $('#notifications-list');
+                        notificationsList.empty();
+
+                        notifications.forEach(function (notification) {
+                            var maxLength = 100;
+                            var shortMessage = notification.mensaje.length > maxLength
+                                ? notification.mensaje.substring(0, maxLength) + '...'
+                                : notification.mensaje;
+
+                            var notificationItem = `
+                                <div class="item p-3" data-id="${notification.id}">
+                                    <div class="row gx-2 justify-content-between align-items-center">
+                                        <div class="col-auto">
+                                            <img class="profile-image" src="@Cdn.Url/img_snier/vistas/img/notificaciones.png" alt="">
+                                        </div>
+                                        <div class="col">
+                                            <div class="info">
+                                                <div class="title"><strong>${notification.titulo_Notificacion}</strong></div>
+                                                <div class="desc">${shortMessage}</div>
+                                                <div class="meta">${notification.timeAgo}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <a class="link-mask" href="@Url.Action("NotificationDetails", "Usuarios")?titulo=${encodeURIComponent(notification.titulo_Notificacion)}&mensaje=${encodeURIComponent(notification.mensaje)}&fecha=${encodeURIComponent(notification.fecha_Notificacion)}&link=${encodeURIComponent(notification.link)}" target="_blank" onclick="markAsRead(${notification.id}, this)"></a>
+                                </div>`;
+                            notificationsList.append(notificationItem);
+                        });
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Error al cargar las notificaciones:", error);
+                    }
+                });
+            }
+
+            loadNotifications();
+
+            setInterval(loadNotifications, 60000);
+
+            $('#generate-test-notification').on('click', function () {
+                $.ajax({
+                    url: '@Url.Action("GenerateTestNotification", "Usuarios")',
+                    type: 'POST',
+                    data: { userId: '@ViewData["IDUsuario"]' },
+                    success: function (response) {
+                        if (response.success) {
+                            loadNotifications();
+                            alert("Notificación de prueba generada con éxito.");
+                        } else {
+                            alert("Error al generar la notificación de prueba.");
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Error al generar la notificación de prueba:", error);
+                    }
+                });
+            });
+        });
+
+        function markAsRead(notificationId, linkElement) {
+            $.ajax({
+                url: '@Url.Action("MarkNotificationAsRead", "Usuarios")',
+                type: 'POST',
+                data: { notificationId: notificationId },
+                success: function (response) {
+                    if (response.success) {
+                        var notificationItem = $(linkElement).closest('.item');
+                        notificationItem.remove();
+
+                        var notificationBadge = $('#notification-count');
+                        var currentCount = parseInt(notificationBadge.text());
+                        var newCount = currentCount - 1;
+
+                        if (newCount > 0) {
+                            notificationBadge.text(newCount);
+                        } else {
+                            notificationBadge.addClass('hidden');
+                        }
+
+                        loadNotifications();
+
+                        var url = $(linkElement).attr('href');
+                        window.open(url, '_blank');
+                    } else {
+                        console.error("Error al marcar la notificación como leída.");
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Error al marcar la notificación como leída:", error);
+                }
+            });
+        }
+    </script>
+
+    <script>
+        $(document).ready(function () {
+            // Definir las variables utilizando Razor
+            // Definir las variables utilizando Razor
+            var userId = "@ViewData["IDUsuario"]";
+            var userName = "@ViewData["NombreUsuario"]";
+            var pageName = "@ViewData["Title"]";
+            var controllerName = "@ViewContext.RouteData.Values["controller"]";
+            var actionName = "@ViewContext.RouteData.Values["action"]";
+            var additionalData = "@(ViewData["NombreUsuario"] + " - " + ViewData["Unidad_de_Adscripcion"])";
+
+
+            // Imprimir los datos en la consola antes de enviarlos
+            console.log({
+                userId: userId,
+                userName: userName,
+                pageName: pageName,
+                controllerName: controllerName,
+                actionName: actionName,
+                additionalData: additionalData
+            });
+
+            // Verificar que las variables no estén vacías
+            if (userId && userId !== "N/A") {
+                registrarActividad("Sin Dato", "Sin Dato", "Sin Dato", "Sin Dato");  // Registrar la acción de carga de página
+            } else {
+                console.log('No se registró la acción debido a valores faltantes o usuario no autenticado.');
+            }
+
+            // Función de debounce para evitar múltiples registros en base a la escritura del usuario
+            function debounce(func, delay) {
+                let debounceTimer;
+                return function () {
+                    const context = this;
+                    const args = arguments;
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => func.apply(context, args), delay);
+                };
+            }
+
+            // Función para registrar actividades (acciones e interacciones)
+            function registrarActividad(tipo, elemento, idElemento, valor) {
+                console.log({
+                    userId: userId,
+                    userName: userName,
+                    pageName: pageName,
+                    controllerName: controllerName,
+                    actionName: actionName,
+                    tipo: tipo,
+                    elemento: elemento,
+                    idElemento: idElemento,
+                    valor: valor,
+                    additionalData: additionalData
+                });
+
+                $.ajax({
+                    url: '/Bitacora/RegistrarActividad',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        userId: userId,
+                        userName: userName,
+                        pageName: pageName,
+                        controllerName: controllerName,
+                        actionName: actionName,
+                        tipo: tipo,
+                        elemento: elemento,
+                        idElemento: idElemento,
+                        valor: valor,
+                        additionalData: additionalData
+                    }),
+                    success: function (response) {
+                        console.log('Actividad registrada exitosamente:', response);
+                    },
+                    error: function (xhr, status, error) {
+                        console.log('Error al registrar la actividad:', error);
+                    }
+                });
+            }
+
+            // Usar delegación de eventos en un contenedor que siempre esté en el DOM
+            $(document).on('click', 'table button', function () {
+                registrarActividad('click', 'button', this.id, $(this).text());
+            });
+
+            $(document).on('blur', 'table input[type="text"]', debounce(function () {
+                registrarActividad('input', 'textbox', this.id, $(this).val());
+            }, 1000));
+
+            $(document).on('change', 'table input[type="checkbox"]', function () {
+                registrarActividad('click', 'checkbox', this.id, this.checked ? 'checked' : 'unchecked');
+            });
+
+            $(document).on('change', 'table input[type="radio"]', function () {
+                registrarActividad('click', 'radio', this.id, $(this).val());
+            });
+
+            $(document).on('change', 'table select', function () {
+                registrarActividad('change', 'dropdown', this.id, $(this).val());
+            });
+
+            // Capturar clics en todos los botones fuera de la tabla
+            $(document).on('click', 'button', function () {
+                if (!$(this).closest('table').length) {
+                    registrarActividad('click', 'button', this.id, $(this).text());
+                }
+            });
+
+            // Capturar cuando el usuario deja el campo de texto (blur) con retraso de 1 segundo
+            $(document).on('blur', 'input[type="text"]', function () {
+                if (!$(this).closest('table').length) {
+                    var inputElement = this;
+                    setTimeout(function () {
+                        registrarActividad('input', 'textbox', inputElement.id, $(inputElement).val());
+                    }, 2000);
+                }
+            });
+
+            // Capturar cambios en checkboxes fuera de la tabla
+            $(document).on('change', 'input[type="checkbox"]', function () {
+                if (!$(this).closest('table').length) {
+                    registrarActividad('click', 'checkbox', this.id, this.checked ? 'checked' : 'unchecked');
+                }
+            });
+
+            // Capturar cambios en radio buttons fuera de la tabla
+            $(document).on('change', 'input[type="radio"]', function () {
+                if (!$(this).closest('table').length) {
+                    registrarActividad('click', 'radio', this.id, $(this).val());
+                }
+            });
+
+            // Capturar selección en dropdowns fuera de la tabla
+            $(document).on('change', 'select', function () {
+                if (!$(this).closest('table').length) {
+                    registrarActividad('change', 'dropdown', this.id, $(this).val());
+                }
+            });
+
+
+        });
+    </script>
+
+
+
+    <!-- Tablas -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Obtener referencias a elementos
+            const tableContainer = document.querySelector('.table-container');
+            const table = document.querySelector('.table');
+
+            // Verificar que existan los elementos necesarios
+            if (table && tableContainer) {
+                // Manejar evento de scroll
+                tableContainer.addEventListener('scroll', function () {
+                    // Obtener elementos a fijar
+                    const ths = table.querySelectorAll('thead th');
+                    const tds = table.querySelectorAll('tbody td:first-child');
+                    const thFirstColumn = table.querySelector('thead th:first-child');
+
+                    // Aplicar transformaciones
+                    // 1. Fijar encabezados
+                    ths.forEach(th => {
+                        th.style.transform = `translateY(${tableContainer.scrollTop}px)`;
+                    });
+
+                    // 2. Fijar primera columna
+                    tds.forEach(td => {
+                        td.style.transform = `translateX(${tableContainer.scrollLeft}px)`;
+                    });
+
+                    // 3. Fijar esquina superior izquierda
+                    if (thFirstColumn) {
+                        thFirstColumn.style.transform = `translate(${tableContainer.scrollLeft}px, ${tableContainer.scrollTop}px)`;
+                    }
+                });
+            }
+        });
+    </script>
+
+    @*Manda cada min un toque ala BD *@
+    <script>
+        $(document).ready(function () {
+
+            // Inicializar el modal con opciones para evitar el cierre al hacer clic fuera o con la tecla Esc
+            $('#sessionExpireModal').modal({
+                backdrop: 'static', // No permitir cerrar el modal al hacer clic fuera de él
+                keyboard: false,    // No permitir cerrar el modal con la tecla Esc
+                show: false         // No mostrar automáticamente al cargar la página
+            });
+
+            // Función para manejar el Heartbeat
+            setInterval(function () {
+                $.ajax({
+                    url: '/Acceso/Heartbeat',
+                    method: 'POST',
+                    success: function (data) {
+                        if (data.expiracionCercana) {
+                            // Mostrar modal de advertencia
+                            $('#sessionExpireModalLabel').text('Advertencia de Expiración de Sesión');
+                            $('#sessionExpireModal .modal-body').text('Su sesión está a punto de expirar. ¿Desea continuar trabajando o cerrar la sesión?');
+                            $('#btnCerrarSesion').show();
+                            $('#btnContinuarSesion').show();
+                            $('#sessionExpireModal').modal('show');
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        if (xhr.status === 401) {
+                            // Mostrar modal de sesión expirada
+                            $('#sessionExpireModalLabel').text('Sesión Expirada');
+                            $('#sessionExpireModal .modal-body').text('Su sesión ha expirado. Será redirigido a la página de inicio de sesión.');
+                            $('#btnCerrarSesion').hide(); // Ocultar botón innecesario
+                            $('#btnContinuarSesion').text('Ir a Login').off('click').on('click', function () {
+                                window.location.href = '/Acceso/Login';
+                            });
+                            $('#sessionExpireModal').modal('show');
+                        } else {
+                            console.error("Error en la solicitud Heartbeat:", error);
+                        }
+                    }
+                });
+            }, 60000); // Cada 60 segundos
+
+            // Cerrar sesión
+            $('#btnCerrarSesion').on('click', function () {
+                window.location.href = '/Acceso/SesionExpirada';
+            });
+
+            // Continuar sesión
+            $('#btnContinuarSesion').on('click', function () {
+                $.ajax({
+                    url: '/Acceso/ActualizarInicioSesion',
+                    method: 'POST',
+                    success: function () {
+                        $('#sessionExpireModal').modal('hide');
+                        // Se ha actualizado la sesión, el usuario puede continuar trabajando
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Error al actualizar la sesión:", error);
+                    }
+                });
+            });
+        });
+
+    </script>
+    <script src="~/js/validacion-formulario.js"></script>
+    <!-- JavaScript -->
+    @if (perfilUsuario.IdUsuario != "1" || perfilUsuario.IdUsuario != "31")
+    {
+        <script src="~/js/seguridad.js"></script>
+    } 
+    <style>
+        /* Esto bloqueará la selección de texto en todo el documento HTML */
+        body {
+            -webkit-user-select: none;
+            /* Safari */
+            -moz-user-select: none;
+            /* Firefox */
+            -ms-user-select: none;
+            /* Internet Explorer/Edge */
+            user-select: none;
+            /* Chrome, Opera y otras versiones de Firefox */
+        }
+    </style>
+@* AYUDA - MODAL*@
+<script>
+    function mostrarAyudaModulo(info) {
+        if (!info) return;
+
+        const html = `
+            <div class="text-start">
+                ${info.description ? `<p><strong>${info.description}</strong></p>` : ''}
+                ${info.functionality ? `<p><i class='fas fa-cogs'></i> ${info.functionality}</p>` : ''}
+                ${info.stage ? `<p><i class='fas fa-layer-group'></i> Etapa: ${info.stage}</p>` : ''}
+                ${info.roles?.length ? `
+                    <ul>
+                        ${info.roles.map(r => `<li><i class="fas fa-${r.icon} me-2 text-primary"></i> ${r.text}</li>`).join('')}
+                    </ul>` : ''}
+                ${info.order ? `<p><i class='fas fa-sort-amount-up'></i> Paso ${info.order.step}: ${info.order.description}</p>` : ''}
+            </div>`;
+
+        Swal.fire({
+            title: info.title || 'Ayuda del módulo',
+            html: html,
+            confirmButtonText: 'Cerrar',
+            confirmButtonColor: '#6c757d',
+            backdrop: true
+        });
+    }
+</script>
+
+
+    @*Rutas*@
+    @* @await RenderSectionAsync("Scripts", required: false) *@
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    @section Scripts {
+        <script src="~/js/module-help.js"></script>
+    }
+
+    <!-- Custom Scripts - Toggle real para móviles -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const sidebarMobile = document.getElementById('sidebarMobile');
+
+            // Crear instancia única del offcanvas
+            let offcanvasInstance = new bootstrap.Offcanvas(sidebarMobile, {
+                backdrop: true,
+                keyboard: true
+            });
+
+            // Event listener único para el toggle
+            sidebarToggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                  // Esta línea la añades para la animación del botón
+                this.classList.toggle('is-active'); 
+                
+                if (window.innerWidth >= 992) {
+                    // Desktop: toggle sidebar
+                    document.body.classList.toggle('sidebar-collapsed');
+                } else {
+                    // Mobile: toggle offcanvas
+                    offcanvasInstance.toggle();
+                }
+
+                // Esperar a que la animación/transición termine (ajusta ms si tu transición es distinta)
+                setTimeout(() => {
+                    if (typeof sankeyChart !== 'undefined' && sankeyChart) sankeyChart.resize();
+                    if (typeof subSankeyChart !== 'undefined' && subSankeyChart) subSankeyChart.resize();
+                }, 220);
+            });
+
+            // Prevenir conflictos en collapse buttons
+            document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(button => {
+                button.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    // Bootstrap manejará el collapse automáticamente
+                });
+            });
+
+            // Cerrar offcanvas en resize
+            window.addEventListener('resize', function () {
+                if (window.innerWidth >= 992 && sidebarMobile.classList.contains('show')) {
+                    offcanvasInstance.hide();
+                }
+            });
+        });
+    </script>
+    <script>
+        const seccionesDebug = @Html.Raw(JsonConvert.SerializeObject(seccionesUsuario));
+        console.log("Secciones cargadas:", seccionesDebug);
+    </script>
+</body>
+</html>

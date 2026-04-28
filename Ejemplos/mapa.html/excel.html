@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Convertir Excel a JSON y Guardar</title>
+    <!-- SheetJS (xlsx) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.2/xlsx.full.min.js"></script>
+    <!-- FileSaver.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            overflow: auto;
+            max-height: 400px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Convertir Excel a JSON y Guardar</h1>
+    <p>Selecciona un archivo Excel (.xlsx o .xls):</p>
+    <input type="file" id="inputFile" accept=".xlsx, .xls">
+    <br><br>
+    <button id="saveLocalBtn" disabled>Guardar en LocalStorage</button>
+    <button id="downloadBtn" disabled>Descargar JSON</button>
+    <h3>JSON Generado:</h3>
+    <pre id="output"></pre>
+
+    <script>
+        // Manejar la carga del archivo Excel
+        document.getElementById('inputFile').addEventListener('change', handleFile, false);
+
+        let jsonData; // Aquí se almacenará el JSON generado
+
+        function handleFile(e) {
+            const files = e.target.files;
+            const f = files[0];
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                // Usamos la primera hoja del libro
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                // Convertir la hoja a JSON
+                jsonData = XLSX.utils.sheet_to_json(worksheet);
+                // Mostrar el JSON en pantalla
+                document.getElementById('output').textContent = JSON.stringify(jsonData, null, 2);
+                // Habilitar botones
+                document.getElementById('saveLocalBtn').disabled = false;
+                document.getElementById('downloadBtn').disabled = false;
+            };
+            reader.readAsArrayBuffer(f);
+        }
+
+        // Botón para guardar el JSON en LocalStorage
+        document.getElementById('saveLocalBtn').addEventListener('click', function () {
+            if (jsonData) {
+                localStorage.setItem("excelData", JSON.stringify(jsonData));
+                alert("Datos guardados en LocalStorage.");
+            }
+        });
+
+        // Botón para descargar el JSON como archivo usando FileSaver.js
+        document.getElementById('downloadBtn').addEventListener('click', function () {
+            if (jsonData) {
+                const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: "application/json" });
+                saveAs(blob, "datos.json");
+            }
+        });
+    </script>
+</body>
+
+</html>

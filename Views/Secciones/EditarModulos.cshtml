@@ -1,0 +1,356 @@
+@model NSIE.Models.SeccionConModulos
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = $"Módulos de la Sección: {Model.Titulo}";
+
+    var header = new HeaderViewModel
+    {
+        Title = ViewData["Title"].ToString(),
+        IconPath = "modulos.png", // Ruta relativa desde img_snier
+        Description = $"Administra los módulos asociados a la sección: {Model.Titulo}.",
+        Section = $"Administración > Secciones > {Model.Titulo}",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = $"Módulos de la Sección: {Model.Titulo}",
+            description = $"Aquí puedes gestionar los módulos que pertenecen a la sección '{Model.Titulo}'. Puedes crear nuevos módulos, editar los existentes, y organizar sus vistas.",
+            functionality = "Creación, edición, eliminación y gestión de vistas para cada módulo dentro de la sección.",
+            stage = "Operación",
+            roles = new[] {
+                new { icon = "user-shield", text = "Administradores: Gestión completa de módulos y vistas." },
+                new { icon = "eye", text = "Usuarios: Visualización de módulos y sus vistas." }
+            },
+            order = new { step = 2, description = "Gestión de contenido detallado por sección." },
+            manualUrl = "/Documentos/ManualGestionModulos.pdf" // Placeholder for a specific manual
+        })
+    };
+}
+
+@Html.AntiForgeryToken()
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="pe-5 ps-5">
+
+<!-- Información de la sección y botón nuevo módulo -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="alert alert-info">
+            <h5 class="mb-1">
+                <i class="fas fa-layer-group text-primary"></i>
+                @Model.Titulo
+            </h5>
+            <p class="mb-0">Total de Módulos: @Model.Modulos.Count()</p>
+        </div>
+    </div>
+    <div class="col-md-4 text-end">
+        <button class="btn btn-success btn-lg" onclick="abrirModalNuevoModulo()">
+            <i class="bi bi-plus-circle"></i> Nuevo Módulo
+        </button>
+    </div>
+</div>
+
+<!-- Tabla de Módulos con DataTables (SIN card wrapper) -->
+@if (Model.Modulos.Any())
+{
+    <table id="tablaModulos" class="table table-striped table-hover w-100">
+        <thead class="table-dark">
+            <tr>
+                <th style="width:5%">#</th>
+                <th style="width:25%">Título</th>
+                <th style="width:20%">Descripción</th>
+                <th style="width:8%">Orden</th>
+                <th style="width:10%">Vistas</th>
+                <th style="width:8%">Activo</th>
+                <th style="width:24%">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var modulo in Model.Modulos.OrderBy(m => m.Orden))
+            {
+                <tr>
+                    <td>@modulo.Orden</td>
+                    <td>
+                        <strong>@modulo.Title</strong>
+                    </td>
+                    <td>
+                        <small class="text-muted">@modulo.Desc</small>
+                    </td>
+                    <td>
+                        <span class="badge bg-secondary">@modulo.Orden</span>
+                    </td>
+                    <td>
+                        <!-- NUEVO: Mostrar número de vistas directamente -->
+                        <div class="d-flex align-items-center">
+                            <span class="badge bg-info me-2" id="contador-@modulo.Id">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </span>
+                            <a asp-action="EditarVistas" asp-route-moduloId="@modulo.Id" class="btn btn-sm btn-outline-primary"
+                                title="Ver y editar vistas del módulo">
+                                <i class="fas fa-eye"></i> Ver
+                            </a>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge @(modulo.Activo ? "bg-success" : "bg-danger")">
+                            @(modulo.Activo ? "Sí" : "No")
+                        </span>
+                    </td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <!-- Botón Editar Módulo -->
+                            <button class="btn btn-sm btn-outline-warning" onclick="abrirModalEditarModulo(@modulo.Id)"
+                                title="Editar módulo">
+                                <i class="fas fa-edit"></i>
+                            </button>
+
+                            <!-- Botón Ver/Editar Vistas -->
+                            <a asp-action="EditarVistas" asp-route-moduloId="@modulo.Id" class="btn btn-sm btn-outline-primary"
+                                title="Gestionar vistas del módulo">
+                                <i class="fas fa-list"></i> Vistas
+                            </a>
+
+                            <!-- Botón Eliminar -->
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarModuloAjax(@modulo.Id)"
+                                title="Eliminar módulo">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        <strong>Sin módulos registrados</strong><br>
+        No hay módulos registrados para esta sección. Haz clic en "Nuevo Módulo" para agregar el primero.
+    </div>
+}
+
+<!-- Modal para crear/editar módulo -->
+<div class="modal fade" id="moduloModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div id="contenidoModalModulo">
+                <!-- Aquí se carga el contenido dinámico -->
+            </div>
+        </div>
+    </div>
+</div>
+5</div>
+
+
+@section Scripts {
+    <!-- DataTables CSS y JS -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <script type="text/javascript" charset="utf8"
+        src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" charset="utf8"
+        src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        let moduloModal;
+        let tablaModulos;
+
+        $(document).ready(function () {
+            // Inicializar modal
+            moduloModal = new bootstrap.Modal(document.getElementById('moduloModal'));
+
+            // Inicializar DataTable
+            tablaModulos = $('#tablaModulos').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json"
+                },
+                "responsive": true,
+                "pageLength": 10,
+                "order": [[0, "asc"]], // Ordenar por columna Orden
+                "columnDefs": [
+                    { "orderable": false, "targets": [6] }, // Deshabilitar ordenamiento en columna Acciones
+                    { "searchable": false, "targets": [3, 4, 5, 6] } // Solo buscar en título y descripción
+                ]
+            });
+
+            // Cargar contador de vistas para cada módulo
+            cargarContadoresVistas();
+        });
+
+        function cargarContadoresVistas() {
+                                        @foreach (var modulo in Model.Modulos)
+                {
+                    <text>
+                        cargarContadorVistas(@modulo.Id);
+                    </text>
+            }
+                                    }
+
+        function cargarContadorVistas(moduloId) {
+            $.ajax({
+                url: '@Url.Action("ContarVistas", "Secciones")',
+                data: { moduloId: moduloId },
+                method: 'GET',
+                timeout: 5000,
+                success: function (count) {
+                    console.log('✅ Contador para módulo ' + moduloId + ': ' + count);
+
+                    const $badge = $("#contador-" + moduloId);
+                    if ($badge.length) {
+                        // Actualizar contenido del badge
+                        $badge.html(count + ' vista' + (count === 1 ? '' : 's'));
+
+                        // Cambiar color según cantidad
+                        $badge.removeClass('bg-info bg-success bg-secondary bg-warning');
+                        if (count === 0) {
+                            $badge.addClass('bg-secondary');
+                        } else if (count <= 3) {
+                            $badge.addClass('bg-info');
+                        } else if (count <= 6) {
+                            $badge.addClass('bg-success');
+                        } else {
+                            $badge.addClass('bg-warning');
+                        }
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error('❌ Error cargando contador para módulo ' + moduloId + ':', {
+                        status: status,
+                        error: error,
+                        response: xhr.responseText
+                    });
+
+                    const $badge = $("#contador-" + moduloId);
+                    if ($badge.length) {
+                        $badge.html('Error');
+                        $badge.removeClass('bg-info').addClass('bg-danger');
+                    }
+                }
+            });
+        }
+
+        function abrirModalNuevoModulo() {
+            const url = '@Url.Action("CrearModulo", "Secciones", new { seccionId = Model.Id })';
+            cargarModalModulo(url);
+        }
+
+        function abrirModalEditarModulo(moduloId) {
+            const url = '@Url.Action("ModalEditarModulo", "Secciones")?id=' + moduloId;
+            cargarModalModulo(url);
+        }
+
+        function cargarModalModulo(url) {
+            $.get(url)
+                .done(function (html) {
+                    $('#contenidoModalModulo').html(html);
+                    moduloModal.show();
+                })
+                .fail(function (xhr, status, error) {
+                    console.error('Error cargando modal:', error);
+                    Swal.fire('Error', 'Error al cargar el modal: ' + error, 'error');
+                });
+        }
+
+        function eliminarModuloAjax(moduloId) {
+            Swal.fire({
+                title: '¿Eliminar módulo?',
+                text: "Esta acción eliminará el módulo y todas sus vistas asociadas",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Buscar el token de múltiples formas
+                    let token = $('input[name="__RequestVerificationToken"]').val();
+
+                    // Si no se encuentra, buscar en forms
+                    if (!token) {
+                        token = $('form input[name="__RequestVerificationToken"]').val();
+                    }
+
+                    // Si aún no se encuentra, buscar en cualquier lugar
+                    if (!token) {
+                        token = $('input[name*="RequestVerificationToken"]').val();
+                    }
+
+                    console.log('🔍 Debug info:');
+                    console.log('- Token encontrado:', token ? 'SÍ' : 'NO');
+                    console.log('- Token value:', token);
+                    console.log('- Módulo ID:', moduloId);
+                    console.log('- Sección ID:', '@Model.Id');
+
+                    // Preparar los datos
+                    const postData = {
+                        id: moduloId,
+                        seccionId: '@Model.Id'
+                    };
+
+                    // Solo agregar token si existe
+                    if (token) {
+                        postData.__RequestVerificationToken = token;
+                    }
+
+                    console.log('- Datos a enviar:', postData);
+
+                    $.ajax({
+                        url: '@Url.Action("EliminarModulo", "Secciones")',
+                        method: 'POST',
+                        data: postData,
+                        success: function (data) {
+                            console.log('✅ Módulo eliminado exitosamente:', data);
+                            Swal.fire({
+                                title: '¡Eliminado!',
+                                text: data.mensaje || 'Módulo eliminado correctamente',
+                                icon: 'success',
+                                timer: 2000,
+                                showConfirmButton: false
+                            }).then(() => {
+                                location.reload();
+                            });
+                        },
+                        error: function (xhr, status, error) {
+                            console.error('❌ Error completo:', {
+                                status: xhr.status,
+                                statusText: xhr.statusText,
+                                responseText: xhr.responseText,
+                                error: error,
+                                readyState: xhr.readyState
+                            });
+
+                            let mensaje = 'Error al eliminar el módulo';
+
+                            if (xhr.status === 400) {
+                                mensaje = 'Token de verificación inválido o datos incorrectos';
+                            } else if (xhr.status === 404) {
+                                mensaje = 'Módulo no encontrado';
+                            } else if (xhr.status === 500) {
+                                mensaje = 'Error interno del servidor';
+                            }
+
+                            Swal.fire({
+                                title: 'Error',
+                                text: mensaje,
+                                icon: 'error',
+                                footer: xhr.responseText ? 'Detalles: ' + xhr.responseText : ''
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        // Función para recargar contadores después de operaciones CRUD
+        function recargarContadores() {
+            setTimeout(function () {
+                cargarContadoresVistas();
+            }, 500);
+        }
+    </script>
+}

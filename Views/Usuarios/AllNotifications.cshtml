@@ -1,0 +1,209 @@
+@model IEnumerable<NSIE.Models.Notificacion>
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Todas las Notificaciones";
+}
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Todas las notificaciones",
+        IconPath = "notificaciones.png",
+        Description = "Gestión de notificaciones para tu usuario.",
+        Section = "Gobernanza y Seguridad",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Gestión de notificaciones",
+            description = "Gestión de notificaciones para tu usuario",
+            functionality = "Gestión de notificaciones para revisar y/o eliminar los leídos.",
+            stage = "Inicialización",
+            roles = new[] {
+                new { icon = "building", text = "Secretaría de Energía: Administración general" },
+                new { icon = "users-cog", text = "Unidad SNIEr: Gestión de notificaciones" },
+                new { icon = "user-shield", text = "Dirección TICs: Control técnico" },
+                new { icon = "user-tie", text = "Consejo: Supervisión de accesos" }
+            },
+            order = new { step = 1, description = "Control de accesos desde el inicio (Art. 70)" }
+        }),
+        LegalDescription = "Gestión de notificaciones.",
+        Fundamentos = new List<FundamentoLegal> {
+            new() { Reference = "Art. 70 Reglamento", Description = "Establece los controles de acceso y gestión de usuarios" },
+            new() { Reference = "Art. 71 Reglamento", Description = "Define la administración de perfiles" },
+            new() { Reference = "Art. 76 Reglamento", Description = "Establece la trazabilidad y seguridad" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header);
+
+<div class="container ps-5 pe-5">
+    <div id="notifications-container" class="row">
+        <!-- Aquí se mostrarán las notificaciones -->
+    </div>
+    <div class="pagination-buttons mt-3 text-center">
+        <button id="prev-page" class="btn btn-secondary">Página anterior</button>
+        <button id="next-page" class="btn btn-secondary">Página siguiente</button>
+    </div>
+    <br>
+    <a href="@Url.Action("Index", "Home")" class="btn btn-primary">Volver</a>
+</div>
+
+@section Scripts {
+    <script>
+        var notifications = @Json.Serialize(Model); // Convertir el modelo de notificaciones a JSON
+
+        var currentPage = 1;
+        var notificationsPerPage = 9; // Cambiado para ajustar a las tarjetas
+
+        // Función para limitar el tamaño del mensaje
+        function truncateMessage(message, limit) {
+            if (message.length > limit) {
+                return message.substring(0, limit) + '...';
+            }
+            return message;
+        }
+
+        // Función para mostrar las notificaciones en la página actual
+        function displayNotifications(page) {
+            var startIndex = (page - 1) * notificationsPerPage;
+            var endIndex = startIndex + notificationsPerPage;
+            var notificationsToShow = notifications.slice(startIndex, endIndex);
+
+            var notificationsContainer = document.getElementById('notifications-container');
+            notificationsContainer.innerHTML = ''; // Limpiar el contenedor
+
+            notificationsToShow.forEach(function(notification) {
+                var buttonClass = notification.visto ? 'btn-secondary' : 'btn-primary';
+                var borderClass = notification.visto ? '' : 'border-primary';
+                var truncatedMessage = truncateMessage(notification.mensaje, 150); // Limitar el mensaje a 50 caracteres
+                var deleteButton = notification.visto 
+                    ? '<button onclick="deleteNotification(' + notification.id + ', this)" class="btn btn-danger ms-2">Eliminar</button>'
+                    : '';
+
+                var notificationItem = '<div class="col-md-4 mb-3">' +
+                    '<div class="card card-custom ' + borderClass + '">' +
+                    '<img src="' + notification.imagen + '" class="card-img-top" alt="Imagen de notificación">' +
+                    '<div class="card-body">' +
+                    '<h5 class="subtitulo">' + notification.titulo_Notificacion + '</h5>' +
+                    '<div class="alert alert-light fade show" role="alert">' +
+                    '<p class="card-text text-justify">' + truncatedMessage + '</p>' +
+                    '</div>' +
+                    '<p class="card-text"><small class="text-muted">Fecha: ' + notification.fecha_Notificacion + '</small></p>' +
+                    '<p class="card-text"><small class="text-muted">Visto: ' + (notification.visto ? 'Sí' : 'No') + '</small></p>' +
+                    '<a href="@Url.Action("NotificationDetails", "Usuarios")?titulo=' + encodeURIComponent(notification.titulo_Notificacion) +
+                    '&mensaje=' + encodeURIComponent(notification.mensaje) +
+                    '&fecha=' + encodeURIComponent(notification.fecha_Notificacion) +
+                    '&link=' + encodeURIComponent(notification.link) +
+                    '&imagen=' + encodeURIComponent(notification.imagen) +
+                    '" onclick="markAsRead(' + notification.id + ', this); return false;" class="btn ' + buttonClass + '">Ver Detalles</a>' +
+                    deleteButton + // 🔹 Solo aparece si ya fue leída
+                    '</div>' +
+                    '</div>' +
+                    '</div>';
+                notificationsContainer.innerHTML += notificationItem;
+
+                console.log("Notificacion: ", notification);
+            });
+
+            updatePaginationButtons();
+        }
+
+        // Función para actualizar la visibilidad de los botones de paginación
+        function updatePaginationButtons() {
+            var totalPages = Math.ceil(notifications.length / notificationsPerPage);
+            document.getElementById('prev-page').style.display = currentPage === 1 ? 'none' : 'inline-block';
+            document.getElementById('next-page').style.display = currentPage === totalPages ? 'none' : 'inline-block';
+        }
+
+        // Mostrar las notificaciones en la página 1 al cargar la página
+        displayNotifications(currentPage);
+
+        // Manejar el evento de hacer clic en el botón "Página anterior"
+        document.getElementById('prev-page').addEventListener('click', function() {
+            if (currentPage > 1) {
+                currentPage--;
+                displayNotifications(currentPage);
+                window.scrollTo(0, 0); // Desplazar hacia la parte superior de la página
+            }
+        });
+
+        // Manejar el evento de hacer clic en el botón "Página siguiente"
+        document.getElementById('next-page').addEventListener('click', function() {
+            var totalPages = Math.ceil(notifications.length / notificationsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                displayNotifications(currentPage);
+                window.scrollTo(0, 0); // Desplazar hacia la parte superior de la página
+            }
+        });
+
+        function markAsRead(notificationId, linkElement) {
+            $.ajax({
+                url: '@Url.Action("MarkNotificationAsRead", "Usuarios")',
+                type: 'POST',
+                data: { notificationId: notificationId },
+                success: function (response) {
+                    if (response.success) {
+                        var notificationItem = $(linkElement).closest('.card');
+                        notificationItem.removeClass('border-primary');
+
+                        // Cambiar el estilo del botón a gris claro
+                        $(linkElement).removeClass('btn-primary').addClass('btn-secondary');
+
+                        var notificationBadge = $('#notification-count');
+                        var currentCount = parseInt(notificationBadge.text());
+                        var newCount = currentCount - 1;
+
+                        if (newCount > 0) {
+                            notificationBadge.text(newCount);
+                        } else {
+                            notificationBadge.addClass('hidden');
+                        }
+
+                        // Redirigir a la nueva página después de marcar como leída
+                        var url = $(linkElement).attr('href');
+                        window.open(url, '_blank');
+                    } else {
+                        console.error("Error al marcar la notificación como leída.");
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Error al marcar la notificación como leída:", error);
+                }
+            });
+        }
+
+        function deleteNotification(notificationId, buttonElement) {
+            if (!confirm("¿Seguro que deseas eliminar esta notificación?")) return;
+
+            $.ajax({
+                url: '@Url.Action("DeleteNotification", "Usuarios")',
+                type: 'POST',
+                data: { notificationId: notificationId },
+                success: function (response) {
+                    if (response.success) {
+                        // Remover la tarjeta de la notificación
+                        $(buttonElement).closest('.col-md-4').remove();
+
+                        // Ajustar el arreglo local
+                        notifications = notifications.filter(n => n.id !== notificationId);
+
+                        // Refrescar la paginación
+                        updatePaginationButtons();
+
+                        alert("✅ Notificación eliminada correctamente.");
+                    } else {
+                        alert("❌ Error al eliminar la notificación: " + (response.message || ""));
+                    }
+                },
+                error: function (xhr, status, error) {
+                    alert("⚠️ Error al intentar eliminar: " + error);
+                }
+            });
+        }
+    </script>
+}

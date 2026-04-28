@@ -1,0 +1,168 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+
+
+@{
+    ViewData["Title"] = "Tipos de Energía - Gas L.P.";
+}
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/gas_lp.png" alt="Icono personalizado" class="iconomenu" />
+        @ViewData["Title"]
+    </h4>
+</div>
+
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);" aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+
+<div class="container">
+
+    <div id="grafico" style="width:100%; height:400px;"></div>
+    <br>
+    <br>
+    <div class="table-responsive">
+        <table id="Tipos" class="table table-hover table-responsive table-bordered">
+            <thead>
+                <tr>
+                    <th>Año</th>
+                @*     <th>Carga Pico</th>
+                    <th>Intermitente</th>
+                    <th>Carga Base</th> *@
+                    <th style="text-align: center;">Gas L.P. (PJ)</th>
+                @*     <th>Gas LP</th>
+                    <th>Petrolíferos</th> *@
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Los datos se cargarán aquí -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section scripts{
+
+@*Funciones del Mapa*@
+    
+
+    <script>
+        $(document).ready(function () {
+            // Obtener datos para el gráfico de Highcharts
+            $.ajax({
+                url: "/Map/Obtener_TiposEnergia",
+                type: "GET",
+                dataType: "json",
+                success: function (data) {
+                    // Crear el gráfico con Highcharts
+                    Highcharts.chart('grafico', {
+                        chart: {
+                            type: 'line' // o 'column', 'bar', etc.
+                        },
+                        title: {
+                            text: 'Datos de Gas L.P. por Año en (PJ)'
+                        },
+                        xAxis: {
+                            categories: data.map(item => item.año)
+                        },
+                        yAxis: {
+                            title: {
+                                text: 'Valores de Energía'
+                            }
+                        },
+                        series: [
+                         
+                            {
+                                name: 'Gas L.P. (PJ)',
+                               
+                                data: data.map(item => item.gasLP)
+                            }
+                        ]
+                    });
+                }
+            });
+            var table_mun = $('#Tipos').DataTable({
+                lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                dom: 'Blfrtip',
+                buttons: [
+                    {
+                        extend: 'copyHtml5',
+                        title: 'Energeo-Tipos de Energía'
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: 'Energeo-Tipos de Energía'
+                    },
+                    {
+                        extend: 'csvHtml5',
+                        title: 'Energeo-Tipos de Energía'
+                    },
+                    {
+                        extend: 'pdfHtml5',
+                        title: 'Energeo-Tipos de Energía',
+                        customize: function (doc) {
+                            doc.styles.tableHeader.color = '#9fa1a4';
+                            doc.defaultStyle.alignment = 'center';
+                            doc.styles.tableHeader.fillColor = '#4c1922';
+                        }
+                    }
+                ],
+                "ajax": {
+                    "url": "/Map/Obtener_TiposEnergia", // Asegúrate de que la URL sea correcta
+                    "type": "GET",
+                    "datatype": "json",
+                    "dataSrc": function (json) {
+                        console.log(json); // Aquí se imprimirán los datos JSON en la consola
+                        return json; // Asegúrate de devolver los datos para que DataTables los pueda usar
+                    }
+                },
+                columns: [
+                    { data: 'año',
+                        title: 'Año'
+                    }, // 'Año', asegúrate de manejar correctamente los caracteres especiales
+                  
+                    {
+                        data: 'gasLP',
+                        title: 'Gas L.P. (PJ)',
+                        render: $.fn.dataTable.render.number(',', '.', 0)
+                    }
+                 
+                  
+                ],
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
+                }
+                // Otras opciones como columnDefs, etc.
+            });
+        });
+
+
+
+
+
+
+
+    </script>
+
+    
+                }

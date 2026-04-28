@@ -1,0 +1,147 @@
+﻿@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = HttpContextAccessor.HttpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+
+    // Recibe la lista de imágenes y GIFs desde el controlador
+    var imageFiles = ViewBag.ImageFiles as List<string> ?? new List<string>();
+    var gifFiles = ViewBag.GifFiles as List<string> ?? new List<string>();
+
+    // Obtiene la primera imagen y el primer GIF
+    var firstImage = ViewBag.FirstImageFile as string;
+    var firstGif = ViewBag.FirstGifFile as string;
+}
+
+@{
+    ViewData["Title"] = "Consumo Histórico de Electricidad del Sector Agrícola";
+}
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/agricultura.png" alt="Icono personalizado" class="iconomenu">
+        Consumo de Electricidad del Sector Agrícola
+    </h4>
+</div>
+
+<div class="alert alert-light" role="alert">
+    <nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+        aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="@Url.Action("Menu_Revistas", "Revistas")">Menu Atlas de Consumo de
+                    Electricidad</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="container">
+    <div class="alert alert-success" role="alert">
+        <h4 class="alert-heading">Consumo de Electricidad del Sector Agrícola</h4>
+        <hr>
+        <p>Los mapas muestran la tendencia histórica y puntual de los consumos del sector agrícola de 2017 a 2023, así
+            como su comportamiento y tendencia a lo largo del tiempo.</p>
+    </div>
+
+    <!-- Combo Box para seleccionar GIF por año -->
+    <div class="form-group pb-3">
+        <label for="gifSelector">Selecciona un año para ver el comportamiento:</label>
+        <select id="gifSelector" class="form-control styled-select">
+            <option value="@firstGif">@firstGif</option> <!-- Mostrar el primer GIF como seleccionado -->
+            @foreach (var gif in gifFiles)
+            {
+                <option value="@gif">@gif</option>
+            }
+        </select>
+    </div>
+
+    <!-- Contenedor para mostrar el GIF seleccionado -->
+    <div class="text-center">
+        <img id="gifDisplay" src="@Cdn.Url/img_snier/vistas/atlas/agricola/@firstGif" alt="GIF del año @firstGif" class="img-fluid" />
+    </div>
+
+    <br>
+
+    <!-- Combo Box para seleccionar otras imágenes PNG -->
+    <div class="form-group pb-3">
+        <label for="imageSelector">Selecciona un mapa para ver el detalle:</label>
+        <select id="imageSelector" class="form-control styled-select">
+            <option value="@firstImage">@firstImage</option> <!-- Mostrar la primera imagen como seleccionada -->
+            @foreach (var image in imageFiles)
+            {
+                <option value="@image">@image</option>
+            }
+        </select>
+    </div>
+
+    <!-- Mostrar la primera imagen PNG por defecto -->
+    <div class="">
+        <img src="@Cdn.Url/img_snier/vistas/atlas/agricola/@firstImage" alt="Mapa @firstImage" class="img-fluid" id="selectedImage" />
+    </div>
+
+</div>
+
+<script>
+    $(document).ready(function () {
+        // Cambiar la imagen PNG cuando se selecciona una opción
+        $('#imageSelector').change(function () {
+            var selectedImage = $(this).val();
+            if (selectedImage) {
+                $('#selectedImage').attr('src', '/img/atlas/agricola/' + selectedImage);
+            }
+        });
+
+        // Cambiar el GIF cuando se selecciona una opción
+        $('#gifSelector').change(function () {
+            var selectedGif = $(this).val();
+            if (selectedGif) {
+                $('#gifDisplay').attr('src', '/img/atlas/agricola/' + selectedGif).show();
+            } else {
+                $('#gifDisplay').hide(); // Ocultar el GIF si no se selecciona nada
+            }
+        });
+    });
+</script>
+
+<style>
+    .img-fluid {
+        max-width: 100%;
+        height: auto;
+    }
+
+    /* Estilo para los combos */
+    .styled-select {
+        border-radius: 5px;
+        border: 1px solid #ced4da;
+        font-size: 12px;
+        padding: 10px;
+        color: #495057;
+        background-color: #f8f9fa;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        /* Aumenta el ancho al 100% del contenedor */
+        max-width: 100%;
+        /* Evitar que exceda el tamaño del contenedor */
+        white-space: nowrap;
+        /* Evitar que el texto se rompa en varias líneas */
+        overflow: hidden;
+        /* Ocultar texto que exceda el tamaño del campo */
+        text-overflow: ellipsis;
+        /* Agrega '...' al final del texto si es muy largo */
+    }
+
+    .styled-select:focus {
+        border-color: #80bdff;
+        box-shadow: 0 0 5px rgba(128, 189, 255, 0.5);
+    }
+</style>

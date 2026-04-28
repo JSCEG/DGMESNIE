@@ -1,0 +1,121 @@
+@using System.Data
+@model NSIE.Models.ConsultaNaturalViewModel
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+}
+
+@{
+    ViewData["Title"] = "Consulta Natural a BD";
+}
+
+<div class="text-center">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/chat.png" alt="Icono personalizado" class="iconomenu">
+        @ViewData["Title"]
+    </h3>
+</div>
+
+<div class="container">
+    <h2 class="fw-bold subtitulo">Chat con EnerGeoCRE</h2>
+    <br><br>
+    <form asp-action="EjecutarConsultaNatural" method="post">
+        <div class="form-group mb-5">
+            <label for="prompt">Por favor Pregunta:</label>
+            <br><br><br>
+            <input type="text" class="form-control" id="prompt" name="prompt" placeholder="Escribe aquí tu pregunta...">
+        </div>
+        <button type="submit" class="btn btn-cre-rojo">Preguntar</button>
+    </form>
+
+    <br>
+    @if (Model != null)
+    {
+        <div class="alert alert-info pt-3" role="alert">
+            <p>Respuesta de Energeo:</p>
+            <p><strong>Pregunta:</strong> @Model.Pregunta</p>
+            <p><strong>Consulta SQL Generada:</strong> @Model.ConsultaSQL</p>
+        </div>
+
+        @if (Model.Resultados != null && Model.Resultados.Rows.Count > 0)
+        {
+            <div class="table-responsive">  
+                <table id="tablaBDN" class="table table-hover table-responsive table-bordered">
+                    <thead>
+                        <tr>
+                            @foreach (DataColumn column in Model.Resultados.Columns)
+                            {
+                                <th>@column.ColumnName</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (DataRow row in Model.Resultados.Rows)
+                        {
+                            <tr>
+                                @foreach (var item in row.ItemArray)
+                                {
+                                    <td>@item</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-info pt-3" role="alert">
+                <p>No se encontraron resultados.</p>
+            </div>
+        }
+    }
+</div> <!-- Cierre del div container -->
+
+@section scripts
+{
+    <script>
+        $(document).ready(function () {
+            var table = $('#tablaBDN').DataTable({
+                lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                dom: 'Blfrtip',
+                buttons: [
+                    {
+                        extend: 'copyHtml5',
+                        title: 'Energeo Lista de Usuarios de la Plataforma'
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: 'Energeo Lista de Usuarios de la Plataforma'
+                    },
+                    {
+                        extend: 'csvHtml5',
+                        title: 'Energeo Lista de Usuarios de la Plataforma'
+                    },
+                    {
+                        extend: 'pdfHtml5',
+                        title: 'Energeo Lista de Usuarios de la Plataforma',
+                        customize: function (doc) {
+                            // Cambia el color de la línea de encabezado a rojo
+                            doc.styles.tableHeader.color = '#9fa1a4';
+                            // Centra la tabla
+                            doc.defaultStyle.alignment = 'center';
+                            // Cambia el color de fondo del encabezado
+                            doc.styles.tableHeader.fillColor = '#4c1922'; // Cambia a tu color preferido
+                        }
+                    }
+                ],
+            });
+        });
+    </script>
+}

@@ -1,0 +1,165 @@
+@model NSIE.Models.Encuesta
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Encuesta";
+}
+
+
+
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/analisis.png" alt="Icono personalizado" class="iconomenu">
+        @ViewData["Title"]
+    </h4>
+</div>
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        <li class="breadcrumb-item">
+            <a href="#" onclick="history.back(); return false;">Regresar</a>
+        </li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+
+<div class="container">
+    <h3 class="subtitulo">En EnerGeoCRE nos interesa conocer tu opinión</h3>
+    <br>
+    <br>
+
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <form id="Encuesta" asp-action="EnviarEncuesta" method="post">
+        <div class="mb-3">
+            <label class="form-label" asp-for="Nombre">Nombre</label>
+            <input type="text" class="form-control" asp-for="Nombre" required>
+            <span asp-validation-for="Nombre" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" asp-for="Correo">Correo</label>
+            <input type="email" class="form-control" asp-for="Correo" required>
+            <span asp-validation-for="Correo" class="text-danger"></span>
+        </div>
+
+
+
+        <div class="mb-3">
+            <label class="form-check-label">
+                ¿Encontraste la información que buscabas?
+            </label>
+            <div>
+                <input type="radio" class="form-check-input" asp-for="EncontroInformacion" value="true" required> Sí
+                <input type="radio" class="form-check-input" asp-for="EncontroInformacion" value="false"> No
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-check-label">
+                ¿Te fue de utilidad?
+            </label>
+            <div>
+                <input type="radio" class="form-check-input" asp-for="FueUtil" value="true" required> Sí
+                <input type="radio" class="form-check-input" asp-for="FueUtil" value="false"> No
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" asp-for="InformacionBuscada">¿Qué información buscaste?</label>
+            <textarea class="form-control" asp-for="InformacionBuscada" rows="3" style="height: 150px;"
+                required></textarea>
+            <span asp-validation-for="InformacionBuscada" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">¿Cómo calificas tu experiencia con la herramienta EnerGeoCRE?</label>
+            <select class="form-select" asp-for="CalificacionExperiencia">
+                <option value="Muy satisfecho">Muy satisfecho</option>
+                <option value="Bastante satisfecho">Bastante satisfecho</option>
+                <option value="Normal">Normal</option>
+                <option value="Un poco insatisfecho">Un poco insatisfecho</option>
+                <option value="Muy insatisfecho">Muy insatisfecho</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-check-label">
+                ¿Quieres agregar algún comentario adicional?
+            </label>
+            <div>
+                <input type="radio" class="form-check-input" asp-for="AgregarComentario" value="true" required> Sí
+                <input type="radio" class="form-check-input" asp-for="AgregarComentario" value="false"> No
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" asp-for="ComentarioAdicional">Comentario Adicional</label>
+            <textarea class="form-control" asp-for="ComentarioAdicional" rows="3" style="height:150px;"></textarea>
+            <span asp-validation-for="ComentarioAdicional" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <input type="submit" class="btn btn-primary" value="Enviar">
+        </div>
+    </form>
+
+</div>
+
+
+
+
+<!-- Scripts -->
+@section scripts {
+
+    <script type="text/javascript">
+        $(document).ready(function () {
+            // Inicialmente deshabilitar el campo de texto
+            $('#ComentarioAdicional').prop('disabled', true);
+
+            // Escuchar cambios en los radio buttons
+            $('input[type=radio][name=AgregarComentario]').change(function () {
+                // Habilitar el campo de texto si la respuesta es "Sí"
+                if (this.value == 'true') {
+                    $('#ComentarioAdicional').prop('disabled', false);
+                    $('#ComentarioAdicional').prop('required', true);
+                } else {
+                    $('#ComentarioAdicional').prop('disabled', true);
+                    $('#ComentarioAdicional').prop('required', false);
+                }
+            });
+        });
+
+        //Espacios en blanco
+        @* document.addEventListener('DOMContentLoaded', (event) => {
+        document.getElementById('Encuesta').addEventListener('submit', function (e) {
+        var esValido = true;
+        var inputsRequeridos = this.querySelectorAll('input[type=text][required], textarea[required]');
+
+        inputsRequeridos.forEach(function (input) {
+        if (input.value.trim() === '') {
+        // Mostrar algún mensaje de error o resaltar el campo
+        alert('Por favor, llene los campos requeridos sin espacios en blanco al inicio o al final.');
+        input.classList.add('is-invalid'); // Clase de Bootstrap para indicar error
+        esValido = false;
+        } else {
+        input.classList.remove('is-invalid');
+        }
+        });
+
+        if (!esValido) {
+        e.preventDefault(); // Prevenir el envío del formulario
+        }
+        });
+        }); *@
+
+    </script>
+    <partial name="_ValidationScriptsPartial" />
+
+}

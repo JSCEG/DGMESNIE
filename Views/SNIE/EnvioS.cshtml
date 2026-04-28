@@ -1,0 +1,160 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Envío y Validación de Series - Balance Nacional de Energía";
+
+    var header = new HeaderViewModel
+    {
+        Title = "Series Energéticas - Envío y Validación",
+        IconPath = "analisis.png",
+        Description = "Recibe, verifica y da seguimiento a series energéticas cargadas por dependencias responsables, insumo base para el Balance Nacional de Energía.",
+        Section = "📦 Captura y Control de Series de Información",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Series Energéticas",
+            description = "Gestión y seguimiento de la entrega de series energéticas anuales.",
+            functionality = "Permite la carga, validación técnica y trazabilidad de entregas por dependencia.",
+            stage = "Fase inicial del ciclo SNIEr",
+            roles = new[] {
+                new { icon = "building", text = "Dependencias: Envío de series" },
+                new { icon = "check", text = "SNIEr: Validación técnica y trazabilidad" },
+                new { icon = "chart-bar", text = "Planeación: Pre-validación para balance" }
+            },
+            order = new { step = 1, description = "Primera etapa del ciclo anual energético (Art. 72 RLPT)" }
+        }),
+        LegalDescription = "Entrega obligatoria de series para el cálculo del Balance Nacional de Energía, conforme al Art. 72 del RLPT.",
+        Fundamentos = new List<FundamentoLegal> {
+            new() { Reference = "Art. 72 Reglamento", Description = "Entrega de información energética por sujetos obligados" },
+            new() { Reference = "Lineamientos SNIEr", Description = "Catálogo de variables y estructura de entrega" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container ps-5 pe-5">
+    <div class="alert alert-warning mb-4">
+        <h5><i class="fas fa-info-circle"></i> Instrucciones Generales</h5>
+        <ul class="mb-0">
+            <li>Cada dependencia debe cargar sus series conforme al calendario oficial SNIEr.</li>
+            <li>Las series deben alinearse con el catálogo vigente y estar en formato .xlsx o .csv.</li>
+            <li>Posterior a la carga, el sistema permite validación, trazabilidad y acuse de recibo digital.</li>
+        </ul>
+    </div>
+
+    <!-- Tarjetas resumen -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-white bg-success shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="fas fa-check"></i> Series Recibidas</h6>
+                    <p class="card-text fs-4">18</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-dark bg-warning shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="fas fa-hourglass-half"></i> Pendientes por Validar</h6>
+                    <p class="card-text fs-4">5</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-danger shadow-sm">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="fas fa-times"></i> No Entregadas</h6>
+                    <p class="card-text fs-4">2</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Formulario carga series -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5><i class="fas fa-upload"></i> Cargar Nueva Serie</h5>
+            <form>
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-4">
+                        <label class="form-label">Dependencia</label>
+                        <select class="form-select">
+                            <option>SENER</option>
+                            <option>CFE</option>
+                            <option>CRE</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Periodo</label>
+                        <select class="form-select">
+                            <option>Año 2024</option>
+                            <option>Año 2023</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Archivo de Serie</label>
+                        <input type="file" class="form-control">
+                    </div>
+                </div>
+                <div class="text-end mt-3">
+                    <button class="btn btn-primary"><i class="fas fa-paper-plane"></i> Enviar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de entregas -->
+    <div class="card">
+        <div class="card-body">
+            <h5><i class="fas fa-table"></i> Historial de Series Enviadas</h5>
+            <table class="table table-bordered table-striped" id="tablaSeries">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Dependencia</th>
+                        <th>Periodo</th>
+                        <th>Fecha de Envío</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>CFE</td>
+                        <td>2024</td>
+                        <td>2025-05-12</td>
+                        <td><span class="badge bg-warning">En Validación</span></td>
+                        <td><button class="btn btn-sm btn-outline-info"><i class="fas fa-eye"></i> Ver</button></td>
+                    </tr>
+                    <tr>
+                        <td>CRE</td>
+                        <td>2024</td>
+                        <td>2025-05-10</td>
+                        <td><span class="badge bg-success">Validada</span></td>
+                        <td><button class="btn btn-sm btn-outline-info"><i class="fas fa-eye"></i> Ver</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            $('#tablaSeries').DataTable({
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' }
+            });
+        });
+    </script>
+}

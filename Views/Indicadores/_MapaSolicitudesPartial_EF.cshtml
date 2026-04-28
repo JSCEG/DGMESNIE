@@ -1,0 +1,170 @@
+@model DetalleCalificacion_EF
+<h3 class="subtitulo display-9 fw-bold">Ubicación de las Solicitudes Evaluadas</h3>
+<br />
+<section id="despliega_mapa pt-3 shadow p-3 mb-5 bg-body-tertiary rounded">
+    <div class="container">
+        <div class="row">
+            <div class="d-flex justify-content-between w-100">
+                <div class="col-md-4 p-3">
+                    <div class="row d-flex justify-content-center">
+                        <button class="btn btn-cre-rojo" data-bs-toggle="offcanvas" data-bs-target="#ejemploOffcanvas">
+                            <i class="bi bi-info-circle-fill"></i> - Ver Información Acerca de este Mapa
+                        </button>
+                        <partial name="_Infomapas_PRPEP" />
+                    </div>
+                </div>
+
+                <div class="col-md-4 p-3">
+                    <select id="dropdown-municipios" class="form-select">
+                        <option selected>Selecciona un Municipio:</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4 p-3">
+                    <div id="search-container" class="dropdown" style="position: relative; z-index: 1000;">
+                        <button class="btn btn-cre-rojo dropdown-toggle" id="dropdownMenuLink" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Selecciona Capa/Opción:
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="limpiarMarcadores()">Limpiar Mapa</a></li>
+                            <li><a class="dropdown-item" href="javascript:void(0)" onclick="CargaSolicitudes()">Ver Solicitudes a Revisar</a></li>
+                            <li><a class="dropdown-item" href="javascript:void(0)" onclick="CargaExpendios()">Ver Permisos de Expendios a Nivel Entidad</a></li>
+                            <li><a class="dropdown-item" href="javascript:void(0)" onclick="CargaSyE()">Ver Solicitudes y Expendios</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <br />
+
+            <div id="" class="app-card-body p-4 d-flex align-items-center">
+                <button id="fullscreen-btn" class="btn btn-primary">Pantalla Completa</button>
+                <div id="alert-message" class="alert alert-info ms-3" role="alert" style="margin-left: 15px; padding: 10px; background-color: #FCFEE7; border-left: 6px solid #DEF321; color: #818F31;">
+                    Para el caso del mercado de electricidad, las ubicaciones corresponden a la dirección proporcionada en la documentación del permiso otorgado que puede corresponder a la ubicación física de central eléctrica que representa.
+                </div>
+            </div>
+
+            <div id="fullscreen-container" class="d-flex h-100">
+                <div class="row m-0 w-100">
+                    <div id="sidebar" class="d-flex flex-column justify-content-between col-3 p-2"></div>
+                    <div id="map" class="col" style="position: relative; z-index: 500;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <style>
+        /* Estilos para pantalla completa */
+        .fullscreen-mode #fullscreen-container,
+        .fullscreen-mode .row,
+        .fullscreen-mode #sidebar,
+        .fullscreen-mode #map {
+            height: 100%;
+        }
+
+        .fullscreen-mode #fullscreen-container {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .fullscreen-mode #controls-container {
+            display: flex;
+            justify-content: space-between;
+            background-color: white;
+            z-index: 1000;
+            padding: 10px;
+        }
+
+        .fullscreen-mode #dropdown-municipios {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .fullscreen-mode #search-container {
+            flex: 1;
+        }
+
+        .fullscreen-mode #sidebar {
+            overflow-y: auto;
+        }
+
+        .fullscreen-mode #map {
+            height: 100%;
+        }
+
+        /* Estilos para vista normal */
+        #main-container .d-flex {
+            flex-wrap: wrap;
+        }
+
+        /* Estilo personalizado para el botón de pantalla completa */
+        #fullscreen-btn {
+            width: auto;
+            display: inline-block;
+        }
+    </style>
+
+
+    <div class="leyenda">
+            <p>Mayor Concentración de Solicitudes</p>
+            <p>Concentración Promedio de Solicitudes</p>
+            <p>Menor concentración de Solicitudes</p>
+            <p>Radio de 3 Km</p>
+            <p> Ductos</p>
+    </div>
+    <br />
+</section>
+
+@*Script de Pantalla Completa*@
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const fullscreenButton = document.getElementById('fullscreen-btn');
+        const fullscreenContainer = document.getElementById('fullscreen-container');
+        const searchContainer = document.getElementById('search-container');
+        const dropdownMunicipios = document.getElementById('dropdown-municipios');
+        const originalSearchParent = searchContainer.parentNode;
+        const originalSearchNextSibling = searchContainer.nextSibling;
+        const originalDropdownParent = dropdownMunicipios.parentNode;
+        const originalDropdownNextSibling = dropdownMunicipios.nextSibling;
+
+        const controlsContainer = document.createElement('div');
+        controlsContainer.id = 'controls-container';
+
+        fullscreenButton.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                fullscreenContainer.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', (event) => {
+            if (document.fullscreenElement) {
+                document.documentElement.classList.add('fullscreen-mode');
+                fullscreenButton.textContent = "Salir de Pantalla Completa";
+                fullscreenContainer.insertBefore(controlsContainer, fullscreenContainer.firstChild);
+                controlsContainer.appendChild(dropdownMunicipios);
+                controlsContainer.appendChild(searchContainer);
+            } else {
+                document.documentElement.classList.remove('fullscreen-mode');
+                fullscreenButton.textContent = "Pantalla Completa";
+                if (originalSearchNextSibling) {
+                    originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+                } else {
+                    originalSearchParent.appendChild(searchContainer);
+                }
+                if (originalDropdownNextSibling) {
+                    originalDropdownParent.insertBefore(dropdownMunicipios, originalDropdownNextSibling);
+                } else {
+                    originalDropdownParent.appendChild(dropdownMunicipios);
+                }
+                controlsContainer.remove();
+            }
+        });
+    });
+</script>
+
+

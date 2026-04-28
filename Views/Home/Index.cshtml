@@ -1,0 +1,494 @@
+@model NSIE.Models.HomeViewModel
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Sistema Nacional de Información Energética (SNIEr)";
+
+    var perfilJson = HttpContextAccessor.HttpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+
+    var header = new HeaderViewModel
+    {
+        Title = ViewData["Title"].ToString(),
+        IconPath = "sistema.png",
+        Description = "Plataforma de integración, consulta, trazabilidad y análisis de información energética nacional.",
+        Section = "Inicio",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "SNIEr",
+            description = "Portal principal del Sistema Nacional de Información Energética.",
+            functionality = "Consulta módulos, indicadores, reportes, trazabilidad y estados del sistema.",
+            stage = "Operación",
+            roles = new[] {
+new { icon = "globe", text = "Usuarios Públicos: Consulta general de datos" },
+new { icon = "user-shield", text = "Funcionarios CRE/SENER: Gestión e integración de información" }
+},
+            order = new { step = 0, description = "Punto de acceso inicial al ecosistema energético" },
+            manualUrl = "/Documentos/ManualSNIEr.pdf"
+        })
+    };
+
+    var idUsuario = Convert.ToInt32(ViewData["IDUsuario"]);
+    var rolUsuario = perfilUsuario?.Rol;
+    var nombreUsuario = perfilUsuario?.Nombre?.ToString();
+    var esConsultaPublica = (rolUsuario == "10" || nombreUsuario.Contains("consult"));
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<style>
+    /* --- ESTILOS PARA EL NUEVO DASHBOARD --- */
+    .dashboard-container {
+        padding-top: 3rem;
+        padding-bottom: 4rem;
+        background: var(--color-fondo);
+    }
+
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 2rem;
+    }
+
+    .dashboard-card {
+        background: var(--color-superficie);
+        border-radius: var(--radio-borde-lg);
+        padding: 2rem;
+        box-shadow: var(--sombra-suave);
+        transition: all 0.3s ease;
+        border: 1px solid var(--color-borde);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .dashboard-card:hover {
+        transform: translateY(-8px);
+        box-shadow: var(--sombra-media);
+        border-color: var(--color-primario);
+    }
+
+    .dashboard-card.full-width {
+        grid-column: 1 / -1;
+        /* Ocupa todo el ancho del grid */
+    }
+
+    .dashboard-card .card-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--color-borde);
+    }
+
+    .dashboard-card .card-icon {
+        font-size: 1.5rem;
+        color: var(--color-primario);
+        background-color: rgba(139, 195, 74, 0.1);
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .dashboard-card .card-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--texto-principal);
+        margin-bottom: 0;
+    }
+
+    .dashboard-card .card-body {
+        flex-grow: 1;
+    }
+
+    /* Estilos para la tarjeta de Módulos */
+    .module-list a {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        border-radius: var(--radio-borde);
+        text-decoration: none;
+        color: var(--texto-principal);
+        transition: background-color 0.2s ease, color 0.2s ease;
+        margin-bottom: 0.5rem;
+    }
+
+    .module-list a:hover {
+        background-color: rgba(139, 195, 74, 0.05);
+        color: var(--color-primario);
+    }
+
+    .module-list .module-icon {
+        font-size: 1.2rem;
+        margin-right: 1rem;
+        width: 24px;
+        text-align: center;
+        color: var(--color-secundario);
+    }
+
+    /* Estilos para la tarjeta de Indicadores */
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+    }
+
+    .kpi-item {
+        text-align: center;
+    }
+
+    .kpi-label {
+        font-size: 0.9rem;
+        color: var(--texto-secundario);
+        margin-bottom: 0.5rem;
+    }
+
+    .kpi-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--color-primario);
+    }
+
+    .kpi-unit {
+        font-size: 1rem;
+        color: var(--texto-secundario);
+        margin-left: 0.25rem;
+    }
+
+    /* Estilos para la tarjeta de Actividad Reciente */
+    #continuar {
+        padding: 2rem !important;
+        background: var(--color-superficie) !important;
+    }
+
+    /* Hero Section Compacta */
+    #hero-home {
+        padding: 2.5rem 0;
+        /* Altura reducida */
+        position: relative;
+        overflow: hidden;
+        background: var(--color-fondo-oscuro);
+    }
+
+    #particles-js-home {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+    }
+
+    #hero-home .container {
+        position: relative;
+        z-index: 1;
+    }
+</style>
+
+<!-- HERO SECTION COMPACTO -->
+<section id="hero-home" class="text-center">
+    <div id="particles-js-home"></div>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8" data-aos="zoom-in">
+                <h1 class="display-5 fw-bold mb-3 text-white">
+                    @if (esConsultaPublica)
+                    {
+                        <text>Bienvenido a la Consulta Pública</text>
+                    }
+                    else
+                    {
+
+                        <text>Bienvenido, @nombreUsuario</text>
+                    }
+                </h1>
+                <p class="lead mb-4 text-white-50">El SNIEr es la fuente oficial de información del sector energético en
+                    México.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- NUEVO DASHBOARD GRID -->
+<div class="dashboard-container">
+    <div class="container">
+        <div class="dashboard-grid">
+
+            <!-- Card: Módulos Principales -->
+            <div class="dashboard-card" data-aos="fade-up">
+                <div class="card-header">
+                    <div class="card-icon"><i class="bi bi-grid-3x3-gap-fill"></i></div>
+                    <h3 class="card-title">Módulos Principales</h3>
+                </div>
+                <div class="card-body">
+                    <div class="module-list">
+                        <a href="@Url.Action("BNE", "SankeySener")">
+                            <i class="bi bi-diagram-3-fill module-icon"></i>
+                            <span>Balance Nacional de Energía</span>
+                        </a>
+                        <a href="@Url.Action("AZEL_Publico", "Atlas")#7">
+                            <i class="bi bi-wind module-icon"></i>
+                            <span>Atlas de Energías Limpias (AZEL)</span>
+                        </a>
+                        <a href="@Url.Action("Infraestructura_SEM", "Map")">
+                            <i class="bi bi-map-fill module-icon"></i>
+                            <span>Mapa de Infraestructura</span>
+                        </a>
+                        <a href="@Url.Action("Index", "Revistas")">
+                            <i class="bi bi-book-half module-icon"></i>
+                            <span>Publicaciones y Revistas</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card: Indicadores Clave -->
+            <div class="dashboard-card" data-aos="fade-up" data-aos-delay="100">
+                <div class="card-header">
+                    <div class="card-icon"><i class="bi bi-bar-chart-line-fill"></i></div>
+                    <h3 class="card-title">Indicadores Clave</h3>
+                </div>
+                <div class="card-body">
+                    <div class="kpi-grid">
+                        <div class="kpi-item">
+                            <div class="kpi-label">Producción Nacional</div>
+                            <div class="kpi-value">6,580<span class="kpi-unit">PJ</span></div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="kpi-label">Demanda Eléctrica</div>
+                            <div class="kpi-value">325<span class="kpi-unit">TWh</span></div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="kpi-label">Generación Limpia</div>
+                            <div class="kpi-value">28.5<span class="kpi-unit">%</span></div>
+                        </div>
+                        <div class="kpi-item">
+                            <div class="kpi-label">Precio Spot (MEM)</div>
+                            <div class="kpi-value">950.7<span class="kpi-unit">MXN/MWh</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card: Actividad Reciente / Lo Más Consultado (Full Width) -->
+            <div class="dashboard-card full-width" id="continuar" data-aos="fade-up" data-aos-delay="200">
+                @if (esConsultaPublica)
+                {
+                    <div class="card-header">
+                        <div class="card-icon"><i class="bi bi-star-fill"></i></div>
+                        <h3 class="card-title">Lo Más Consultado</h3>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-4">Explora los módulos y secciones más populares de la plataforma.</p>
+                        <div id="tarjetas-acciones"></div>
+                    </div>
+                }
+                else
+                {
+                    <div class="card-header">
+                        <div class="card-icon"><i class="bi bi-clock-history"></i></div>
+                        <h3 class="card-title">Continuar Viendo</h3>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-4">Retoma donde te quedaste en tus últimas consultas.</p>
+                        <div id="tarjetas-acciones"></div>
+                    </div>
+                }
+            </div>
+
+            <!-- Card: Ayuda y Soporte -->
+            <div class="dashboard-card" data-aos="fade-up" data-aos-delay="300">
+                <div class="card-header">
+                    <div class="card-icon"><i class="bi bi-question-circle-fill"></i></div>
+                    <h3 class="card-title">Ayuda y Soporte</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">Consulta nuestras guías o contáctanos para obtener asistencia.</p>
+                    <div class="d-flex flex-column gap-2">
+                        <a href="https://cdn.sassoapps.com/Manuales/Manual_Usuario_SNIEr.pdf" class="btn btn-primary"
+                            target="_blank">
+                            <i class="bi bi-file-earmark-pdf me-2"></i>Descargar Manual
+                        </a>
+                        <button class="btn btn-outline-secondary"
+                            onclick="mostrarAyudaModulo(@Html.Raw(header.ModuleInfo))">
+                            <i class="bi bi-info-circle me-2"></i>Información del Módulo
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div class="container my-4">
+    <div class="dashboard-card full-width" data-aos="fade-up">
+        <div class="card-header">
+            <div class="card-icon"><i class="bi bi-diagram-3"></i></div>
+            <h3 class="card-title">Diagrama Energético</h3>
+        </div>
+        <div class="card-body">
+            <div class="diagram-wrapper">
+                <partial name="_DiagramaSEM_N" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .diagram-wrapper {
+        max-width: 100%;
+        overflow-x: auto;   /* si se sale en pantallas chicas */
+        transform: scale(0.9);   /* más pequeño */
+        transform-origin: top center; /* escala desde arriba y centrado */
+    }
+
+    .diagram {
+        max-width: 1200px; /* o lo que necesites */
+        margin: 0 auto;    /* centrar dentro del wrapper */
+    }
+</style>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+    <script>
+        // --- SCRIPT DE PARTICLES.JS ---
+        document.addEventListener('DOMContentLoaded', function () {
+            const particlesDiv = document.getElementById('particles-js-home');
+            if (typeof particlesJS !== 'undefined' && particlesDiv) {
+                particlesJS("particles-js-home", {
+                    "particles": {
+                        "number": { "value": 60, "density": { "enable": true, "value_area": 800 } },
+                        "color": { "value": "#ffffff" },
+                        "shape": { "type": "circle" },
+                        "opacity": { "value": 0.4, "random": true },
+                        "size": { "value": 2, "random": true },
+                        "line_linked": { "enable": true, "distance": 150, "color": "#ffffff", "opacity": 0.2, "width": 1 },
+                        "move": { "enable": true, "speed": 2, "direction": "none", "random": true, "straight": false, "out_mode": "out" }
+                    },
+                    "interactivity": {
+                        "detect_on": "canvas",
+                        "events": { "onhover": { "enable": true, "mode": "grab" }, "onclick": { "enable": false } },
+                        "modes": { "grab": { "distance": 140, "line_linked": { "opacity": 0.5 } } }
+                    },
+                    "retina_detect": true
+                });
+            }
+        });
+
+        // --- SCRIPT PARA FUNCIONALIDAD "CONTINUAR VIENDO" (SIN CAMBIOS) ---
+        function irA(elemento) {
+            const controller = elemento.getAttribute('data-controller');
+            const action = elemento.getAttribute('data-action');
+            if (controller && action) {
+                window.location.href = `/${controller}/${action}`;
+            }
+        }
+
+        function mostrarAyudaModulo(infoJson) {
+            try {
+                const info = typeof infoJson === 'string' ? JSON.parse(infoJson) : infoJson;
+                const html = `
+                        <div class="text-start">
+                            ${info.description ? `<p><strong>${info.description}</strong></p>` : ''}
+                            ${info.functionality ? `<p><i class='fas fa-cogs me-2'></i> ${info.functionality}</p>` : ''}
+                            ${info.stage ? `<p><i class='fas fa-layer-group me-2'></i> Etapa: ${info.stage}</p>` : ''}
+                            ${info.roles?.length ? `
+                                <ul>
+                                    ${info.roles.map(r => `<li><i class="fas fa-${r.icon} me-2 text-primary"></i> ${r.text}</li>`).join('')}
+                                </ul>` : ''}
+                            ${info.order ? `<p><i class='fas fa-sort-amount-up'></i> Paso ${info.order.step}: ${info.order.description}</p>` : ''}
+                        </div>`;
+
+                Swal.fire({
+                    title: info.title || 'Ayuda del módulo',
+                    html: html,
+                    confirmButtonText: 'Cerrar',
+                    confirmButtonColor: '#6c757d',
+                    backdrop: true
+                });
+            } catch (e) {
+                console.error("Error al parsear o mostrar la ayuda del módulo:", e);
+                Swal.fire('Error', 'No se pudo mostrar la información de ayuda.', 'error');
+            }
+        }
+
+        $(function () {
+            const $seccion = $('#continuar');
+            const $contenedor = $('#tarjetas-acciones');
+            const $loader = $('<div id="loader-continua" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary" role="status"><span class="visually-hidden">Cargando...</span></div></div>');
+
+            $contenedor.html($loader);
+
+            $.ajax({
+                url: '@Url.Action("GetUltimasAcciones", "Bitacora")',
+                data: { top: 5 },
+                dataType: 'json',
+                success: acciones => {
+                    if (!acciones || !acciones.length) {
+                        $contenedor.html('<p class="text-muted text-center">Sin actividad reciente.</p>');
+                        return;
+                    }
+                    const filaId = 'fila-acciones';
+                    const filaHtml = `
+                            <div class="position-relative netflix-carousel">
+                                <button class="nf-nav-btn nf-prev" type="button" aria-label="Anterior" data-target="#${filaId}">❮</button>
+                                <button class="nf-nav-btn nf-next" type="button" aria-label="Siguiente" data-target="#${filaId}">❯</button>
+                                <div id="${filaId}" class="netflix-card-container" role="list" aria-label="Continuar viendo">
+                                ${acciones.map(a => {
+                        const img = `@Cdn.Url/img_snier/vistas/${(a.pagina || 'default').toLowerCase().replace(/\s+/g, '_')}.png`;
+                        return `
+                                        <article class="netflix-card" role="listitem" tabindex="0" onclick="irA(this)" data-controller="${a.controller}" data-action="${a.action}">
+                                            <div class="card-img"><img src="${img}" alt="${a.pagina || 'Vista'}" loading="lazy" onerror="this.src='@Cdn.Url/img_snier/vistas/default.png'"></div>
+                                            <div class="card-overlay">
+                                                <h6 title="${a.pagina || ''}">${a.pagina || ''}</h6>
+                                                <p class="text-muted small">${a.fecha || ''}</p>
+                                                <button class="btn btn-primary btn-sm" type="button">Reanudar</button>
+                                            </div>
+                                        </article>`;
+                    }).join('')}
+                                </div>
+                            </div>`;
+                    $contenedor.html(filaHtml);
+
+                    // Lógica de navegación del carrusel (sin cambios)
+                    const $fila = $('#' + filaId);
+                    const $prev = $seccion.find('.nf-prev');
+                    const $next = $seccion.find('.nf-next');
+
+                    function updateNavButtons() {
+                        const el = $fila[0];
+                        if (!el) return;
+                        const maxScroll = el.scrollWidth - el.clientWidth;
+                        $prev.prop('disabled', el.scrollLeft <= 1);
+                        $next.prop('disabled', el.scrollLeft >= maxScroll - 1);
+                    }
+                    function scrollByPage(dir) {
+                        const el = $fila[0];
+                        if (!el) return;
+                        const page = el.clientWidth * 0.9;
+                        el.scrollBy({ left: dir * page, behavior: 'smooth' });
+                        setTimeout(updateNavButtons, 400);
+                    }
+                    $prev.on('click', () => scrollByPage(-1));
+                    $next.on('click', () => scrollByPage(1));
+                    $fila.on('scroll', updateNavButtons);
+                    requestAnimationFrame(updateNavButtons);
+                },
+                error: (xhr, status, err) => {
+                    console.error('Error al cargar últimas acciones:', err);
+                    $contenedor.html('<p class="text-danger text-center">No fue posible cargar la actividad.</p>');
+                }
+            });
+        });
+    </script>
+}

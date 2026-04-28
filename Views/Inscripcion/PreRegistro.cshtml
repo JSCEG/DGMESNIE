@@ -1,0 +1,137 @@
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+}
+
+@{
+    ViewData["Title"] = "S-CEL - Sistema de Gestión de Certificados de Energía Limpia";
+
+    // Cambia el tipo de "modalidades" a List<ModalidadInscripcion>
+    var modalidades = ViewData["Modalidades"] as List<ModalidadInscripcion>;
+
+}
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/logo_scel.png" alt="Icono S-CEL" class="iconomenu">
+        Sistema de Certificados de Energías Limpias (S-CEL)
+    </h4>
+</div>
+
+<!-- Miga de Pan -->
+<div class="alert alert-light" role="alert">
+    <nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+        aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="container ps-2 pe-2">
+    <!-- Contenedor principal -->
+    <form action="/Inscripcion/ProcesarFormulario" method="post">
+        <div class="my-5 p-4 bg-white shadow-sm rounded">
+            <!-- Título del formulario -->
+            <h3 class="subtitulobus">Solicitud de Inscripción a S-CEL</h3>
+
+            <!-- Contenedor de dos columnas para pantallas medianas en adelante -->
+            <div class="row pt-3">
+                <!-- Nombre completo / Razón Social -->
+                <div class="col-12 col-md-6 mb-3">
+                    <label for="nombre" class="form-label">Nombre Completo / Razón Social:</label>
+                    <input type="text" class="form-control" id="nombre" name="nombre" required autocomplete="off" />
+                </div>
+
+                <!-- RFC con Homoclave -->
+                <div class="col-12 col-md-6 mb-3">
+                    <label for="rfc" class="form-label">RFC con Homoclave:</label>
+                    <input type="text" class="form-control" id="rfc" name="rfc" required />
+                </div>
+            </div>
+            <div class="row">
+                <!-- Correo Electrónico -->
+                <div class="col-12 col-md-6 mb-3">
+                    <label for="correo" class="form-label">Correo Electrónico:</label>
+                    <input type="email" class="form-control" id="correo" name="correo" required autocomplete="off" />
+                </div>
+
+                <!-- Contraseña -->
+                <div class="col-12 col-md-6 mb-3">
+                    <label for="clave" class="form-label">Contraseña:</label>
+                    <input type="password" class="form-control" id="clave" name="clave" required />
+                </div>
+            </div>
+            <div class="row">
+                <!-- Confirmar Contraseña -->
+                <div class="col-12 col-md-6 mb-3">
+                    <label for="confirmarClave" class="form-label">Confirmar Contraseña:</label>
+                    <input type="password" class="form-control" id="confirmarClave" name="confirmarClave" required />
+                </div>
+
+                <!-- Selección de Modalidad -->
+                <div class="col-12 col-md-6 mb-3">
+                    <label for="perfil" class="form-label">Seleccione su Modalidad de Inscripción:</label>
+                    <select class="form-select" id="perfil" name="perfil" required>
+                        <option value="" disabled selected>Haga clic aquí para seleccionar una opción</option>
+                        @if (modalidades != null && modalidades.Count > 0)
+                        {
+                            @foreach (var modalidad in modalidades)
+                            {
+                                <option value="@modalidad.Nombre_Modalidad" data-categoria="@modalidad.Categoria">
+                                    @modalidad.Nombre_Modalidad
+                                </option>
+                            }
+                        }
+                        else
+                        {
+                            <option value="">No se encontraron modalidades</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+        <!-- Contenedor de vistas parciales -->
+        <div id="formulario-parcial"></div>
+        <!-- Botón de envío -->
+        <button type="submit" class="btn btn-primary mt-4">Continuar</button>
+    </form>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#perfil').change(function () {
+            var modalidad = $(this).val();  // Obtén la modalidad seleccionada
+            var categoria = $(this).find('option:selected').data('categoria');  // Obtén la categoría seleccionada
+
+            console.log('Modalidad seleccionada: ' + modalidad);
+            console.log('Categoría seleccionada: ' + categoria);
+
+            // Hacer la llamada AJAX para cargar la vista parcial correspondiente
+            $.ajax({
+                url: '@Url.Action("CargarFormulario", "Inscripcion")',
+                type: 'GET',
+                data: { modalidad: modalidad, categoria: categoria },  // Enviamos también la categoría
+                success: function (response) {
+                    $('#formulario-parcial').html(response);
+                },
+                error: function (xhr) {
+                    console.log('Error: ' + xhr.responseText);  // Mostrar el error en la consola
+                }
+            });
+        });
+    });
+
+
+</script>

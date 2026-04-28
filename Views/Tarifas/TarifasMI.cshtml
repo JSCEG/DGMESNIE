@@ -1,0 +1,936 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+@model List<TarifaMediaInflacion>
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+}
+
+@{
+    ViewData["Title"] = "Tarifas";
+
+}
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Tarifas Eléctricas",
+        IconPath = "precio.png",
+        Description = "Consulta el histórico de tarifas eléctricas por región y división.",
+        Section = "💡 Tarifas",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Tarifas Eléctricas",
+            description = "Sistema de consulta de tarifas eléctricas y su evolución histórica.",
+            functionality = "Permite visualizar y analizar tarifas por región, división y período.",
+            stage = "Consulta de Tarifas",
+            roles = new[] {
+new { icon = "building", text = "CFE: Control tarifario" },
+new { icon = "search", text = "Público: Consulta de tarifas" },
+new { icon = "chart-line", text = "Análisis: Evolución histórica" }
+},
+            order = new { step = 1, description = "Consulta y análisis tarifario" }
+        }),
+        LegalDescription = "Información tarifaria conforme a la regulación vigente."
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<!-- Elementos descriptivos con AOS -->
+<div class="container-fluid px-4 mb-5">
+    <div class="row g-4">
+        <!-- Card Descripción -->
+        <div class="col-12 col-lg-6" data-aos="fade-right">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="bi bi-info-circle-fill text-primary me-2"></i>
+                        Consulta de Tarifas
+                    </h5>
+                    <p class="card-text">
+                        Visualiza las tarifas eléctricas y su evolución:
+                    </p>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item" data-aos="fade-left" data-aos-delay="100">
+                            <i class="bi bi-geo-alt text-danger me-2"></i>
+                            Por región y división geográfica
+                        </li>
+                        <li class="list-group-item" data-aos="fade-left" data-aos-delay="200">
+                            <i class="bi bi-calendar3 text-success me-2"></i>
+                            Histórico por período
+                        </li>
+                        <li class="list-group-item" data-aos="fade-left" data-aos-delay="300">
+                            <i class="bi bi-graph-up text-info me-2"></i>
+                            Comparativa con INPC
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card Instrucciones -->
+        <div class="col-12 col-lg-6" data-aos="fade-left">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="bi bi-question-circle-fill text-success me-2"></i>
+                        ¿Cómo consultar?
+                    </h5>
+                    <div class="alert alert-light border shadow-sm" role="alert">
+                        <ol class="mb-0">
+                            <li class="mb-2" data-aos="fade-up" data-aos-delay="100">
+                                Seleccione el mes y año deseado
+                            </li>
+                            <li class="mb-2" data-aos="fade-up" data-aos-delay="200">
+                                Elija la división geográfica
+                            </li>
+                            <li class="mb-2" data-aos="fade-up" data-aos-delay="300">
+                                Seleccione el municipio y localidad
+                            </li>
+                            <li data-aos="fade-up" data-aos-delay="400">
+                                Visualice las tarifas en el mapa o tabla
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Informativo -->
+        <div class="col-12" data-aos="fade-up">
+            <div class="alert alert-info border-0 shadow-sm">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-lightbulb-fill fs-4 me-2"></i>
+                    <div>
+                        <h6 class="alert-heading mb-1">Información Importante</h6>
+                        <p class="mb-0">
+                            Las tarifas mostradas son las vigentes para cada región y período según la regulación
+                            aplicable.
+                            La información se actualiza mensualmente conforme a los criterios establecidos.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="container ps-5 pe-5">
+    <!-- Imagen del banner -->
+    <div class="text-center">
+        <img src="@Cdn.Url/img_snier/vistas/banner/tarifas.png" alt="Tarifas Electricidad" class="img-fluid"
+            style="max-width: 100%; height: auto; margin-bottom: 20px;">
+    </div>
+    <div id="TMvsINPC" style="height: 400px; width: 100%"></div>
+    <div id="main-container">
+
+
+        @*Mapa*@
+
+        <h2 class="fw-bold   subtitulobus pb-3 ">Consulta de Cuadro Tarifario Histórico</h2>
+        <br>
+        @*Menu Mapa*@
+        <div class="container pb-3">
+            <div class="row d-flex justify-content-center">
+                <div class="col">
+                    @* <button class="btn btn-cre-rojo" data-bs-toggle="offcanvas" data-bs-target="#ejemploOffcanvas">*@
+                    <button class="btn btn-cre-rojo" id="last-update-btn">
+                        <i class="bi bi-info-circle-fill"></i> Última Actualización: 06/11/2024
+                    </button>
+                </div>
+                @* <div class="col">
+                    <select id="estado" class="form-select">
+                        <option value="ags">Aguascalientes</option>
+                        <option value="bc">Baja California</option>
+                        <option value="bcs">Baja California Sur</option>
+                        <option value="camp">Campeche</option>
+                        <option value="coah">Coahuila</option>
+                        <option value="col">Colima</option>
+                        <option value="chis">Chiapas</option>
+                        <option value="chih">Chihuahua</option>
+                        <option value="cdmx">Ciudad de México</option>
+                        <option value="dgo">Durango</option>
+                        <option value="gto">Guanajuato</option>
+                        <option value="gro">Guerrero</option>
+                        <option value="hgo">Hidalgo</option>
+                        <option value="jal">Jalisco</option>
+                        <option value="mex">México</option>
+                        <option value="mich">Michoacán</option>
+                        <option value="mor">Morelos</option>
+                        <option value="nay">Nayarit</option>
+                        <option value="nl">Nuevo León</option>
+                        <option value="oax">Oaxaca</option>
+                        <option value="pue">Puebla</option>
+                        <option value="qro">Querétaro</option>
+                        <option value="qroo">Quintana Roo</option>
+                        <option value="slp">San Luis Potosí</option>
+                        <option value="sin">Sinaloa</option>
+                        <option value="son">Sonora</option>
+                        <option value="tab">Tabasco</option>
+                        <option value="tamps">Tamaulipas</option>
+                        <option value="tlax">Tlaxcala</option>
+                        <option value="ver">Veracruz</option>
+                        <option value="yuc">Yucatán</option>
+                        <option value="zac">Zacatecas</option>
+                    </select>
+                </div> *@
+
+
+                @if (perfilUsuario.Rol == "1")
+                {
+                    <partial name="_Infomapas_PRPEP" />
+                }
+
+                @if (perfilUsuario.Rol == "0")
+                {
+                    <partial name="_Infomapa_publico_SEM" />
+
+                }
+                <div class="col">
+                    <button id="fullscreen-btn" class="btn btn-primary">Pantalla Completa</button>
+                </div>
+
+            </div>
+        </div>
+        <br>
+
+        <div class="d-flex h-100 pb-3" style="overflow: auto;">
+            <div class="row m-0 w-100">
+                <div class="col-lg-8">
+                    <div class="app-card app-card-chart h-100 shadow-sm">
+                        <div class="app-card-body p-4">
+                            <div class="chart-container">
+                                <div id="map-container" class="app-card-body p-4">
+
+                                    <div id="menu-map-container">
+                                        <!-- Los elementos que se moverán aquí en pantalla completa -->
+                                        <div id="fullscreen-elements">
+                                            <div id="fullscreen-last-update"></div>
+                                            <div id="fullscreen-select"></div>
+                                            <div id="map" style="height: 500px;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4 col-12 ">
+                    <div class="app-card app-card-chart h-100 shadow-sm">
+
+                        <div class="app-card-body p-4">
+                            <div class="chart-container">
+                                @* <h1 class="subtitlobus">Consulta Tarifaria Histórica</h1>
+                                <hr> *@
+                                <div class="alert alert-success text-center mb-4" role="alert">
+                                    <p style="text-align: justify;">Por favor, haga clic en el mapa o seleccione la
+                                        división, municipio y localidad en los campos de selección para conocer la
+                                        tarifa vigente del período consultado. Por defecto, se muestra la tarifa más
+                                        actual disponible.</p>
+                                </div>
+                                <br>
+                                <div class="form-group">
+                                    <label for="mesAnioSelect">Mes/Año</label>
+                                    <select id="mesAnioSelect" class="form-control"
+                                        onchange="onMesAnioOrDivisionChange()">
+                                        @* <option value="">Seleccione Mes/Año</option> *@
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="divisionSelect">División</label>
+                                    <select id="divisionSelect" class="form-control"
+                                        onchange="onMesAnioOrDivisionChange()">
+                                        <option value="">Seleccione una división</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="municipioSelect">Municipio</label>
+                                    <select id="municipioSelect" class="form-control" onchange="onMunicipioChange()">
+                                        <option value="">Seleccione un municipio</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="localidadSelect">Localidad</label>
+                                    <select id="localidadSelect" class="form-control" onchange="onLocalidadChange()">
+                                        <option value="">Seleccione una localidad</option>
+                                    </select>
+                                </div>
+
+                                @* <input type="text" id="searchInput" class="form-control"
+                                    placeholder="Buscar localidad o municipio..." oninput="searchByName()"> *@
+                                <div id="searchResults" class="mt-2"></div>
+                            </div>
+                        </div><!--//app-card-body-->
+                    </div><!--//app-card-->
+
+
+
+                </div>
+            </div>
+        </div>
+        <br />
+        <div class="table-responsive">
+            <table id="ResultadosTarifas" class="display table table-hover table-responsive table-bordered">
+                <thead>
+                    <tr>
+                        <th>Tarifa</th>
+                        <th>Segmento</th>
+                        <th>Unidades</th>
+                        <th>Concepto</th>
+                        <th>División</th>
+                        <th>Int Horario</th>
+                        <th>Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Los datos serán insertados mediante JavaScript -->
+                    <tr>
+                        <td colspan="7" class="text-center">Cargando datos...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+</div>
+<style>
+    #fullscreen-elements {
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        /* Valor inicial para cuando no esté en pantalla completa */
+    }
+
+    #fullscreen-last-update,
+    #fullscreen-select {
+        flex-shrink: 0;
+    }
+
+    #map {
+        flex-grow: 1;
+    }
+
+    #main-container.fullscreen-active #fullscreen-elements {
+        height: 100vh;
+    }
+
+    #main-container.fullscreen-active #map {
+        height: calc(100vh - 60px);
+    }
+
+    #main-container:not(.fullscreen-active) #map {
+        height: 500px;
+    }
+</style>
+
+
+</div>
+
+
+@*Script de Pantalla Completa*@
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const fullscreenButton = document.getElementById('fullscreen-btn');
+        const menuMapContainer = document.getElementById('menu-map-container');
+        const fullscreenElements = document.getElementById('fullscreen-elements');
+        const mainContainer = document.getElementById('main-container');
+
+        const lastUpdateBtn = document.getElementById('last-update-btn');
+        const selectElement = document.getElementById('estado');
+        const mapElement = document.getElementById('map');
+
+        const fullscreenLastUpdate = document.getElementById('fullscreen-last-update');
+        const fullscreenSelect = document.getElementById('fullscreen-select');
+
+        const originalContainer = document.querySelector('.container.pb-3 .row.d-flex.justify-content-center');
+
+        fullscreenButton.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                menuMapContainer.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', (event) => {
+            if (document.fullscreenElement) {
+                fullscreenButton.textContent = "Salir de Pantalla Completa";
+                fullscreenLastUpdate.appendChild(lastUpdateBtn);
+                fullscreenSelect.appendChild(selectElement);
+                fullscreenElements.appendChild(mapElement);
+                mainContainer.classList.add('fullscreen-active');
+                mapElement.style.height = "calc(100vh - 60px)";
+            } else {
+                fullscreenButton.textContent = "Pantalla Completa";
+                originalContainer.querySelector('.col:nth-child(1)').appendChild(lastUpdateBtn);
+                originalContainer.querySelector('.col:nth-child(2)').appendChild(selectElement);
+                document.getElementById('map-container').appendChild(mapElement);
+                mainContainer.classList.remove('fullscreen-active');
+                mapElement.style.height = "500px";
+
+                // Asegurarse de que los estilos se restablezcan
+                fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+            }
+        });
+
+        selectElement.addEventListener('change', (event) => {
+            const selectedState = event.target.value;
+            // Lógica para mostrar el estado seleccionado
+            console.log(`Selected state: ${selectedState}`);
+        });
+    });
+</script>
+
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/division.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipios_division.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/localidades_division.js"></script>
+@* Accediendo al Mapa General en el arreglo de Mapas *@
+<script type="text/javascript" src="/js/configura_mapa.js"></script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const selectMesAnio = document.getElementById("mesAnioSelect");
+        const selectDivision = document.getElementById("divisionSelect");
+
+        // Define la fecha actual (un mes antes de la fecha actual para obtener el último mes completo)
+        const currentDate = new Date();
+        currentDate.setMonth(currentDate.getMonth() - 1); // Un mes antes de la fecha actual
+
+        // Fecha límite (diciembre de 2017)
+        const endDate = new Date(2017, 11); // Diciembre 2017
+
+        // Recorre desde la fecha actual hacia la fecha límite
+        let tempDate = new Date(currentDate);
+        let firstOptionSet = false; // Para verificar si ya se estableció el primer valor
+        while (tempDate >= endDate) {
+            const month = tempDate.toLocaleString("default", { month: "short" });
+            const year = tempDate.getFullYear().toString().slice(-2); // Obtener últimos 2 dígitos del año
+            const optionValue = `${month}_${year}`;
+
+            const option = document.createElement("option");
+            option.value = optionValue;
+            option.text = optionValue;
+            selectMesAnio.appendChild(option);
+
+            // Seleccionar el primer valor (mes más reciente)
+            if (!firstOptionSet) {
+                selectMesAnio.value = optionValue;
+                firstOptionSet = true;
+            }
+
+            // Retrocede un mes
+            tempDate.setMonth(tempDate.getMonth() - 1);
+        }
+
+        // Selecciona la primera opción de la División por defecto
+        if (selectDivision.options.length > 0) {
+            selectDivision.selectedIndex = 0;
+        }
+
+        // Llama a la función para cargar los datos al inicio con los valores por defecto
+        onMesAnioOrDivisionChange();
+    });
+
+    // Función para cargar datos de la tabla
+    function onMesAnioOrDivisionChange() {
+        const mesAnio = document.getElementById("mesAnioSelect").value;
+        const division = document.getElementById("divisionSelect").value;
+
+        if (mesAnio && division) {
+            fetch(`@Url.Action("ObtenerTarifasPorMesAnioYDivision", "Tarifas")?mesAnio=${mesAnio}&division=${division}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Datos recibidos de tarifas:", data); // Imprime el JSON en la consola
+                    mostrarDatosEnTabla(data); // Llama a la función para mostrar los datos en la tabla
+                })
+                .catch(error => console.error('Error al cargar los datos:', error));
+        }
+    }
+
+    // Función para mostrar los datos en la tabla
+    function mostrarDatosEnTabla(data) {
+        // Obtener el cuerpo de la tabla y limpiar el contenido previo
+        const tableBody = document.getElementById("ResultadosTarifas").querySelector("tbody");
+        tableBody.innerHTML = "";
+
+        // Recorrer los datos y generar filas para la tabla
+        data.forEach(item => {
+            const row = document.createElement("tr");
+            row.innerHTML = `
+                <td>${item.tarifa || ''}</td>
+                <td>${item.segmento || ''}</td>
+                <td>${item.unidades || ''}</td>
+                <td>${item.concepto || ''}</td>
+                <td>${item.division || ''}</td>
+                <td>${item.int_Horario || ''}</td>
+                <td>${item.valor !== undefined ? item.valor.toFixed(4) : '0.0000'}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+
+        // Inicializar DataTable
+        $('#ResultadosTarifas').DataTable({
+            destroy: true, // Destruir cualquier DataTable anterior para evitar inicializaciones dobles
+            lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+            dom: 'Blfrtip',
+            buttons: [
+                { extend: 'copyHtml5', title: 'Resultados de Tarifas' },
+                { extend: 'excelHtml5', title: 'Resultados de Tarifas' },
+                { extend: 'csvHtml5', title: 'Resultados de Tarifas' },
+                {
+                    extend: 'pdfHtml5',
+                    title: 'Resultados de Tarifas',
+                    customize: function (doc) {
+                        doc.styles.tableHeader.color = '#9fa1a4';
+                        doc.defaultStyle.alignment = 'center';
+                        doc.styles.tableHeader.fillColor = '#4c1922';
+                    }
+                }
+            ],
+            language: { url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json' },
+            order: [],
+            responsive: true,
+            scrollX: true,
+            autoWidth: false,
+            initComplete: function () {
+                this.api().columns.adjust();
+            }
+        });
+    }
+</script>
+
+
+
+
+@* Mapa *@
+<script>
+    // Configuración del mapa
+    @* let map = L.map('map', { zoomControl: true, maxZoom: 28, minZoom: 5, zoom: 6 })
+        .fitBounds([[16.032962888161236, -107.10661100519332], [29.296274774446957, -85.32517649609608]]);
+
+        // Capa de fondo
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+}).addTo(map); *@
+
+// Colores y estilo
+const colors = {
+        white: '#FFFFFF',
+        greyLight: '#F5F5F5',
+        tealLight: '#48CFCB',
+        tealDark: '#229799',
+        greyDark: '#424242',
+        highlightMunicipio: '#FFD700' // Color distintivo para municipios seleccionados
+    };
+
+    // Variable para almacenar el último nivel seleccionado (división, municipio o localidad)
+    let lastSelectedLevel = 'none';
+
+    // Capa de divisiones
+    const divisionLayer = L.geoJSON(division, {
+        style: function (feature) {
+            return {
+                color: colors.greyDark,
+                weight: 2,
+                fillColor: colors.tealLight,
+                fillOpacity: 0.1,
+            };
+        },
+        onEachFeature: function (feature, layer) {
+            layer.bindPopup(`División: ${feature.properties.DIVISIÓN}`);
+            layer.on({
+                click: function (e) {
+                    selectDivision(e, feature.properties.DIVISIÓN);
+                    mapas[0].fitBounds(layer.getBounds());
+                }
+            });
+        }
+    }).addTo(mapas[0]);
+
+    // Capa para municipios (inicialmente vacía)
+    const municipioLayer = L.geoJSON([], {
+        style: {
+            color: colors.tealDark,
+            weight: 2,
+            fillColor: colors.tealLight,
+            fillOpacity: 0.5
+        }
+    }).addTo(mapas[0]);
+
+    // Capa para localidades (inicialmente vacía)
+    const localidadLayer = L.geoJSON([], {
+        style: {
+            color: 'green',
+            weight: 2,
+            fillOpacity: 0.5
+        }
+    }).addTo(mapas[0]);
+
+    // Variables de datos y selección
+    const divisionesData = division.features || [];
+    const municipiosData = municipios_division.features || [];
+    const localidadesData = localidades_division.features || [];
+    let selectedDivision = null;
+    let selectedMunicipio = null;
+    let selectedLocalidad = null;
+
+    // Inicializar combo de División
+    function initializeDivisionSelect() {
+        const divisionSelect = document.getElementById('divisionSelect');
+        divisionesData.forEach(div => {
+            const option = document.createElement('option');
+            option.value = div.properties.DIVISIÓN;
+            option.textContent = div.properties.DIVISIÓN;
+            divisionSelect.appendChild(option);
+        });
+    }
+
+    // Funciones de resalte y reset
+    function highlightOnlyDivision(divisionName) {
+        divisionLayer.eachLayer(layer => {
+            if (layer.feature.properties.DIVISIÓN === divisionName) {
+                layer.setStyle({ fillOpacity: 0.6, fillColor: colors.tealDark });
+                layer.openPopup();
+            } else {
+                layer.setStyle({ fillOpacity: 0.1, fillColor: colors.white });
+                layer.closePopup();
+            }
+        });
+    }
+
+
+    // Función para resaltar el municipio seleccionado
+    // Función para resaltar el municipio seleccionado
+    function highlightMunicipio(municipioId) {
+        console.log(`Intentando resaltar municipio con ID: ${municipioId}`);
+        let municipioEncontrado = false;
+
+        // Obtener los últimos tres dígitos de `municipioId` para hacer la comparación con `cve_mun`
+        const cveMunComparar = municipioId.slice(-3);
+
+        municipioLayer.eachLayer(layer => {
+            // Verificar si layer.feature y layer.feature.properties están definidos
+            if (layer.feature && layer.feature.properties) {
+                // Comparar solo los últimos tres dígitos de `cvegeo` con `cve_mun`
+                if (layer.feature.properties.cve_mun === cveMunComparar) {
+                    municipioEncontrado = true;
+                    console.log(`Resaltando municipio: ${layer.feature.properties.nom_mun}`);
+                    layer.setStyle({
+                        fillColor: colors.highlightMunicipio,
+                        fillOpacity: 0.9,
+                        weight: 3,
+                        color: '#FF8C00'
+                    });
+                    layer.openPopup();
+
+                    // Actualizar el combo de municipios para reflejar el municipio seleccionado
+                    const municipioSelect = document.getElementById('municipioSelect');
+                    municipioSelect.value = layer.feature.properties.cvegeo; // Ajustar para seleccionar correctamente
+                } else {
+                    // Estilo para los municipios no seleccionados
+                    layer.setStyle({
+                        fillOpacity: 0.1,
+                        fillColor: colors.greyLight,
+                        weight: 1,
+                        color: colors.tealLight
+                    });
+                    layer.closePopup();
+                }
+            }
+        });
+
+        if (!municipioEncontrado) {
+            console.warn(`Municipio con ID ${municipioId} no encontrado en la capa de municipios.`);
+        }
+    }
+
+
+
+    function resetAllDivisions() {
+        if (lastSelectedLevel === 'division') return;
+        divisionLayer.eachLayer(layer => {
+            layer.setStyle({
+                fillColor: colors.tealLight,
+                fillOpacity: 0.1,
+                weight: 2,
+                color: colors.greyDark
+            });
+            layer.closePopup();
+        });
+    }
+
+    function resetAllMunicipios() {
+        if (lastSelectedLevel === 'municipio' || lastSelectedLevel === 'localidad') return;
+        municipioLayer.eachLayer(layer => {
+            layer.setStyle({
+                fillOpacity: 0.1,
+                fillColor: colors.white,
+                weight: 2,
+                color: colors.tealLight
+            });
+            layer.closePopup();
+        });
+    }
+
+    function resetAllLocalidades() {
+        localidadLayer.clearLayers();
+        const localidadSelect = document.getElementById('localidadSelect');
+        localidadSelect.innerHTML = '<option value="">Seleccione una localidad</option>';
+        selectedLocalidad = null;
+    }
+
+    // Funciones de selección
+    function selectDivision(e, divisionName) {
+        lastSelectedLevel = 'division';
+        selectedDivision = divisionName;
+        selectedMunicipio = null;
+        selectedLocalidad = null;
+
+        // Actualizar el combo de divisiones con la división seleccionada
+        document.getElementById('divisionSelect').value = divisionName;
+        document.getElementById('municipioSelect').innerHTML = '<option value="">Seleccione un municipio</option>';
+        document.getElementById('localidadSelect').innerHTML = '<option value="">Seleccione una localidad</option>';
+
+        highlightOnlyDivision(divisionName);
+
+        // Centrar el mapa en la división seleccionada
+        const division = divisionesData.find(div => div.properties.DIVISIÓN === divisionName);
+        if (division) {
+            const divisionBounds = L.geoJSON(division).getBounds();
+            mapas[0].fitBounds(divisionBounds);
+        }
+
+        // Mostrar los municipios de la división seleccionada
+        mostrarMunicipios(divisionName);
+
+        // Llama a la función para cargar los datos de la tabla con la división seleccionada
+        onMesAnioOrDivisionChange();
+    }
+
+    // Función para seleccionar un municipio
+    function selectMunicipio(municipioId) {
+        lastSelectedLevel = 'municipio';
+        selectedMunicipio = municipioId;
+        selectedLocalidad = null;
+
+        console.log(`Seleccionando municipio con ID: ${municipioId}`);
+
+        document.getElementById('municipioSelect').value = municipioId;
+        document.getElementById('localidadSelect').innerHTML = '<option value="">Seleccione una localidad</option>';
+
+        // Llamada para resaltar el municipio
+        highlightMunicipio(municipioId);
+
+        // Centrar en el municipio seleccionado
+        const municipio = municipiosData.find(mun => mun.properties.cvegeo === municipioId);
+        if (municipio) {
+            console.log(`Centrando en municipio: ${municipio.properties.nom_mun}`);
+            const municipioBounds = L.geoJSON(municipio).getBounds();
+            mapas[0].fitBounds(municipioBounds);
+        } else {
+            console.warn(`Municipio con ID ${municipioId} no encontrado en municipiosData`);
+        }
+
+        // Mostrar localidades del municipio
+        mostrarLocalidades(municipioId);
+    }
+
+    function selectLocalidad(localidadId) {
+        lastSelectedLevel = 'localidad';
+        selectedLocalidad = localidadId;
+
+        // Actualizar combo
+        document.getElementById('localidadSelect').value = localidadId;
+
+        // Centrar en la localidad seleccionada
+        const localidad = localidadesData.find(loc => loc.properties.CVEGEO === localidadId);
+        if (localidad) {
+            const localidadBounds = L.geoJSON(localidad).getBounds();
+            mapas[0].fitBounds(localidadBounds);
+            mapas[0].openPopup(`Localidad: ${localidad.properties.NOMGEO}`, localidadBounds.getCenter());
+        }
+    }
+
+    // Mostrar municipios de una división
+    function mostrarMunicipios(divisionName) {
+        const municipioSelect = document.getElementById('municipioSelect');
+        municipioSelect.innerHTML = '<option value="">Seleccione un municipio</option>';
+
+        const municipiosFiltrados = municipiosData.filter(mun => mun.properties.DIVISIÓN === divisionName);
+
+        // Log para verificar que los municipios filtrados son los esperados
+        console.log("Municipios filtrados para la división:", divisionName, municipiosFiltrados);
+
+        municipiosFiltrados.forEach(municipio => {
+            const option = document.createElement('option');
+            option.value = municipio.properties.cvegeo;
+            option.textContent = municipio.properties.nom_mun;
+            municipioSelect.appendChild(option);
+        });
+
+        // Actualizar municipioLayer con los municipios filtrados
+        municipioLayer.clearLayers();
+        L.geoJSON(municipiosFiltrados, {
+            style: {
+                color: colors.tealLight,
+                weight: 2,
+                fillOpacity: 0.5
+            },
+            onEachFeature: function (feature, layer) {
+                layer.bindPopup(`Municipio: ${feature.properties.nom_mun}<br>Clave Municipio: ${layer.feature.properties.cve_mun}`);
+                layer.on({
+                    click: function () {
+                        selectMunicipio(feature.properties.cvegeo);
+                        mapas[0].fitBounds(layer.getBounds());
+                    }
+                });
+            }
+        }).addTo(municipioLayer);
+
+        // Resetear localidades al cambiar de división
+        resetAllLocalidades();
+    }
+
+
+    // Mostrar localidades según el municipio seleccionado
+    function mostrarLocalidades(cvegeo) {
+        const localidadSelect = document.getElementById('localidadSelect');
+        localidadSelect.innerHTML = '<option value="">Seleccione una localidad</option>';
+
+        const localidadesFiltradas = localidadesData.filter(loc => loc.properties.union === cvegeo);
+
+        localidadesFiltradas.forEach(localidad => {
+            const option = document.createElement('option');
+            option.value = localidad.properties.CVEGEO;
+            option.textContent = localidad.properties.NOMGEO;
+            localidadSelect.appendChild(option);
+        });
+
+        localidadLayer.clearLayers();
+        L.geoJSON(localidadesFiltradas, {
+            style: {
+                color: 'green',
+                weight: 2,
+                fillOpacity: 0.5
+            },
+            onEachFeature: function (feature, layer) {
+                layer.bindPopup(`Localidad: ${feature.properties.NOMGEO}`);
+                layer.on({
+                    click: function () {
+                        selectLocalidad(feature.properties.CVEGEO);
+                    }
+                });
+            }
+        }).addTo(localidadLayer);
+    }
+
+    // Sincronizar la selección de combos con las capas en el mapa
+    function onDivisionChange() {
+        const divisionName = document.getElementById('divisionSelect').value;
+        if (divisionName) {
+            selectDivision(null, divisionName);
+        } else {
+            lastSelectedLevel = 'none';
+            resetAllDivisions();
+            resetAllMunicipios();
+            resetAllLocalidades();
+        }
+    }
+
+    function onMunicipioChange() {
+        const municipioId = document.getElementById('municipioSelect').value;
+        if (municipioId) {
+            selectMunicipio(municipioId);
+        } else {
+            lastSelectedLevel = 'division';
+            resetAllMunicipios();
+            resetAllLocalidades();
+        }
+    }
+
+    function onLocalidadChange() {
+        const localidadId = document.getElementById('localidadSelect').value;
+        if (localidadId) {
+            selectLocalidad(localidadId);
+        } else {
+            lastSelectedLevel = 'municipio';
+        }
+    }
+
+    // Asignar eventos a los combos
+    document.getElementById('divisionSelect').addEventListener('change', onDivisionChange);
+    document.getElementById('municipioSelect').addEventListener('change', onMunicipioChange);
+    document.getElementById('localidadSelect').addEventListener('change', onLocalidadChange);
+
+    // Inicializar combos
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeDivisionSelect();
+    });
+
+
+</script>
+
+
+@* Gráfico Inflación *@
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Serializa los datos del modelo en la variable 'tarifas'
+        var tarifas = @Html.Raw(JsonConvert.SerializeObject(Model));
+
+        console.log(tarifas); // Verifica los datos en la consola del navegador
+        var tarifasFiltradas = tarifas.filter(t => t.VarAcumINPC !== null && t.VarAcumTM_CFE_SSB !== null && t.VarAcumTM_CRE !== null); // Filtra los valores nulos
+
+        Highcharts.chart('TMvsINPC', {
+            chart: {
+                type: 'line',  // Gráfico de barras
+                backgroundColor: '#efefee'
+            },
+            title: {
+                text: 'Variación Acumulada (TM CRE vs INPC)'
+            },
+            xAxis: {
+                categories: tarifasFiltradas.map(t => t.Mes + '-' + t.Año) // Eje X con Mes y Año
+            },
+            yAxis: {
+                title: {
+                    text: 'Porcentaje (%)'
+                },
+                labels: {
+                    format: '{value}%' // Asegura que las etiquetas se muestren como porcentaje
+                }
+            },
+            tooltip: {
+                valueSuffix: '%' // Añade el sufijo '%' en el tooltip
+            },
+            series: [{
+                name: 'Variación Acumulada INPC',
+                data: tarifasFiltradas.map(t => t.VarAcumINPC * 100) // Multiplica por 100
+            }, {
+                name: 'Variación Acumulada TM (CFE SSB)',
+                data: tarifasFiltradas.map(t => t.VarAcumTM_CFE_SSB * 100) // Multiplica por 100
+            }, {
+                name: 'Variación Acumulada TM (CRE)',
+                data: tarifasFiltradas.map(t => t.VarAcumTM_CRE * 100) // Multiplica por 100
+            }]
+        });
+    });
+</script>
+
+
+<!-- Agregar Vis.js desde CDN -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>

@@ -1,0 +1,1108 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Revisión Técnica de Series - Intercambio de Observaciones";
+
+    var header = new HeaderViewModel
+    {
+        Title = "Revisión Técnica de Series Energéticas",
+        IconPath = "analisis.png",
+        Description = "Controla el ciclo de revisión de series energéticas con comentarios interinstitucionales y trazabilidad detallada.",
+        Section = "🔍 Observaciones, Retroalimentación y Aprobación",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Revisión Técnica de Series",
+            description = "Módulo para analizar comentarios, devoluciones y respuestas entre actores del SNIEr.",
+            functionality = "Registra observaciones técnicas, tiempos de respuesta y seguimiento por serie.",
+            stage = "Revisión posterior al envío",
+            roles = new[] {
+                new { icon = "users", text = "Dependencias: Revisión y respuesta a observaciones" },
+                new { icon = "clipboard-check", text = "Unidad SNIEr: Emisión y cierre de observaciones" },
+                new { icon = "clock", text = "Seguimiento: Tiempo de respuesta y vencimientos" }
+            },
+            order = new { step = 1, description = "Permite el intercambio técnico previo a validación final." }
+        }),
+        LegalDescription = "Intercambio obligatorio de observaciones técnicas conforme al procedimiento del Art. 75 RLPT.",
+        Fundamentos = new List<FundamentoLegal> {
+            new() { Reference = "Art. 75 Reglamento", Description = "Valida calidad y consistencia antes de integración en BNE" },
+            new() { Reference = "Lineamientos SNIEr", Description = "Plazos y seguimiento de observaciones" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<!-- Estilos personalizados para la vista de revisión -->
+<style>
+    .metric-card {
+        border-radius: 15px;
+        padding: 2rem;
+        text-align: center;
+        transition: all 0.3s ease;
+        background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-primary-rgb) 100%);
+        color: white;
+        position: relative;
+        overflow: hidden;
+    }
+    .metric-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 100px;
+        height: 100px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 50%;
+        transform: translate(30px, -30px);
+    }
+    .metric-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 12px 30px rgba(0,0,0,0.2);
+    }
+    .metric-number {
+        font-size: 3rem;
+        font-weight: 700;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    .metric-label {
+        font-size: 1rem;
+        margin-top: 0.5rem;
+        opacity: 0.9;
+    }
+    .metric-icon {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        font-size: 2rem;
+        opacity: 0.3;
+    }
+    
+    .validation-card {
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+    }
+    .validation-card:hover {
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        border-color: #007bff;
+    }
+    
+    .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+    }
+    
+    .filter-section {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        border: 1px solid #e9ecef;
+    }
+    
+    .data-viewer {
+        background: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    
+    .validation-results {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+    
+    .audit-log {
+        background: #ffffff;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        max-height: 300px;
+        overflow-y: auto;
+        padding: 1rem;
+    }
+    
+    .timeline {
+        list-style: none;
+        padding-left: 2rem;
+        border-left: 3px solid #007bff;
+        margin: 0;
+    }
+    
+    .timeline li {
+        margin-bottom: 1.5rem;
+        position: relative;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+    }
+    
+    .timeline li::before {
+        content: '';
+        position: absolute;
+        left: -2.2rem;
+        top: 1.5rem;
+        width: 1.2rem;
+        height: 1.2rem;
+        background-color: #007bff;
+        border-radius: 50%;
+        border: 3px solid #ffffff;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    
+    .normative-reference {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border: 2px solid #007bff;
+        border-radius: 12px;
+        padding: 1.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .normative-reference:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0,123,255,0.2);
+        border-color: #0056b3;
+    }
+    
+    .chart-container {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+    
+    .action-buttons .btn {
+        margin: 0.2rem;
+        border-radius: 25px;
+    }
+    
+    .detail-panel {
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 2rem;
+        margin-top: 1rem;
+    }
+    
+    .success-bg { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); }
+    .warning-bg { background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%); }
+    .danger-bg { background: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%); }
+    .info-bg { background: linear-gradient(135deg, #17a2b8 0%, #007bff 100%); }
+    .primary-bg { background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); }
+</style>
+
+<div class="container-fluid px-4">
+    
+    <!-- Sección de Referencia Normativa -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="normative-reference">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h5 class="mb-2"><i class="fas fa-balance-scale me-2"></i>Marco Normativo para Validación de Series</h5>
+                        <p class="mb-2">La verificación de la calidad de los registros e información geoespacial se rige por las especificaciones técnicas establecidas en las Disposiciones Normativas del Consejo.</p>
+                        <small><i class="fas fa-info-circle me-1"></i>Acceso directo a políticas, normas técnicas, reglas y lineamientos aplicables</small>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <button class="btn btn-primary btn-lg me-2">
+                            <i class="fas fa-book me-2"></i>Disposiciones Normativas
+                        </button>
+                        <button class="btn btn-outline-primary btn-lg">
+                            <i class="fas fa-file-alt me-2"></i>Formatos y Guías
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard/Resumen del Estado de Validación -->
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <div class="metric-card primary-bg">
+                <i class="fas fa-database metric-icon"></i>
+                <h2 class="metric-number">147</h2>
+                <p class="metric-label">Series Recibidas</p>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="metric-card info-bg">
+                <i class="fas fa-search metric-icon"></i>
+                <h2 class="metric-number">23</h2>
+                <p class="metric-label">En Revisión</p>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="metric-card success-bg">
+                <i class="fas fa-check-circle metric-icon"></i>
+                <h2 class="metric-number">89</h2>
+                <p class="metric-label">Validadas</p>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="metric-card warning-bg">
+                <i class="fas fa-exclamation-triangle metric-icon"></i>
+                <h2 class="metric-number">28</h2>
+                <p class="metric-label">Con Observaciones</p>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="metric-card danger-bg">
+                <i class="fas fa-times-circle metric-icon"></i>
+                <h2 class="metric-number">7</h2>
+                <p class="metric-label">Rechazadas</p>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="metric-card" style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%);">
+                <i class="fas fa-clipboard-check metric-icon"></i>
+                <h2 class="metric-number">12</h2>
+                <p class="metric-label">Verificaciones Pendientes</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráfico de Estado General -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="chart-container">
+                <h5 class="mb-3"><i class="fas fa-chart-pie me-2"></i>Distribución de Estados de Validación</h5>
+                <div id="estadoGeneralChart" style="height: 350px;"></div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="chart-container">
+                <h5 class="mb-3"><i class="fas fa-chart-bar me-2"></i>Entidades con Mayor Actividad</h5>
+                <div id="entidadesChart" style="height: 350px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros y Capacidades de Búsqueda -->
+    <div class="filter-section">
+        <h6><i class="fas fa-filter me-2"></i>Filtros de Búsqueda y Clasificación</h6>
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">Estado</label>
+                <select class="form-select" id="filtroEstado">
+                    <option value="">Todos los estados</option>
+                    <option value="pendiente">Pendientes de Revisión</option>
+                    <option value="revision">En Revisión</option>
+                    <option value="observaciones">Con Observaciones</option>
+                    <option value="validadas">Validadas</option>
+                    <option value="rechazadas">Rechazadas</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Entidad</label>
+                <select class="form-select" id="filtroEntidad">
+                    <option value="">Todas las entidades</option>
+                    <option value="pemex">PEMEX</option>
+                    <option value="cfe">CFE</option>
+                    <option value="sener">SENER</option>
+                    <option value="SEMARNAT">SEMARNAT</option>
+                    <option value="cnh">CNH</option>
+                    <option value="conuee">CONUEE</option>
+                    <option value="cenace">CENACE</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tipo de Serie</label>
+                <select class="form-select" id="filtroTipoSerie">
+                    <option value="">Todos los tipos</option>
+                    <option value="produccion">Producción</option>
+                    <option value="consumo">Consumo</option>
+                    <option value="precios">Precios</option>
+                    <option value="inventario">Inventario</option>
+                    <option value="eficiencia">Eficiencia Energética</option>
+                    <option value="cels">CELs</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Búsqueda</label>
+                <input type="text" class="form-control" id="busquedaTexto" placeholder="ID de envío o palabra clave...">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Período</label>
+                <div class="row g-1">
+                    <div class="col-6">
+                        <input type="date" class="form-control" id="fechaInicio">
+                    </div>
+                    <div class="col-6">
+                        <input type="date" class="form-control" id="fechaFin">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-12 text-end">
+                <button class="btn btn-primary" id="aplicarFiltros">
+                    <i class="fas fa-search me-2"></i>Aplicar Filtros
+                </button>
+                <button class="btn btn-outline-secondary" id="limpiarFiltros">
+                    <i class="fas fa-broom me-2"></i>Limpiar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Series de Datos en Revisión -->
+    <div class="validation-card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-list-alt me-2"></i>Series de Datos en Revisión - Historial de Validación</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="tablaValidacion">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID Envío</th>
+                            <th>Serie Energética</th>
+                            <th>Entidad Emisora</th>
+                            <th>Período</th>
+                            <th>Fecha Envío</th>
+                            <th>Estado Actual</th>
+                            <th>Última Acción</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>SNE-2025-001</code></td>
+                            <td>Producción de Hidrocarburos</td>
+                            <td><span class="badge bg-warning">PEMEX</span></td>
+                            <td>Q4 2024</td>
+                            <td>2025-01-15</td>
+                            <td>
+                                <span class="status-indicator" style="background: #ffc107;"></span>
+                                <span class="badge bg-warning">Análisis Preliminar</span>
+                            </td>
+                            <td>Validación de estructura iniciada</td>
+                            <td class="action-buttons">
+                                <button class="btn btn-sm btn-primary" onclick="verDetalles('SNE-2025-001')">
+                                    <i class="fas fa-eye"></i> Revisar
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>SNE-2025-002</code></td>
+                            <td>Generación Eléctrica por Fuente</td>
+                            <td><span class="badge bg-primary">CFE</span></td>
+                            <td>Anual 2024</td>
+                            <td>2025-01-12</td>
+                            <td>
+                                <span class="status-indicator" style="background: #dc3545;"></span>
+                                <span class="badge bg-danger">Con Inconsistencias</span>
+                            </td>
+                            <td>Inconsistencias en columna 'Capacidad_MW'</td>
+                            <td class="action-buttons">
+                                <button class="btn btn-sm btn-warning" onclick="solicitarAclaracion('SNE-2025-002')">
+                                    <i class="fas fa-comment"></i> Aclaración
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="marcarInconsistente('SNE-2025-002')">
+                                    <i class="fas fa-times"></i> Rechazar
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code>SNE-2025-003</code></td>
+                            <td>Consumo de Energía por Sector</td>
+                            <td><span class="badge bg-info">CONUEE</span></td>
+                            <td>Mensual Dic-2024</td>
+                            <td>2025-01-10</td>
+                            <td>
+                                <span class="status-indicator" style="background: #28a745;"></span>
+                                <span class="badge bg-success">Validado - Requiere Aprobación</span>
+                            </td>
+                            <td>Validación técnica completada</td>
+                            <td class="action-buttons">
+                                <button class="btn btn-sm btn-success" onclick="aprobarSerie('SNE-2025-003')">
+                                    <i class="fas fa-check"></i> Aprobar
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel de Detalles (oculto inicialmente) -->
+    <div id="panelDetalles" class="detail-panel" style="display: none;">
+        <div class="row">
+            <div class="col-md-8">
+                <h5><i class="fas fa-clipboard-list me-2"></i>Detalles de Validación - <span id="serieSeleccionada"></span></h5>
+                
+                <!-- Información General -->
+                <div class="mb-4">
+                    <h6>Información General de la Serie</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>ID:</strong> <span id="detalleId"></span></p>
+                            <p><strong>Serie:</strong> <span id="detalleSerie"></span></p>
+                            <p><strong>Entidad:</strong> <span id="detalleEntidad"></span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Período:</strong> <span id="detallePeriodo"></span></p>
+                            <p><strong>Fecha de Envío:</strong> <span id="detalleFecha"></span></p>
+                            <p><strong>Tamaño:</strong> <span id="detalleTamano"></span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visualización de Datos -->
+                <div class="mb-4">
+                    <h6>Vista Previa de Datos</h6>
+                    <div class="data-viewer">
+                        <table class="table table-sm" id="vistaPrevia">
+                            <thead>
+                                <tr>
+                                    <th>Año</th>
+                                    <th>Mes</th>
+                                    <th>Entidad</th>
+                                    <th>Valor (GWh)</th>
+                                    <th>Unidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>2024</td>
+                                    <td>12</td>
+                                    <td>Industrial</td>
+                                    <td>15,847.5</td>
+                                    <td>GWh</td>
+                                </tr>
+                                <tr>
+                                    <td>2024</td>
+                                    <td>12</td>
+                                    <td>Residencial</td>
+                                    <td>8,234.1</td>
+                                    <td>GWh</td>
+                                </tr>
+                                <tr>
+                                    <td>2024</td>
+                                    <td>12</td>
+                                    <td>Comercial</td>
+                                    <td>4,567.8</td>
+                                    <td>GWh</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Resultados de Validación Automática -->
+                <div class="validation-results">
+                    <h6>Resultados de Validación Automática</h6>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="text-center p-3">
+                                <i class="fas fa-check-circle fa-2x text-success"></i>
+                                <p class="mt-2 mb-0"><strong>Formato de Archivo</strong></p>
+                                <small class="text-success">Correcto ✅</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center p-3">
+                                <i class="fas fa-exclamation-triangle fa-2x text-warning"></i>
+                                <p class="mt-2 mb-0"><strong>Estructura</strong></p>
+                                <small class="text-warning">⚠️ Columna 'Sector' faltante</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center p-3">
+                                <i class="fas fa-chart-line fa-2x text-info"></i>
+                                <p class="mt-2 mb-0"><strong>Rangos/Consistencia</strong></p>
+                                <small class="text-info">En análisis...</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Opciones de Acción -->
+                <div class="mt-4">
+                    <h6>Opciones de Acción</h6>
+                    <div class="row g-2">
+                        <div class="col-md-3">
+                            <button class="btn btn-warning w-100" onclick="enviarCorreccion()">
+                                <i class="fas fa-reply me-2"></i>Enviar a Corrección
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-info w-100" onclick="solicitarVisita()">
+                                <i class="fas fa-user-check me-2"></i>Solicitar Verificación
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-success w-100" onclick="aprobarFinal()">
+                                <i class="fas fa-stamp me-2"></i>Marcar Aprobado
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-outline-secondary w-100" onclick="cerrarPanel()">
+                                <i class="fas fa-times me-2"></i>Cerrar Panel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <!-- Observaciones y Comentarios -->
+                <div class="mb-4">
+                    <h6>Observaciones y Comentarios</h6>
+                    <textarea class="form-control mb-3" rows="4" placeholder="Escriba observaciones detalladas sobre los problemas encontrados..."></textarea>
+                    <button class="btn btn-primary btn-sm w-100">
+                        <i class="fas fa-comment-dots me-2"></i>Agregar Comentario
+                    </button>
+                </div>
+
+                <!-- Historial de Comentarios -->
+                <div class="mb-4">
+                    <h6>Historial de Intercambio</h6>
+                    <div class="audit-log">
+                        <div class="mb-3 p-2 bg-light rounded">
+                            <small class="text-muted">15/01/2025 - 14:30</small>
+                            <p class="mb-1"><strong>Validador SNIER:</strong></p>
+                            <p class="mb-0">Se detectaron inconsistencias en los valores de la columna 'Capacidad_MW'. Favor de revisar.</p>
+                        </div>
+                        <div class="mb-3 p-2 bg-primary bg-opacity-10 rounded">
+                            <small class="text-muted">16/01/2025 - 09:15</small>
+                            <p class="mb-1"><strong>CFE - Área Técnica:</strong></p>
+                            <p class="mb-0">Se corrigieron los valores. Los datos fueron actualizados conforme al catálogo vigente.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Historial de Auditoría -->
+                <div>
+                    <h6>Log de Actividad</h6>
+                    <ul class="timeline">
+                        <li>
+                            <strong>15/01/2025 14:25</strong><br>
+                            <small>Serie recibida y registrada</small><br>
+                            <em>Sistema SNIER</em>
+                        </li>
+                        <li>
+                            <strong>15/01/2025 14:30</strong><br>
+                            <small>Validación automática iniciada</small><br>
+                            <em>Ana García - Validador</em>
+                        </li>
+                        <li>
+                            <strong>15/01/2025 15:45</strong><br>
+                            <small>Inconsistencias detectadas</small><br>
+                            <em>Sistema de Validación</em>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+@section Scripts {
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <script>
+        $(document).ready(function () {
+            // Inicializar DataTables
+            $('#tablaValidacion').DataTable({
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+                pageLength: 10,
+                order: [[4, 'desc']], // Ordenar por fecha de envío
+                columnDefs: [
+                    { width: "12%", targets: 7 } // Ancho fijo para columna de acciones
+                ]
+            });
+
+            // Gráfico de Estado General (Pie Chart)
+            Highcharts.chart('estadoGeneralChart', {
+                chart: { 
+                    type: 'pie',
+                    backgroundColor: 'transparent'
+                },
+                title: { 
+                    text: '',
+                    style: { display: 'none' }
+                },
+                tooltip: {
+                    pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b><br>Total: <b>{point.y} series</b>'
+                },
+                accessibility: {
+                    point: {
+                        valueSuffix: '%'
+                    }
+                },
+                plotOptions: {
+                    pie: {
+                        allowPointSelect: true,
+                        cursor: 'pointer',
+                        dataLabels: {
+                            enabled: true,
+                            format: '<b>{point.name}</b>: {point.percentage:.1f} %'
+                        },
+                        showInLegend: true
+                    }
+                },
+                series: [{
+                    name: 'Estados',
+                    colorByPoint: true,
+                    data: [
+                        { name: 'Validadas', y: 89, color: '#28a745' },
+                        { name: 'Con Observaciones', y: 28, color: '#ffc107' },
+                        { name: 'En Revisión', y: 23, color: '#17a2b8' },
+                        { name: 'Verificaciones Pendientes', y: 12, color: '#6c757d' },
+                        { name: 'Rechazadas', y: 7, color: '#dc3545' }
+                    ]
+                }]
+            });
+
+            // Gráfico de Entidades (Bar Chart)
+            Highcharts.chart('entidadesChart', {
+                chart: { 
+                    type: 'column',
+                    backgroundColor: 'transparent'
+                },
+                title: { 
+                    text: '',
+                    style: { display: 'none' }
+                },
+                xAxis: {
+                    categories: ['CFE', 'PEMEX', 'SENER', 'SEMARNAT', 'CNH', 'CONUEE'],
+                    crosshair: true
+                },
+                yAxis: {
+                    min: 0,
+                    title: {
+                        text: 'Número de Series'
+                    }
+                },
+                tooltip: {
+                    headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
+                    pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
+                        '<td style="padding:0"><b>{point.y} series</b></td></tr>',
+                    footerFormat: '</table>',
+                    shared: true,
+                    useHTML: true
+                },
+                plotOptions: {
+                    column: {
+                        pointPadding: 0.2,
+                        borderWidth: 0
+                    }
+                },
+                series: [{
+                    name: 'Series Enviadas',
+                    data: [42, 38, 35, 28, 15, 11],
+                    color: '#007bff'
+                }]
+            });
+
+            // Aplicar filtros
+            $('#aplicarFiltros').click(function() {
+                const filtros = {
+                    estado: $('#filtroEstado').val(),
+                    entidad: $('#filtroEntidad').val(),
+                    tipoSerie: $('#filtroTipoSerie').val(),
+                    busqueda: $('#busquedaTexto').val(),
+                    fechaInicio: $('#fechaInicio').val(),
+                    fechaFin: $('#fechaFin').val()
+                };
+
+                // Simular aplicación de filtros
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Filtros Aplicados',
+                    text: 'Los filtros han sido aplicados a la tabla de validación.',
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+
+                // Aquí iría la lógica real de filtrado
+                console.log('Filtros aplicados:', filtros);
+            });
+
+            // Limpiar filtros
+            $('#limpiarFiltros').click(function() {
+                $('#filtroEstado, #filtroEntidad, #filtroTipoSerie').val('');
+                $('#busquedaTexto').val('');
+                $('#fechaInicio, #fechaFin').val('');
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Filtros Limpiados',
+                    text: 'Todos los filtros han sido restablecidos.',
+                    timer: 1500,
+                    showConfirmButton: false
+                });
+            });
+
+            // Animaciones para las métricas
+            $('.metric-card').hover(
+                function() {
+                    $(this).addClass('shadow-lg');
+                },
+                function() {
+                    $(this).removeClass('shadow-lg');
+                }
+            );
+        });
+
+        // Función para ver detalles de una serie
+        function verDetalles(serieId) {
+            // Simular carga de datos
+            $('#serieSeleccionada').text(serieId);
+            $('#detalleId').text(serieId);
+            $('#detalleSerie').text('Producción de Hidrocarburos');
+            $('#detalleEntidad').text('PEMEX');
+            $('#detallePeriodo').text('Q4 2024');
+            $('#detalleFecha').text('15/01/2025');
+            $('#detalleTamano').text('2.3 MB (1,247 registros)');
+
+            // Mostrar panel de detalles
+            $('#panelDetalles').slideDown(500);
+            
+            // Scroll hasta el panel
+            $('html, body').animate({
+                scrollTop: $('#panelDetalles').offset().top - 100
+            }, 800);
+
+            Swal.fire({
+                icon: 'info',
+                title: 'Cargando Detalles',
+                text: `Preparando vista detallada de la serie ${serieId}`,
+                timer: 1000,
+                showConfirmButton: false
+            });
+        }
+
+        // Función para solicitar aclaración
+        function solicitarAclaracion(serieId) {
+            Swal.fire({
+                title: 'Solicitar Aclaración',
+                html: `
+                    <div class="text-start">
+                        <p><strong>Serie:</strong> ${serieId}</p>
+                        <textarea class="form-control mt-3" id="observacionTexto" rows="4" 
+                                  placeholder="Describa detalladamente las inconsistencias encontradas y las aclaraciones requeridas..."></textarea>
+                        
+                        <div class="mt-3">
+                            <label class="form-label">Prioridad:</label>
+                            <select class="form-select" id="prioridadSolicitud">
+                                <option value="normal">Normal</option>
+                                <option value="alta">Alta</option>
+                                <option value="critica">Crítica</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <label class="form-label">Plazo de respuesta:</label>
+                            <select class="form-select" id="plazoRespuesta">
+                                <option value="5">5 días hábiles</option>
+                                <option value="10">10 días hábiles</option>
+                                <option value="15">15 días hábiles</option>
+                            </select>
+                        </div>
+                    </div>
+                `,
+                width: 600,
+                showCancelButton: true,
+                confirmButtonText: '<i class="fas fa-paper-plane me-2"></i>Enviar Solicitud',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#ffc107',
+                preConfirm: () => {
+                    const observacion = document.getElementById('observacionTexto').value;
+                    const prioridad = document.getElementById('prioridadSolicitud').value;
+                    const plazo = document.getElementById('plazoRespuesta').value;
+                    
+                    if (!observacion.trim()) {
+                        Swal.showValidationMessage('Debe proporcionar observaciones específicas');
+                        return false;
+                    }
+                    
+                    return { observacion, prioridad, plazo };
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Generar número de solicitud
+                    const numeroSolicitud = `SOL-${new Date().getFullYear()}-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`;
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Solicitud Enviada',
+                        html: `
+                            <div class="alert alert-success">
+                                <h6><i class="fas fa-check-circle me-2"></i>Solicitud de Aclaración Generada</h6>
+                                <p><strong>Número:</strong> ${numeroSolicitud}</p>
+                                <p><strong>Serie:</strong> ${serieId}</p>
+                                <p><strong>Prioridad:</strong> ${result.value.prioridad.toUpperCase()}</p>
+                                <p><strong>Plazo:</strong> ${result.value.plazo} días hábiles</p>
+                            </div>
+                        `,
+                        confirmButtonColor: '#28a745'
+                    });
+                }
+            });
+        }
+
+        // Función para marcar como inconsistente
+        function marcarInconsistente(serieId) {
+            Swal.fire({
+                title: '¿Marcar Serie como Inconsistente?',
+                html: `
+                    <div class="text-start">
+                        <p>Esta acción marcará la serie <strong>${serieId}</strong> como inconsistente y se generará un oficio hacia la entidad responsable.</p>
+                        
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Nota:</strong> Una vez marcada como inconsistente, la serie requerirá corrección y reenvío.
+                        </div>
+                        
+                        <textarea class="form-control mt-3" id="motivoRechazo" rows="4" 
+                                  placeholder="Especifique los motivos del rechazo y las correcciones requeridas..."></textarea>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc3545',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '<i class="fas fa-times me-2"></i>Marcar Inconsistente',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const motivo = document.getElementById('motivoRechazo').value;
+                    if (!motivo.trim()) {
+                        Swal.showValidationMessage('Debe especificar los motivos del rechazo');
+                        return false;
+                    }
+                    return motivo;
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Generar oficio automático
+                    generarOficioRechazo(serieId, result.value);
+                }
+            });
+        }
+
+        // Función para generar oficio de rechazo
+        function generarOficioRechazo(serieId, motivo) {
+            const currentDate = new Date();
+            const numeroOficio = `SNIER-REV/${currentDate.getFullYear()}/${String(currentDate.getMonth() + 1).padStart(2, '0')}${String(currentDate.getDate()).padStart(2, '0')}/${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`;
+
+            Swal.fire({
+                title: 'Generando Oficio de Rechazo...',
+                text: 'Preparando documento para la entidad responsable.',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            setTimeout(() => {
+                Swal.fire({
+                    title: 'Oficio de Rechazo Generado',
+                    html: `
+                        <div class="text-start" style="background: #ffffff; border: 1px solid #dee2e6; border-radius: 8px; padding: 2rem;">
+                            <div class="text-center mb-4">
+                                <h5><i class="fas fa-file-contract me-2"></i>Oficio de Rechazo</h5>
+                                <div class="badge bg-secondary fs-6 mt-2">${numeroOficio}</div>
+                            </div>
+                            
+                            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 1rem; margin-bottom: 1.5rem;">
+                                <div class="row">
+                                    <div class="col-8">
+                                        <strong>PARA:</strong> Entidad Responsable<br>
+                                        <strong>DE:</strong> Unidad del SNIER
+                                    </div>
+                                    <div class="col-4 text-end">
+                                        <strong>FECHA:</strong> ${currentDate.toLocaleDateString('es-MX')}<br>
+                                        <strong>SERIE:</strong> ${serieId}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <p style="text-align: justify; line-height: 1.6;">
+                                <strong>ASUNTO:</strong> Rechazo de Serie Energética por Inconsistencias Detectadas
+                            </p>
+                            
+                            <div style="border-left: 3px solid #6c757d; padding-left: 1rem; margin: 1.5rem 0;">
+                                <p style="text-align: justify; line-height: 1.6;">
+                                    Por medio del presente, se notifica que la serie energética <strong>${serieId}</strong> ha sido 
+                                    <strong>rechazada</strong> durante el proceso de validación técnica, debido a las siguientes inconsistencias:
+                                </p>
+                                
+                                <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 1rem; margin: 1rem 0;">
+                                    <strong>Motivos del Rechazo:</strong><br>
+                                    ${motivo}
+                                </div>
+                                
+                                <p style="text-align: justify; line-height: 1.6;">
+                                    Se requiere que la entidad proceda a <strong>corregir las inconsistencias</strong> identificadas 
+                                    y reenvíe la información conforme a las especificaciones técnicas establecidas en las 
+                                    Disposiciones Normativas del Consejo.
+                                </p>
+                            </div>
+                            
+                            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 1rem; margin-top: 2rem;">
+                                <div class="row">
+                                    <div class="col-6">
+                                        <strong>Generado:</strong> ${currentDate.toLocaleString('es-MX')}<br>
+                                        <small class="text-muted">Sistema de Validación SNIER</small>
+                                    </div>
+                                    <div class="col-6 text-end">
+                                        <span class="badge bg-danger">Rechazada</span><br>
+                                        <small class="text-muted">Requiere corrección</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `,
+                    width: '70%',
+                    showCancelButton: true,
+                    confirmButtonText: '<i class="fas fa-paper-plane me-2"></i>Enviar Oficio',
+                    cancelButtonText: '<i class="fas fa-edit me-2"></i>Editar',
+                    confirmButtonColor: '#dc3545',
+                    cancelButtonColor: '#007bff'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: '¡Oficio Enviado!',
+                            html: `
+                                <div class="alert alert-success">
+                                    <h6><i class="fas fa-check-circle me-2"></i>Oficio de Rechazo Enviado</h6>
+                                    <p><strong>Número:</strong> ${numeroOficio}</p>
+                                    <p><strong>Serie:</strong> ${serieId}</p>
+                                    <p><strong>Estado actualizado:</strong> Rechazada - Pendiente de Corrección</p>
+                                </div>
+                            `,
+                            confirmButtonColor: '#28a745'
+                        });
+                    }
+                });
+            }, 1500);
+        }
+
+        // Función para aprobar serie
+        function aprobarSerie(serieId) {
+            Swal.fire({
+                title: '¿Aprobar Serie para Integración?',
+                html: `
+                    <div class="text-start">
+                        <p>La serie <strong>${serieId}</strong> será marcada como <strong>APROBADA</strong> y lista para integración al Balance Nacional de Energía.</p>
+                        
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong>Verificación completada:</strong> La serie ha pasado todas las validaciones técnicas requeridas.
+                        </div>
+                        
+                        <textarea class="form-control mt-3" id="comentarioAprobacion" rows="3" 
+                                  placeholder="Comentarios adicionales (opcional)..."></textarea>
+                    </div>
+                `,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '<i class="fas fa-stamp me-2"></i>Aprobar Serie',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const comentario = document.getElementById('comentarioAprobacion')?.value || '';
+                    
+                    Swal.fire({
+                        icon: 'success',
+                        title: '¡Serie Aprobada!',
+                        html: `
+                            <div class="alert alert-success">
+                                <h6><i class="fas fa-medal me-2"></i>Serie Validada y Aprobada</h6>
+                                <p><strong>Serie:</strong> ${serieId}</p>
+                                <p><strong>Estado:</strong> Aprobada para integración</p>
+                                <p><strong>Fecha de aprobación:</strong> ${new Date().toLocaleString('es-MX')}</p>
+                                ${comentario ? `<p><strong>Comentarios:</strong> ${comentario}</p>` : ''}
+                            </div>
+                        `,
+                        confirmButtonColor: '#28a745'
+                    });
+                }
+            });
+        }
+
+        // Funciones del panel de detalles
+        function enviarCorreccion() {
+            Swal.fire({
+                title: 'Enviar a Corrección',
+                input: 'textarea',
+                inputLabel: 'Mensaje para la entidad',
+                inputPlaceholder: 'Especifique las correcciones requeridas...',
+                showCancelButton: true,
+                confirmButtonText: 'Enviar',
+                confirmButtonColor: '#ffc107'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Enviado a Corrección',
+                        text: 'La serie ha sido devuelta a la entidad para corrección.',
+                        confirmButtonColor: '#28a745'
+                    });
+                }
+            });
+        }
+
+        function solicitarVisita() {
+            Swal.fire({
+                title: 'Solicitar Visita de Verificación',
+                html: `
+                    <div class="text-start">
+                        <p>Se programará una visita de verificación para cotejar los datos de la serie.</p>
+                        <textarea class="form-control mt-3" rows="4" placeholder="Justificación para la visita de verificación..."></textarea>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Programar Visita',
+                confirmButtonColor: '#17a2b8'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Visita Programada',
+                        text: 'Se ha programado la visita de verificación. Se notificará a la entidad.',
+                        confirmButtonColor: '#007bff'
+                    });
+                }
+            });
+        }
+
+        function aprobarFinal() {
+            aprobarSerie($('#serieSeleccionada').text());
+        }
+
+        function cerrarPanel() {
+            $('#panelDetalles').slideUp(500);
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+}

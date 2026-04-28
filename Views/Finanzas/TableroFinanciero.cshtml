@@ -1,0 +1,263 @@
+@inject IHttpContextAccessor HttpContextAccessor
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["Title"] = "Tablero Financiero";
+
+    var header = new HeaderViewModel
+    {
+        Title = "Tablero Financiero",
+        IconPath = "finanzas.png",
+        Description = "Consulta dinámica de avance presupuestal por filtros clave.",
+        Section = "Transparencia Presupuestaria",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Tablero Financiero",
+            description = "Visualiza el ejercicio de recursos públicos por capítulo, unidad y entidad.",
+            functionality = "Permite explorar el presupuesto aprobado, modificado y pagado.",
+            stage = "Seguimiento",
+            roles = new[] {
+                new { icon = "university", text = "Ciudadanía" },
+                new { icon = "clipboard-list", text = "SENER: Gestión" },
+                new { icon = "calculator", text = "Unidad SNIEr: Control" }
+            },
+            order = new { step = 2, description = "Consulta conforme a Art. 70 del Reglamento" }
+        }),
+        LegalDescription = "Cumple con los lineamientos del Reglamento en materia de trazabilidad del gasto.",
+        Fundamentos = new List<FundamentoLegal>
+        {
+            new FundamentoLegal { Reference = "Art. 38 Ley Presupuesto", Description = "Obliga a informar sobre el gasto público" },
+            new FundamentoLegal { Reference = "Art. 70 Reglamento SNIEr", Description = "Define mecanismos de trazabilidad presupuestal" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+
+<div class="container ps-5 pe-5">
+<!-- Tarjetas estadísticas principales -->
+<div class="row mb-4" data-aos="fade-up" data-aos-delay="200">
+    <div class="col-md-3">
+        <div class="stat-card" title="Monto aprobado acumulado">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="totalAprobado">$0.00</div>
+                    <div class="stat-label">Monto Aprobado</div>
+                </div>
+                <i class="fas fa-check-circle fa-2x text-success"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card" title="Monto modificado acumulado">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="totalModificado">$0.00</div>
+                    <div class="stat-label">Monto Modificado</div>
+                </div>
+                <i class="fas fa-edit fa-2x text-warning"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card" title="Monto pagado acumulado">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="totalPagado">$0.00</div>
+                    <div class="stat-label">Monto Pagado</div>
+                </div>
+                <i class="fas fa-money-bill-wave fa-2x text-info"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card" title="Porcentaje pagado del monto aprobado">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-value" id="porcentajePagado">0%</div>
+                    <div class="stat-label">% Pagado</div>
+                </div>
+                <i class="fas fa-chart-pie fa-2x text-primary"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Combos de filtros -->
+<div class="row mb-3" data-aos="fade-up">
+    <div class="col-md-2"><label>Año</label><select id="filtroCiclo" class="form-select"></select></div>
+    <div class="col-md-2"><label>UR</label><select id="filtroUR" class="form-select"></select></div>
+    <div class="col-md-2"><label>Capítulo</label><select id="filtroCapitulo" class="form-select"></select></div>
+    <div class="col-md-2"><label>ID PP</label><select id="filtroPP" class="form-select"></select></div>
+    <div class="col-md-2"><label>Tipo de Gasto</label><select id="filtroTipoGasto" class="form-select"></select></div>
+    <div class="col-md-2"><label>Entidad Fed.</label><select id="filtroEntidad" class="form-select"></select></div>
+</div>
+
+<div class="row mb-3" data-aos="fade-up">
+    <div class="col text-end">
+        <button id="btnConsultar" class="btn btn-primary shadow">
+            <i class="fas fa-chart-column me-1"></i> Consultar
+        </button>
+    </div>
+</div>
+
+<!-- Gráficos -->
+<div id="contenedorGrafico" data-aos="fade-up">
+    <div id="graficoFinanzas" style="width:100%; height:400px;"></div>
+</div>
+<div id="graficoPie" class="mt-4" data-aos="fade-up" style="width:100%; height:400px;"></div>
+
+<!-- Tabla -->
+<div class="table-responsive mt-4" data-aos="fade-up">
+    <table id="tablaFinanzas" class="table table-striped nowrap" style="width:100%">
+        <thead class="table-dark">
+            <tr>
+                <th>Ciclo</th>
+                <th>Ramo</th>
+                <th>UR</th>
+                <th>Capítulo</th>
+                <th>Monto Pagado</th>
+                <th>Tipo de Gasto</th>
+            </tr>
+        </thead>
+    </table>
+</div>
+</div>
+
+
+@section Scripts {
+    <script>
+        AOS.init();
+        let datasetFinanciero = [];
+
+        function llenarComboUnico(selector, valores) {
+            const unicos = [...new Set(valores.filter(v => v !== null && v !== ''))];
+            const combo = $(selector);
+            combo.empty().append(`<option value="">Todos</option>`);
+            unicos.forEach(v => combo.append(`<option value="${v}">${v}</option>`));
+        }
+
+        function llenarCombos(data) {
+            llenarComboUnico('#filtroCiclo', data.map(d => d.ciclo));
+            llenarComboUnico('#filtroUR', data.map(d => d.idUR));
+            llenarComboUnico('#filtroCapitulo', data.map(d => d.idCapitulo));
+            llenarComboUnico('#filtroPP', data.map(d => d.idPP));
+            llenarComboUnico('#filtroTipoGasto', data.map(d => d.tipoDeGasto));
+            llenarComboUnico('#filtroEntidad', data.map(d => d.idEntidadFederativa));
+        }
+
+        function renderizarGraficosYTabla(data) {
+            const agrupado = {}, categorias = [], valores = [];
+            let totalPagado = 0, totalAprobado = 0, totalModificado = 0;
+
+            data.forEach(item => {
+                const cap = item.descCapitulo || 'No definido';
+                agrupado[cap] = (agrupado[cap] || 0) + item.montoPagado;
+                totalPagado += item.montoPagado;
+                totalAprobado += item.montoAprobado;
+                totalModificado += item.montoModificado;
+            });
+
+            $('#totalPagado').text(`$${totalPagado.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`);
+            $('#totalAprobado').text(`$${totalAprobado.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`);
+            $('#totalModificado').text(`$${totalModificado.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`);
+            $('#porcentajePagado').text(`${totalAprobado ? ((totalPagado / totalAprobado) * 100).toFixed(1) : 0}%`);
+
+            for (let cap in agrupado) {
+                categorias.push(cap);
+                valores.push(agrupado[cap]);
+            }
+
+            Highcharts.chart('graficoFinanzas', {
+                chart: { type: 'column' },
+                title: { text: 'MONTO PAGADO por Capítulo' },
+                xAxis: { categories: categorias },
+                yAxis: { min: 0, title: { text: 'Monto Pagado (MXN)' } },
+                tooltip: { pointFormat: 'Monto: <b>${point.y:,.2f}</b>' },
+                series: [{ name: 'Monto Pagado', data: valores }]
+            });
+
+            Highcharts.chart('graficoPie', {
+                chart: { type: 'pie' },
+                title: { text: 'Distribución por Capítulo' },
+                tooltip: { pointFormat: 'Monto: <b>${point.y:,.2f}</b>' },
+                plotOptions: {
+                    pie: {
+                        allowPointSelect: true,
+                        cursor: 'pointer',
+                        dataLabels: {
+                            enabled: true,
+                            format: '{point.name}: {point.percentage:.1f}%'
+                        }
+                    }
+                },
+                series: [{
+                    name: 'Monto Pagado',
+                    colorByPoint: true,
+                    data: categorias.map((nombre, i) => ({ name: nombre, y: valores[i] }))
+                }]
+            });
+
+            $('#tablaFinanzas').DataTable({
+                destroy: true,
+                data: data,
+                columns: [
+                    { data: 'ciclo' },
+                    { data: 'descRamo' },
+                    { data: 'descUR' },
+                    { data: 'descCapitulo' },
+                    {
+                        data: 'montoPagado',
+                        render: $.fn.dataTable.render.number(',', '.', 2, '$')
+                    },
+                    { data: 'tipoDeGasto' }
+                ],
+                responsive: true,
+                lengthMenu: [[10, 20, 50, -1], [10, 20, 50, "Todos"]],
+                dom: 'Bfrtip',
+                buttons: ['copy', 'excel', 'pdf']
+            });
+        }
+
+        function filtrarDatos() {
+            const ciclo = $('#filtroCiclo').val();
+            const ur = $('#filtroUR').val();
+            const capitulo = $('#filtroCapitulo').val();
+            const idPP = $('#filtroPP').val();
+            const tipoGasto = $('#filtroTipoGasto').val();
+            const entidad = $('#filtroEntidad').val();
+
+            const filtrado = datasetFinanciero.filter(d =>
+                (ciclo === "" || d.ciclo == ciclo) &&
+                (ur === "" || d.idUR == ur) &&
+                (capitulo === "" || d.idCapitulo == capitulo) &&
+                (idPP === "" || d.idPP == idPP) &&
+                (tipoGasto === "" || d.tipoDeGasto == tipoGasto) &&
+                (entidad === "" || d.idEntidadFederativa == entidad)
+            );
+
+            renderizarGraficosYTabla(filtrado);
+        }
+
+        $(document).ready(function () {
+            $.ajax({
+                url: '@Url.Action("ObtenerDatosFinancieros", "Finanzas")',
+                type: 'GET',
+                success: function (data) {
+                    datasetFinanciero = data;
+                    llenarCombos(datasetFinanciero);
+                    renderizarGraficosYTabla(datasetFinanciero);
+                }
+            });
+
+            $('#btnConsultar').click(filtrarDatos);
+        });
+    </script>
+}

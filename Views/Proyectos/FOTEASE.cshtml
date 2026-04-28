@@ -1,0 +1,718 @@
+<!-- CargaInformacion.cshtml - Vista unificada estilo SIE con carga y visualización de series -->
+@model NSIE.Models.DashboardViewModel
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Proyectos FOTEASE";
+}
+
+<style>
+    #previewContent {
+        overflow-x: auto;
+    }
+
+    #previewContent canvas {
+        max-width: 100% !important;
+        height: auto !important;
+        display: block;
+        margin: auto;
+    }
+
+    .modal-body {
+        overflow-x: auto;
+    }
+
+    /* Elegant Card Styles */
+    .stat-card {
+        transition: all 0.3s ease;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .card-icon i {
+        font-size: 1.5rem;
+    }
+
+    /* Elegant Gradients */
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+    }
+
+    .bg-gradient-success {
+        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
+    }
+
+    .bg-gradient-warning {
+        background: linear-gradient(135deg, #f6c23e 0%, #dda20a 100%);
+    }
+
+    .bg-gradient-info {
+        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%);
+    }
+
+    /* Card Content */
+    .stat-card .card-body {
+        padding: 1.5rem;
+    }
+
+    .stat-card h2 {
+        font-size: 2rem;
+        font-weight: 600;
+    }
+
+    .stat-card .badge {
+        font-size: 0.75rem;
+        padding: 0.5em 0.75em;
+    }
+
+    .stat-card small {
+        font-size: 0.875rem;
+    }
+</style>
+
+<div class="text-center">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/mexicoi.png" alt="Icono personalizado" class="iconomenu">@ViewData["Title"]
+    </h3>
+</div>
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        <li class="breadcrumb-item">Proyectos Estratégicos</li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+<br />
+
+<div class="container">
+    <h2 class="fw-bold   subtitulo ">Infraestructura de Proyectos FOTEASE</h2>
+
+    @* SECCIÓN DE MAPA *@
+
+    <section id="despliega_mapa" class="pb-5">
+
+        <br />
+
+        <div class="app-card-header p-3 border-0">
+
+            @*Menu*@
+            <div class="navbarmapag">
+
+
+                <a id="electricidad" class="icono-texto">
+                    <img src="@Cdn.Url/img_snier/vistas/inspeccion.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Proyectos FOTEASE</span>
+
+                    <div id="total_petroliferos"></div>
+                </a>
+
+
+            </div>
+
+
+
+            <!-- Nuevo Div para Conteo de Tipos de Permisos -->
+            <div id="conteo_tipos_permisos" class="conteo-permisos">
+                <!-- Aquí se mostrarán los conteos de tipos de permisos -->
+            </div>
+
+            <br>
+
+            <div id="main-container">
+
+                <div class="row g-4 mb-4">
+                    <div class="col">
+                        <div class="app-card app-card-chart h-100 shadow-sm">
+
+                            <div class="search-container p-3" id="search-container">
+                                <label class="form-label">Buscar en el Mapa:</label>
+                                <input type="text" id="busquedaGeneralInput" class="form-control"
+                                    placeholder="Número de Permiso, Entidad Federativa o Municipio">
+                                <div id="autocomplete-list" class="autocomplete-items"></div>
+                                <!-- El resto de tu código -->
+
+                                <button class="btn btn-cre-rojo-home" onclick="buscarGeneral()"
+                                    style="width:10% !important"><i class="bi bi-search"></i></button>
+                            </div>
+
+                            @*Menu de Botones*@
+                            <div class="container-fluid">
+                            </div>
+                            <div class="app-card-body p-4">
+                                <div class="chart-container">
+                                    <div id="" class="app-card-body p-4">
+                                        <button id="fullscreen-btn" class="btn btn-primary">Pantalla Completa</button>
+                                        <div id="map" class="p-3 bg"></div>
+                                        <div class="leyenda pt-3">
+                                            <p>Mayor Concentración</p>
+                                            <p>Concentración Promedio</p>
+                                            <p>Menor Concentración</p>
+                                            <p> Ductos</p>
+                                        </div>
+                                        <br />
+                                        <div class="" id="grafico"></div>
+                                        @* <div class="" id="grafico2"></div> *@
+
+                                        @* Precios de Gasolina  *@
+                                        @if (Convert.ToInt32(ViewData["RolUsuario"]) == 1)
+                                        {
+                                            <div id="graficoPrecios" style="width: 100%; height: 400px; margin-top: 20px;">
+                                            </div>
+                                        }
+
+
+                                        <br />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <h2 class="fw-bold   subtitulo ">Cronograma de proyectos FOTEASE</h2>
+
+    @* SECCIÓN DE SEMAFORO Y GANTT *@
+    <section id="semaforo_proyectos" class="container mb-4">
+        <div class="row">
+            <!-- Semáforo -->
+            <div class="col-md-3 d-flex flex-column justify-content-between" style="min-height: 100%;">
+                <!-- Tarjeta 1 -->
+                <!-- Prototipo con datos simulados -->
+                <div class="card stat-card bg-gradient-success border-0 mb-1">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="badge rounded-pill bg-white bg-opacity-25">60%</span>
+                            <div class="card-icon bg-white bg-opacity-25">
+                                <i class="bi bi-check-circle-fill fs-4 text-white"></i>
+                            </div>
+                        </div>
+                        <h2 class="mb-0 text-white">180</h2>
+                        <p class="card-title h6 text-white-50">Proyectos Terminados</p>
+                    </div>
+                </div>
+
+                <div class="card stat-card bg-gradient-warning border-0 mb-1">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="badge rounded-pill bg-white bg-opacity-25">30%</span>
+                            <div class="card-icon bg-white bg-opacity-25">
+                                <i class="bi bi-clock-fill fs-4 text-dark"></i>
+                            </div>
+                        </div>
+                        <h2 class="mb-0 text-dark">90</h2>
+                        <p class="card-title h6 text-dark">Proyectos en Curso</p>
+                    </div>
+                </div>
+
+                <div class="card stat-card bg-danger border-0">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="badge rounded-pill bg-white bg-opacity-25">10%</span>
+                            <div class="card-icon bg-white bg-opacity-25">
+                                <i class="bi bi-x-circle-fill fs-4 text-white"></i>
+                            </div>
+                        </div>
+                        <h2 class="mb-0 text-white">30</h2>
+                        <p class="card-title h6 text-white-50">Proyectos Cancelados</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráfica Gantt con Highcharts -->
+            <div class="col-md-9">
+                <div class="app-card app-card-chart shadow-sm" style="min-height: 100%;">
+                    <div class="app-card-header p-3 border-0">
+                        <h4 class="app-card-title">Cronograma de Proyectos (Gantt)</h4>
+                    </div>
+                    <div class="app-card-body p-4">
+                        <div id="gantt-chart" style="height: 500px; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modal -->
+    <div class="modal fade" id="modalProyecto" tabindex="-1" aria-labelledby="modalProyectoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-xl-custom">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalProyectoLabel">Detalle del Proyecto</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Nombre:</strong> <span id="modalNombre"></span></p>
+                    <p><strong>Inicio:</strong> <span id="modalInicio"></span></p>
+                    <p><strong>Fin:</strong> <span id="modalFin"></span></p>
+                    <p><strong>Progreso:</strong> <span id="modalProgreso"></span>%</p>
+
+                    <hr>
+                    <h6>Línea del tiempo del proyecto</h6>
+                    <div class="pb-3">
+                        <button id="zoomIn" class="btn btn-primary btn-sm">Zoom In</button>
+                        <button id="zoomOut" class="btn btn-primary btn-sm">Zoom Out</button>
+                    </div>
+                    <div id="timeline" style="border: 1px solid #ddd;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <style>
+        .modal-xl-custom {
+            max-width: 95%;
+        }
+
+        .modal-body {
+            max-height: 200vh;
+            overflow-y: auto;
+        }
+    </style>
+
+
+
+
+    <style>
+        #fullscreen-search-container {
+            background-color: white;
+        }
+
+        #fullscreen-elements {
+            display: flex;
+            flex-direction: column;
+            height: auto;
+            /* Valor inicial para cuando no esté en pantalla completa */
+        }
+
+        #fullscreen-last-update,
+        #fullscreen-select,
+        #fullscreen-search-container {
+            flex-shrink: 0;
+        }
+
+        #map {
+            flex-grow: 1;
+        }
+
+        #main-container.fullscreen-active #fullscreen-elements {
+            height: 100vh;
+        }
+
+        #main-container.fullscreen-active #map {
+            height: calc(100vh - 60px);
+        }
+
+        #main-container:not(.fullscreen-active) #map {
+            height: 500px;
+        }
+    </style>
+
+</div>
+
+@section Scripts {
+
+    @*Script de Pantalla Completa*@
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => {
+            const mapElement = document.getElementById('map');
+            const fullscreenButton = document.getElementById('fullscreen-btn');
+            const searchContainer = document.getElementById('search-container');
+            const mainContainer = document.getElementById('main-container');
+            const fullscreenElements = document.createElement('div');
+            fullscreenElements.id = 'fullscreen-elements';
+
+            const originalMapParent = mapElement.parentNode;
+            const originalSearchParent = searchContainer.parentNode;
+            const originalMapNextSibling = mapElement.nextSibling;
+            const originalSearchNextSibling = searchContainer.nextSibling;
+
+            fullscreenButton.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    mainContainer.appendChild(fullscreenElements); // Asegurarnos de que fullscreenElements esté en el DOM
+                    fullscreenElements.appendChild(searchContainer);
+                    fullscreenElements.appendChild(mapElement);
+                    fullscreenElements.requestFullscreen().catch(err => {
+                        alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            });
+
+            document.addEventListener('fullscreenchange', (event) => {
+                if (document.fullscreenElement) {
+                    fullscreenButton.textContent = "Salir de Pantalla Completa";
+                    mainContainer.classList.add('fullscreen-active');
+                    mapElement.style.height = "calc(100vh - 60px)";
+                    searchContainer.style.backgroundColor = "white";
+                } else {
+                    fullscreenButton.textContent = "Pantalla Completa";
+                    if (originalSearchNextSibling) {
+                        originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+                    } else {
+                        originalSearchParent.appendChild(searchContainer);
+                    }
+                    if (originalMapNextSibling) {
+                        originalMapParent.insertBefore(mapElement, originalMapNextSibling);
+                    } else {
+                        originalMapParent.appendChild(mapElement);
+                    }
+                    mainContainer.classList.remove('fullscreen-active');
+                    mapElement.style.height = "500px";
+
+                    // Asegurarse de que los estilos se restablezcan
+                    fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+                }
+            });
+        });
+    </script>
+
+    @*Shapes Estados*@
+    <script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+    <script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+
+
+    @*Ductos*@
+    @*Petrolíferos*@
+    <script src="@Cdn.Url/Geovisualizador/data/ductos_petroliferos_4326_0.js"></script>
+    @*Gas L.P.*@
+    <script src="@Cdn.Url/Geovisualizador/data/ductos_glp_4326_0.js"></script>
+    <script>
+        window.userRole = @ViewData["RolUsuario"]; // Define userRole globalmente
+        console.log(window.userRole);
+
+    </script>
+
+
+    <script type="text/javascript" src="/js/configura_mapa.js"></script>
+    <script type="text/javascript" src="/js/I_petroliferos.js"></script>
+    <script>
+        var userRole = @ViewData["RolUsuario"]; // Define userRole desde el servidor
+
+        // Solo cargar el gráfico si el usuario tiene rol 1
+        if (userRole === 1) {
+            // Datos sintéticos
+            // Generar datos sintéticos
+            var preciosPorEF = [
+                { EfNombre: "CIUDAD DE MÉXICO", PrecioRegular: 19.87, PrecioPremium: 21.95, PrecioDiesel: 20.45 },
+                { EfNombre: "GUANAJUATO", PrecioRegular: 20.12, PrecioPremium: 22.34, PrecioDiesel: 19.78 },
+                { EfNombre: "VERACRUZ DE IGNACIO DE LA LLAVE", PrecioRegular: 19.92, PrecioPremium: 21.50, PrecioDiesel: 20.30 },
+                { EfNombre: "CHIAPAS", PrecioRegular: 20.40, PrecioPremium: 22.10, PrecioDiesel: 20.00 },
+                { EfNombre: "JALISCO", PrecioRegular: 20.25, PrecioPremium: 22.45, PrecioDiesel: 20.12 },
+                { EfNombre: "MÉXICO", PrecioRegular: 20.05, PrecioPremium: 22.00, PrecioDiesel: 20.25 },
+                { EfNombre: "QUINTANA ROO", PrecioRegular: 19.95, PrecioPremium: 21.75, PrecioDiesel: 20.10 },
+                { EfNombre: "TABASCO", PrecioRegular: 20.10, PrecioPremium: 22.30, PrecioDiesel: 19.85 },
+                { EfNombre: "PUEBLA", PrecioRegular: 19.89, PrecioPremium: 21.95, PrecioDiesel: 20.20 },
+                { EfNombre: "MICHOACÁN DE OCAMPO", PrecioRegular: 20.20, PrecioPremium: 22.50, PrecioDiesel: 19.95 },
+                { EfNombre: "TAMAULIPAS", PrecioRegular: 20.30, PrecioPremium: 22.40, PrecioDiesel: 20.00 },
+                { EfNombre: "NUEVO LEÓN", PrecioRegular: 20.50, PrecioPremium: 22.80, PrecioDiesel: 20.25 },
+                { EfNombre: "GUERRERO", PrecioRegular: 20.15, PrecioPremium: 22.35, PrecioDiesel: 20.10 },
+                { EfNombre: "BAJA CALIFORNIA", PrecioRegular: 20.45, PrecioPremium: 22.75, PrecioDiesel: 20.20 },
+                { EfNombre: "HIDALGO", PrecioRegular: 19.95, PrecioPremium: 21.85, PrecioDiesel: 20.15 },
+                { EfNombre: "MORELOS", PrecioRegular: 20.05, PrecioPremium: 22.00, PrecioDiesel: 19.90 },
+                { EfNombre: "COAHUILA", PrecioRegular: 20.35, PrecioPremium: 22.65, PrecioDiesel: 20.30 },
+                { EfNombre: "SONORA", PrecioRegular: 20.25, PrecioPremium: 22.50, PrecioDiesel: 20.15 },
+                { EfNombre: "YUCATÁN", PrecioRegular: 19.85, PrecioPremium: 21.75, PrecioDiesel: 20.00 },
+                { EfNombre: "DURANGO", PrecioRegular: 20.10, PrecioPremium: 22.25, PrecioDiesel: 20.05 },
+                { EfNombre: "ZACATECAS", PrecioRegular: 20.20, PrecioPremium: 22.35, PrecioDiesel: 20.10 },
+                { EfNombre: "COLIMA", PrecioRegular: 19.95, PrecioPremium: 21.85, PrecioDiesel: 20.20 },
+                { EfNombre: "CHIHUAHUA", PrecioRegular: 20.35, PrecioPremium: 22.60, PrecioDiesel: 20.10 },
+                { EfNombre: "BAJA CALIFORNIA SUR", PrecioRegular: 20.50, PrecioPremium: 22.75, PrecioDiesel: 20.30 },
+                { EfNombre: "SINALOA", PrecioRegular: 20.15, PrecioPremium: 22.40, PrecioDiesel: 20.05 },
+                { EfNombre: "NAYARIT", PrecioRegular: 20.25, PrecioPremium: 22.50, PrecioDiesel: 19.95 },
+                { EfNombre: "QUERÉTARO", PrecioRegular: 20.05, PrecioPremium: 22.20, PrecioDiesel: 20.10 },
+                { EfNombre: "OAXACA", PrecioRegular: 20.00, PrecioPremium: 22.15, PrecioDiesel: 19.85 },
+                { EfNombre: "SAN LUIS POTOSÍ", PrecioRegular: 20.30, PrecioPremium: 22.55, PrecioDiesel: 20.10 },
+                { EfNombre: "TLAXCALA", PrecioRegular: 19.95, PrecioPremium: 21.85, PrecioDiesel: 20.00 },
+                { EfNombre: "CAMPECHE", PrecioRegular: 20.20, PrecioPremium: 22.40, PrecioDiesel: 20.15 },
+                { EfNombre: "AGUASCALIENTES", PrecioRegular: 20.10, PrecioPremium: 22.30, PrecioDiesel: 20.05 },
+            ];
+
+
+            // Procesar datos para el gráfico
+            var categories = preciosPorEF.map(item => item.EfNombre);
+            var regularData = preciosPorEF.map(item => item.PrecioRegular);
+            var premiumData = preciosPorEF.map(item => item.PrecioPremium);
+            var dieselData = preciosPorEF.map(item => item.PrecioDiesel);
+
+            // Configurar y renderizar el gráfico
+            Highcharts.chart('graficoPrecios', {
+                chart: {
+                    type: 'line',
+                },
+                title: {
+                    text: 'Proyectos por Entidad Federativa'
+                },
+                xAxis: {
+                    categories: categories,
+                    title: {
+                        text: 'Entidad Federativa'
+                    }
+                },
+                yAxis: {
+                    min: 0,
+                    title: {
+                        text: 'Precio ($MXN)'
+                    }
+                },
+                tooltip: {
+                    shared: true,
+                    valueSuffix: ' MXN'
+                },
+                plotOptions: {
+                    column: {
+                        dataLabels: {
+                            enabled: true,
+                            format: '${point.y:.2f} MXN'
+                        }
+                    }
+                },
+                series: [
+                    {
+                        name: 'En curso',
+                        data: regularData,
+                        color: '#1f77b4' // Azul
+                    },
+                    {
+                        name: 'Cancelado',
+                        data: premiumData,
+                        color: '#ff7f0e' // Naranja
+                    },
+                    {
+                        name: 'Terminado',
+                        data: dieselData,
+                        color: '#2ca02c' // Verde
+                    }
+                ]
+            });
+        }
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <script>
+        // Simulación de datos de proyectos (datos fijos para prototipo)
+        const proyectos = [
+            {
+                id: '1',
+                name: 'Proyecto Nacional de Eficiencia Energética en el Alumbrado Público Municipal',
+                inicio: '2025-05-06',
+                fin: '2025-05-13',
+                progreso: 0.5,
+                dependencias: null
+            },
+            {
+                id: '2',
+                name: 'Programa Eco-Crédito Empresarial Masivo',
+                inicio: '2025-05-14',
+                fin: '2025-05-20',
+                progreso: 0.2,
+                dependencias: '1'
+            },
+            {
+                id: '3',
+                name: 'Proyecto de Elaboración de Estudios sobre Potencial de Recursos Renovables',
+                inicio: '2025-05-21',
+                fin: '2025-05-28',
+                progreso: 0.0,
+                dependencias: '2'
+            },
+            {
+                id: '4',
+                name: 'Mecanismo de Fondo Revolvente para el Financiamiento del Proyecto GEF-SENER',
+                inicio: '2025-05-29',
+                fin: '2025-06-04',
+                progreso: 0.0,
+                dependencias: '3'
+            },
+            {
+                id: '5',
+                name: 'Calor Solar en el Sector Servicios',
+                inicio: '2025-06-05',
+                fin: '2025-06-11',
+                progreso: 0.0,
+                dependencias: '4'
+            }
+        ];
+
+        document.addEventListener('DOMContentLoaded', function () {
+            Highcharts.setOptions({
+                time: {
+                    useUTC: false // <- Mostrar todo en hora local del navegador
+                },
+                lang: {
+                    week: 'Semana',
+                    months: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+                    weekdays: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
+                    shortMonths: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+                        'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+                    downloadPNG: "Descargar PNG",
+                    downloadJPEG: "Descargar JPEG",
+                    downloadPDF: "Descargar PDF",
+                    downloadSVG: "Descargar SVG",
+                    printChart: "Imprimir gráfico",
+                    viewFullscreen: "Ver en pantalla completa",
+                    exitFullscreen: "Salir de pantalla completa",
+                    downloadCSV: "Descargar CSV",
+                    downloadXLS: "Descargar Excel",
+                    viewData: "Ver tabla de datos",
+                    hideData: "Ocultar tabla de datos",
+                    contextButtonTitle: "Opciones del gráfico"
+                },
+                // Este bloque cambia el formato del texto que aparece para las semanas
+                dateTimeLabelFormats: {
+                    week: "'Semana' W"
+                },
+            });
+            Highcharts.ganttChart('gantt-chart', {
+                title: {
+                    text: ''
+                },
+                tooltip: {
+                    pointFormat: '<b>{point.name}</b><br>Inicio: {point.start:%e de %B}<br>Fin: {point.end:%e de %B}'
+                },
+                chart: {
+                    marginBottom: 80, // Ajusta según lo necesites (por ejemplo, 80px)
+                    spacingBottom: 20 // espacio extra entre gráfica y borde
+                },
+
+                xAxis: {
+                    currentDateIndicator: true,
+                    min: Date.UTC(2025, 4, 1),
+                    max: Date.UTC(2025, 5, 30),
+                    tickInterval: 7 * 24 * 3600 * 1000, // Forzar ticks semanales (7 días)
+                    labels: {
+                        style: {
+                            fontSize: '11px',
+                            whiteSpace: 'nowrap'
+                        },
+                        formatter: function () {
+                            const weekNumber = Highcharts.dateFormat('%W', this.value);
+                            return 'Semana ' + weekNumber;
+                        }
+                    }
+                },
+                plotOptions: {
+                    series: {
+                        point: {
+                            events: {
+                                click: function () {
+                                    // Llena el modal con datos del proyecto
+                                    document.getElementById("modalNombre").textContent = this.name;
+                                    document.getElementById("modalInicio").textContent = Highcharts.dateFormat('%e %B %Y', this.start);
+                                    document.getElementById("modalFin").textContent = Highcharts.dateFormat('%e %B %Y', this.end);
+                                    document.getElementById("modalProgreso").textContent = Math.round(this.completed.amount * 100);
+
+                                    // Esperamos al modal para luego inicializar la línea del tiempo
+                                    setTimeout(() => {
+                                        const container = document.getElementById('timeline');
+                                        container.innerHTML = ''; // limpiar por si ya se abrió antes
+
+                                        // Simular datos
+                                        const items = new vis.DataSet([
+                                            {
+                                                id: 1,
+                                                content: '<div style="width: 150px;">Propuestas de Necesidades<br>#1234<br><small>01/05/2025</small><br><a class="btn btn-primary btn-sm" onclick="event.stopPropagation(); window.open(\'https://ejemplo.com/1\', \'_blank\'); return false;">Ver detalle</a></div>',
+                                                start: '2025-04-01',
+                                            },
+                                            {
+                                                id: 2,
+                                                content: '<div style="width: 150px;">Demandas Específicas<br>#5678<br><small>10/05/2025</small><br><a class="btn btn-primary btn-sm" onclick="event.stopPropagation(); window.open(\'https://ejemplo.com/2\', \'_blank\'); return false;">Ver detalle</a></div>',
+                                                start: '2025-05-10',
+                                            },
+                                            {
+                                                id: 3,
+                                                content: '<div style="width: 150px;">Finiquito<br>#9101<br><small>20/06/2025</small><br><a class="btn btn-primary btn-sm" onclick="event.stopPropagation(); window.open(\'https://ejemplo.com/3\', \'_blank\'); return false;">Ver detalle</a></div>',
+                                                start: '2025-06-20',
+                                            },
+                                        ]);
+
+                                        const today = new Date();
+                                        const options = {
+                                            editable: false,
+                                            height: '300px',
+                                            maxHeight: '300px',
+                                            stack: true,
+                                            margin: { item: 20 },
+                                            horizontalScroll: true,
+                                            start: '2024-01-01',
+                                            end: today,
+                                            zoomMin: 100000000,
+                                            zoomMax: 100000000000,
+                                            zoomKey: 'ctrlKey',
+                                        };
+
+                                        const timeline = new vis.Timeline(container, items, options);
+
+                                        document.getElementById('zoomIn').onclick = function () {
+                                            const range = timeline.getWindow();
+                                            const interval = range.end - range.start;
+                                            timeline.setWindow({
+                                                start: range.start.valueOf(),
+                                                end: range.start.valueOf() + interval * 0.8,
+                                            });
+                                        };
+
+                                        document.getElementById('zoomOut').onclick = function () {
+                                            const range = timeline.getWindow();
+                                            const interval = range.end - range.start;
+                                            timeline.setWindow({
+                                                start: range.start.valueOf(),
+                                                end: range.start.valueOf() + interval * 1.25,
+                                            });
+                                        };
+                                    }, 100); // Pequeña espera para asegurar que el modal está en DOM
+
+                                    // Muestra el modal (Bootstrap 5)
+                                    const modal = new bootstrap.Modal(document.getElementById('modalProyecto'));
+                                    modal.show();
+                                }
+                            }
+                        }
+                    }
+                },
+                series: [{
+                    name: 'Proyecto',
+                    data: proyectos.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        start: Date.UTC(new Date(p.inicio).getFullYear(), new Date(p.inicio).getMonth(), new Date(p.inicio).getDate()),
+                        end: Date.UTC(new Date(p.fin).getFullYear(), new Date(p.fin).getMonth(), new Date(p.fin).getDate()),
+                        completed: { amount: p.progreso },
+                        dependency: p.dependencias
+                    }))
+                }]
+            });
+        });
+    </script>
+}

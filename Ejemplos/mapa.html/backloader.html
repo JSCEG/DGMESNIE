@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Evaluación de Proyecto Energético Integral</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+    <!-- Leaflet.draw CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <!-- Google Fonts -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
+    <style>
+        /* Fuente global y fondo suave */
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f8f9fa;
+        }
+
+        /* Estilo para el mapa */
+        #map {
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 0.5rem;
+        }
+
+        /* Layout: Mapa a la izquierda, formulario a la derecha */
+        @media (min-width: 768px) {
+            .row-custom {
+                display: flex;
+                gap: 1rem;
+            }
+
+            .left-col,
+            .right-col {
+                flex: 1;
+            }
+        }
+
+        /* Tarjetas y secciones: bordes redondeados y sombra sutil */
+        .card {
+            border-radius: 0.5rem;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Reporte final: contorno profesional */
+        #reportContent .card {
+            border: 2px solid #0d6efd;
+            box-shadow: 0 0 15px rgba(13, 110, 253, 0.2);
+        }
+
+        #reportMap img {
+            border: 1px solid #ddd;
+            padding: 5px;
+            background: #fff;
+            max-width: 100%;
+            border-radius: 0.5rem;
+        }
+
+        /* Overlay de carga de página (inicial) */
+        #pageLoadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 99999;
+            /* Más alto que todo */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Overlay de cálculo: spinner y barra de progreso */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 9999;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #progressBar {
+            width: 80%;
+            margin-top: 1rem;
+        }
+
+        /* Ayudas en los inputs */
+        .input-help {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+    </style>
+</head>
+
+<body onload="initPageLoader()">
+    <!-- Overlay de Carga Inicial de Página -->
+    <div id="pageLoadingOverlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando página...</span>
+        </div>
+        <p class="mt-3">Cargando mapa y recursos, por favor espera...</p>
+    </div>
+
+    <!-- Overlay de carga con spinner y barra de progreso (para el reporte) -->
+    <div id="loadingOverlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Calculando...</span>
+        </div>
+        <div id="progressBar" class="progress mt-3">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;"
+                id="progressBarFill">0%</div>
+        </div>
+    </div>
+
+    <div class="container my-4">
+        <h1 class="mb-4 text-center">Evaluación de Proyecto Energético Integral</h1>
+        <p class="text-center text-muted">
+            Fuente para el Factor de Emisión (CRE):
+            <a href="https://www.gob.mx/cms/uploads/attachment/file/895937/Aviso_FE-SEN23.pdf" target="_blank">
+                0.438 kgCO₂eq/MWh (2023)
+            </a>
+        </p>
+        <!-- Layout: Mapa y Formulario -->
+        <div class="row row-custom">
+            <!-- Columna Izquierda: Mapa -->
+            <div class="col-md-6 left-col">
+                <h5 class="text-center">Mapa del Proyecto</h5>
+                <div id="map"></div>
+                <p class="mt-2 text-center">Utiliza la herramienta de dibujo para delimitar el área.</p>
+            </div>
+            <!-- Columna Derecha: Formulario multi-paso -->
+            <div class="col-md-6 right-col" id="formSection">
+                <form id="multiStepForm">
+                    <!-- Paso 1 -->
+                    <div class="step" id="step1">
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Paso 1: Selección de Tecnología y Proyecto</h5>
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <label for="techType" class="form-label" data-bs-toggle="tooltip"
+                                            title="Selecciona si el proyecto es de tecnología convencional o limpia.">
+                                            Tipo de Tecnología:
+                                        </label>
+                                        <select class="form-select" id="techType" required>
+                                            <option value="">Seleccione...</option>
+                                            <option value="Convencional">Convencional</option>
+                                            <option value="Limpia">Limpia</option>
+                                        </select>
+                                        <div class="input-help">Elige el tipo de tecnología para filtrar los proyectos
+                                            disponibles.
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <label for="projectType" class="form-label" data-bs-toggle="tooltip"
+                                            title="Selecciona el tipo de proyecto según la tecnología.">
+                                            Tipo de Proyecto:
+                                        </label>
+                                        <select class="form-select" id="projectType" disabled required>
+                                            <option value="">Seleccione...</option>
+                                        </select>
+                                        <div class="input-help">Este campo se habilitará al elegir el tipo de
+                                            tecnología.
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-primary" id="nextStepButton1" onclick="nextStep(1)"
+                                    disabled>Siguiente</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Paso 2 -->
+                    <div class="step d-none" id="step2">
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Paso 2: Capturar el Área del Proyecto</h5>
+                                <p class="mb-2">Dibuja el área en el mapa y luego presiona "Confirmar Área".</p>
+                                <p>Área seleccionada (km²): <span id="areaValue">0 km²</span></p>
+                                <p>Estado detectado: <span id="estadoDetectado">-</span></p>
+                                <p>Sistema detectado: <span id="sistemaDetectado">-</span></p>
+                                <p>Marginación detectada: <span id="marginacionDetectada">-</span></p>
+                                <div class="d-flex justify-content-between">
+                                    <button type="button" class="btn btn-secondary"
+                                        onclick="prevStep(2)">Anterior</button>
+                                    <div>
+                                        <button type="button" class="btn btn-primary me-2" id="enableDrawing"
+                                            onclick="activarDibujo()">Activar Dibujo</button>
+                                        <button type="button" class="btn btn-primary me-2" id="confirmAreaBtn"
+                                            onclick="confirmAreaFunction()" disabled>Confirmar Área</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Paso 3 -->
+                    <div class="step d-none" id="step3">
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Paso 3: Datos Económicos y Extras</h5>
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <label for="capacidadInstalada" class="form-label" data-bs-toggle="tooltip"
+                                            title="Capacidad total instalada en MW.">
+                                            Capacidad Instalada (MW):
+                                        </label>
+                                        <input type="number" class="form-control" id="capacidadInstalada"
+                                            placeholder="Ej. 50" step="any" required>
+                                        <div class="input-help">Ingresa la capacidad total instalada en megavatios.
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <label for="eficienciaElectrica" class="form-label" data-bs-toggle="tooltip"
+                                            title="Eficiencia promedio en %.">
+                                            Eficiencia Eléctrica (%) :
+                                        </label>
+                                        <input type="number" class="form-control" id="eficienciaElectrica"
+                                            placeholder="Ej. 18" step="any" required>
+                                        <div class="input-help">Valor promedio de eficiencia en porcentaje.</div>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <label for="factorPlanta" class="form-label" data-bs-toggle="tooltip"
+                                            title="Factor de planta en % (tiempo de operación real vs. teórico).">
+                                            Factor de Planta (%):
+                                        </label>
+                                        <input type="number" class="form-control" id="factorPlanta" placeholder="Ej. 30"
+                                            step="any" required>
+                                        <div class="input-help">Representa el tiempo de operación real comparado con el
+                                            teórico.</div>
+                                    </div>
+                                    <div class="col">
+                                        <label for="inversionPlaneada" class="form-label" data-bs-toggle="tooltip"
+                                            title="Inversión total planeada en MXN.">
+                                            Inversión Planeada (MXN):
+                                        </label>
+                                        <input type="number" class="form-control" id="inversionPlaneada"
+                                            placeholder="Ej. 50000000" step="any" required>
+                                        <div class="input-help">Monto total que se planea invertir en el proyecto.</div>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <label for="anioInicio" class="form-label" data-bs-toggle="tooltip"
+                                            title="Año en el que se planea iniciar operaciones.">
+                                            Año de Inicio de Operaciones:
+                                        </label>
+                                        <!-- Ajusta el rango a 2010-2030 si quieres que coincida con tu tabla de marginación -->
+                                        <select class="form-select" id="anioInicio" required></select>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <label for="costoOM" class="form-label" data-bs-toggle="tooltip"
+                                            title="Costo anual de operación y mantenimiento en MXN.">
+                                            Costo de O&M (MXN/año):
+                                        </label>
+                                        <input type="number" class="form-control" id="costoOM" placeholder="Ej. 2000000"
+                                            step="any" required>
+                                        <div class="input-help">Costo anual estimado para operación y mantenimiento.
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <label for="distanciaRed" class="form-label" data-bs-toggle="tooltip"
+                                            title="Distancia en km a la red de transmisión.">
+                                            Distancia a Red de Transmisión (km):
+                                        </label>
+                                        <input type="number" class="form-control" id="distanciaRed" placeholder="Ej. 10"
+                                            step="any" required>
+                                        <div class="input-help">Distancia estimada hasta la red de transmisión.</div>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <label for="precioEnergia" class="form-label" data-bs-toggle="tooltip"
+                                            title="Precio de la energía en MXN/MWh, asignado automáticamente según ubicación.">
+                                            Precio de la Energía (MXN/MWh) (Auto):
+                                        </label>
+                                        <input type="number" class="form-control" id="precioEnergia" step="any"
+                                            disabled>
+                                    </div>
+                                    <div class="col">
+                                        <label for="factorEmision" class="form-label" data-bs-toggle="tooltip"
+                                            title="Factor de emisión asignado automáticamente (CRE 2023).">
+                                            Factor de Emisión (kgCO₂eq/MWh) (Auto):
+                                        </label>
+                                        <input type="number" class="form-control" id="factorEmision" step="any"
+                                            disabled>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col">
+                                        <label for="indiceMarginacion" class="form-label" data-bs-toggle="tooltip"
+                                            title="Índice de marginación calculado según ubicación.">
+                                            Índice de Marginación (Auto):
+                                        </label>
+                                        <input type="number" class="form-control" id="indiceMarginacion" step="any"
+                                            disabled>
+                                    </div>
+                                </div>
+                                <p class="text-success">Presiona "Generar Reporte Final" para ver el análisis completo.
+                                </p>
+                                <div class="d-flex justify-content-between">
+                                    <button type="button" class="btn btn-secondary"
+                                        onclick="prevStep(3)">Anterior</button>
+                                    <button type="button" class="btn btn-primary"
+                                        onclick="if(validateInputs()) generateReport()">Generar Reporte Final</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <!-- Fin de la columna derecha -->
+        </div>
+        <!-- Fin de la fila principal -->
+
+        <!-- Sección de Reporte Final (inicialmente oculta) -->
+        <div class="my-4 d-none" id="finalReportSection">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title">Reporte Final</h5>
+                        <button type="button" class="btn btn-outline-primary" id="btnGuardarPDF">Guardar PDF</button>
+                    </div>
+                    <div id="reportContent" class="mb-3"></div>
+                    <!-- Sección de Características de Zona -->
+                    <div class="row">
+                        <div class="col-md-6" id="zoneCharacteristics">
+                            <h5>Características de la Zona</h5>
+                            <p><strong>Permisos cercanos:</strong> 15</p>
+                            <p><strong>Estado:</strong> <span id="reporteEstado">-</span></p>
+                            <p><strong>Municipio:</strong> <span id="reporteMunicipio">-</span></p>
+                            <div id="zoneDataContent"></div>
+                        </div>
+                    </div>
+                    <!-- Gráficos -->
+                    <div id="chartContainerReturns" style="height: 400px; margin-top:20px;"></div>
+                    <div id="chartContainerMargination" style="height: 400px; margin-top:20px;"></div>
+                    <div id="chartContainerComparison" style="height: 400px; margin-top:20px;"></div>
+                    <div id="chartContainerEnergyComparison" style="height: 400px; margin-top:20px;"></div>
+                    <div id="chartContainerRadar" style="height: 400px; margin-top:20px;"></div>
+                    <!-- NUEVA Gráfica de Barras: Entidades Federativas -->
+                    <div id="chartContainerState" style="height: 400px; margin-top:20px;"></div>
+                    <div id="formulasCalculo" class="mt-4">
+                        <h5>Fórmulas de Cálculo:</h5>
+                        <ul>
+                            <li><strong>Generación Estimada (GWh/año):</strong> (Capacidad Instalada × (Factor de
+                                Planta/100) × 8760)/1000</li>
+                            <li><strong>Ingresos Anuales (MXN):</strong> Generación Estimada × 1000 × Precio de la
+                                Energía</li>
+                            <li><strong>Neto Anual (MXN):</strong> Ingresos Anuales − Costo de O&M</li>
+                            <li><strong>VPN (20 años, MXN):</strong> (Neto Anual × 20) − Inversión Planeada</li>
+                            <li><strong>TIR (%):</strong> (Neto Anual / Inversión Planeada) × 100</li>
+                            <li><strong>Emisiones (kgCO₂eq/año):</strong> Generación Estimada × 1000 × Factor de Emisión
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts: Bootstrap, Leaflet, Leaflet.draw, Highcharts, html2canvas, jsPDF -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.geometryutil/0.9.3/leaflet.geometryutil.min.js"></script>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/highcharts-more.js"></script>
+    <!-- Librerías para PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+        /* ========== 1) OVERLAY DE PÁGINA: ocultar cuando todo está listo ========== */
+        function initPageLoader() {
+            // Esperamos un pequeño delay para simular carga del mapa
+            setTimeout(() => {
+                document.getElementById("pageLoadingOverlay").style.display = "none";
+            }, 1500);
+        }
+
+        /* ========== 2) CONFIGURACIÓN GLOBAL DE DATOS ========== */
+        const conventionalProjects = ["Combustión Interna", "Termoeléctrica Convencional", "Turbogás", "Importación", "Ciclo Combinado", "Cogeneración"];
+        const limpiaProjects = ["Eólica", "Fotovoltaica", "Geotérmica", "Hidroeléctrica", "Nucleoeléctrica", "Bioenergía", "Carboeléctrica"];
+        const preciosSistema = { SIN: 966.1458333, BCA: 1443.89625, BCS: 2720.725 };
+        const defaultFactorEmision = 0.438;
+
+        // Ejemplo de índice de marginación por estado y año (2010-2030) [VALORES DEMO]
+        // Usa los reales que tengas en tu base de datos o JSON
+        const marginacionEstados = {
+            "Aguascalientes": {
+                2010: 0.35, 2011: 0.37, 2012: 0.38, 2013: 0.40, 2014: 0.41, 2015: 0.42, 2016: 0.43, 2017: 0.44,
+                2018: 0.45, 2019: 0.46, 2020: 0.47, 2021: 0.48, 2022: 0.49, 2023: 0.50, 2024: 0.51, 2025: 0.52,
+                2026: 0.53, 2027: 0.54, 2028: 0.55, 2029: 0.56, 2030: 0.57
+            },
+            "Baja California": {
+                2010: 0.30, 2011: 0.31, 2012: 0.31, 2013: 0.32, 2014: 0.34, 2015: 0.35, 2016: 0.35, 2017: 0.36,
+                2018: 0.38, 2019: 0.40, 2020: 0.41, 2021: 0.42, 2022: 0.44, 2023: 0.45, 2024: 0.46, 2025: 0.47,
+                2026: 0.48, 2027: 0.49, 2028: 0.50, 2029: 0.51, 2030: 0.52
+            },
+            "Baja California Sur": {
+                2010: 0.45, 2011: 0.46, 2012: 0.47, 2013: 0.47, 2014: 0.48, 2015: 0.49, 2016: 0.49, 2017: 0.50,
+                2018: 0.52, 2019: 0.54, 2020: 0.55, 2021: 0.56, 2022: 0.57, 2023: 0.58, 2024: 0.59, 2025: 0.60,
+                2026: 0.61, 2027: 0.62, 2028: 0.63, 2029: 0.64, 2030: 0.65
+            },
+            "Jalisco": {
+                2010: 0.60, 2011: 0.61, 2012: 0.62, 2013: 0.63, 2014: 0.63, 2015: 0.64, 2016: 0.65, 2017: 0.66,
+                2018: 0.67, 2019: 0.68, 2020: 0.69, 2021: 0.70, 2022: 0.71, 2023: 0.72, 2024: 0.73, 2025: 0.74,
+                2026: 0.75, 2027: 0.76, 2028: 0.77, 2029: 0.78, 2030: 0.79
+            },
+            "Zacatecas": {
+                2010: 0.70, 2011: 0.71, 2012: 0.71, 2013: 0.72, 2014: 0.73, 2015: 0.74, 2016: 0.74, 2017: 0.75,
+                2018: 0.76, 2019: 0.77, 2020: 0.78, 2021: 0.79, 2022: 0.80, 2023: 0.81, 2024: 0.82, 2025: 0.83,
+                2026: 0.84, 2027: 0.85, 2028: 0.86, 2029: 0.87, 2030: 0.88
+            }
+            // ... y así para todos los estados
+        };
+
+        // Lista de todos los estados (keys del objeto anterior)
+        const listaEstados = Object.keys(marginacionEstados);
+
+        // Lógica "mock" para detectar estado por coordenadas. En producción, haz geocoding real o shapefiles.
+        function detectEstadoPorCoordenadas(lat, lng) {
+            // Aquí haz la lógica real. Por demo, si lat < 22 => "Baja California Sur", si lat < 24 => "Baja California", etc.
+            // Lo hacemos muy simplificado para ejemplo:
+            if (lat > 24) return "Jalisco";
+            if (lat > 22) return "Aguascalientes";
+            return "Baja California Sur";
+        }
+
+        /* ========== 3) FILTRO DE PROYECTOS (Paso 1) ========== */
+        const techTypeSelect = document.getElementById("techType");
+        const projectTypeSelect = document.getElementById("projectType");
+        const nextStepButton1 = document.getElementById("nextStepButton1");
+
+        techTypeSelect.addEventListener("change", function () {
+            projectTypeSelect.innerHTML = '<option value="">Seleccione...</option>';
+            if (this.value === "Convencional") {
+                conventionalProjects.forEach(proj => {
+                    const option = document.createElement("option");
+                    option.value = proj;
+                    option.text = proj;
+                    projectTypeSelect.appendChild(option);
+                });
+                projectTypeSelect.disabled = false;
+                document.getElementById("factorEmision").value = defaultFactorEmision.toFixed(3);
+            } else if (this.value === "Limpia") {
+                limpiaProjects.forEach(proj => {
+                    const option = document.createElement("option");
+                    option.value = proj;
+                    option.text = proj;
+                    projectTypeSelect.appendChild(option);
+                });
+                projectTypeSelect.disabled = false;
+                // Si es Limpia, factor de emisión ~ 0
+                document.getElementById("factorEmision").value = "0.000";
+            } else {
+                projectTypeSelect.disabled = true;
+                document.getElementById("factorEmision").value = "";
+            }
+            checkStep1();
+        });
+
+        projectTypeSelect.addEventListener("change", checkStep1);
+
+        function checkStep1() {
+            nextStepButton1.disabled = !(techTypeSelect.value && projectTypeSelect.value);
+        }
+
+        /* ========== 4) COMBO DE AÑOS (2010–2030) ========== */
+        (function fillYears() {
+            const anioInicioSelect = document.getElementById("anioInicio");
+            for (let y = 2010; y <= 2030; y++) {
+                const opt = document.createElement("option");
+                opt.value = y;
+                opt.text = y;
+                anioInicioSelect.appendChild(opt);
+            }
+        })();
+
+        /* ========== 5) NAVEGACIÓN MULTI-PASO ========== */
+        function nextStep(currentStep) {
+            document.getElementById("step" + currentStep).classList.add("d-none");
+            const nextStepNum = currentStep + 1;
+            document.getElementById("step" + nextStepNum).classList.remove("d-none");
+            if (nextStepNum === 2) {
+                alert("Captura el área en el mapa usando el botón 'Activar Dibujo'.");
+            }
+        }
+        function prevStep(currentStep) {
+            document.getElementById("step" + currentStep).classList.add("d-none");
+            document.getElementById("step" + (currentStep - 1)).classList.remove("d-none");
+        }
+
+        /* ========== 6) MAPA Y DIBUJO (Paso 2) ========== */
+        const map = L.map('map').setView([19.4326, -99.1332], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+        const drawControl = new L.Control.Draw({
+            edit: { featureGroup: drawnItems },
+            draw: {
+                polygon: true,
+                marker: false,
+                circle: false,
+                rectangle: false,
+                polyline: false,
+                circlemarker: false
+            }
+        });
+
+        function activarDibujo() {
+            map.addControl(drawControl);
+            document.getElementById("enableDrawing").disabled = true;
+        }
+
+        map.on('draw:created', function (e) {
+            if (e.layerType === 'polygon') {
+                drawnItems.clearLayers();
+                drawnItems.addLayer(e.layer);
+                updateAreaAndMargination();
+                document.getElementById("confirmAreaBtn").disabled = false;
+            }
+        });
+        map.on('draw:edited', function () {
+            updateAreaAndMargination();
+        });
+
+        function updateAreaAndMargination() {
+            const layers = drawnItems.getLayers();
+            if (layers.length > 0) {
+                const layer = layers[0];
+                const latLngs = layer.getLatLngs()[0];
+                // Calcular el área en m² y convertir a km²
+                const area = L.GeometryUtil.geodesicArea(latLngs);
+                const areaKm2 = area / 1000000;
+                const areaFormatted = areaKm2.toLocaleString("es-MX", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+                document.getElementById("areaValue").innerText = areaFormatted + " km²";
+                layer.bindTooltip("Área: " + areaFormatted + " km²", {
+                    permanent: true,
+                    direction: "center"
+                }).openTooltip();
+
+                // Centroid
+                const centroid = getPolygonCentroid(latLngs);
+                // Detectar estado (mock)
+                const estadoDetectado = detectEstadoPorCoordenadas(centroid.lat, centroid.lng);
+                document.getElementById("estadoDetectado").innerText = estadoDetectado;
+                // Guardamos global por si lo usamos luego
+                window.estadoSeleccionado = estadoDetectado;
+
+                // Detectar sistema (mock)
+                const sistema = detectSistema(centroid);
+                document.getElementById("sistemaDetectado").innerText = sistema;
+                document.getElementById("precioEnergia").value = preciosSistema[sistema].toFixed(6);
+
+                // Detectar marginación (ejemplo muy simplificado)
+                let marginacionStr = "media";
+                const val = (marginacionEstados[estadoDetectado] && marginacionEstados[estadoDetectado][2023]) || 0.5;
+                if (val >= 0.7) marginacionStr = "muy_alta";
+                else if (val >= 0.5) marginacionStr = "alta";
+                document.getElementById("marginacionDetectada").innerText = marginacionStr;
+
+                // Índice de marginación (por defecto, año=2023)
+                document.getElementById("indiceMarginacion").value = (val * 100).toFixed(1);
+            }
+        }
+
+        function getPolygonCentroid(latLngs) {
+            let latSum = 0, lngSum = 0;
+            latLngs.forEach(ll => { latSum += ll.lat; lngSum += ll.lng; });
+            return { lat: latSum / latLngs.length, lng: lngSum / latLngs.length };
+        }
+
+        function detectSistema({ lat, lng }) {
+            // Ejemplo muy simplificado
+            if (lat >= 27 && lat <= 32.72 && lng >= -117.5 && lng <= -114) return "BCA";
+            if (lat >= 22.7 && lat <= 27 && lng >= -115 && lng <= -108) return "BCS";
+            return "SIN";
+        }
+
+        function confirmAreaFunction() {
+            map.removeControl(drawControl);
+            document.getElementById("confirmAreaBtn").disabled = true;
+            map.dragging.disable();
+            map.doubleClickZoom.disable();
+            map.scrollWheelZoom.disable();
+            map.touchZoom.disable();
+            document.getElementById("step2").classList.add("d-none");
+            document.getElementById("step3").classList.remove("d-none");
+        }
+
+        /* ========== 7) VALIDACIÓN DE INPUTS (Paso 3) ========== */
+        function validateInputs() {
+            let valid = true;
+            const validations = [
+                { id: "capacidadInstalada", min: 0.0001 },
+                { id: "eficienciaElectrica", min: 0.0001, max: 100 },
+                { id: "factorPlanta", min: 0.0001, max: 100 },
+                { id: "inversionPlaneada", min: 0.0001 },
+                { id: "precioEnergia", min: 0.0001 },
+                { id: "costoOM", min: 0.0001 },
+                { id: "distanciaRed", min: 0 }
+            ];
+            validations.forEach(item => {
+                const input = document.getElementById(item.id);
+                const value = parseFloat(input.value);
+                if (isNaN(value) || value < item.min || (item.max !== undefined && value > item.max)) {
+                    valid = false;
+                    input.classList.add("is-invalid");
+                    if (!input.nextElementSibling || !input.nextElementSibling.classList.contains("invalid-feedback")) {
+                        const feedback = document.createElement("div");
+                        feedback.className = "invalid-feedback";
+                        feedback.innerText = "Ingrese un valor numérico válido" +
+                            (item.max !== undefined ? " (entre " + item.min + " y " + item.max + ")." : " mayor que 0.");
+                        input.parentNode.insertBefore(feedback, input.nextSibling);
+                    }
+                } else {
+                    input.classList.remove("is-invalid");
+                    if (input.nextElementSibling && input.nextElementSibling.classList.contains("invalid-feedback")) {
+                        input.nextElementSibling.remove();
+                    }
+                }
+            });
+            return valid;
+        }
+
+        /* ========== 8) GENERACIÓN DEL REPORTE FINAL ========== */
+        function generateReport() {
+            if (!validateInputs()) {
+                alert("Por favor, revise y corrija los campos numéricos.");
+                return;
+            }
+            const loadingOverlay = document.getElementById("loadingOverlay");
+            const progressBarFill = document.getElementById("progressBarFill");
+            loadingOverlay.style.display = "flex";
+            progressBarFill.style.width = "10%";
+            progressBarFill.innerText = "10%";
+
+            // Recoger datos
+            const techType = document.getElementById("techType").value;
+            const projectType = document.getElementById("projectType").value;
+            const areaText = document.getElementById("areaValue").innerText;
+            const area = parseFloat(areaText.replace(" km²", "")) || 0;
+            const capacidadInstalada = parseFloat(document.getElementById("capacidadInstalada").value) || 0;
+            const eficienciaElectrica = parseFloat(document.getElementById("eficienciaElectrica").value) || 0;
+            const factorPlanta = parseFloat(document.getElementById("factorPlanta").value) || 0;
+            const inversionPlaneada = parseFloat(document.getElementById("inversionPlaneada").value) || 0;
+            const anioInicio = parseInt(document.getElementById("anioInicio").value) || 2023;
+            const precioEnergia = parseFloat(document.getElementById("precioEnergia").value) || 0;
+            const indiceMarginacion = parseFloat(document.getElementById("indiceMarginacion").value) || 0;
+            const costoOM = parseFloat(document.getElementById("costoOM").value) || 0;
+            const distanciaRed = parseFloat(document.getElementById("distanciaRed").value) || 0;
+            let factorEmision = (techType === "Convencional") ? defaultFactorEmision : 0;
+            document.getElementById("factorEmision").value = factorEmision.toFixed(3);
+
+            // Estado detectado (mock)
+            const estadoDetectado = window.estadoSeleccionado || "Jalisco";
+            document.getElementById("reporteEstado").innerText = estadoDetectado;
+            // Municipio "mock"
+            document.getElementById("reporteMunicipio").innerText = "Municipio X";
+
+            progressBarFill.style.width = "20%";
+            progressBarFill.innerText = "20%";
+
+            // Cálculos
+            const generacionEstimada = (capacidadInstalada * (factorPlanta / 100) * 8760) / 1000; // GWh/año
+            const ingresosAnuales = generacionEstimada * 1000 * precioEnergia;
+            const netoAnual = ingresosAnuales - costoOM;
+            const anosAnalisis = 20;
+            const vpn = (netoAnual * anosAnalisis) - inversionPlaneada;
+            const tir = (netoAnual / inversionPlaneada) * 100;
+            let emisionesProyecto = 0;
+            if (techType === "Convencional") {
+                emisionesProyecto = generacionEstimada * 1000 * factorEmision;
+            }
+
+            progressBarFill.style.width = "30%";
+            progressBarFill.innerText = "30%";
+
+            // Decisión / razones
+            let razones = [];
+            if (distanciaRed > 50) {
+                razones.push("La red de transmisión está muy lejos, lo que implica altos costos de interconexión.");
+            }
+            if (indiceMarginacion > 80) {
+                razones.push("El área tiene un alto índice de marginación, aunque implica retos regulatorios.");
+            }
+            if (vpn <= 0 || tir <= 15 || generacionEstimada < 50) {
+                razones.push("La rentabilidad (VPN, TIR o generación) no es suficientemente alta.");
+            }
+            if (techType === "Convencional" && emisionesProyecto > 1e7) {
+                razones.push("Las emisiones son muy elevadas, lo que podría dificultar la aprobación.");
+            }
+            let decision = "";
+            if (razones.length === 0) {
+                decision = "El proyecto presenta indicadores positivos. Se recomienda avanzar con el proyecto.";
+            } else {
+                decision = "El proyecto tiene potencial, pero sugerimos revisar los siguientes aspectos:<ul>" +
+                    razones.map(r => `<li>${r}</li>`).join("") +
+                    "</ul>Considera estas sugerencias para optimizar el proyecto.";
+            }
+
+            progressBarFill.style.width = "40%";
+            progressBarFill.innerText = "40%";
+
+            document.getElementById("finalReportSection").classList.remove("d-none");
+
+            // Simulamos fetch de datos históricos
+            // Reemplaza con tu fetch real, p. ej: fetch("datos.json")...
+            setTimeout(() => {
+                // Aquí dataHist vendría de tu JSON real
+                const dataHist = []; // DEMO: sin datos
+                progressBarFill.style.width = "60%";
+                progressBarFill.innerText = "60%";
+
+                // Análisis histórico DEMO
+                let analisisHistorico = "<p>No se encontraron datos históricos para la tecnología seleccionada.</p>";
+                let chart4DataPromedio = [0, 0, 0];
+
+                progressBarFill.style.width = "70%";
+                progressBarFill.innerText = "70%";
+
+                // Llenar reporte
+                const reportHTML = `
+                  <div class="card bg-light">
+                    <div class="card-header text-center">
+                      <h4>Reporte Integral del Proyecto</h4>
+                    </div>
+                    <div class="card-body">
+                      <h5 class="card-title">Resumen del Proyecto</h5>
+                      <p><strong>Tipo de Tecnología:</strong> ${techType}</p>
+                      <p><strong>Tipo de Proyecto:</strong> ${projectType}</p>
+                      <p><strong>Área Seleccionada:</strong> ${area.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km²</p>
+                      <p><strong>Capacidad Instalada:</strong> ${capacidadInstalada.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MW</p>
+                      <p><strong>Generación Estimada:</strong> ${generacionEstimada.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GWh/año</p>
+                      <p><strong>Ingresos Anuales (antes de O&M):</strong> $${ingresosAnuales.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN</p>
+                      <p><strong>Costo de O&M:</strong> $${costoOM.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN/año</p>
+                      <p><strong>VPN (20 años):</strong> $${vpn.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN</p>
+                      <p><strong>TIR:</strong> ${tir.toFixed(2)}%</p>
+                      ${techType === "Convencional"
+                        ? `<p><strong>Emisiones Estimadas:</strong> ${emisionesProyecto.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kgCO₂eq/año</p>`
+                        : `<p><strong>Beneficio Ambiental:</strong> Emisiones casi nulas.</p>`
+                    }
+                      <p><strong>Índice de Marginación:</strong> ${indiceMarginacion.toFixed(1)}</p>
+                      <p><strong>Distancia a Red de Transmisión:</strong> ${distanciaRed.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km</p>
+                      <p><strong>Factor de Emisión (CRE 2023):</strong> ${factorEmision.toFixed(3)} kgCO₂eq/MWh</p>
+                      <hr>
+                      ${analisisHistorico}
+                      <hr>
+                      <h5>Decisión de Inversión:</h5>
+                      <p>${decision}</p>
+                    </div>
+                  </div>
+                `;
+                document.getElementById("reportContent").innerHTML = reportHTML;
+
+                // Graficamos
+                progressBarFill.style.width = "80%";
+                progressBarFill.innerText = "80%";
+
+                // Ejemplos de series
+                const nYears = 8;
+                const returnsSIN = computeReturnsOverYears(generacionEstimada, preciosSistema.SIN, inversionPlaneada, nYears, costoOM);
+                const returnsBCA = computeReturnsOverYears(generacionEstimada, preciosSistema.BCA, inversionPlaneada, nYears, costoOM);
+                const returnsBCS = computeReturnsOverYears(generacionEstimada, preciosSistema.BCS, inversionPlaneada, nYears, costoOM);
+
+                // 1) Retornos
+                Highcharts.chart('chartContainerReturns', {
+                    chart: { type: 'line' },
+                    title: { text: 'Retornos Futuros Acumulados e Inversión' },
+                    xAxis: {
+                        categories: Array.from({ length: nYears + 1 }, (_, i) => i.toString()),
+                        title: { text: 'Años' }
+                    },
+                    yAxis: { title: { text: 'Retorno Acumulado (MXN)' } },
+                    series: [
+                        { name: 'Retorno SIN', data: returnsSIN },
+                        { name: 'Retorno BCA', data: returnsBCA },
+                        { name: 'Retorno BCS', data: returnsBCS }
+                    ]
+                });
+
+                // 2) Evolución marginación (mock)
+                Highcharts.chart('chartContainerMargination', {
+                    chart: { type: 'line' },
+                    title: { text: `Evolución de la Marginación (demo)` },
+                    xAxis: { categories: [2010, 2015, 2020, 2025, 2030], title: { text: 'Año' } },
+                    yAxis: { title: { text: 'Índice de Marginación' } },
+                    series: [{
+                        name: 'Marginación - mock',
+                        data: [0.4, 0.45, 0.5, 0.55, 0.6] // Ejemplo
+                    }]
+                });
+
+                // 3) Comparación radial (demo)
+                let relArea = chart4DataPromedio[0] ? (area / chart4DataPromedio[0]) * 100 : 0;
+                let relCap = chart4DataPromedio[1] ? (capacidadInstalada / chart4DataPromedio[1]) * 100 : 0;
+                let relInv = chart4DataPromedio[2] ? (inversionPlaneada / chart4DataPromedio[2]) * 100 : 0;
+                Highcharts.chart('chartContainerComparison', {
+                    chart: { polar: true, type: 'line' },
+                    title: { text: 'Comparación Relativa (Propuesto vs. Promedio Histórico)' },
+                    pane: { size: '80%' },
+                    xAxis: {
+                        categories: ['Área (km²)', 'Capacidad (MW)', 'Inversión (MXN)'],
+                        tickmarkPlacement: 'on',
+                        lineWidth: 0
+                    },
+                    yAxis: {
+                        gridLineInterpolation: 'polygon',
+                        lineWidth: 0,
+                        min: 0
+                    },
+                    series: [
+                        { name: 'Propuesto', data: [relArea, relCap, relInv], pointPlacement: 'on' },
+                        { name: 'Promedio Hist.', data: [100, 100, 100], pointPlacement: 'on' }
+                    ]
+                });
+
+                // 4) Comparación Energética (demo)
+                Highcharts.chart('chartContainerEnergyComparison', {
+                    chart: { type: 'column' },
+                    title: { text: 'Comparación Energética: Convencional vs. Limpia (demo)' },
+                    xAxis: { categories: ['Convencional', 'Limpia'] },
+                    yAxis: { min: 0, title: { text: 'Generación Bruta Total (GWh/año)' } },
+                    series: [{
+                        name: 'Generación Histórica',
+                        data: [50000, 30000] // Ejemplo
+                    }]
+                });
+
+                // 5) Radar Eficiencia/FP/TIR (demo)
+                const promedioEficiencia = 20, promedioFactorPlanta = 30, promedioTIR = 18;
+                Highcharts.chart('chartContainerRadar', {
+                    chart: { polar: true, type: 'line' },
+                    title: { text: 'Comparación de Coeficientes de Desempeño' },
+                    pane: { size: '80%' },
+                    xAxis: {
+                        categories: ['Eficiencia Eléctrica (%)', 'Factor de Planta (%)', 'TIR (%)'],
+                        tickmarkPlacement: 'on',
+                        lineWidth: 0
+                    },
+                    yAxis: {
+                        gridLineInterpolation: 'polygon',
+                        lineWidth: 0,
+                        min: 0
+                    },
+                    tooltip: {
+                        shared: true,
+                        pointFormatter: function () {
+                            return Highcharts.numberFormat(this.y, 1, ",", ".") + " %";
+                        }
+                    },
+                    series: [
+                        { name: 'Propuesta', data: [eficienciaElectrica, factorPlanta, tir], pointPlacement: 'on' },
+                        { name: 'Promedio Histórico', data: [promedioEficiencia, promedioFactorPlanta, promedioTIR], pointPlacement: 'on' }
+                    ]
+                });
+
+                // 6) Gráfica de Barras por Estado (usando el año seleccionado del combo)
+                updateChartContainerState(anioInicio, estadoDetectado);
+
+                progressBarFill.style.width = "100%";
+                progressBarFill.innerText = "100%";
+                setTimeout(() => {
+                    loadingOverlay.style.display = "none";
+                    document.getElementById("finalReportSection").scrollIntoView({ behavior: "smooth" });
+                }, 500);
+            }, 1000);
+        }
+
+        // Función para la gráfica de barras por estado y año
+        function updateChartContainerState(selectedYear, selectedState) {
+            // Construimos las categorías y datos
+            const categoriesEstados = [];
+            const dataEstados = [];
+
+            listaEstados.forEach(estado => {
+                categoriesEstados.push(estado);
+                const val = marginacionEstados[estado][selectedYear] || 0; // si no hay valor, 0
+                // Color según umbrales
+                let fillColor = val < 0.4 ? "#28a745" : (val < 0.7 ? "#ffc107" : "#dc3545");
+                // Resaltar el estado seleccionado
+                let borderColor = (estado === selectedState) ? "#FFD700" : "#6c757d";
+                let borderWidth = (estado === selectedState) ? 3 : 1;
+                dataEstados.push({
+                    y: val * 100,  // Lo graficamos en %
+                    color: fillColor,
+                    borderColor: borderColor,
+                    borderWidth: borderWidth,
+                    dataLabels: {
+                        enabled: true,
+                        format: '{y:.1f}%'
+                    }
+                });
+            });
+
+            Highcharts.chart('chartContainerState', {
+                chart: { type: 'column' },
+                title: { text: `Índice de Marginación por Entidad (${selectedYear})` },
+                xAxis: {
+                    categories: categoriesEstados,
+                    title: { text: 'Entidad Federativa' }
+                },
+                yAxis: {
+                    min: 0,
+                    max: 100,
+                    title: { text: 'Índice (%)' }
+                },
+                plotOptions: {
+                    column: {
+                        borderWidth: 2,
+                        dataLabels: { enabled: true, format: '{point.y:.1f}%' }
+                    }
+                },
+                series: [{
+                    name: 'Índice',
+                    data: dataEstados
+                }]
+            });
+        }
+
+        // Retornos a lo largo de N años (para la gráfica de línea)
+        function computeReturnsOverYears(gwhBase, price, inversion, nYears, costoOM) {
+            const ingresosAnuales = gwhBase * 1000 * price;
+            let data = [];
+            for (let i = 0; i <= nYears; i++) {
+                data.push(((ingresosAnuales - costoOM) * i) - inversion);
+            }
+            return data;
+        }
+
+        // Botón para guardar PDF
+        document.getElementById("btnGuardarPDF").addEventListener("click", function () {
+            setTimeout(() => {
+                html2canvas(document.querySelector(".container")).then(canvas => {
+                    const imgData = canvas.toDataURL('image/png');
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                    pdf.save('reporte_proyecto.pdf');
+                });
+            }, 500);
+        });
+    </script>
+</body>
+
+</html>

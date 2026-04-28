@@ -1,0 +1,1815 @@
+var map = mapas[0];
+
+//Funcionalidades del Mapa Inicial
+var camposVisiblesGlobal = [];
+function obtenerCamposVisibles() {
+    $.ajax({
+        url: '/Indicadores/GetCamposVisibles', // Asegúrate de actualizar 'TuControlador' con el nombre de tu controlador
+        type: 'GET',
+        contentType: 'application/json',
+        success: function (camposVisibles) {
+            // Aquí tienes la lista de campos visibles
+            console.log(camposVisibles);
+            camposVisiblesGlobal = camposVisibles;
+            // Llama a la función para llenar los términos de búsqueda aquí si es necesario
+            // Por ejemplo:
+            // llenarTerminosDeBusqueda();
+        },
+        error: function (error) {
+            console.error("Error al obtener campos visibles", error);
+        }
+    });
+}
+
+
+var availableTerms = [];//Variable global para almacenar los terminos de búqueda Sugerencia de Terminos
+var datosExpendios = []; // variable global para almacenar todos los expendios
+var datosSolExpendios = []; // variable global para almacenar las aolicitudes de todos los expendios
+
+var map = L.map('map', {
+    zoomControl: true, maxZoom: 28, minZoom: 5
+}).fitBounds([[16.515297504744552, -116.01198143543994], [31.280203931152798, -90.79533052556764]]);
+var hash = new L.Hash(map);
+map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+var bounds_group = new L.featureGroup([]);
+function setBounds() {
+}
+
+
+//Crea los Iconos
+var iconoBase = L.Icon.extend({
+    options: {
+        iconSize: [24, 24],
+        iconAnchor: [12, 16],
+        popupAnchor: [-3, -76]
+    }
+});
+
+//Asignación de Iconos
+var iconoSolicitudes = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/Solicitudes.png' }),
+    iconoExpendio = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/Expendio.png' }),
+    iconoAzul = new iconoBase({ iconUrl: 'azul.png' });
+iconoAprobado = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/Aprobado.png' });
+iconoNoaprobado = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/NoAprobado.png' });
+
+
+
+var currentMarker = null; // Referencia al marcador actual
+// var seleccionado = 'estado'; // Estado inicial
+var municipiosFiltrados = null;
+
+
+
+//Colores
+var initialStyle = {
+    color: '#187A8C', // Color de línea
+    fillColor: '#187A8C', // Color de relleno
+    fillOpacity: 0.3, // Opacidad del relleno
+    weight: 3 // Ancho de la línea
+};
+
+// Estilo para el hover
+var highlightStyle = {
+    color: '#FFDB2EC',
+    fillColor: '#FFDB2E', // Color de relleno
+    fillOpacity: 0.3, // Opacidad del relleno
+    weight: 3
+};
+
+// Capa de estados
+var estadosLayer = L.geoJSON(estados, {
+    style: initialStyle, // Aplicar estilo inicial
+    onEachFeature: function (feature, layer) {
+        layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOMGEO + '</div>');
+        layer.on('click', function (e) {
+            cargarMunicipios(feature.properties.CVE_ENT);
+            map.fitBounds(layer.getBounds()); // Centra el mapa en el estado
+        });
+        // Efecto de hover
+        layer.on('mouseover', function (e) {
+            layer.setStyle(highlightStyle);
+        });
+        layer.on('mouseout', function (e) {
+            estadosLayer.resetStyle(layer);
+        });
+    }
+}).addTo(map);
+
+// Capa de municipios (inicialmente vacía)
+var municipiosLayer = L.geoJSON(null, {
+    style: initialStyle, // Aplicar estilo inicial
+    onEachFeature: onEachMunicipio
+}).addTo(map);
+
+function onEachMunicipio(feature, layer) {
+    layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOM_MUN + ', ' + feature.properties.NOMGEO + '</div>');
+    // Efecto de hover
+    layer.on('mouseover', function (e) {
+        layer.setStyle(highlightStyle);
+    });
+    layer.on('mouseout', function (e) {
+        municipiosLayer.resetStyle(layer);
+    });
+
+}
+
+// Función para cargar los municipios correspondientes a un estado
+function cargarMunicipios(cveEnt) {
+    municipiosLayer.clearLayers();
+
+    if (currentMarker) {
+        map.removeLayer(currentMarker);
+        currentMarker = null;
+    }
+
+    municipiosFiltrados = {
+        type: "FeatureCollection",
+        features: municipios_mapa.features.filter(function (feature) {
+            return feature.properties.CVE_ENT === cveEnt;
+        })
+    };
+
+    municipiosLayer.addData(municipiosFiltrados);
+}
+
+
+// Asignando a la búsqueda de términos
+estadosLayer.eachLayer(function (layer) {
+    if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+        availableTerms.push(layer.feature.properties.NOMGEO);
+    }
+});
+
+for (var i = 0; i < municipios_mapa.features.length; i++) {
+    var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+    var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+    // Asegúrate de que ambas propiedades existen antes de concatenar
+    if (municipio && estado) {
+        var nombreCompleto = municipio + ", " + estado;
+        availableTerms.push(nombreCompleto);
+    }
+}
+
+
+
+map.createPane('pane_GoogleSatellite_0');
+map.getPane('pane_GoogleSatellite_0').style.zIndex = 0;
+var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    pane: 'pane_GoogleSatellite_0',
+    opacity: 1.0,
+    attribution: '<a href="https://www.google.at/permissions/geoguidelines/attr-guide.html">Map data ©2015 Google</a>',
+    minZoom: 1,
+    maxZoom: 28,
+    minNativeZoom: 0,
+    maxNativeZoom: 20
+});
+
+//Configura los Base Layers
+var baseLayers = {
+    "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }),
+    "Vista Satélite": layer_GoogleSatellite_0
+};
+
+// Control de capas para seleccionar la vista del mapa
+L.control.layers(baseLayers).addTo(map);
+
+// Activa una capa de mosaicos como vista inicial
+baseLayers["OpenStreetMap"].addTo(map);
+
+// Redibujar la capa cuando se seleccione
+map.on('baselayerchange', function (eventLayer) {
+    if (eventLayer.name === "Vista Satélite") {
+        layer_GoogleSatellite_0.redraw();
+    }
+});
+
+L.control.scale().addTo(map); // Agregar la escala gráfica al mapa
+
+
+
+
+//Herramientas Mapa
+
+
+
+//ZOOM
+var resetZoomControl = L.control({ position: 'topleft' });
+
+resetZoomControl.onAdd = function (map) {
+    var div = L.DomUtil.create('div', 'reset-zoom-control');
+    div.innerHTML = '<button class="btn btn-cre-rojo-home" onclick="resetZoom()"><i class="bi bi-house-door"></i></button>';
+    return div;
+};
+
+resetZoomControl.addTo(map);
+
+function resetZoom() {
+    map.setView([24.572503, -101.768257], 5);
+}
+/////////////DISTANCIAS/////////////////////
+// Configura las opciones de dibujo
+var drawControl = new L.Control.Draw({
+    draw: {
+        polygon: false,
+        polyline: true,
+        rectangle: false,
+        circle: false,
+        marker: false,
+        circlemarker: false
+    },
+    edit: false
+});
+
+map.addControl(drawControl);
+
+// Cuando se dibuja una línea, calcula la distancia
+map.on('draw:created', function (e) {
+    var type = e.layerType,
+        layer = e.layer;
+
+    if (type === 'polyline') {
+        var latlngs = layer.getLatLngs();
+        var distance = 0;
+        for (var i = 1; i < latlngs.length; i++) {
+            distance += latlngs[i - 1].distanceTo(latlngs[i]);
+        }
+        // Convertir la distancia a km y redondear a 2 decimales
+        distance = Math.round((distance / 1000) * 100) / 100;
+        // Crear un popup con la distancia
+        layer.bindPopup('Distancia: ' + distance + ' km').openPopup();
+        // Añadir la línea al mapa
+        layer.addTo(map);
+    }
+});
+
+
+
+
+//Ductos
+
+function Ductospet() {
+    function pop_ductos_petroliferos_4326_0(feature, layer) {
+        var popupContent = '<table>\
+                                <tr>\
+                                    <th scope="row">Región: </th>\
+                                    <td>' + (feature.properties['regin'] !== null ? autolinker.link(feature.properties['regin'].toLocaleString()) : '') + '</td>\
+                                </tr>\
+                                <tr>\
+                                    <th scope="row">Ducto: </th>\
+                                    <td>' + (feature.properties['ducto'] !== null ? autolinker.link(feature.properties['ducto'].toLocaleString()) : '') + '</td>\
+                                </tr>\
+                                <tr>\
+                                    <th scope="row">Servicio: </th>\
+                                    <td>' + (feature.properties['servicio'] !== null ? autolinker.link(feature.properties['servicio'].toLocaleString()) : '') + '</td>\
+                                </tr>\
+                                <tr>\
+                                    <th scope="row">Longitud (km): </th>\
+                                    <td>' + (feature.properties['longitud_'] !== null ? autolinker.link(feature.properties['longitud_'].toLocaleString()) : '') + '</td>\
+                                </tr>\
+                                <tr>\
+                                    <th scope="row">Capacidad nominal (B): </th>\
+                                    <td>' + (feature.properties['capa_n'] !== null ? autolinker.link(feature.properties['capa_n'].toLocaleString()) : '') + '</td>\
+                                </tr>\
+                                <tr>\
+                                    <th scope="row">Capacidad opertiva (B): </th>\
+                                    <td>' + (feature.properties['capa_o'] !== null ? autolinker.link(feature.properties['capa_o'].toLocaleString()) : '') + '</td>\
+                                </tr>\
+                            </table>';
+        layer.bindPopup(popupContent, { maxHeight: 400 });
+    }
+
+    function style_ductos_petroliferos_4326_0_0() {
+        return {
+            pane: 'pane_ductos_petroliferos_4326_0',
+            opacity: 1,
+            color: 'rgba(31,120,180,1.0)',
+            dashArray: '',
+            lineCap: 'square',
+            lineJoin: 'bevel',
+            weight: 4.0,
+            fillOpacity: 0,
+            interactive: true,
+        }
+    }
+    map.createPane('pane_ductos_petroliferos_4326_0');
+    map.getPane('pane_ductos_petroliferos_4326_0').style.zIndex = 400;
+    map.getPane('pane_ductos_petroliferos_4326_0').style['mix-blend-mode'] = 'normal';
+    var layer_ductos_petroliferos_4326_0 = new L.geoJson(json_ductos_petroliferos_4326_0, {
+        attribution: '',
+        interactive: true,
+        dataVar: 'json_ductos_petroliferos_4326_0',
+        layerName: 'layer_ductos_petroliferos_4326_0',
+        pane: 'pane_ductos_petroliferos_4326_0',
+        onEachFeature: pop_ductos_petroliferos_4326_0,
+        style: style_ductos_petroliferos_4326_0_0,
+    });
+    bounds_group.addLayer(layer_ductos_petroliferos_4326_0);
+    map.addLayer(layer_ductos_petroliferos_4326_0);
+    setBounds();
+}
+Ductospet();
+
+
+//Funciones del Mapa
+
+
+
+//Guarda los Permisos
+var permisosGlobales = [];
+
+//Obtiene los Permisos Autorizados
+function ObtienePermisos() {
+    // Limpiar marcadores existentes
+    // limpiarMarcadoresmun();
+    // Tabla de Resultados
+    $.ajax({
+        url: '/Indicadores/GetExpendiosAutorizados',
+        type: 'GET',
+        // data: JSON.stringify(datos_mun),
+        contentType: 'application/json',
+        success: function (response) {
+            console.log("Estos son los Permisos:", response); // ver la respuesta en consola
+            permisosGlobales = response;
+            datosExpendios = response;
+
+            //Guardo los terminos en la  búsqueda
+            for (var i = 0; i < datosExpendios.length; i++) {
+                availableTerms.push(datosExpendios[i].numeroPermiso);
+
+            }
+            console.log("Agregados", availableTerms);
+            function generarContenidoPopup(coordenada) {
+                var contenido = "<style>" +
+                    ".popup-content {" +
+                    "    width: 280px;" +
+                    "    max-height: 180px;" +
+                    "    overflow-y: auto;" +
+                    "    padding: 10px;" +
+                    "}" +
+                    "h2, h3, h4, p, li {" +
+                    "    margin: 0 0 10px 0;" +
+                    "}" +
+                    "ul {" +
+                    "    padding-left: 20px;" +
+                    "}" +
+                    "img {" +
+                    "    vertical-align: middle;" +
+                    "    margin-right: 10px;" +
+                    "}" +
+                    "</style>";
+
+                contenido += "<div class='popup-content'>";
+
+                if (camposVisiblesGlobal.includes("RazonSocial")) {
+                    contenido += "<h2 class='subtitulo'><img src='https://cdn.sassoapps.com/img_snier/vistas/gasolinera.png' style='height: 24px; width: 24px;'/><strong>" + handleNull(coordenada.razonSocial) + "</strong></h2><br>";
+                }
+
+                contenido += "<ul>";
+
+                if (camposVisiblesGlobal.includes("EfId")) {//NO TENEMOS EL NOMBRE DE LA EF EN CAMPOS VISIBLES SOLO EL ID LO CRUZO EN LA CONSULTA DEL REPOSITORIO
+                    contenido += "<li><strong>Entidad Federativa:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                    contenido += "<li><strong>NúmeroPermiso:</strong> " + handleNull(coordenada.numeroPermiso) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EfId")) {
+                    contenido += "<li><strong>EF ID:</strong> " + handleNull(coordenada.efId) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EfNombre")) {
+                    contenido += "<li><strong>EFNombre:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("MpoId")) {
+                    contenido += "<li><strong>Mpo ID:</strong> " + handleNull(coordenada.mpoId) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("NumeroDeExpediente")) {
+                    contenido += "<li><strong>Número de Expediente:</strong> " + handleNull(coordenada.numeroDeExpediente) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("RazonSocial")) {
+                    contenido += "<li><strong>RazonSocial:</strong> " + handleNull(coordenada.razonSocial) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("FechaOtorgamiento")) {
+                    contenido += "<li><strong>FechaOtorgamiento:</strong> " + handleNull(coordenada.fechaOtorgamiento) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("LatitudGeo")) {
+                    contenido += "<li><strong> la titudGeo:</strong> " + handleNull(coordenada.latitudGeo) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("LongitudGeo")) {
+                    contenido += "<li><strong>LongitudGeo:</strong> " + handleNull(coordenada.longitudGeo) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CalleNumEs")) {
+                    contenido += "<li><strong>CalleNumEs:</strong> " + handleNull(coordenada.calleNumEs) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ColoniaEs")) {
+                    contenido += "<li><strong>ColoniaEs:</strong> " + handleNull(coordenada.coloniaEs) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CodigoPostal")) {
+                    contenido += "<li><strong>CodigoPostal:</strong> " + handleNull(coordenada.codigoPostal) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Estatus")) {
+                    contenido += "<li><strong>Estatus:</strong> " + handleNull(coordenada.estatus) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Rfc")) {
+                    contenido += "<li><strong>Rfc:</strong> " + handleNull(coordenada.rfc) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("FechaRecepcion")) {
+                    contenido += "<li><strong>FechaRecepcion:</strong> " + handleNull(coordenada.fechaRecepcion) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EstatusInstalacion")) {
+                    contenido += "<li><strong>EstatusInstalacion:</strong> " + handleNull(coordenada.estatusInstalacion) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CausaSuspension")) {
+                    contenido += "<li><strong>CausaSuspension:</strong> " + handleNull(coordenada.causaSuspension) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Marca")) {
+                    contenido += "<li><strong>Marca:</strong> " + handleNull(coordenada.marca) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoPermiso")) {
+                    contenido += "<li><strong>TipoPermiso:</strong> " + handleNull(coordenada.tipoPermiso) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("InicioVigencia")) {
+                    contenido += "<li><strong>InicioVigencia:</strong> " + handleNull(coordenada.inicioVigencia) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TerminoVigencia")) {
+                    contenido += "<li><strong>TerminoVigencia:</strong> " + handleNull(coordenada.terminoVigencia) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("InicioOperaciones")) {
+                    contenido += "<li><strong>InicioOperaciones:</strong> " + handleNull(coordenada.inicioOperaciones) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CapacidadAutorizadaBarriles")) {
+                    contenido += "<li><strong>CapacidadAutorizadaBarriles:</strong> " + handleNull(coordenada.capacidadAutorizadaBarriles) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("InversionEstimada")) {
+                    contenido += "<li><strong>InversionEstimada:</strong> " + handleNull(coordenada.inversionEstimada) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Productos")) {
+                    contenido += "<li><strong>Productos:</strong> " + handleNull(coordenada.productos) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Comentarios")) {
+                    contenido += "<li><strong>Comentarios:</strong> " + handleNull(coordenada.comentarios) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoPersona")) {
+                    contenido += "<li><strong>TipoPersona:</strong> " + handleNull(coordenada.tipoPersona) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("NumeroDeEstacionesDeServicio")) {
+                    contenido += "<li><strong>Número de Estaciones de Servicio:</strong> " + handleNull(coordenada.numeroDeEstacionesDeServicio) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoDeEstacion")) {
+                    contenido += "<li><strong>Tipo de Estacion:</strong> " + handleNull(coordenada.tipoDeEstacion) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("FechaDeAcuse")) {
+                    contenido += "<li><strong>Fecha de Acuse:</strong> " + handleNull(coordenada.fechaDeAcuse) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("FechaEntregaEstadosFinancieros")) {
+                    contenido += "<li><strong>FechaEntregaEstadosFinancieros:</strong> " + handleNull(coordenada.fechaEntregaEstadosFinancieros) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Propietario")) {
+                    contenido += "<li><strong>Propietario:</strong> " + handleNull(coordenada.propietario) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CapacidadMaximaDeLaBomba")) {
+                    contenido += "<li><strong>CapacidadMaxima de  la Bomba:</strong> " + handleNull(coordenada.capacidadMaximaDeLaBomba) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CapacidadOperativaReal")) {
+                    contenido += "<li><strong>CapacidadOperativaReal:</strong> " + handleNull(coordenada.capacidadOperativaReal) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ServicioDeRegadera")) {
+                    contenido += "<li><strong>Servicio de Regadera:</strong> " + handleNull(coordenada.servicioDeRegadera) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ServicioDeRestaurante")) {
+                    contenido += "<li><strong>Servicio de Restaurante:</strong> " + handleNull(coordenada.servicioDeRestaurante) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ServicioDeSanitario")) {
+                    contenido += "<li><strong>Servicio de Sanitario:</strong> " + handleNull(coordenada.servicioDeSanitario) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("OtrosServicios")) {
+                    contenido += "<li><strong>OtrosServicios:</strong> " + handleNull(coordenada.otrosServicios) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TiendaDeConveniencia")) {
+                    contenido += "<li><strong>Tienda de Conveniencia:</strong> " + handleNull(coordenada.tiendaDeConveniencia) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("NumeroDeModulosDespachadores")) {
+                    contenido += "<li><strong>Número de Modulos de spachadores:</strong> " + handleNull(coordenada.numeroDeModulosDespachadores) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoDeEstacionId")) {
+                    contenido += "<li><strong>Tipo de Estacion ID:</strong> " + handleNull(coordenada.tipoDeEstacionId) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoDePersona")) {
+                    contenido += "<li><strong>Tipo de Persona:</strong> " + handleNull(coordenada.tipoDePersona) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoDePermiso")) {
+                    contenido += "<li><strong>Tipo de Permiso:</strong> " + handleNull(coordenada.tipoDePermiso) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EstadoDePermiso")) {
+                    contenido += "<li><strong>Estado de Permiso:</strong> " + handleNull(coordenada.estadoDePermiso) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EstatusDeLaInstalacion")) {
+                    contenido += "<li><strong>Estatus de  la Instalacion:</strong> " + handleNull(coordenada.estatusDeLaInstalacion) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ImagenCorporativa")) {
+                    contenido += "<li><strong>ImagenCorporativa:</strong> " + handleNull(coordenada.imagenCorporativa) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CausaSuspencionInstalacionId")) {
+                    contenido += "<li><strong>CausaSuspencionInstalacion ID:</strong> " + handleNull(coordenada.causaSuspencionInstalacionId) + "</li>";
+                }
+
+                contenido += "</ul>";
+
+                if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                    contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
+                }
+
+                contenido += "</div>";
+
+                return contenido;
+            }
+            //Mapa de Resultados/////////////////////////////////////////////////////////////////////
+            // Crea un grupo de marcadores
+            var markers = L.markerClusterGroup();
+            // Crea los iconos
+            var iconoBase = L.Icon.extend({
+                options: {
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 16],
+                    popupAnchor: [-3, -76]
+                }
+            });
+
+            var iconoExpendio = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/gasolinera.png' });
+
+            // Agrega los marcadores para las coordenadas del mapa actual
+            for (var j = 0; j < response.length; j++) {
+                var coordenada = response[j];
+                var marker = L.marker([coordenada.latitudGeo, coordenada.longitudGeo], { icon: iconoExpendio });
+                var contenidoPopup = generarContenidoPopup(coordenada);
+                marker.bindPopup(contenidoPopup);
+
+
+
+                markers.addLayer(marker);
+            }
+
+            map.addLayer(markers);
+
+
+
+
+
+            ////Nacional Por Perimsos
+            //Grafico de Columnas
+            // Paso 1: Procesa la respuesta
+            var counts = {};
+            response.forEach(function (coordenada) {
+                if (!counts[coordenada.efNombre]) {
+                    counts[coordenada.efNombre] = 0;
+                }
+                counts[coordenada.efNombre]++;
+            });
+
+            // Paso 2: Extrae categorías y datos
+            var categories = [];
+            var dataPermisos = [];
+            for (var entidad in counts) {
+                categories.push(entidad);
+                dataPermisos.push(counts[entidad]);
+            }
+
+            //Paso 3 ordenando alfabeticamente
+            // Creamos un array de objetos que contiene la categoría y su dato asociado
+            var combined = categories.map(function (cat, index) {
+                return {
+                    category: cat,
+                    data: dataPermisos[index]
+                };
+            });
+
+            // Ordenamos el array de objetos por la propiedad 'category'
+            combined.sort(function (a, b) {
+                return a.category.localeCompare(b.category);
+            });
+
+            // Extraemos las categorías y datos ordenados de los objetos
+            categories = combined.map(function (item) {
+                return item.category;
+            });
+            dataPermisos = combined.map(function (item) {
+                return item.data;
+            });
+
+            // Paso 4: Configura las opciones del gráfico
+            var options = {
+                chart: {
+                    type: 'column',
+                    // backgroundColor: '#efefee'  // Color de fondo del gráfico
+                },
+                title: {
+                    text: 'Total de Permisos de Expendio Autorizados por Entidad Federativa'
+                },
+                xAxis: {
+                    categories: categories
+                },
+                yAxis: {
+                    title: {
+                        text: 'Número de permisos'
+                    }
+                },
+                series: [{
+                    name: 'Permisos',
+                    data: dataPermisos,
+                    color: '#59b25d',  // Aplicando el color directamente aquí
+                    dataLabels: {
+
+
+                        enabled: true,   // Habilita las etiquetas de datos
+                        rotation: 0,     // Rota las etiquetas (en este caso, no hay rotación)
+                        color: '#000000', // Color del texto de las etiquetas
+                        align: 'center',  // Alinea las etiquetas al centro
+                        format: '{point.y:,.0f}',  // Formato con separador de miles
+                        y: 10, // Posiciona las etiquetas un poco arriba del tope de la columna
+                        style: {
+                            fontSize: '13px', // Tamaño de la fuente de las etiquetas
+                            fontFamily: 'Verdana, sans-serif' // Tipo de letra de las etiquetas
+                        }
+                    }
+                }],
+                tooltip: {
+                    formatter: function () {
+                        return '<b>' + this.x + '</b><br/>' +
+                            this.series.name + ': ' + Highcharts.numberFormat(this.y, 0);  // Usando separador de miles
+
+
+                    }
+                }
+            };
+
+            // Renderizar el gráfico en el contenedor con el ID 'grafico'
+            Highcharts.chart('graficopermiso', options);
+            // Renderizar el gráfico en el contenedor con el ID 'grafico'
+            Highcharts.chart('graficopermiso2', options);
+
+
+
+            //////////////////////////////////////Grafico de "Razon_social"
+            // Paso 1: Construir un objeto que contenga las cuentas por "Razón Social".
+
+            console.log("Iniciando proceso de gráfico por Razón Social");
+            var conteoPorRazonSocial = {};
+
+            response.forEach(function (coordenada) {
+                if (!conteoPorRazonSocial[coordenada.razonSocial]) {
+                    conteoPorRazonSocial[coordenada.razonSocial] = 0;
+                }
+                conteoPorRazonSocial[coordenada.razonSocial]++;
+            });
+
+            // Convertir el objeto conteoPorRazonSocial en un array de objetos
+            var arrayRazonSocial = [];
+            for (var razon in conteoPorRazonSocial) {
+                arrayRazonSocial.push({
+                    name: razon,
+                    value: conteoPorRazonSocial[razon]
+                });
+            }
+
+            // Ordena las razones sociales alfabéticamente
+            arrayRazonSocial.sort(function (a, b) {
+                return a.name.localeCompare(b.name);
+            });
+
+            // Extraer las "Razones Sociales" y las cantidades para el gráfico
+            var razonesSociales = arrayRazonSocial.map(function (item) {
+                return item.name;
+            });
+            var cantidades = arrayRazonSocial.map(function (item) {
+                return item.value;
+            });
+
+            // Configurar las opciones del gráfico de área con zoom y selector de rango
+            Highcharts.chart('rs_autorizados', {
+                chart: {
+                    type: 'area',
+                    zoomType: 'x'
+                },
+                title: {
+                    text: 'Expendios Autorizados por Razón Social'
+                },
+                xAxis: {
+                    categories: razonesSociales
+                },
+                yAxis: {
+                    title: {
+                        text: 'Número de Expendios'
+                    }
+                },
+                series: [{
+                    name: 'Expendios',
+                    data: cantidades
+                }],
+                tooltip: {
+                    pointFormat: '<b>{point.name}</b>: {point.y}'
+                }
+            });
+
+
+        },
+        error: function (error) {
+            // Maneja el error si ocurre.
+        }
+    });
+}
+// ObtienePermisos();
+
+function mostrarReporte(solicitudId) {
+    var permisos = permisosCercanos[solicitudId];
+    if (permisos && permisos.length > 0) {
+        var reporte = "Permisos cercanos a la solicitud " + solicitudId + ":\n";
+        permisos.forEach(function (permiso) {
+            reporte += "Número de Permiso: " + permiso.numeroPermiso + ", Razón Social: " + permiso.razón_social + "\n";
+        });
+        alert(reporte);
+    } else {
+        alert("No hay permisos cercanos a la solicitud " + solicitudId);
+    }
+
+
+}
+
+
+//Manda a Detalle de solicitud 3km
+function redireccionarADetalle(idSolicitud) {
+    window.open("/Indicadores/DetalleSolicitud?id=" + idSolicitud, '_blank');
+}
+
+
+var permisosCercanos = {};  // Variable global para almacenar permisos cercanos por ID de solicitud
+function CargaSolicitudesInicio() {
+    $.ajax({
+        url: '/Indicadores/GetSolicitudes',
+        type: 'GET',
+
+
+        contentType: 'application/json',
+
+        success: function (response) {
+            console.log("Get Solicitudes:", response); // ver la respuesta en consola
+            datosSolExpendios = response; // Guarda la respuesta en la variable global
+
+            //Guardo los terminos en la  búsqueda
+            for (var i = 0; i < datosSolExpendios.length; i++) {
+                //     @* availableTerms.push(datosSolExpendios[i].id);
+                //      availableTerms.push(datosSolExpendios[i].turno);
+                // availableTerms.push(datosSolExpendios[i].expediente);  *@
+            }
+            console.log("con solicitudes", availableTerms);
+
+            // Crea un grupo de marcadores
+            var markers = L.markerClusterGroup();
+
+            //Crea los Iconos
+            var iconoBase = L.Icon.extend({
+                options: {
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 16],
+                    popupAnchor: [-3, -76]
+                }
+            });
+
+            //Asignación de Iconos
+            var iconoSolicitudes = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/Solicitudes.png' });
+            var iconoSolicitudesUrl;
+            iconoSolicitudesUrl = 'https://cdn.sassoapps.com/img_snier/vistas/Solicitudes.png';
+            // Añade marcadores al grupo para cada conjunto de coordenadas en la respuesta
+            response.forEach(function (item) {
+                // Asigna el icono de acuerdo a la categoría
+
+
+                var marker = L.marker([item.latitud_GEO, item.longitud_GEO], { icon: iconoSolicitudes });
+
+
+                marker.bindPopup(
+                    "<style>" +
+                    ".popup-content {" +
+                    "width: 300px;" +
+                    "height: 150px;" +
+                    "overflow-y: auto;" +
+                    "padding: 10px;" +
+                    "}" +
+                    "h2, h3, h4, p, li {" +
+                    "margin: 0 0 10px 0;" +
+                    "}" +
+                    "ul {" +
+                    "padding-left: 20px;" +
+                    "}" +
+                    "img {" +
+                    "vertical-align: middle;" +
+                    "margin-right: 10px;" +
+                    "}" +
+                    "</style>" +
+                    "<div class='popup-content'>" +
+
+
+                    "<h2 class='subtitulo'><img src='" + iconoSolicitudesUrl + "' style='height: 24px; width: 24px;'/><strong>" + item.razon_social + "</strong></h2>" +
+                    "<br>" +
+                    "<h6><i class='bi bi-fuel-pump''></i> Marca Solicitada: " + item.marca_solicitada + "</h6>" +
+                    "<h6><i class='bi bi-qr-code'></i> Turno de Kmis: " + item.turno + "</h6>" +
+                    "<h6><i class='bi bi-fingerprint'></i> ID Solicitud: " + item.id + "</h6>" +
+                    "<p><i class='bi bi-geo-alt-fill'></i> Entidad Federativa: " + item.eF_Nombre + "</p>" +
+                    "<ul>" +
+                    "<li><strong>Municipio:</strong> " + item.municipio_Nombre + "</li>" +
+                    "<li><strong>¿Documentos Completos?:</strong> " + (item.documentos_completos) + "</li>" +
+                    "<li><strong>¿Tiene Análisis de Riesgo?:</strong> " + (item.analisis_riesgo) + "</li>" +
+                    "<li><strong> Expediente: </strong>" + item.expediente + "</li>" +
+                    "</ul>" +
+                    "<button class='btn btn-cre-amarillo' onclick='redireccionarADetalle(" + item.id + ")'>Ver Expendios Cercanos a Solicitud</button>  <hr />" +
+                    "<a class='street-view-link btn btn-cre-verde' href='#'>Ver vista de calle</a> <hr />" +
+                    "<a class='btn btn-cre-rojo' target='_blank' href='https://titan.cre.gob.mx/Consulta/Turno/" + item.turno + "'>Ver Expediente en Titán</a>" +
+                    "</div>"
+                );
+
+
+                marker.on('popupopen', function (e) {
+                    var popup = e.popup;
+                    var streetViewLink = popup.getElement().querySelector('.street-view-link');
+                    streetViewLink.addEventListener('click', function () {
+                        var lat = e.target.getLatLng().lat.toPrecision(8);
+                        var lon = e.target.getLatLng().lng.toPrecision(8);
+                        var streetViewURL = 'http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0';
+                        window.open(streetViewURL, '_blank');
+                    });
+                });
+
+                //Calcula los Permisos en un radio de 3m cerca de la solicitud
+                marker.on('click', function (e) {
+                    var solicLat = e.latlng.lat;
+                    var solicLon = e.latlng.lng;
+                    var permisosDentroDelRadio = 0;
+                    var listaPermisos = [];  // Aquí guardarás los permisos que estén dentro del radio
+
+                    // Suponiendo que 'response' es la lista de todos los permisos
+                    permisosGlobales.forEach(function (permiso) {
+                        var permLat = permiso.latitud_GEO;
+                        var permLon = permiso.longitud_GEO;
+                        if (calcularDistancia(solicLat, solicLon, permLat, permLon) <= 3) {
+                            permisosDentroDelRadio++;
+                            listaPermisos.push(permiso);
+                        }
+                    });
+                    // Guarda la lista de permisos cercanos en la variable global usando el ID de la solicitud como clave
+                    permisosCercanos[item.id] = listaPermisos;
+
+                });
+
+
+
+                markers.addLayer(marker);
+                var circle = L.circle([item.latitud_GEO, item.longitud_GEO], {
+                    color: '#1e3143', // Color del círculo
+                    fillColor: '#1e3143', // Color de relleno del círculo
+                    fillOpacity: 0.2, // Opacidad del relleno del círculo
+                    radius: 3000       // Radio en metros
+                }).addTo(map);
+
+            });
+
+            map.addLayer(markers);
+
+            ///////////////////////////////////////////////////////////////////////////
+            ////////////////SIDE BAR SOLICITUDES//////////////////////////////////
+            const municipios = [];
+
+
+            // console.log("Regresa:", coordenadasp);
+            for (var j = 0; j < response.length; j++) {
+                var coordenada = response[j];
+                var iconoSeleccionado = iconoSolicitudes;
+
+                var municipio = {
+                    rs: coordenada.razon_social,
+                    ms: coordenada.marca_solicitada,
+                    nombre: coordenada.turno,
+                    coordenadas: [coordenada.latitud_GEO, coordenada.longitud_GEO],
+                    resultado: coordenada.id,
+                    icono: iconoSeleccionado
+                };
+                municipios.push(municipio);
+            }
+            // console.log("Nuevo Arrelo:", municipios);
+
+
+            //Entidades Federativas
+            const sidebar = document.querySelector('#sidebar');
+
+
+            //Eventos Baiscos
+
+            map.on('click', (evento) => {
+                const lat = evento;
+                console.log(lat.latlng)
+            });
+
+            //Metodos
+            map.center
+
+            //Funciones
+
+            //Fly to Place
+            const volar = (latlng) => {
+                map.flyTo(latlng, 13);
+            }
+
+            //Fly to
+            // Municipio
+            const volar_municipio = (latlng) => {
+                map.flyTo(latlng, 13);
+            }
+
+            //Limpiar Items del Side Bar
+            const limpiaritems = () => {
+                const listadoLi = document.querySelectorAll('li');
+                listadoLi.forEach(li => {
+                    li.classList.remove('active');
+                })
+            }
+
+
+
+            // Crea el Side Bar
+            const crearitem = () => {
+                const ul = document.createElement('ul');
+                ul.classList.add('list-group');
+                ul.style.overflow = 'auto'; // Habilitar desplazamiento
+
+
+                ul.style.maxHeight = 'calc(280vh - 80px)'; // Ajustar el tamaño máximo
+                sidebar.append(ul);
+
+
+                // Crear el elemento "Selecciona una Solicitud"
+                const seleccionaSolicitud = document.createElement('p');
+                seleccionaSolicitud.classList.add('btn', 'btn-cre-verde', 'text-center');
+                seleccionaSolicitud.innerText = 'Turno Solicitud Kmis:';
+                seleccionaSolicitud.style.position = 'sticky'; // Establecer la posición sticky
+                seleccionaSolicitud.style.top = '0'; // Asegurar que esté al inicio del sidebar
+                sidebar.prepend(seleccionaSolicitud);
+
+                municipios.forEach((lugar) => {
+                    const li = document.createElement('li');
+                    li.classList.add('list-group-item');
+                    li.style.height = '200px'; // Establecer altura fija
+                    li.style.marginBottom = '10px'; // Agregar margen inferior
+
+                    // Agregar el texto "ID solicitud: lugar.nombre"
+                    const texto = document.createElement('span');
+                    texto.innerHTML = `<strong>ID:</strong> ${lugar.resultado.slice(0, 10)}<br><strong>Turno:</strong> ${lugar.nombre.slice(0, 10)}<br><strong>Razón Social:</strong> ${lugar.rs.slice(0, 10)}<br><strong>Marca Solicitada:</strong> ${lugar.ms.slice(0, 10)}`;
+                    li.appendChild(texto);
+
+                    // Agregar el icono correspondiente
+                    const icono = document.createElement('img');
+                    icono.src = lugar.icono.options.iconUrl;
+                    icono.classList.add('icono-responsivo'); // Agregar la clase CSS para el icono
+                    li.insertBefore(icono, texto); // Insertar el icono antes del texto
+
+                    ul.append(li);
+
+                    li.addEventListener('click', () => {
+                        limpiaritems();
+                        li.classList.add('active');
+                        volar(lugar.coordenadas);
+                    });
+                });
+            };
+
+
+            crearitem();
+
+
+
+
+            //////////////////////////////////////Grafico de "Razon_social"
+            var conteors = {};
+
+            // Recorre el arreglo y cuenta las solicitudes por "Razon_social"
+            for (var i = 0; i < response.length; i++) {
+                var razonSocial = response[i].razon_social;
+
+                if (conteors[razonSocial]) {
+                    conteors[razonSocial]++;
+                } else {
+                    conteors[razonSocial] = 1;
+                }
+            }
+            // Generar colores pastel aleatorios
+            function generateRandomPastelColor() {
+                var colors = ['#0a88b1', '#f5e3a3', '#97d96d', '#ee4f43', '#9f2241', '#e63950', '#59b25d', '#f2cf44'];
+                var randomIndex = Math.floor(Math.random() * colors.length);
+                return colors[randomIndex];
+            }
+            // Convertir los datos en un arreglo de objetos para el gráfico Treemap
+            var treemapData = Object.keys(conteors).map(function (razonSocial) {
+                return {
+                    name: razonSocial,
+                    value: conteors[razonSocial],
+                    color: generateRandomPastelColor()
+                };
+            });
+
+            // Configurar opciones del gráfico
+            var options = {
+                chart: {
+                    type: 'treemap'
+                },
+                title: {
+                    text: 'Solicitudes por Razón Social'
+                },
+                series: [{
+                    type: 'treemap',
+                    layoutAlgorithm: 'squarified',
+                    data: treemapData
+                }],
+                tooltip: {
+                    pointFormat: '<b>{point.name}</b>: {point.value}'
+                }
+            };
+
+            // Renderizar el gráfico en el contenedor con el ID 'miGraficoDiv'
+            Highcharts.chart('grafico_rs', options);
+
+            ////////////Marca Solicitada////////////
+
+            // Crea un objeto para almacenar los conteoms de cada "Marca_solicitada"
+            var conteoms = {};
+
+            // Recorre el arreglo y cuenta las solicitudes por "Marca_solicitada"
+            for (var i = 0; i < response.length; i++) {
+                var marcaSolicitada = response[i].marca_solicitada;
+
+                if (conteoms[marcaSolicitada]) {
+                    conteoms[marcaSolicitada]++;
+                } else {
+                    conteoms[marcaSolicitada] = 1;
+                }
+            }
+            // Convertir los datos en un arreglo de objetos para el gráfico Treemap
+            var treemapDatams = Object.keys(conteoms).map(function (marcaSolicitada) {
+                return {
+                    name: marcaSolicitada,
+                    value: conteoms[marcaSolicitada],
+                    color: generateRandomPastelColor()
+                };
+            });
+
+            // Configurar opciones del gráfico
+            var options = {
+                chart: {
+                    type: 'treemap'
+                },
+                title: {
+                    text: 'Solicitudes por Marca Solicitada'
+                },
+                series: [{
+                    type: 'treemap',
+                    layoutAlgorithm: 'squarified',
+                    data: treemapDatams
+                }],
+                tooltip: {
+                    pointFormat: '<b>{point.name}</b>: {point.value}'
+                }
+            };
+            // Renderizar el gráfico en el contenedor con el ID 'grafico_rs'
+            Highcharts.chart('grafico_ms', options);
+
+
+
+
+            ////////////////////////////////Tabla de las Solicitudes/////////////
+
+            if (!$.fn.DataTable.isDataTable('#I_SOL')) {
+                $('#I_SOL').DataTable({
+                    lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                    dom: 'Bfrtip',
+                    buttons: [
+                        'copyHtml5',
+                        'excelHtml5',
+                        'csvHtml5',
+                        'pdfHtml5'
+                    ],
+                    data: response, // Aquí asignamos los datos
+                    columns: [
+                        { data: "id" },
+                        { data: "turno" },
+                        { data: "razon_social" },
+                        { data: "expediente" },
+                        { data: "marca_solicitada" },
+                        { data: "eF_ID" },
+                        { data: "eF_Nombre" },
+                        { data: "mpO_ID" },
+                        { data: "municipio_Nombre" },
+                        { data: "analisis_riesgo" },
+                        //{ data: "Con_Analisis_de_Riesgo" },
+                        //{ data: "Con_Documentos_Completos" },
+                        { data: "documentos_completos" },
+                        { data: "latitud_GEO" },
+                        { data: "longitud_GEO" }
+                        //{ data: "Total_de_Permisos_de_Expendio" },
+                        //{ data: "Total_de_Solicitudes_a_Evaluar" }
+                    ]
+                });
+            }
+
+
+
+        },
+
+
+        error: function (error) {
+            // Maneja el error si ocurre.
+        }
+
+
+    });
+
+
+}
+
+
+
+
+
+
+//Busquedas
+var lastSearchedEstadoLayer = null; // para almacenar la última entidad federativa buscada
+var lastSearchedMunicipioLayer = null; // para almacenar el último municipio buscado
+
+
+function buscarGeneral() {
+    var terminoBuscado = document.getElementById('busquedaGeneralInput').value.trim();
+
+    if (!terminoBuscado) {
+        alert("Por favor, introduce un término de búsqueda.");
+        return;  // Termina la ejecución de la función si el campo está vacío
+    }
+
+
+
+    // Intenta buscar por número de permiso primero
+    var encontrado = false;
+    for (var i = 0; i < datosExpendios.length; i++) {
+        var expendio = datosExpendios[i];
+        if (expendio.numeroPermiso === terminoBuscado) {
+            var lat = expendio.latitudGeo;
+            var lon = expendio.longitudGeo;
+            map.setView([lat, lon], 15);
+            encontrado = true;
+            break;
+        }
+    }
+
+
+
+
+    // Si no se encontró por busca por Solicitud ID o Turno k-mis
+    if (!encontrado) {
+        for (var i = 0; i < datosSolExpendios.length; i++) {
+            var expendio = datosSolExpendios[i];
+            if (expendio.id === terminoBuscado || expendio.turno === terminoBuscado || expendio.expediente === terminoBuscado) {
+                var lat = expendio.latitud_GEO;
+                var lon = expendio.longitud_GEO;
+                map.setView([lat, lon], 15); // 15 es el nivel de zoom, puedes ajustarlo según prefieras
+                encontrado = true;
+                break;
+            }
+        }
+    }
+
+
+    // Si no se encontró por número de permiso, busca por entidad federativa
+    if (!encontrado) {
+        estadosLayer.eachLayer(function (layer) {
+            if (layer.feature.properties.NOMGEO === terminoBuscado) {
+                map.fitBounds(layer.getBounds());
+
+                // Si ya había una entidad federativa buscada anteriormente, restablecemos su estilo
+                if (lastSearchedEstadoLayer) {
+                    estadosLayer.resetStyle(lastSearchedEstadoLayer);
+                }
+
+                // Resalta la entidad federativa encontrada
+                layer.setStyle({
+                    color: '#FF0000',
+                    fillColor: '#FF0000',
+                    fillOpacity: 0.5
+                });
+
+                lastSearchedEstadoLayer = layer;
+
+                // Reiniciar el estilo de la entidad después de 5 segundos
+                setTimeout(function () {
+                    estadosLayer.resetStyle(lastSearchedEstadoLayer);
+                    lastSearchedEstadoLayer = null;
+                }, 5000);
+
+                encontrado = true;
+            }
+        });
+    }
+
+    // Si aún no se encontró, busca por municipio en la fuente de datos completa
+    if (!encontrado) {
+        // Divide el término de búsqueda en municipio y estado
+        var terminos = terminoBuscado.split(',');
+        var buscadoMunicipio = terminos[0].trim();
+        var buscadoEstado = terminos.length > 1 ? terminos[1].trim() : '';
+
+
+        for (var i = 0; i < municipios_mapa.features.length; i++) {
+            var municipio = municipios_mapa.features[i];
+            var nombreMunicipio = municipio.properties.NOM_MUN;
+            var nombreEstado = municipio.properties.NOMGEO;
+
+            // Comprueba si el nombre del municipio y del estado coinciden con el término de búsqueda
+            if (nombreMunicipio === buscadoMunicipio && (buscadoEstado === '' || nombreEstado === buscadoEstado)) {
+                var bounds = L.geoJSON(municipio).getBounds();
+                map.fitBounds(bounds);
+
+                // Si ya había un municipio buscado anteriormente, lo elimina
+                if (lastSearchedMunicipioLayer) {
+                    map.removeLayer(lastSearchedMunicipioLayer);
+                }
+
+                // Agrega el municipio encontrado al mapa y lo resalta
+                lastSearchedMunicipioLayer = L.geoJSON(municipio, {
+                    style: {
+                        color: '#FF0000',
+                        fillColor: '#FF0000',
+                        fillOpacity: 0.5
+                    }
+                }).addTo(map);
+
+                // Reiniciar el estilo y eliminar el municipio después de 5 segundos
+                setTimeout(function () {
+                    map.removeLayer(lastSearchedMunicipioLayer);
+                    lastSearchedMunicipioLayer = null;
+                }, 5000);
+
+                encontrado = true;
+                break;
+            }
+        }
+    }
+
+
+    if (!encontrado) {
+        alert("Término no encontrado.");
+    }
+
+
+
+
+}
+
+
+
+// Función para inicializar el autocompletar
+function autocomplete(inp, arr) {
+    var currentFocus;
+
+    inp.addEventListener("input", function (e) {
+        var a, b, i, val = this.value;
+        closeAllLists();
+        if (!val) { return false; }
+        currentFocus = -1;
+
+        a = document.getElementById("autocomplete-list");
+        a.innerHTML = "";
+
+        for (i = 0; i < arr.length; i++) {
+            if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                b = document.createElement("DIV");
+                b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                b.innerHTML += arr[i].substr(val.length);
+                b.addEventListener("click", function (e) {
+                    inp.value = this.innerText;
+                    closeAllLists();
+                    buscarGeneral(); // Llama a tu función de búsqueda aquí
+                    buscarGeneralmun(); // Llama a tu función de búsqueda aquí
+                });
+                a.appendChild(b);
+            }
+        }
+    });
+
+    function closeAllLists(elmnt) {
+        var x = document.getElementById("autocomplete-list");
+        if (elmnt != x && elmnt != inp) {
+            x.innerHTML = "";
+        }
+    }
+
+    document.addEventListener("click", function (e) {
+        closeAllLists(e.target);
+    });
+}
+// Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+var uniqueTerms = [...new Set(availableTerms)];
+console.log("Unicos:", uniqueTerms);
+
+// Debes llamar a esta función después de que los datos de expendios y solicitudes estén disponibles
+// Por ejemplo, después de las llamadas AJAX en ObtienePermisos y CargaSolicitudesInicio
+// Ahora puedes usar $.when para esperar a que ambas llamadas AJAX se completen
+$.when(obtenerCamposVisibles(), ObtienePermisos(), CargaSolicitudesInicio()).done(function () {
+
+    // Luego puedes inicializar el autocompletado aquí, ya que now todos los datos están listos
+    autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+    autocomplete(document.getElementById("busquedaGeneralInputmun"), availableTerms);
+});
+
+
+
+
+function limpiarMarcadores() {
+    // Limpiar todas las capas de marcadores y círculos
+    map.eachLayer(function (layer) {
+        if (layer instanceof L.Marker || layer instanceof L.MarkerClusterGroup || layer instanceof L.Circle || layer instanceof L.Polyline) {
+            map.removeLayer(layer);
+        }
+    });
+
+    // Eliminar la capa de municipios
+    //if (municipiosLayer) {
+    //    map.removeLayer(municipiosLayer);
+    //    municipiosLayer = null; // Establecer la variable municipiosLayer como nula
+    //}
+}
+
+function CargaSolicitudes() {
+    // Limpiar marcadores existentes
+    limpiarMarcadores();
+
+    $.ajax({
+        url: '/Indicadores/GetSolicitudes',
+        type: 'GET',
+
+
+        contentType: 'application/json',
+
+        success: function (response) {
+            console.log("Get Solicitudes:", response); // ver la respuesta en consola
+
+
+            //Mapa de Resultados/////////////////////////////////////////////////////////////////////
+            // Crea un grupo de marcadores
+            var markers = L.markerClusterGroup();
+            // Crea los iconos
+
+            //Crea los Iconos
+            var iconoBase = L.Icon.extend({
+                options: {
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 16],
+                    popupAnchor: [-3, -76]
+                }
+            });
+
+            //Asignación de Iconos
+            var iconoSolicitudes = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/Solicitudes.png' });
+            var iconoSolicitudesUrl;
+            iconoSolicitudesUrl = 'https://cdn.sassoapps.com/img_snier/vistas/Solicitudes.png';
+            // Añade marcadores al grupo para cada conjunto de coordenadas en la respuesta
+            response.forEach(function (item) {
+                // Asigna el icono de acuerdo a la categoría
+
+
+                var marker = L.marker([item.latitud_GEO, item.longitud_GEO], { icon: iconoSolicitudes });
+
+
+                marker.bindPopup(
+                    "<style>" +
+                    ".popup-content {" +
+                    "width: 300px;" +
+                    "height: 150px;" +
+                    "overflow-y: auto;" +
+                    "padding: 10px;" +
+                    "}" +
+                    "h2, h3, h4, p, li {" +
+                    "margin: 0 0 10px 0;" +
+                    "}" +
+                    "ul {" +
+                    "padding-left: 20px;" +
+                    "}" +
+                    "img {" +
+                    "vertical-align: middle;" +
+                    "margin-right: 10px;" +
+                    "}" +
+                    "</style>" +
+                    "<div class='popup-content'>" +
+                    "<h2 class='subtitulo'><img src='" + iconoSolicitudesUrl + "' style='height: 24px; width: 24px;'/><strong>" + item.razon_social + "</strong></h2>" +
+                    "<br>" +
+                    "<h6><i class='bi bi-fuel-pump''></i> Marca Solicitada: " + item.marca_solicitada + "</h6>" +
+                    "<h6><i class='bi bi-qr-code'></i> Turno de Kmis: " + item.turno + "</h6>" +
+                    "<h6><i class='bi bi-fingerprint'></i> ID Solicitud: " + item.id + "</h6>" +
+                    "<p><i class='bi bi-geo-alt-fill'></i> Entidad Federativa: " + item.eF_Nombre + "</p>" +
+                    "<ul>" +
+                    "<li><strong>Municipio:</strong> " + item.municipio_Nombre + "</li>" +
+                    "<li><strong>¿Documentos Completos?:</strong> " + (item.documentos_completos) + "</li>" +
+                    "<li><strong>¿Tiene Análisis de Riesgo?:</strong> " + (item.analisis_riesgo) + "</li>" +
+                    "</ul>" +
+                    "<button class='btn btn-cre-amarillo' onclick='redireccionarADetalle(" + item.id + ")'>Ver Expendios Cercanos a Solicitud</button>  <hr />" +
+                    "<a class='street-view-link btn btn-cre-verde' href='#'>Ver vista de calle</a> <hr />" +
+                    "<a class='btn btn-cre-rojo' target='_blank' href='https://titan.cre.gob.mx/Consulta/Turno/" + item.turno + "'>Ver Expediente en Titán</a>" +
+                    "</div>"
+                );
+
+
+                marker.on('popupopen', function (e) {
+                    var popup = e.popup;
+                    var streetViewLink = popup.getElement().querySelector('.street-view-link');
+                    streetViewLink.addEventListener('click', function () {
+                        var lat = e.target.getLatLng().lat.toPrecision(8);
+                        var lon = e.target.getLatLng().lng.toPrecision(8);
+                        var streetViewURL = 'http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0';
+                        window.open(streetViewURL, '_blank');
+                    });
+                });
+
+                markers.addLayer(marker);
+                var circle = L.circle([item.latitud_GEO, item.longitud_GEO], {
+                    color: '#1e3143', // Color del círculo
+                    fillColor: '#1e3143', // Color de relleno del círculo
+                    fillOpacity: 0.2, // Opacidad del relleno del círculo
+                    radius: 3000       // Radio en metros
+                }).addTo(map);
+
+            });
+
+            map.addLayer(markers);
+
+        },
+
+
+        error: function (error) {
+            // Maneja el error si ocurre.
+        }
+
+
+    });
+    Ductospet();
+}
+
+function CargaSolicitudes_1() {
+
+
+    $.ajax({
+        url: '/Indicadores/GetSolicitudes',
+        type: 'GET',
+
+
+        contentType: 'application/json',
+
+        success: function (response) {
+            console.log("Get Solicitudes:", response); // ver la respuesta en consola
+
+
+            //Mapa de Resultados/////////////////////////////////////////////////////////////////////
+            // Crea un grupo de marcadores
+            var markers = L.markerClusterGroup();
+            // Crea los iconos
+
+            //Crea los Iconos
+            var iconoBase = L.Icon.extend({
+                options: {
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 16],
+                    popupAnchor: [-3, -76]
+                }
+            });
+
+            //Asignación de Iconos
+            var iconoSolicitudes = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/Solicitudes.png' });
+            var iconoSolicitudesUrl;
+            iconoSolicitudesUrl = 'https://cdn.sassoapps.com/img_snier/vistas/Solicitudes.png';
+            // Añade marcadores al grupo para cada conjunto de coordenadas en la respuesta
+            response.forEach(function (item) {
+                // Asigna el icono de acuerdo a la categoría
+
+
+                var marker = L.marker([item.latitud_GEO, item.longitud_GEO], { icon: iconoSolicitudes });
+
+
+                marker.bindPopup(
+                    "<style>" +
+                    ".popup-content {" +
+                    "width: 300px;" +
+                    "height: 150px;" +
+                    "overflow-y: auto;" +
+                    "padding: 10px;" +
+                    "}" +
+                    "h2, h3, h4, p, li {" +
+                    "margin: 0 0 10px 0;" +
+                    "}" +
+                    "ul {" +
+                    "padding-left: 20px;" +
+                    "}" +
+                    "img {" +
+                    "vertical-align: middle;" +
+                    "margin-right: 10px;" +
+                    "}" +
+                    "</style>" +
+                    "<div class='popup-content'>" +
+                    "<h2 class='subtitulo'><img src='" + iconoSolicitudesUrl + "' style='height: 24px; width: 24px;'/><strong>" + item.razon_social + "</strong></h2>" +
+                    "<br>" +
+                    "<h6><i class='bi bi-fuel-pump''></i> Marca Solicitada: " + item.marca_solicitada + "</h6>" +
+                    "<h6><i class='bi bi-qr-code'></i> Turno de Kmis: " + item.turno + "</h6>" +
+                    "<h6><i class='bi bi-fingerprint'></i> ID Solicitud: " + item.id + "</h6>" +
+                    "<p><i class='bi bi-geo-alt-fill'></i> Entidad Federativa: " + item.eF_Nombre + "</p>" +
+                    "<ul>" +
+                    "<li><strong>Municipio:</strong> " + item.municipio_Nombre + "</li>" +
+                    "<li><strong>¿Documentos Completos?:</strong> " + (item.documentos_completos) + "</li>" +
+                    "<li><strong>¿Tiene Análisis de Riesgo?:</strong> " + (item.analisis_riesgo) + "</li>" +
+                    "</ul>" +
+                    "<button class='btn btn-cre-amarillo' onclick='redireccionarADetalle(" + item.id + ")'>Ver Expendios Cercanos a Solicitud</button>  <hr />" +
+                    "<a class='street-view-link btn btn-cre-verde' href='#'>Ver vista de calle</a> <hr />" +
+                    "<a class='btn btn-cre-rojo' target='_blank' href='https://titan.cre.gob.mx/Consulta/Turno/" + item.turno + "'>Ver Expediente en Titán</a>" +
+                    "</div>"
+                );
+
+
+                marker.on('popupopen', function (e) {
+                    var popup = e.popup;
+                    var streetViewLink = popup.getElement().querySelector('.street-view-link');
+                    streetViewLink.addEventListener('click', function () {
+                        var lat = e.target.getLatLng().lat.toPrecision(8);
+                        var lon = e.target.getLatLng().lng.toPrecision(8);
+                        var streetViewURL = 'http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0';
+                        window.open(streetViewURL, '_blank');
+                    });
+                });
+
+                markers.addLayer(marker);
+                var circle = L.circle([item.latitud_GEO, item.longitud_GEO], {
+                    color: '#1e3143', // Color del círculo
+                    fillColor: '#1e3143', // Color de relleno del círculo
+                    fillOpacity: 0.2, // Opacidad del relleno del círculo
+                    radius: 3000       // Radio en metros
+                }).addTo(map);
+
+            });
+
+            map.addLayer(markers);
+
+        },
+
+
+        error: function (error) {
+            // Maneja el error si ocurre.
+        }
+
+
+    });
+}
+
+function handleNull(value) {
+    return value ? value : "S/D-Sin Dato";
+}
+
+
+function CargaExpendios_1() {
+    // Limpiar marcadores existentes
+    //limpiarMarcadores()
+    // Tabla de Resultados
+    $.ajax({
+        url: '/Indicadores/GetExpendiosAutorizados',
+        type: 'GET',
+        // data: JSON.stringify(datos_mun),
+        contentType: 'application/json',
+        success: function (response) {
+            console.log("Estos son los Expendios Autorizados:", response); // ver la respuesta en consola
+            datosExpendios = response; // Guarda la respuesta en la variable global
+
+            function generarContenidoPopup(coordenada) {
+                var contenido = "<style>" +
+                    ".popup-content {" +
+                    "    width: 280px;" +
+                    "    max-height: 180px;" +
+                    "    overflow-y: auto;" +
+                    "    padding: 10px;" +
+                    "}" +
+                    "h2, h3, h4, p, li {" +
+                    "    margin: 0 0 10px 0;" +
+                    "}" +
+                    "ul {" +
+                    "    padding-left: 20px;" +
+                    "}" +
+                    "img {" +
+                    "    vertical-align: middle;" +
+                    "    margin-right: 10px;" +
+                    "}" +
+                    "</style>";
+
+                contenido += "<div class='popup-content'>";
+
+                if (camposVisiblesGlobal.includes("RazonSocial")) {
+                    contenido += "<h2 class='subtitulo'><img src='https://cdn.sassoapps.com/img_snier/vistas/gasolinera.png' style='height: 24px; width: 24px;'/><strong>" + handleNull(coordenada.razonSocial) + "</strong></h2><br>";
+                }
+
+                contenido += "<ul>";
+
+                if (camposVisiblesGlobal.includes("EfId")) {//NO TENEMOS EL NOMBRE DE LA EF EN CAMPOS VISIBLES SOLO EL ID LO CRUZO EN LA CONSULTA DEL REPOSITORIO
+                    contenido += "<li><strong>Entidad Federativa:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                    contenido += "<li><strong>NúmeroPermiso:</strong> " + handleNull(coordenada.numeroPermiso) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EfId")) {
+                    contenido += "<li><strong>EF ID:</strong> " + handleNull(coordenada.efId) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EfNombre")) {
+                    contenido += "<li><strong>EFNombre:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("MpoId")) {
+                    contenido += "<li><strong>Mpo ID:</strong> " + handleNull(coordenada.mpoId) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("NumeroDeExpediente")) {
+                    contenido += "<li><strong>Número de Expediente:</strong> " + handleNull(coordenada.numeroDeExpediente) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("RazonSocial")) {
+                    contenido += "<li><strong>RazonSocial:</strong> " + handleNull(coordenada.razonSocial) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("FechaOtorgamiento")) {
+                    contenido += "<li><strong>FechaOtorgamiento:</strong> " + handleNull(coordenada.fechaOtorgamiento) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("LatitudGeo")) {
+                    contenido += "<li><strong> la titudGeo:</strong> " + handleNull(coordenada.latitudGeo) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("LongitudGeo")) {
+                    contenido += "<li><strong>LongitudGeo:</strong> " + handleNull(coordenada.longitudGeo) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CalleNumEs")) {
+                    contenido += "<li><strong>CalleNumEs:</strong> " + handleNull(coordenada.calleNumEs) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ColoniaEs")) {
+                    contenido += "<li><strong>ColoniaEs:</strong> " + handleNull(coordenada.coloniaEs) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CodigoPostal")) {
+                    contenido += "<li><strong>CodigoPostal:</strong> " + handleNull(coordenada.codigoPostal) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Estatus")) {
+                    contenido += "<li><strong>Estatus:</strong> " + handleNull(coordenada.estatus) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Rfc")) {
+                    contenido += "<li><strong>Rfc:</strong> " + handleNull(coordenada.rfc) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("FechaRecepcion")) {
+                    contenido += "<li><strong>FechaRecepcion:</strong> " + handleNull(coordenada.fechaRecepcion) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EstatusInstalacion")) {
+                    contenido += "<li><strong>EstatusInstalacion:</strong> " + handleNull(coordenada.estatusInstalacion) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CausaSuspension")) {
+                    contenido += "<li><strong>CausaSuspension:</strong> " + handleNull(coordenada.causaSuspension) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Marca")) {
+                    contenido += "<li><strong>Marca:</strong> " + handleNull(coordenada.marca) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoPermiso")) {
+                    contenido += "<li><strong>TipoPermiso:</strong> " + handleNull(coordenada.tipoPermiso) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("InicioVigencia")) {
+                    contenido += "<li><strong>InicioVigencia:</strong> " + handleNull(coordenada.inicioVigencia) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TerminoVigencia")) {
+                    contenido += "<li><strong>TerminoVigencia:</strong> " + handleNull(coordenada.terminoVigencia) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("InicioOperaciones")) {
+                    contenido += "<li><strong>InicioOperaciones:</strong> " + handleNull(coordenada.inicioOperaciones) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CapacidadAutorizadaBarriles")) {
+                    contenido += "<li><strong>CapacidadAutorizadaBarriles:</strong> " + handleNull(coordenada.capacidadAutorizadaBarriles) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("InversionEstimada")) {
+                    contenido += "<li><strong>InversionEstimada:</strong> " + handleNull(coordenada.inversionEstimada) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Productos")) {
+                    contenido += "<li><strong>Productos:</strong> " + handleNull(coordenada.productos) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Comentarios")) {
+                    contenido += "<li><strong>Comentarios:</strong> " + handleNull(coordenada.comentarios) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoPersona")) {
+                    contenido += "<li><strong>TipoPersona:</strong> " + handleNull(coordenada.tipoPersona) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("NumeroDeEstacionesDeServicio")) {
+                    contenido += "<li><strong>Número de Estaciones de Servicio:</strong> " + handleNull(coordenada.numeroDeEstacionesDeServicio) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoDeEstacion")) {
+                    contenido += "<li><strong>Tipo de Estacion:</strong> " + handleNull(coordenada.tipoDeEstacion) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("FechaDeAcuse")) {
+                    contenido += "<li><strong>Fecha de Acuse:</strong> " + handleNull(coordenada.fechaDeAcuse) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("FechaEntregaEstadosFinancieros")) {
+                    contenido += "<li><strong>FechaEntregaEstadosFinancieros:</strong> " + handleNull(coordenada.fechaEntregaEstadosFinancieros) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("Propietario")) {
+                    contenido += "<li><strong>Propietario:</strong> " + handleNull(coordenada.propietario) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CapacidadMaximaDeLaBomba")) {
+                    contenido += "<li><strong>CapacidadMaxima de  la Bomba:</strong> " + handleNull(coordenada.capacidadMaximaDeLaBomba) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CapacidadOperativaReal")) {
+                    contenido += "<li><strong>CapacidadOperativaReal:</strong> " + handleNull(coordenada.capacidadOperativaReal) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ServicioDeRegadera")) {
+                    contenido += "<li><strong>Servicio de Regadera:</strong> " + handleNull(coordenada.servicioDeRegadera) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ServicioDeRestaurante")) {
+                    contenido += "<li><strong>Servicio de Restaurante:</strong> " + handleNull(coordenada.servicioDeRestaurante) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ServicioDeSanitario")) {
+                    contenido += "<li><strong>Servicio de Sanitario:</strong> " + handleNull(coordenada.servicioDeSanitario) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("OtrosServicios")) {
+                    contenido += "<li><strong>OtrosServicios:</strong> " + handleNull(coordenada.otrosServicios) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TiendaDeConveniencia")) {
+                    contenido += "<li><strong>Tienda de Conveniencia:</strong> " + handleNull(coordenada.tiendaDeConveniencia) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("NumeroDeModulosDespachadores")) {
+                    contenido += "<li><strong>Número de Modulos de spachadores:</strong> " + handleNull(coordenada.numeroDeModulosDespachadores) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoDeEstacionId")) {
+                    contenido += "<li><strong>Tipo de Estacion ID:</strong> " + handleNull(coordenada.tipoDeEstacionId) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoDePersona")) {
+                    contenido += "<li><strong>Tipo de Persona:</strong> " + handleNull(coordenada.tipoDePersona) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("TipoDePermiso")) {
+                    contenido += "<li><strong>Tipo de Permiso:</strong> " + handleNull(coordenada.tipoDePermiso) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EstadoDePermiso")) {
+                    contenido += "<li><strong>Estado de Permiso:</strong> " + handleNull(coordenada.estadoDePermiso) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("EstatusDeLaInstalacion")) {
+                    contenido += "<li><strong>Estatus de  la Instalacion:</strong> " + handleNull(coordenada.estatusDeLaInstalacion) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("ImagenCorporativa")) {
+                    contenido += "<li><strong>ImagenCorporativa:</strong> " + handleNull(coordenada.imagenCorporativa) + "</li>";
+                }
+                if (camposVisiblesGlobal.includes("CausaSuspencionInstalacionId")) {
+                    contenido += "<li><strong>CausaSuspencionInstalacion ID:</strong> " + handleNull(coordenada.causaSuspencionInstalacionId) + "</li>";
+                }
+
+                contenido += "</ul>";
+
+                if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                    contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
+                }
+
+                contenido += "</div>";
+
+                return contenido;
+            }
+            //Mapa de Resultados/////////////////////////////////////////////////////////////////////
+            // Crea un grupo de marcadores
+            var markers = L.markerClusterGroup();
+            // Crea los iconos
+            var iconoBase = L.Icon.extend({
+                options: {
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 16],
+                    popupAnchor: [-3, -76]
+                }
+            });
+
+            var iconoExpendio = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/gasolinera.png' });
+
+            // Agrega los marcadores para las coordenadas del mapa actual
+            for (var j = 0; j < response.length; j++) {
+                var coordenada = response[j];
+                var marker = L.marker([coordenada.latitudGeo, coordenada.longitudGeo], { icon: iconoExpendio });
+                var contenidoPopup = generarContenidoPopup(coordenada);
+                marker.bindPopup(contenidoPopup);
+
+
+
+                markers.addLayer(marker);
+            }
+
+            map.addLayer(markers);
+
+
+
+        },
+        error: function (error) {
+            // Maneja el error si ocurre.
+        }
+    });
+}
+
+function CargaSyE() {
+    limpiarMarcadores();
+    CargaExpendios_1();
+    CargaSolicitudes_1();
+    Ductospet();
+}

@@ -1,0 +1,434 @@
+@model NSIE.Models.ModeloCuentaCompuesto
+@inject IHttpContextAccessor HttpContextAccessor
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Cuenta Usuario";
+}
+
+
+
+
+
+<div class="text-center">
+    <h3 class="cp-section cp-grouping-section"> <img src="@Cdn.Url/img_snier/vistas/mexicoi.png" alt="Icono personalizado" class="iconomenu">@ViewData["Title"]</h3>
+</div>
+
+<br />
+
+<div class="container mt-5">
+
+    <form asp-action="Edit" method="post" class="mt-4">
+    <h6 class="display-6 fw-bold subtitulo pl-3%">Información del Usuario</h6>
+        <input type="hidden" asp-for="CuentaUsuario.IdUsuario" />
+        <div class="row p-3">
+            <div class="col-md-6 form-group">
+                <label asp-for="CuentaUsuario.Nombre">Nombre Completo:</label>
+                <input asp-for="CuentaUsuario.Nombre" class="form-control" readonly />
+                <span asp-validation-for="CuentaUsuario.Nombre" class="text-danger"></span>
+            </div>
+            <div class="col-md-6 form-group">
+                <label asp-for="CuentaUsuario.RFC">RFC:</label>
+                <input asp-for="CuentaUsuario.RFC" class="form-control" readonly />
+            </div>
+            <div class="col-md-6 form-group">
+                <label asp-for="CuentaUsuario.Correo">Correo:</label>
+                <input asp-for="CuentaUsuario.Correo" type="email" class="form-control" readonly />
+
+                <span asp-validation-for="CuentaUsuario.Correo" class="text-danger"></span>
+            </div>
+            <div class="col-md-6 form-group">
+                <label asp-for="CuentaUsuario.Cargo">Cargo:</label>
+                <input asp-for="CuentaUsuario.Cargo" class="form-control" readonly/>
+            </div>
+            <div class="col-md-6 form-group">
+                <label asp-for="CuentaUsuario.Unidad_de_Adscripcion">Unidad de Adscripción</label>
+                <input asp-for="CuentaUsuario.Unidad_de_Adscripcion" class="form-control" readonly/>
+            </div>
+
+            <div class="col-md-6 form-group">
+                <label asp-for="CuentaUsuario.ClaveEmpleado">ClaveEmpleado:</label>
+                <input asp-for="CuentaUsuario.ClaveEmpleado" class="form-control" readonly/>
+            </div>
+            <div class="col-md-6 form-group">
+                <label asp-for="CuentaUsuario.SesionActiva">Sesión Activa:</label>
+                <input asp-for="CuentaUsuario.SesionActiva" type="checkbox" class="form-check-input" readonly/>
+            </div>
+
+     
+        </div>
+     
+  
+
+        <h6 class="display-6 fw-bold subtitulo pl-3%">Roles del Usuario</h6>
+        <div class="row p-3">
+          @* <input asp-for="Rol_ID" />*@
+            <div class="col-md-6 form-group">
+                <label asp-for="CuentaUsuario.Rol_Nombre">Rol actual:</label>
+                <input id="currentRole" asp-for="CuentaUsuario.Rol_Nombre" class="form-control" readonly />
+                <select id="roleSelector" class="form-control" style="display: none;" asp-for="CuentaUsuario.Rol_ID" asp-items="@(ViewBag.Roles as IEnumerable<SelectListItem>)">
+                </select>
+
+            </div>
+
+
+            <div class="col-md-6 form-group">
+                <label asp-for="CuentaUsuario.Mercado_Nombre">Mercado actual:</label>
+                <input id="currentMarket" asp-for="CuentaUsuario.Mercado_Nombre" class="form-control" readonly />
+                <select id="marketSelector" class="form-control" style="display: none;" asp-for="CuentaUsuario.Mercado_ID"  asp-items="@(ViewBag.Mercados as IEnumerable<SelectListItem>)">
+                </select>
+            </div>
+            <br>
+          
+            @* <div class="col-md-12 form-group">
+                <label asp-for="CuentaUsuario.RolUsuario_Comentarios">Comentarios:</label>
+                <input asp-for="CuentaUsuario.RolUsuario_Comentarios" class="form-control" />
+            </div>
+            </div>
+
+            <div class="mt-4 pb-4">
+                <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                        
+                <a asp-controller="Usuarios" asp-action="AdministrarUsuarios" class="btn btn-secondary">Cancelar</a>
+            </div> *@
+        </div>
+    </form>
+    @*Gráfico Histórico*@
+    <h6 class="display-6 fw-bold subtitulo pl-3%">Accesos del Usuario</h6>
+    <br>
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-lg-6">
+            <div class="app-card app-card-chart h-100 shadow-sm">
+                <div class="app-card-header p-3 border-0">
+                    <h4 class="app-card-title">Accesos Totales</h4>
+                </div><!--//app-card-header-->
+                <div class="app-card-body p-4">
+                    <div class="chart-container">
+                        <div id="grafico-container" class="app-card-body p-4">
+                            <div id="grafico-accesos" style="height: 400px;"></div>
+                        </div>
+                    </div>
+                </div><!--//app-card-body-->
+            </div><!--//app-card-->
+        </div><!--//col-->
+        @*Accesos por dia*@
+        <div class="col-12 col-lg-6">
+            <div class="app-card app-card-chart h-100 shadow-sm">
+                <div class="app-card-header p-3 border-0">
+                    <h4 class="app-card-title">Accesos el día de Hoy</h4>
+                </div><!--//app-card-header-->
+                <div class="app-card-body p-4">
+                    <div class="chart-container">
+                        <div id="grafico-container" class="app-card-body p-4">
+                            <div id="grafico-accesos-hoy" style="height: 400px;"></div>
+                        </div>
+                    </div>
+                </div><!--//app-card-body-->
+            </div><!--//app-card-->
+        </div><!--//col-->
+    </div><!--//row-->
+    <h6 class="display-6 fw-bold subtitulo pl-3%">Cambio de contraseña</h6>
+    
+
+    <form id="cambio-contrasena-form" action="@Url.Action("ResetPasswordUser", "Acceso")" method="post">
+        <br>
+        <div class="form-group">
+            <label for="cambio-contrasena-checkbox">¿Deseas cambiar la contraseña?</label>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="cambio-contrasena-checkbox">
+                <label class="form-check-label" for="cambio-contrasena-checkbox">
+                    Sí
+                </label>
+            </div>
+        </div>
+        
+        <div id="cambio-contrasena-fields" style="display: none;">
+            <div class="input-group mb-2">
+                <div class="input-group-append">
+                    <span class="input-group-text"><i class="fas fa-key"></i></span>
+                </div>
+                <input type="password" name="Clave" class="form-control input_pass" value=""
+                    placeholder="Nueva contraseña" required autocomplete="new-password">
+            </div>
+
+            <div class="input-group mb-2">
+                <div class="input-group-append">
+                    <span class="input-group-text"><i class="fas fa-key"></i></span>
+                </div>
+                <input type="password" name="ConfirmarClave" class="form-control input_pass" value=""
+                    placeholder="Confirmar contraseña" required autocomplete="new-password">
+            </div>
+        </div>
+
+        @if (ViewData["Mensaje"] != null)
+        {
+            <div class="alert alert-danger text-center" role="alert">
+                @ViewData["Mensaje"]
+            </div>
+        }
+
+        <input type="hidden" name="IdUsuario" value="@ViewData["IdUsuario"]">
+
+        <div id="mensaje-reset-password"></div>
+
+        <div class="d-flex justify-content-center mt-3 login_container" id="cambio-contrasena-submit" style="display: none;">
+            <button type="submit" name="button" class="btn btn-primary" style="display: none;" id="cambio-contrasena-button">Restablecer contraseña</button>
+        </div>
+    </form>
+</div>
+
+
+
+
+@section Scripts {
+    <script>
+        $(document).ready(function(){
+            $("#Correo").on("focusout", function () {
+                var correoUsuario = $(this).val();
+                if (!correoUsuario.includes("@@")) { // Escapar el "arroba" aquí
+                    $(this).val(correoUsuario + "@@cre.gob.mx"); // Y aquí
+                }
+            });
+
+            $('input[type="text"]').blur(function () {
+                var inputValue = $(this).val();
+                $(this).val($.trim(inputValue));
+            });
+      
+            // Cuando el usuario hace clic en el campo de texto...
+            $("#currentRole").click(function () {
+                // Ocultamos el campo de texto y mostramos el dropdown
+                $(this).hide();
+                $("#roleSelector").show();
+            });
+
+            // Cuando el usuario selecciona una nueva opción del dropdown...
+            $("#roleSelector").change(function () {
+                // Actualizamos el campo de texto con el nuevo valor y volvemos a mostrarlo
+                $("#currentRole").val($("#roleSelector option:selected").text());
+                $("#currentRole").show();
+
+                // Ocultamos nuevamente el dropdown
+                $(this).hide();
+            });
+        
+            // Para los mercados...
+            $("#currentMarket").click(function () {
+                $(this).hide();
+                $("#marketSelector").show();
+            });
+
+            $("#marketSelector").change(function () {
+                $("#currentMarket").val($("#marketSelector option:selected").text());
+                $("#currentMarket").show();
+                $(this).hide();
+            });
+
+            $.ajax({
+                url: '@Url.Action("MonitoreoUsuario", "Usuarios")', // Asegúrate de reemplazar "TuControlador" con el nombre correcto de tu controlador
+                type: 'GET',
+                data: { 
+                    id: '@ViewData["IDUsuario"]', 
+                    nombre: '@ViewData["NombreUsuario"]' 
+                },
+                success: function(modeloCompuesto) {
+                    console.log("Datos del ViewModel", modeloCompuesto);
+
+                    var detallesAcceso = modeloCompuesto.cuentaMonitoreo.detallesAcceso;
+                    console.log("Accesos nombres: ", detallesAcceso);
+
+                    // Objeto para almacenar el total de accesos por fecha
+                    var accesosPorFecha = {};
+
+                    // Iterar sobre cada acceso para agrupar por fecha
+                    detallesAcceso.forEach(function(acceso) {
+                        // Obtener la fecha en formato YYYY-MM-DD
+                        var fecha = acceso.fechaHoraLocal.split('T')[0]; // Suponiendo que fechaHoraLocal es una cadena en formato 'YYYY-MM-DDTHH:MM:SS'
+                        
+                        // Incrementar el contador de accesos para esta fecha
+                        if (accesosPorFecha[fecha]) {
+                            accesosPorFecha[fecha]++;
+                        } else {
+                            accesosPorFecha[fecha] = 1;
+                        }
+                    });
+
+                    // Convierte el objeto en un array que Highcharts pueda entender
+                    var seriesData = Object.keys(accesosPorFecha).map(function(fecha) {
+                        return [fecha, accesosPorFecha[fecha]];
+                    });
+
+                    // Ordenar el array por fecha
+                    seriesData.sort(function(a, b) {
+                        return new Date(a[0]) - new Date(b[0]);
+                    });
+
+                    // Limitar a las últimas 10 fechas
+                    if (seriesData.length > 10) {
+                        seriesData = seriesData.slice(seriesData.length - 10);
+                    }
+
+                    // Crea el gráfico
+                    Highcharts.chart('grafico-accesos', {
+                        chart: {
+                            type: 'column'
+                        },
+                        title: {
+                            text: 'Accesos Totales del Usuario por Fecha'
+                        },
+                        xAxis: {
+                            type: 'category',
+                            title: {
+                                text: 'Fecha'
+                            }
+                        },
+                        yAxis: {
+                            min: 0,
+                            title: {
+                                text: 'Número de Accesos',
+                                align: 'high'
+                            },
+                            labels: {
+                                overflow: 'justify'
+                            }
+                        },
+                        plotOptions: {
+                            bar: {
+                                dataLabels: {
+                                    enabled: true
+                                }
+                            }
+                        },
+                        series: [{
+                            name: 'Accesos',
+                            data: seriesData
+                        }]
+                    });
+
+
+                    // Obtén la fecha de hoy
+                    var hoy = new Date();
+                    hoy.setHours(0, 0, 0, 0); // Establece la hora al inicio del día
+
+                    // Filtra los accesos para obtener solo los de hoy
+                    var accesosHoy = detallesAcceso.filter(function (acceso) {
+                        var fechaAcceso = new Date(acceso.fechaHoraLocal);
+                        return fechaAcceso >= hoy;
+                    });
+
+                    // Cuenta los accesos por usuario para hoy
+                    var accesosPorUsuarioHoy = {};
+                    accesosHoy.forEach(function (acceso) {
+                        if (accesosPorUsuarioHoy[acceso.nombre]) {
+                            accesosPorUsuarioHoy[acceso.nombre]++;
+                        } else {
+                            accesosPorUsuarioHoy[acceso.nombre] = 1;
+                        }
+
+                        
+                    });
+
+                    // Prepara los datos para Highcharts
+                    var seriesData = Object.keys(accesosPorUsuarioHoy).map(function (nombre) {
+                        return [nombre, accesosPorUsuarioHoy[nombre]];
+                    });
+                    // Crea el gráfico
+                    Highcharts.chart('grafico-accesos-hoy', {
+                        chart: {
+                            type: 'column'
+                        },
+                        title: {
+                            text: 'Accesos del Usuario Hoy'
+                        },
+                        xAxis: {
+                            type: 'category',
+                            title: {
+                                text: 'Usuario'
+                            }
+                        },
+                        yAxis: {
+                            min: 0,
+                            title: {
+                                text: 'Número de Accesos'
+                            }
+                        },
+                        series: [{
+                            name: 'Accesos',
+                            data: seriesData
+                        }]
+                    });
+
+                    // Resto de tu lógica...
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error al obtener el modelo compuesto:", error);
+                }
+            });
+
+
+            $("#cambio-contrasena-checkbox").change(function() {
+                if ($(this).is(":checked")) {
+                    $("#cambio-contrasena-fields").show();
+                    $("#cambio-contrasena-submit").show();
+                    $("#cambio-contrasena-button").show();
+                } else {
+                    $("#cambio-contrasena-fields").hide();
+                    $("#cambio-contrasena-submit").hide();
+                    $("#cambio-contrasena-button").hide();
+                }
+            });
+
+            $("#cambio-contrasena-form").submit(function (event) {
+                // Evitar que el formulario se envíe de forma tradicional
+                event.preventDefault();
+
+                // Obtener los datos del formulario
+                var formData = $(this).serialize();
+
+                // Realizar la solicitud AJAX
+                $.ajax({
+                    type: "POST",
+                    url: $(this).attr("action"),
+                    data: formData,
+                    success: function (response) {
+                        // Mostrar el mensaje de respuesta en el div deseado
+                        $("#mensaje-reset-password").html("<div class='alert alert-success'>" + response + "</div>");
+                    },
+                    error: function (xhr, status, error) {
+                        // Mostrar el mensaje de error en el div deseado
+                        $("#mensaje-reset-password").html("<div class='alert alert-danger'>Ha ocurrido un error: (Las contraseñas no coinciden)" + error + "</div>");
+                    }
+                });
+            });
+        }); 
+        document.getElementById('roleSelector').addEventListener('change', function () {
+            console.log('Valor seleccionado:', this.value);
+        });
+
+        document.getElementById('marketSelector').addEventListener('change', function () {
+            console.log('Valor Mercado:', this.value);
+        });
+
+            // Función para habilitar/deshabilitar selectores
+            function toggleSelectors(disable) {
+                document.getElementById('roleSelector').disabled = disable;
+                document.getElementById('marketSelector').disabled = disable;
+            }
+
+            // Inicialmente deshabilitar los selectores
+            toggleSelectors(true);
+
+    </script>
+}

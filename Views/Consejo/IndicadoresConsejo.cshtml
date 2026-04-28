@@ -1,0 +1,640 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Indicadores Presupuestales del Consejo";
+}
+
+<style>
+    .gauge-wrapper {
+        position: relative;
+        width: 200px;
+        height: 100px;
+        margin: 0 auto;
+        overflow: hidden;
+    }
+
+    .gauge {
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        border: 20px solid #eee;
+        border-top-color: var(--gauge-color);
+        transform-origin: 50% 50%;
+        transform: rotate(var(--gauge-value));
+    }
+
+    .gauge-value {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: var(--gauge-color);
+    }
+
+    .semaforo {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 5px;
+    }
+
+    .semaforo-verde {
+        background-color: #198754;
+    }
+
+    .semaforo-amarillo {
+        background-color: #ffc107;
+    }
+
+    .semaforo-rojo {
+        background-color: #dc3545;
+    }
+
+    .card-counter {
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 10px;
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        transition: transform 0.3s ease;
+    }
+
+    .card-counter:hover {
+        transform: translateY(-5px);
+    }
+
+    .stat-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s;
+        margin-bottom: 1rem;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #333;
+    }
+
+    .stat-label {
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .progress-circle {
+        position: relative;
+        width: 120px;
+        height: 120px;
+        margin: 0 auto;
+    }
+
+    .progress-circle-back {
+        fill: none;
+        stroke: #eee;
+        stroke-width: 10;
+    }
+
+    .progress-circle-prog {
+        fill: none;
+        stroke-width: 10;
+        stroke-linecap: round;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+        transition: stroke-dashoffset 0.5s;
+    }
+
+    .progress-text {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 1.5rem;
+        font-weight: bold;
+    }
+</style>
+
+<div class="text-center mb-4">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/indicadores.png" alt="Indicadores" class="iconomenu">
+        @ViewData["Title"]
+        <button class="btn btn-link text-info" onclick="mostrarAyudaModulo()" data-bs-toggle="tooltip"
+            title="¿Qué es este módulo?">
+            <i class="fas fa-question-circle fa-lg"></i>
+        </button>
+    </h3>
+    <div class="text-muted mt-2 text-justify px-5">
+        <i class="fas fa-info-circle text-primary"></i>
+        <em>Sistema de monitoreo y evaluación del desempeño colegiado a través de métricas e indicadores clave.</em>
+    </div>
+</div>
+
+<div class="alert alert-light mb-4" role="alert">
+    <nav aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div>
+
+
+<div class="container-fluid ps-5 pe-5">
+
+    <div class="alert alert-success mb-4" role="alert">
+        <div class="row align-items-center">
+            @* <div class="col-md-2 text-center">
+                <img src="@Cdn.Url/img_snier/vistas/iconos/legal_foundations.png" alt="Fundamento Legal" class="img-fluid">
+            </div> *@
+            <div class="col-md-10">
+                <h5 class="alert-heading mb-2">
+                    <i class="fas fa-book-reader"></i> Fundamento Legal
+                </h5>
+                <p class="mb-1 text-justify">
+                    <span class="badge bg-primary" data-bs-toggle="tooltip" title="Establece métricas de evaluación">
+                        Art. 76 RLPT
+                    </span>
+                    <span class="badge bg-info ms-2" data-bs-toggle="tooltip" title="Define indicadores específicos">
+                        Arts. 45 y 47 Lineamientos
+                    </span>
+                </p>
+                <hr>
+                <p class="mb-0 small text-justify">
+                    <i class="fas fa-info-circle"></i>
+                    La evaluación cuantitativa del desempeño del Consejo es fundamental para asegurar
+                    su efectividad y mejorar continuamente sus procesos de toma de decisiones.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Selector de periodo -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <label for="selectPeriodo" class="form-label">
+                <i class="fas fa-calendar-alt"></i> Periodo de Análisis
+            </label>
+            <select id="selectPeriodo" class="form-select">
+                <option value="2024-1">Primer Trimestre 2024</option>
+                <option value="2023-4">Cuarto Trimestre 2023</option>
+                <option value="2023-3">Tercer Trimestre 2023</option>
+                <option value="2023-2">Segundo Trimestre 2023</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Tarjetas de estadísticas con tooltips -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card" data-bs-toggle="tooltip" data-bs-placement="top"
+                title="Art. 76 Fracc. I - Seguimiento de opiniones emitidas por el Consejo">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-value" id="totalOpiniones">20.5K</div>
+                        <div class="stat-label">Opiniones Totales</div>
+                    </div>
+                    <i class="fas fa-file-alt fa-2x text-primary"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card" data-bs-toggle="tooltip" data-bs-placement="top"
+                title="Art. 76 Fracc. III - Control de acuerdos y resoluciones">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-value" id="totalAcuerdos">48</div>
+                        <div class="stat-label">Acuerdos Vigentes</div>
+                    </div>
+                    <i class="fas fa-handshake fa-2x text-success"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card" data-bs-toggle="tooltip" title="Opiniones en proceso de revisión">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-value">5.5K</div>
+                        <div class="stat-label">En Revisión</div>
+                    </div>
+                    <i class="fas fa-clock fa-2x text-warning"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card" data-bs-toggle="tooltip" title="Acuerdos en proceso de implementación">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="stat-value">45</div>
+                        <div class="stat-label">En Proceso</div>
+                    </div>
+                    <i class="fas fa-spinner fa-2x text-info"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gauges circulares -->
+    <div class="row text-center mb-5">
+        <div class="col-md-3">
+            <div class="progress-circle">
+                <svg viewBox="0 0 100 100">
+                    <circle class="progress-circle-back" cx="50" cy="50" r="45" />
+                    <circle class="progress-circle-prog" cx="50" cy="50" r="45"
+                        style="stroke: #dc3545; stroke-dasharray: 283; stroke-dashoffset: 141.5" />
+                </svg>
+                <div class="progress-text">55%</div>
+            </div>
+            <p class="mt-2 fw-bold">Cumplimiento</p>
+        </div>
+        <div class="col-md-3">
+            <div class="progress-circle">
+                <svg viewBox="0 0 100 100">
+                    <circle class="progress-circle-back" cx="50" cy="50" r="45" />
+                    <circle class="progress-circle-prog" cx="50" cy="50" r="45"
+                        style="stroke: #20c997; stroke-dasharray: 283; stroke-dashoffset: 42.45" />
+                </svg>
+                <div class="progress-text">87%</div>
+            </div>
+            <p class="mt-2 fw-bold">Participación</p>
+        </div>
+        <div class="col-md-3">
+            <div class="progress-circle">
+                <svg viewBox="0 0 100 100">
+                    <circle class="progress-circle-back" cx="50" cy="50" r="45" />
+                    <circle class="progress-circle-prog" cx="50" cy="50" r="45"
+                        style="stroke: #0dcaf0; stroke-dasharray: 283; stroke-dashoffset: 265.55" />
+                </svg>
+                <div class="progress-text">5</div>
+            </div>
+            <p class="mt-2 fw-bold">Sesiones</p>
+        </div>
+        <div class="col-md-3">
+            <div class="progress-circle">
+                <svg viewBox="0 0 100 100">
+                    <circle class="progress-circle-back" cx="50" cy="50" r="45" />
+                    <circle class="progress-circle-prog" cx="50" cy="50" r="45"
+                        style="stroke: #20c997; stroke-dasharray: 283; stroke-dashoffset: 138.55" />
+                </svg>
+                <div class="progress-text">48</div>
+            </div>
+            <p class="mt-2 fw-bold">Acuerdos</p>
+        </div>
+    </div>
+
+    <!-- Gráficos sin tarjetas -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h5 class="mb-3">Evolución de Opiniones por Periodo</h5>
+            <div id="graficoLineal" style="height: 300px; width: 100%;"></div>
+        </div>
+        <div class="col-md-4">
+            <h5 class="mb-3">Distribución por Tipo</h5>
+            <div id="graficoPie" style="height: 300px; width: 100%;"></div>
+        </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h5 class="mb-3">Resumen de Opiniones</h5>
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Total</th>
+                            <th>En Proceso</th>
+                            <th>Completadas</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaOpiniones">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script>
+        // Datos simulados por periodo
+        const dataPeriodos = {
+            "2024-1": {
+                stats: {
+                    opiniones: "20.5K",
+                    acuerdos: "48",
+                    cumplimiento: 55,
+                    participacion: 87,
+                    sesiones: 5
+                },
+                opiniones: {
+                    tipos: [
+                        { tipo: "Técnicas", total: 150, enProceso: 45, completadas: 105, cumplimiento: 85 },
+                        { tipo: "Regulatorias", total: 80, enProceso: 20, completadas: 60, cumplimiento: 75 },
+                        { tipo: "Administrativas", total: 120, enProceso: 35, completadas: 85, cumplimiento: 92 }
+                    ]
+                },
+                opinionesMonthly: [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65],
+                acuerdosMonthly: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
+            },
+            "2023-4": {
+                stats: {
+                    opiniones: "18.2K",
+                    acuerdos: "52",
+                    cumplimiento: 78,
+                    participacion: 92,
+                    sesiones: 8
+                },
+                opiniones: {
+                    tipos: [
+                        { tipo: "Técnicas", total: 130, enProceso: 20, completadas: 110, cumplimiento: 92 },
+                        { tipo: "Regulatorias", total: 75, enProceso: 15, completadas: 60, cumplimiento: 88 },
+                        { tipo: "Administrativas", total: 95, enProceso: 25, completadas: 70, cumplimiento: 85 }
+                    ]
+                },
+                opinionesMonthly: [8, 12, 18, 22, 28, 32, 38, 42, 48, 52, 58, 62],
+                acuerdosMonthly: [4, 8, 12, 18, 22, 28, 32, 38, 42, 46, 52, 58]
+            }
+            // ... más periodos
+        };
+
+        function updateDashboard(periodo) {
+            const data = dataPeriodos[periodo];
+
+            // Actualizar estadísticas
+            document.getElementById('totalOpiniones').textContent = data.stats.opiniones;
+            document.getElementById('totalAcuerdos').textContent = data.stats.acuerdos;
+
+            // Actualizar gauges
+            updateGauges(data.stats);
+
+            // Actualizar gráficos
+            updateCharts(data);
+
+            // Actualizar tabla
+            updateTable(data.opiniones);
+
+            // Efecto de transición
+            document.querySelectorAll('.stat-card, .progress-circle')
+                .forEach(el => {
+                    el.style.transition = 'all 0.3s ease-in-out';
+                    el.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        el.style.transform = 'scale(1)';
+                    }, 150);
+                });
+        }
+
+        function updateGauges(stats) {
+            // Actualizar gauge de cumplimiento
+            updateGauge('cumplimiento', stats.cumplimiento, '#dc3545');
+            // Actualizar gauge de participación
+            updateGauge('participacion', stats.participacion, '#20c997');
+            // Actualizar gauge de sesiones (valor absoluto)
+            updateGauge('sesiones', stats.sesiones, '#0dcaf0', true);
+            // Actualizar gauge de acuerdos (valor absoluto)
+            updateGauge('acuerdos', stats.acuerdos, '#20c997', true);
+        }
+
+        function updateGauge(id, value, color, absolute = false) {
+            const circles = document.querySelectorAll(`.progress-circle:nth-child(${getGaugeIndex(id)}) circle`);
+            const text = document.querySelector(`.progress-circle:nth-child(${getGaugeIndex(id)}) .progress-text`);
+
+            if (!circles.length || !text) return;
+
+            const circumference = 2 * Math.PI * 45;
+            const offset = absolute ?
+                circumference * (1 - value / 100) :
+                circumference * (1 - value / 100);
+
+            circles[1].style.strokeDasharray = circumference;
+            circles[1].style.strokeDashoffset = offset;
+            circles[1].style.stroke = color;
+            text.textContent = absolute ? value : `${value}%`;
+        }
+
+        function getGaugeIndex(id) {
+            const indices = {
+                'cumplimiento': 1,
+                'participacion': 2,
+                'sesiones': 3,
+                'acuerdos': 4
+            };
+            return indices[id] || 1;
+        }
+
+        function updateCharts(data) {
+            // Gráfico de líneas
+            Highcharts.chart('graficoLineal', {
+                chart: {
+                    type: 'line',
+                    style: { fontFamily: 'inherit' }
+                },
+                title: { text: null },
+                xAxis: {
+                    categories: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+                        'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+                    crosshair: true
+                },
+                yAxis: {
+                    title: { text: 'Cantidad' }
+                },
+                tooltip: {
+                    shared: true,
+                    crosshairs: true
+                },
+                plotOptions: {
+                    line: {
+                        marker: { enabled: true }
+                    }
+                },
+                series: [{
+                    name: 'Opiniones',
+                    data: data.opinionesMonthly,
+                    color: '#0d6efd'
+                }, {
+                    name: 'Acuerdos',
+                    data: data.acuerdosMonthly,
+                    color: '#198754'
+                }],
+                credits: { enabled: false }
+            });
+
+            // Gráfico de pie
+            Highcharts.chart('graficoPie', {
+                chart: {
+                    type: 'pie',
+                    style: { fontFamily: 'inherit' }
+                },
+                title: { text: null },
+                plotOptions: {
+                    pie: {
+                        allowPointSelect: true,
+                        cursor: 'pointer',
+                        dataLabels: {
+                            enabled: true,
+                            format: '<b>{point.name}</b>: {point.percentage:.1f}%'
+                        }
+                    }
+                },
+                series: [{
+                    name: 'Opiniones',
+                    colorByPoint: true,
+                    data: data.opiniones.tipos.map(t => ({
+                        name: t.tipo,
+                        y: t.total,
+                        color: getColorForTipo(t.tipo)
+                    }))
+                }],
+                credits: { enabled: false }
+            });
+        }
+
+        function updateTable(data) {
+            const tbody = document.getElementById('tablaOpiniones');
+            if (!tbody) return;
+
+            tbody.innerHTML = data.tipos.map(item => `
+                                                            <tr>
+                                                                <td>${item.tipo}</td>
+                                                                <td>${item.total}</td>
+                                                                <td>${item.enProceso}</td>
+                                                                <td>${item.completadas}</td>
+                                                                <td>
+                                                                    <span class="semaforo ${getSemaforoClass(item.cumplimiento)}"></span>
+                                                                    ${item.cumplimiento}%
+                                                                </td>
+                                                            </tr>
+                                                        `).join('');
+        }
+
+        function getColorForTipo(tipo) {
+            const colors = {
+                'Técnicas': '#0d6efd',
+                'Regulatorias': '#198754',
+                'Administrativas': '#ffc107'
+            };
+            return colors[tipo] || '#6c757d';
+        }
+
+        function getSemaforoClass(valor) {
+            if (valor >= 80) return 'semaforo-verde';
+            if (valor >= 60) return 'semaforo-amarillo';
+            return 'semaforo-rojo';
+        }
+
+        // Inicializar tooltips
+        document.addEventListener('DOMContentLoaded', function () {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl)
+            });
+
+            // Evento de cambio de periodo
+            document.getElementById('selectPeriodo').addEventListener('change', function (e) {
+                updateDashboard(e.target.value);
+            });
+
+            // Inicialización
+            updateDashboard('2024-1');
+        });
+
+        function mostrarAyudaModulo() {
+            Swal.fire({
+                title: 'Indicadores del Consejo',
+                html: `
+                                                    <div class="text-start">
+                                                        <div class="mb-4">
+                                                            <h6 class="border-bottom pb-2">
+                                                                <i class="fas fa-info-circle"></i> Descripción
+                                                            </h6>
+                                                            <p>Sistema de métricas para evaluar el desempeño colegiado del Consejo.</p>
+                                                        </div>
+
+                                                        <div class="mb-4">
+                                                            <h6 class="border-bottom pb-2">
+                                                                <i class="fas fa-tasks"></i> Funcionalidad
+                                                            </h6>
+                                                            <p>Monitorea el desempeño a través de indicadores clave y métricas agregadas.</p>
+                                                        </div>
+
+                                                        <div class="mb-4">
+                                                            <h6 class="border-bottom pb-2">
+                                                                <i class="fas fa-sync-alt"></i> Etapa del Ciclo
+                                                            </h6>
+                                                            <p>Evaluación institucional</p>
+                                                        </div>
+
+                                                        <div class="mb-4">
+                                                            <h6 class="border-bottom pb-2">
+                                                                <i class="fas fa-users-cog"></i> Interacción entre Roles
+                                                            </h6>
+                                                            <ul class="list-unstyled">
+                                                                <li><i class="fas fa-chart-line text-primary"></i> Secretaría: Presenta indicadores</li>
+                                                                <li><i class="fas fa-chart-pie text-success"></i> Consejo: Interpreta resultados</li>
+                                                            </ul>
+                                                        </div>
+
+                                                        <div class="mb-4">
+                                                            <h6 class="border-bottom pb-2">
+                                                                <i class="fas fa-puzzle-piece"></i> Elementos
+                                                            </h6>
+                                                            <ul class="list-unstyled">
+                                                                <li><i class="fas fa-tachometer-alt text-primary"></i> Dashboard consolidado</li>
+                                                                <li><i class="fas fa-chart-line text-success"></i> Tendencias gráficas</li>
+                                                                <li><i class="fas fa-users text-info"></i> Métricas de participación</li>
+                                                            </ul>
+                                                        </div>
+
+                                                        <div class="mb-4">
+                                                            <h6 class="border-bottom pb-2">
+                                                                <i class="fas fa-star"></i> Importancia
+                                                            </h6>
+                                                            <p class="mb-0">
+                                                                Facilita la evaluación objetiva del desempeño del Consejo y la identificación
+                                                                de áreas de mejora mediante métricas cuantitativas.
+                                                            </p>
+                                                        </div>
+
+                                                        <div>
+                                                            <h6 class="border-bottom pb-2">
+                                                                <i class="fas fa-check-double"></i> Orden en el Ciclo
+                                                            </h6>
+                                                            <p class="mb-0">
+                                                                <span class="badge bg-secondary">Paso 8</span>
+                                                                <span class="ms-2">
+                                                                    Permite monitorear el desempeño colegiado con métricas agregadas
+                                                                    y evaluaciones globales.
+                                                                </span>
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                `,
+                width: '400px',
+                customClass: {
+                    container: 'text-start',
+                    popup: 'swal-responsive',
+                    htmlContainer: 'swal-scrollable'
+                },
+                confirmButtonText: 'Entendido'
+            });
+        }
+    </script>
+}

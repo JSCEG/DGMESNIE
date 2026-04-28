@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa de Lluvia, Cobertura y Nubes en Leaflet</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map {
+      height: 600px;
+      width: 100%;
+    }
+    .legend {
+      position: absolute;
+      bottom: 20px;
+      left: 10px;
+      background: white;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 18px;
+      color: #555;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+      border-radius: 5px;
+    }
+    .legend div {
+      width: 20px;
+      height: 10px;
+      float: left;
+      margin-right: 5px;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <h2>Mapa de Radar de Lluvia, Cobertura y Nubes en Tiempo Real</h2>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([25, -90], 5);
+
+    // Agregar capa base de OpenStreetMap
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    let radarLayers = [];
+    let currentLayerIndex = 0;
+
+    async function loadRadarLayers() {
+      const response = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+      const data = await response.json();
+
+      data.radar.past.forEach(item => {
+        const timestamp = item.time;
+        const layer = L.tileLayer(
+          `https://tilecache.rainviewer.com/v2/radar/${timestamp}/256/{z}/{x}/{y}/3/1_1.png`,
+          { opacity: 0, maxZoom: 10 }
+        );
+        radarLayers.push(layer);
+        layer.addTo(map);
+      });
+
+      animateRadar();
+    }
+
+    function animateRadar() {
+      setInterval(() => {
+        const currentLayer = radarLayers[currentLayerIndex];
+        const nextLayerIndex = (currentLayerIndex + 1) % radarLayers.length;
+        const nextLayer = radarLayers[nextLayerIndex];
+
+        currentLayer.setOpacity(0);
+        nextLayer.setOpacity(0.7);
+
+        currentLayerIndex = nextLayerIndex;
+      }, 1000);
+    }
+
+    async function loadCoverageLayer() {
+      const coverageLayer = L.tileLayer(
+        `https://tilecache.rainviewer.com/v2/coverage/0/256/{z}/{x}/{y}/0/0_0.png`, 
+        { opacity: 0.5, maxZoom: 10 }
+      );
+      coverageLayer.addTo(map);
+    }
+
+    async function loadCloudLayer() {
+      const cloudLayer = L.tileLayer(
+        `https://tilecache.rainviewer.com/v2/satellite/latest/256/{z}/{x}/{y}/0/0_0.png`, 
+        { opacity: 0.5, maxZoom: 10 }
+      );
+      cloudLayer.addTo(map);
+    }
+
+    loadRadarLayers();
+    loadCoverageLayer();
+    loadCloudLayer();
+
+    const legend = L.control({ position: 'bottomleft' });
+    legend.onAdd = function () {
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML += '<b>Intensidad de Lluvia</b><br>';
+      div.innerHTML += '<div style="background: #00FF00"></div><span>Ligera</span><br>';
+      div.innerHTML += '<div style="background: #0074FF"></div><span>Moderada</span><br>';
+      div.innerHTML += '<div style="background: #FFFF00"></div><span>Fuerte</span><br>';
+      div.innerHTML += '<div style="background: #FF00FF"></div><span>Muy Fuerte</span><br>';
+      div.innerHTML += '<div style="background: #FFFFFF"></div><span>Extrema</span>';
+      return div;
+    };
+    legend.addTo(map);
+  </script>
+</body>
+</html>

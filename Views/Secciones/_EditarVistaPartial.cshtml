@@ -1,0 +1,147 @@
+@model NSIE.Models.ModulosVista
+
+<div class="modal-header">
+    <h5 class="modal-title">
+        <i class="fas fa-edit text-primary"></i>
+        Editar Vista: @Model.Titulo
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+</div>
+
+<form id="formEditarVista">
+    @Html.AntiForgeryToken()
+    <div class="modal-body">
+        <input asp-for="VistaId" type="hidden" />
+        <input asp-for="ModuloId" type="hidden" />
+
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Módulo:</strong> @Model.ModuloTitle (ID: @Model.ModuloId)
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8">
+                <label asp-for="Titulo" class="form-label">Título de la Vista *</label>
+                <input asp-for="Titulo" class="form-control" required />
+                <span asp-validation-for="Titulo" class="text-danger"></span>
+            </div>
+            <div class="col-md-4">
+                <label asp-for="Orden" class="form-label">Orden</label>
+                <input asp-for="Orden" type="number" class="form-control" min="1" />
+                <span asp-validation-for="Orden" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <label asp-for="Controller" class="form-label">Controller *</label>
+                <input asp-for="Controller" class="form-control" required />
+                <span asp-validation-for="Controller" class="text-danger"></span>
+            </div>
+            <div class="col-md-6">
+                <label asp-for="Action" class="form-label">Action *</label>
+                <input asp-for="Action" class="form-control" required />
+                <span asp-validation-for="Action" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <label asp-for="Roles" class="form-label">Roles (IDs separados por coma)</label>
+                <input asp-for="Roles" class="form-control" />
+                <small class="form-text text-muted">Dejar vacío para todos los roles</small>
+            </div>
+            <div class="col-md-6">
+                <label asp-for="Perfiles" class="form-label">Perfiles (IDs separados por coma)</label>
+                <input asp-for="Perfiles" class="form-control" />
+                <small class="form-text text-muted">Dejar vacío para todos los perfiles</small>
+            </div>
+        </div>
+
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <div class="form-check">
+                    <input asp-for="Activa" class="form-check-input" type="checkbox" />
+                    <label asp-for="Activa" class="form-check-label">Vista Activa</label>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="form-check">
+                    <input asp-for="EsExterno" class="form-check-input" type="checkbox" />
+                    <label asp-for="EsExterno" class="form-check-label">Es Enlace Externo</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            <i class="fas fa-times"></i> Cancelar
+        </button>
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save"></i> Actualizar Vista
+        </button>
+    </div>
+</form>
+
+<script>
+    document.getElementById('formEditarVista').addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        const submitBtn = this.querySelector('button[type="submit"]');
+
+        // Deshabilitar botón mientras se procesa
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Actualizando...';
+
+        fetch('@Url.Action("GuardarEdicionVista", "Secciones")', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    return response.text().then(text => {
+                        throw new Error(text || 'Error al actualizar');
+                    });
+                }
+            })
+            .then(data => {
+                // Cerrar modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('vistaModal'));
+                modal.hide();
+
+                // Mostrar mensaje de éxito
+                Swal.fire({
+                    title: '¡Actualizada!',
+                    text: data.mensaje || 'Vista actualizada correctamente',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    // Recargar la página para mostrar los cambios
+                    window.location.reload();
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+
+                // Mostrar mensaje de error
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Error al actualizar la vista: ' + error.message,
+                    icon: 'error'
+                });
+
+                // Rehabilitar botón
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-save"></i> Actualizar Vista';
+            });
+    });
+</script>

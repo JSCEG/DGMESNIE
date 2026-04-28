@@ -1,0 +1,259 @@
+@inject IHttpContextAccessor HttpContextAccessor
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+@{
+	var httpContext = HttpContextAccessor.HttpContext;
+	var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+	var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+	ViewData["Title"] = "Fuentes de Información";
+	ViewData["NombreUsuario"] = perfilUsuario?.Nombre;
+	ViewData["RolUsuario"] = perfilUsuario?.Rol;
+	ViewData["IDUsuario"] = perfilUsuario?.IdUsuario;
+
+	var header = new HeaderViewModel
+	{
+		Title = "Fuentes de Información",
+		IconPath = "database.png",
+		Description = "Consulta y gestiona las fuentes de información del sistema SNIEr.",
+		Section = "Tablero de Fuentes",
+		ModuleInfo = JsonConvert.SerializeObject(new
+		{
+			title = "Fuentes de Información",
+			description = "Listado y gestión de fuentes, con filtro y totales.",
+			functionality = "Consulta, edición y resumen por fuente.",
+			stage = "Disponible",
+			roles = new[] {
+				new { icon = "database", text = "Consulta y gestión de fuentes" }
+			},
+			order = new { step = 1, description = "Implementado en el tablero principal" },
+			manualUrl = "#"
+		})
+	};
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container mb-5">
+	<div class="row">
+		<div class="col-12">
+			<div class="mb-3">
+				<input type="text" id="filtro" class="form-control" placeholder="Filtrar por entidad o rubro" />
+				<select id="filtroFuente" class="form-control mt-2">
+					<option value="">Seleccionar fuente</option>
+				</select>
+				<button class="btn btn-primary mt-2" onclick="cargarFuentes()">Buscar</button>
+			</div>
+			<div id="totales" class="mb-3">
+				<h5>Totales por fuente:</h5>
+				<div id="chartContainer" style="width:100%; height:400px;"></div>
+			</div>
+			<div class="table-responsive">
+				<table class="table table-bordered table-hover" id="tablaFuentes">
+					<thead class="table-light">
+						<tr>
+							<th>Entidad</th>
+							<th>Rubro</th>
+							<th>Etiqueta</th>
+							<th>Acciones</th>
+						</tr>
+					</thead>
+					<tbody></tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Modal para Detalles/CRUD -->
+<div class="modal fade" id="modalFuente" tabindex="-1" role="dialog" aria-labelledby="modalFuenteLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="modalFuenteLabel">Detalles de Fuente</h5>
+				<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+					<span aria-hidden="true">&times;</span>
+				</button>
+			</div>
+			<div class="modal-body" id="modalBody">
+				<!-- Contenido dinámico -->
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+				<button type="button" class="btn btn-primary" id="btnGuardar">Guardar Cambios</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+	function cargarFuentes() {
+		var filtro = document.getElementById('filtro').value;
+		var filtroFuente = document.getElementById('filtroFuente').value;
+		if (filtroFuente) filtro = filtroFuente; // Priorizar filtro por fuente
+		
+		fetch('/FuentesdeInformacion/ObtenerFuentes?filtro=' + encodeURIComponent(filtro))
+			.then(r => r.json())
+			.then(data => {
+				console.log('Respuesta de ObtenerFuentes:', JSON.stringify(data));
+				if (data && data.error) {
+					alert('Error: ' + data.error);
+					return;
+				}
+				if (!Array.isArray(data)) {
+					alert('Error: La respuesta no es un array válido.');
+					return;
+				}
+				var tbody = document.querySelector('#tablaFuentes tbody');
+				tbody.innerHTML = '';
+				data.forEach(f => {
+					tbody.innerHTML += `<tr>
+						<td>${f.entidad}</td>  
+						<td>${f.rubro}</td>
+						<td>${f.etiqueta}</td>
+						<td>
+							<button class="btn btn-sm btn-info" onclick="verDetalle(${f.id})">Ver</button>
+							<button class="btn btn-sm btn-warning" onclick="editarFuente(${f.id})">Editar</button>
+							<button class="btn btn-sm btn-danger" onclick="eliminarFuente(${f.id})">Eliminar</button>
+						</td>
+					</tr>`;
+				});
+
+				// Inicializar DataTables después de cargar datos
+				if ($.fn.DataTable.isDataTable('#tablaFuentes')) {
+					$('#tablaFuentes').DataTable().destroy();
+				}
+				$('#tablaFuentes').DataTable({
+					paging: true,
+					searching: true,
+					ordering: true,
+					info: true,
+					language: {
+						url: '//cdn.datatables.net/plug-ins/1.10.25/i18n/Spanish.json'
+					}
+				});
+			})
+			.catch(error => {
+				console.error('Error al cargar fuentes:', error);
+				alert('Error al cargar fuentes: ' + error.message);
+			});
+
+		// Cargar gráfico de totales
+		fetch('/FuentesdeInformacion/ObtenerTotalesPorFuente')
+			.then(r => r.json())
+			.then(data => {
+				console.log('Respuesta de ObtenerTotalesPorFuente:', JSON.stringify(data));
+				if (data && data.error) {
+					alert('Error: ' + data.error);
+					return;
+				}
+				if (!Array.isArray(data)) {
+					alert('Error: La respuesta de totales no es un array válido.');
+					return;
+				}
+				// Preparar datos para Highcharts pie chart
+				var seriesData = data.map(t => ({
+					name: t.entidad,
+					y: t.total
+				}));
+
+				// Crear gráfico de pie
+				Highcharts.chart('chartContainer', {
+					chart: {
+						type: 'pie'
+					},
+					title: {
+						text: 'Totales por Fuente'
+					},
+					colors: ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1', '#17a2b8', '#fd7e14', '#e83e8c', '#6c757d', '#343a40'],
+					series: [{
+						name: 'Total',
+						data: seriesData,
+						dataLabels: {
+							enabled: true,
+							format: '{point.name}: {point.percentage:.1f}%'
+						}
+					}],
+					plotOptions: {
+						pie: {
+							allowPointSelect: true,
+							cursor: 'pointer',
+							dataLabels: {
+								enabled: true,
+								format: '<b>{point.name}</b>: {point.percentage:.1f} %'
+							}
+						}
+					},
+					tooltip: {
+						pointFormat: '{series.name}: <b>{point.y}</b> ({point.percentage:.1f}%)'
+					}
+				});
+			})
+			.catch(error => {
+				console.error('Error al cargar totales:', error);
+				alert('Error al cargar totales: ' + error.message);
+			});
+	}
+
+	function verDetalle(id) {
+		// Lógica para cargar detalles del registro por ID
+		fetch('/FuentesdeInformacion/ObtenerFuentePorId?id=' + id)
+			.then(r => r.json())
+			.then(data => {
+				if (data) {
+					document.getElementById('modalBody').innerHTML = `
+						<p><strong>Entidad:</strong> ${data.entidad}</p>
+						<p><strong>Tipo:</strong> ${data.tipo}</p>
+						<p><strong>Rubro:</strong> ${data.rubro}</p>
+						<p><strong>Etiqueta:</strong> ${data.etiqueta}</p>
+						<p><strong>Dato Información:</strong> ${data.dato_Informacion}</p>
+						<p><strong>Desagregación:</strong> ${data.desagregacion}</p>
+						<p><strong>Sub desagregación:</strong> ${data.sub_desagregacion}</p>
+						<p><strong>Unidades:</strong> ${data.unidades}</p>
+						<p><strong>Periodicidad:</strong> ${data.periodicidad_Corte_de_Informacion}</p>
+						<p><strong>Fuente Link:</strong> <a href="${data.fuente_Link}" target="_blank">${data.fuente_Link}</a></p>
+						<p><strong>Comentario:</strong> ${data.comentario}</p>
+					`;
+					$('#modalFuente').modal('show');
+				}
+			})
+			.catch(error => {
+				console.error('Error al cargar detalle:', error);
+				alert('Error al cargar detalle: ' + error.message);
+			});
+	}
+
+	function editarFuente(id) {
+		// Similar a verDetalle, pero con campos editables
+		alert('Funcionalidad de edición en desarrollo para ID: ' + id);
+	}
+
+	function eliminarFuente(id) {
+		if (confirm('¿Estás seguro de eliminar este registro?')) {
+			// Lógica para eliminar
+			alert('Eliminar ID: ' + id);
+		}
+	}
+
+	function cargarFuentesDropdown() {
+		fetch('/FuentesdeInformacion/ObtenerTotalesPorFuente')
+			.then(r => r.json())
+			.then(data => {
+				var select = document.getElementById('filtroFuente');
+				data.forEach(t => {
+					var option = document.createElement('option');
+					option.value = t.entidad;
+					option.text = t.entidad + ' (' + t.total + ')';
+					select.appendChild(option);
+				});
+			})
+			.catch(error => {
+				console.error('Error al cargar dropdown:', error);
+			});
+	}
+
+	cargarFuentes();
+	cargarFuentesDropdown();
+</script>

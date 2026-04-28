@@ -1,0 +1,184 @@
+@model Notificacion
+@inject IHttpContextAccessor HttpContextAccessor
+@using Newtonsoft.Json
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Crear Notificación";
+}
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Creacion de notificaciones",
+        IconPath = "notificaciones.png",
+        Description = "Gestiona la creación de notificaciones para los usuarios del SNIEr.",
+        Section = "Gobernanza y Seguridad",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Creación de notificaciones",
+            description = "Gestiona la creación de notificaciones para los usuarios del SNIEr",
+            functionality = "Crea notificaciones para enviarlas a todos los usuarios, por rol o algún usuario en específico",
+            stage = "Inicialización",
+            roles = new[] {
+                new { icon = "building", text = "Secretaría de Energía: Administración general" },
+                new { icon = "users-cog", text = "Unidad SNIEr: Gestión de notificaciones" },
+                new { icon = "user-shield", text = "Dirección TICs: Control técnico" },
+                new { icon = "user-tie", text = "Consejo: Supervisión de accesos" }
+            },
+            order = new { step = 1, description = "Control de accesos desde el inicio (Art. 70)" }
+        }),
+        LegalDescription = "Gestión de notificaciones.",
+        Fundamentos = new List<FundamentoLegal> {
+            new() { Reference = "Art. 70 Reglamento", Description = "Establece los controles de acceso y gestión de usuarios" },
+            new() { Reference = "Art. 71 Reglamento", Description = "Define la administración de perfiles" },
+            new() { Reference = "Art. 76 Reglamento", Description = "Establece la trazabilidad y seguridad" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header);
+
+<div class="container">
+    <form id="formNotificacion" enctype="multipart/form-data" method="post">
+        <input type="hidden" name="IDUsuario" value="@ViewData["IDUsuario"]" />
+        <!-- ... tus inputs ... -->
+        <h6 class="display-6 fw-bold subtitulo pl-3%">Información de la Notificación</h6>
+        <div class="row p-3">
+            <div class="col-md-6 form-group">
+                <label asp-for="Titulo_Notificacion">Título</label>
+                <input asp-for="Titulo_Notificacion" class="form-control" required />
+                <span asp-validation-for="Titulo_Notificacion" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-12 form-group">
+                <label asp-for="Mensaje">Mensaje</label>
+                <textarea asp-for="Mensaje" class="form-control" rows="4" required></textarea>
+                <span asp-validation-for="Mensaje" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-6 form-group">
+                <label asp-for="Link">Link (opcional)</label>
+                <input asp-for="Link" class="form-control" />
+            </div>
+
+            <div class="col-md-6 form-group">
+                <label>Imagen (opcional)</label>
+                <input type="file" name="ImagenFile" class="form-control" accept="image/*" />
+            </div>
+
+            <div class="col-md-6 form-group">
+                <label>Enviar a:</label>
+                <select id="destino" name="Destino" class="form-control">
+                    <option value="Todos">Todos los usuarios</option>
+                    <option value="Rol">Por Rol</option>
+                    <option value="Usuarios">Usuarios específicos</option>
+                </select>
+            </div>
+
+            <div id="rolContainer" style="display:none;">
+                <div class="col-md-6 form-group">
+                    <label>Rol</label>
+                    <select name="Rol" class="form-control">
+                        @foreach (var r in (IEnumerable<UserViewModel>)ViewBag.Rol)
+                        {
+                            <option value="@r.Rol_ID">@r.Rol_Nombre</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div id="usuariosContainer" style="display:none;">
+                <div class="col-md-12 form-group">
+                    <label>Usuarios específicos</label>
+                    <select name="UsuariosSeleccionados" class="form-control" multiple>
+                        @foreach (var u in (IEnumerable<UserViewModel>)ViewBag.Usuarios)
+                        {
+                            <option value="@u.IdUsuario">@u.Nombre</option>
+                        }
+                    </select>
+                    <small class="text-muted">Mantén presionada la tecla CTRL para seleccionar varios.</small>
+                </div>
+            </div>
+        </div>
+
+        <hr />
+
+        <div class="d-flex justify-content-center mt-3 login_container">
+            <button type="submit" class="btn btn-primary">Guardar Notificación</button>
+            <a asp-controller="Usuarios" asp-action="AdministrarUsuarios" class="btn btn-secondary ms-2">Cancelar</a>
+        </div>
+        <br>
+    </form>
+
+    <!-- Modal Bootstrap -->
+    <div class="modal fade" id="resultadoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title">Resultado</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="resultadoMensaje"></div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+        </div>
+    </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $("#formNotificacion").on("submit", function (e) {
+            e.preventDefault();
+
+            var formData = new FormData(this); // <-- importante para archivos
+
+            $.ajax({
+                url: '@Url.Action("GuardarNotificacion", "Usuarios")',
+                type: 'POST',
+                data: formData,
+                contentType: false,  // necesario para FormData
+                processData: false,  // necesario para FormData
+                success: function (response) {
+                    if (response.success) {
+                        $("#resultadoMensaje").text("✅ La notificación fue creada y enviada con éxito.");
+                    } else {
+                        $("#resultadoMensaje").text("❌ Error al guardar la notificación: " + (response.message || "Intenta de nuevo."));
+                    }
+                    $("#resultadoModal").modal("show");
+                    $("#ajax-preloader").hide();
+                    $("#page-preloader").hide();
+                },
+                error: function (xhr, status, error) {
+                    $("#resultadoMensaje").text("⚠️ Error inesperado: " + error);
+                    $("#resultadoModal").modal("show");
+                    $("#ajax-preloader").hide();
+                    $("#page-preloader").hide();
+                }
+            });
+        });
+    });
+</script>
+<script>
+    $(document).ready(function () {
+        $("#destino").on("change", function () {
+            var value = $(this).val();
+            $("#rolContainer").hide();
+            $("#usuariosContainer").hide();
+
+            if (value === "Rol") {
+                $("#rolContainer").show();
+            } else if (value === "Usuarios") {
+                $("#usuariosContainer").show();
+            }
+        });
+    });
+</script>
+

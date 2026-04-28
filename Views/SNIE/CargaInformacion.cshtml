@@ -1,0 +1,732 @@
+@model dynamic
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Carga de Información, Validación y Oficios";
+}
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Carga de Información, Validación y Oficios",
+        IconPath = "documentos_scel.png",
+        Description = "Carga de archivos oficiales, validación técnica, trazabilidad documental y gestión de oficios.",
+        Section = "🧾 Carga de Información, Validación y Oficios",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Carga de Información, Validación y Oficios",
+            description = "Sistema de gestión documental y validación de información energética.",
+            functionality = "Permite alimentar el sistema con respaldo documental normado.",
+            stage = "Validación y Control",
+            roles = new[] {
+new { icon = "upload", text = "Cargadores: Subida de documentos" },
+new { icon = "check-circle", text = "Validadores: Verificación técnica" },
+new { icon = "building", text = "Enlaces Estatales: Gestión local" },
+new { icon = "balance-scale", text = "Jurídico: Validación normativa" }
+},
+            order = new { step = 2, description = "Consolidar información energética verificable" }
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<style>
+    #previewContent {
+        overflow-x: auto;
+    }
+
+    #previewContent canvas {
+        max-width: 100% !important;
+        height: auto !important;
+        display: block;
+        margin: auto;
+    }
+
+    .modal-body {
+        overflow-x: auto;
+    }
+
+    .stat-card {
+        transition: all 0.3s ease;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .card-icon i {
+        font-size: 1.5rem;
+    }
+
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+    }
+
+    .bg-gradient-success {
+        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
+    }
+
+    .bg-gradient-warning {
+        background: linear-gradient(135deg, #f6c23e 0%, #dda20a 100%);
+    }
+
+    .bg-gradient-info {
+        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%);
+    }
+
+    .stat-card .card-body {
+        padding: 1.5rem;
+    }
+
+    .stat-card h2 {
+        font-size: 2rem;
+        font-weight: 600;
+    }
+
+    .stat-card .badge {
+        font-size: 0.75rem;
+        padding: 0.5em 0.75em;
+    }
+
+    .stat-card small {
+        font-size: 0.875rem;
+    }
+</style>
+
+<div class="container">
+    <!-- Alert demo -->
+    <div class="alert alert-info d-flex align-items-center mb-4" role="alert" data-aos="fade-right">
+        <i class="bi bi-info-circle-fill me-2"></i>
+        <div>
+            Aquí puedes cargar, validar y gestionar series de información energética. Usa los filtros para encontrar
+            registros específicos y visualiza los datos con herramientas interactivas.
+        </div>
+    </div>
+
+    <!-- Estadísticas -->
+    <div class="row g-3 mb-4" data-aos="fade-up">
+        <div class="col-6 col-md-3">
+            <div class="card stat-card bg-gradient-primary border-0 text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="card-icon bg-white bg-opacity-25">
+                            <i class="bi bi-graph-up-arrow"></i>
+                        </div>
+                        <span class="badge rounded-pill bg-white bg-opacity-25">+15%</span>
+                    </div>
+                    <h3 class="card-title h6 text-white-50">Series Totales</h3>
+                    <div class="d-flex align-items-baseline">
+                        <h2 class="mb-0 text-white">125</h2>
+                        <small class="ms-2 text-white-50">Último mes: +15</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card bg-gradient-success border-0 text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="card-icon bg-white bg-opacity-25">
+                            <i class="bi bi-check-circle"></i>
+                        </div>
+                        <span class="badge rounded-pill bg-white bg-opacity-25">78%</span>
+                    </div>
+                    <h3 class="card-title h6 text-white-50">Series Activas</h3>
+                    <div class="d-flex align-items-baseline">
+                        <h2 class="mb-0 text-white">98</h2>
+                        <small class="ms-2 text-white-50">del total</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card bg-gradient-warning border-0 text-dark">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="card-icon bg-white bg-opacity-25">
+                            <i class="bi bi-clock-history text-dark"></i>
+                        </div>
+                        <span class="badge rounded-pill bg-white bg-opacity-25 text-dark">12%</span>
+                    </div>
+                    <h3 class="card-title h6 text-dark">Pendientes</h3>
+                    <div class="d-flex align-items-baseline">
+                        <h2 class="mb-0 text-dark">12</h2>
+                        <small class="ms-2 text-dark">por actualizar</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card bg-gradient-info border-0 text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="card-icon bg-white bg-opacity-25">
+                            <i class="bi bi-clock"></i>
+                        </div>
+                        <span class="badge rounded-pill bg-white bg-opacity-25">Hoy</span>
+                    </div>
+                    <h3 class="card-title h6 text-white-50">Última Actualización</h3>
+                    <div class="d-flex align-items-baseline">
+                        <h2 class="mb-0 text-white">2h</h2>
+                        <small class="ms-2 text-white-50">21/04/2024 14:30</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botón de acción principal -->
+    <div class="d-flex justify-content-end mb-3" data-aos="fade-left">
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalSubida">
+            <i class="bi bi-upload me-1"></i> Nueva serie
+        </button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4 shadow-sm" data-aos="fade-up">
+        <div class="card-body">
+            <form class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Categoría</label>
+                    <select class="form-select">
+                        <option>Generación</option>
+                        <option>Consumo</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Organismo</label>
+                    <select class="form-select">
+                        <option>CENACE</option>
+                        <option>SENER</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Periodicidad</label>
+                    <select class="form-select">
+                        <option>Anual</option>
+                        <option>Mensual</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Estado</label>
+                    <select class="form-select">
+                        <option>Vigente</option>
+                        <option>Histórico</option>
+                    </select>
+                </div>
+                <div class="col-12 text-end">
+                    <button class="btn btn-outline-primary"><i class="bi bi-search me-1"></i> Buscar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de archivos -->
+    <div class="card shadow-sm mb-4" data-aos="fade-up">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table id="tablaArchivos" class="table table-striped table-hover w-100">
+                    <thead class="table-dark">
+                        <tr>
+                            <th><input type="checkbox" /></th>
+                            <th>Nombre</th>
+                            <th>Unidad</th>
+                            <th>Organismo</th>
+                            <th>Periodicidad</th>
+                            <th>Confidencialidad</th>
+                            <th>Estado</th>
+                            <th>Inicio</th>
+                            <th>Fin</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><input type="checkbox" /></td>
+                            <td>Generación Neta Eléctrica Total</td>
+                            <td>MW</td>
+                            <td>CENACE</td>
+                            <td>Anual</td>
+                            <td>Público</td>
+                            <td><span class="badge bg-success">Vigente</span></td>
+                            <td>01/01/2018</td>
+                            <td>31/12/2023</td>
+                            <td>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-info" onclick="verPreview('1')" title="Vista previa">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-success" onclick="descargar('1')" title="Descargar">
+                                        <i class="bi bi-download"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-warning" onclick="editar('1')" title="Editar">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="eliminar('1')" title="Eliminar">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Demo gráfico Highcharts -->
+    <div class="card shadow-sm mb-4" data-aos="fade-up">
+        <div class="card-body">
+            <h5 class="card-title mb-3"><i class="bi bi-bar-chart-line me-2"></i>Resumen Gráfico (Demo)</h5>
+            <div id="highcharts-demo" style="height: 320px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de subida mejorado -->
+<div class="modal fade" id="modalSubida" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-upload me-2"></i>
+                    Nueva Serie de Tiempo
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formCargaInformacion" class="needs-validation" novalidate>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Nombre de la Serie</label>
+                            <input type="text" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Unidad de Medida</label>
+                            <select class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                <option>MW</option>
+                                <option>GWh</option>
+                                <option>Barriles</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Periodicidad</label>
+                            <select class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                <option>Horaria</option>
+                                <option>Diaria</option>
+                                <option>Mensual</option>
+                                <option>Anual</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Confidencialidad</label>
+                            <select class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                <option>Público</option>
+                                <option>Reservado</option>
+                                <option>Confidencial</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label d-flex align-items-center">
+                                Archivo de Datos (.xlsx, .csv)
+                                <i class="bi bi-info-circle ms-2 text-info" style="cursor: pointer;"
+                                    onclick="mostrarFormatosPermitidos()"></i>
+                            </label>
+                            <input type="file" class="form-control" id="archivo" accept=".xlsx,.xls,.csv" required />
+                            <div class="form-text">
+                                Tamaño máximo: 5MB.
+                                <a href="#" onclick="mostrarFormato()">Ver formato requerido</a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Cancelar
+                </button>
+                <button type="submit" form="formCargaInformacion" class="btn btn-success">
+                    <i class="bi bi-upload me-1"></i> Cargar serie
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de vista previa -->
+<div class="modal fade" id="modalPreview" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Vista Previa del Archivo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="previewContent"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script>
+        $(document).ready(function () {
+            // DataTables
+            const tabla = $('#tablaArchivos').DataTable({
+                responsive: true,
+                scrollX: true,
+                autoWidth: false,
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+                dom: 'Bfrtip',
+                buttons: [
+                    {
+                        extend: 'collection',
+                        text: '<i class="bi bi-download"></i> Exportar',
+                        buttons: ['excel', 'csv', 'pdf']
+                    }
+                ]
+            });
+
+            // Highcharts demo
+            Highcharts.chart('highcharts-demo', {
+                chart: { type: 'column' },
+                title: { text: 'Series por Estado (Demo)' },
+                xAxis: { categories: ['Vigente', 'Pendiente', 'Histórico'] },
+                yAxis: { min: 0, title: { text: 'Cantidad' } },
+                series: [{
+                    name: 'Series',
+                    data: [98, 12, 15],
+                    colorByPoint: true
+                }],
+                credits: { enabled: false }
+            });
+
+            // Manejo de carga
+            $('#formCargaInformacion').on('submit', async function (e) {
+                e.preventDefault();
+                const form = this;
+                const formData = new FormData(form);
+
+                if (!form.checkValidity()) {
+                    form.classList.add('was-validated');
+                    return;
+                }
+
+                const archivo = $('#archivo')[0].files[0];
+                if (!archivo) {
+                    mostrarError('Seleccione un archivo.');
+                    return;
+                }
+
+                if (archivo.size > 5 * 1024 * 1024) {
+                    mostrarError('El archivo excede el tamaño máximo permitido (5MB)');
+                    return;
+                }
+
+                try {
+                    await simularCarga(archivo);
+                    await procesarArchivo(formData);
+                } catch (error) {
+                    mostrarError('Error al procesar el archivo: ' + error.message);
+                }
+            });
+
+            // Funciones auxiliares
+            async function simularCarga(archivo) {
+                return new Promise((resolve) => {
+                    Swal.fire({
+                        title: 'Procesando archivo...',
+                        html: `
+                                                <div class="progress mb-3">
+                                                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                                         style="width: 0%">
+                                                    </div>
+                                                </div>
+                                                <p class="mb-0">Validando ${archivo.name}</p>
+                                            `,
+                        showConfirmButton: false,
+                        allowOutsideClick: false,
+                        didOpen: () => {
+                            const bar = Swal.getHtmlContainer().querySelector('.progress-bar');
+                            let progress = 0;
+                            const timer = setInterval(() => {
+                                progress += 5;
+                                bar.style.width = `${progress}%`;
+                                if (progress >= 100) {
+                                    clearInterval(timer);
+                                    resolve();
+                                }
+                            }, 100);
+                        }
+                    });
+                });
+            }
+
+            function mostrarError(mensaje) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: mensaje
+                });
+            }
+
+            // ...rest of your existing preview code...
+        });
+
+        function mostrarFormato() {
+            Swal.fire({
+                title: 'Formato Requerido',
+                html: `
+                                        <div class="table-responsive">
+                                            <table class="table table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Fecha</th>
+                                                        <th>Hora</th>
+                                                        <th>Valor</th>
+                                                        <th>Unidad</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td>01/01/2024</td>
+                                                        <td>00:00</td>
+                                                        <td>1234.56</td>
+                                                        <td>MW</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    `,
+                icon: 'info'
+            });
+        }
+
+        function exportarDatos() {
+            // Implementar exportación
+        }
+
+        function mostrarFormatosPermitidos() {
+            Swal.fire({
+                title: 'Formatos Permitidos',
+                html: `
+                                        <div class="list-group">
+                                            <div class="list-group-item">
+                                                <h6 class="mb-1"><i class="bi bi-file-earmark-excel text-success"></i> Excel (.xlsx, .xls)</h6>
+                                                <small class="text-muted">Formato recomendado para series de tiempo</small>
+                                            </div>
+                                            <div class="list-group-item">
+                                                <h6 class="mb-1"><i class="bi bi-file-earmark-text text-primary"></i> CSV (.csv)</h6>
+                                                <small class="text-muted">Valores separados por comas</small>
+                                            </div>
+                                        </div>
+                                        <div class="alert alert-info mt-3">
+                                            <i class="bi bi-info-circle-fill"></i>
+                                            Los archivos deben seguir el formato establecido
+                                        </div>
+                                    `,
+                icon: 'info'
+            });
+        }
+
+        function verPreview(id) {
+            Swal.fire({
+                title: 'Vista Previa',
+                html: `
+                                        <div class="card mb-3">
+                                            <div class="card-header bg-info text-white">
+                                                <i class="bi bi-graph-up"></i> Serie de Tiempo
+                                            </div>
+                                            <div class="card-body">
+                                                <canvas id="previewChart"></canvas>
+                                            </div>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-striped">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Fecha</th>
+                                                        <th>Hora</th>
+                                                        <th class="text-end">Valor</th>
+                                                        <th>Unidad</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td>01/01/2024</td>
+                                                        <td>00:00</td>
+                                                        <td class="text-end">1,234.56</td>
+                                                        <td>MW</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>01/01/2024</td>
+                                                        <td>01:00</td>
+                                                        <td class="text-end">1,345.67</td>
+                                                        <td>MW</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    `,
+                width: '800px',
+                didOpen: () => {
+                    new Chart(document.getElementById('previewChart'), {
+                        type: 'line',
+                        data: {
+                            labels: ['00:00', '01:00', '02:00', '03:00'],
+                            datasets: [{
+                                label: 'Valores',
+                                data: [1234.56, 1345.67, 1456.78, 1234.56],
+                                borderColor: '#0dcaf0',
+                                tension: 0.1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Visualización de Serie'
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        function descargar(id) {
+            Swal.fire({
+                title: 'Descargando...',
+                html: `
+                                        <div class="progress">
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                                                 role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                    `,
+                timer: 1500,
+                timerProgressBar: true,
+                didOpen: () => {
+                    const bar = Swal.getHtmlContainer().querySelector('.progress-bar');
+                    const timer = setInterval(() => {
+                        const width = parseInt(bar.style.width) || 0;
+                        if (width < 100) bar.style.width = (width + 10) + '%';
+                        else clearInterval(timer);
+                    }, 150);
+                }
+            }).then(() => {
+                // Simular descarga
+                const link = document.createElement('a');
+                link.href = '#';
+                link.download = 'serie_tiempo.xlsx';
+                link.click();
+            });
+        }
+
+        function editar(id) {
+            Swal.fire({
+                title: 'Editar Serie de Tiempo',
+                html: `
+                                        <form id="formEditarSerie">
+                                            <div class="mb-3">
+                                                <label class="form-label">Nombre de la Serie</label>
+                                                <input type="text" class="form-control" id="editNombre" value="Generación Neta Eléctrica Total" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Unidad de Medida</label>
+                                                <select class="form-select" id="editUnidad" required>
+                                                    <option>MW</option>
+                                                    <option>GWh</option>
+                                                    <option>Barriles</option>
+                                                </select>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Periodicidad</label>
+                                                <select class="form-select" id="editPeriodicidad" required>
+                                                    <option>Anual</option>
+                                                    <option>Mensual</option>
+                                                    <option>Diaria</option>
+                                                    <option>Horaria</option>
+                                                </select>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Confidencialidad</label>
+                                                <select class="form-select" id="editConfidencialidad" required>
+                                                    <option>Público</option>
+                                                    <option>Reservado</option>
+                                                    <option>Confidencial</option>
+                                                </select>
+                                            </div>
+                                        </form>
+                                    `,
+                showCancelButton: true,
+                confirmButtonText: 'Guardar cambios',
+                cancelButtonText: 'Cancelar',
+                focusConfirm: false,
+                preConfirm: () => {
+                    // Aquí puedes validar y obtener los valores del formulario
+                    const nombre = document.getElementById('editNombre').value;
+                    const unidad = document.getElementById('editUnidad').value;
+                    const periodicidad = document.getElementById('editPeriodicidad').value;
+                    const confidencialidad = document.getElementById('editConfidencialidad').value;
+                    if (!nombre) {
+                        Swal.showValidationMessage('El nombre es obligatorio');
+                        return false;
+                    }
+                    // Aquí puedes hacer la petición AJAX para guardar los cambios
+                    // Por ahora solo mostramos un mensaje de éxito
+                    return { nombre, unidad, periodicidad, confidencialidad };
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire('Guardado', 'Los cambios han sido guardados.', 'success');
+                    // Aquí puedes refrescar la tabla o actualizar la vista
+                }
+            });
+        }
+
+        function eliminar(id) {
+            Swal.fire({
+                title: '¿Eliminar serie?',
+                text: '¿Está seguro de eliminar esta serie de tiempo?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc3545',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Implementar eliminación
+                    Swal.fire('Eliminado', 'La serie ha sido eliminada', 'success');
+                }
+            });
+        }
+    </script>
+}

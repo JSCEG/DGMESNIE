@@ -1,0 +1,554 @@
+@model dynamic
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Balance Nacional de Energía 2023";
+}
+
+<div class="container-fluid py-4 ps-5 pe-5">
+    <!-- Título y Migas de pan -->
+    <div class="text-center mb-4">
+        <h3 class="fw-bold">
+            <img src="@Cdn.Url/img_snier/vistas/sankey.png" alt="Icono personalizado" class="iconomenu me-2" />@ViewData["Title"]
+        </h3>
+        <p class="text-muted">Visualización interactiva del flujo energético en México</p>
+    </div>
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+            <li class="breadcrumb-item active">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+
+    <!-- Indicadores clave -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="p-3 bg-primary text-white rounded shadow-sm position-relative">
+                <h6 class="mb-1">Independencia Energética</h6>
+                <h3 class="fw-bold">0.72</h3>
+                <small>↑ 1.11% vs 2022</small>
+                <span class="position-absolute top-0 end-0 p-2" data-bs-toggle="tooltip"
+                    title="Porcentaje de energía producida internamente">
+                    <i class="fas fa-info-circle"></i>
+                </span>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="p-3 bg-success text-white rounded shadow-sm position-relative">
+                <h6 class="mb-1">Intensidad Energética</h6>
+                <h3 class="fw-bold">407.99 kJ/$</h3>
+                <small>↓ 5.69% vs 2022</small>
+                <span class="position-absolute top-0 end-0 p-2" data-bs-toggle="tooltip"
+                    title="Energía consumida por unidad de PIB">
+                    <i class="fas fa-info-circle"></i>
+                </span>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="p-3 bg-warning text-dark rounded shadow-sm position-relative">
+                <h6 class="mb-1">Consumo per cápita</h6>
+                <h3 class="fw-bold">77.92 GJ</h3>
+                <small>↓ 3.35% vs 2022</small>
+                <span class="position-absolute top-0 end-0 p-2" data-bs-toggle="tooltip"
+                    title="Consumo energético por habitante">
+                    <i class="fas fa-info-circle"></i>
+                </span>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="p-3 bg-info text-white rounded shadow-sm position-relative">
+                <h6 class="mb-1">Producción primaria</h6>
+                <h3 class="fw-bold">7,365 PJ</h3>
+                <small>↓ 1.39% vs 2022</small>
+                <span class="position-absolute top-0 end-0 p-2" data-bs-toggle="tooltip"
+                    title="Energía producida en territorio nacional">
+                    <i class="fas fa-info-circle"></i>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráfico de flujo energético con Highcharts -->
+    <div class="card mb-5 border-0 shadow-sm">
+        <div class="card-header bg-white border-0">
+            <h5 class="fw-semibold mb-0">Flujo Energético Nacional 2023</h5>
+            <small class="text-muted">Visualización interactiva del balance energético (PJ)</small>
+        </div>
+        <div class="card-body p-0">
+            <div id="flujoEnergetico" style="height: 600px;"></div>
+            <div class="px-3 py-2 bg-light">
+                <small class="text-muted">
+                    <i class="fas fa-info-circle me-1"></i> Haga clic en los nodos para expandir/colapsar. Arrastre para
+                    mover.
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos secundarios en row -->
+    <div class="row mb-4">
+        <!-- Gráfico de columnas -->
+        <div class="col-md-6">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h5 class="fw-semibold mb-0">Consumo Energético por Sector</h5>
+                    <small class="text-muted">Distribución porcentual del consumo final</small>
+                </div>
+                <div class="card-body">
+                    <div id="graficoConsumo" style="height: 350px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráfico de evolución -->
+        <div class="col-md-6">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-header bg-white border-0">
+                    <h5 class="fw-semibold mb-0">Evolución del Consumo</h5>
+                    <small class="text-muted">Comparativo últimos 5 años</small>
+                </div>
+                <div class="card-body">
+                    <div id="graficoEvolucion" style="height: 350px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de resumen -->
+    <div class="card mb-4 border-0 shadow-sm">
+        <div class="card-header bg-white border-0">
+            <h5 class="fw-semibold mb-0">Resumen del Balance Energético 2023</h5>
+            <small class="text-muted">Principales indicadores energéticos</small>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Indicador</th>
+                            <th>Valor</th>
+                            <th>Variación</th>
+                            <th>Detalle</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="fw-semibold">Importaciones Energéticas</td>
+                            <td>4,556 PJ</td>
+                            <td><span class="badge bg-danger bg-opacity-10 text-danger">↑ 5.45%</span></td>
+                            <td><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
+                                    data-bs-target="#detalleModal" data-titulo="Importaciones">Ver</button></td>
+                        </tr>
+                        <tr>
+                            <td class="fw-semibold">Exportaciones Energéticas</td>
+                            <td>2,855 PJ</td>
+                            <td><span class="badge bg-success bg-opacity-10 text-success">↑ 6.13%</span></td>
+                            <td><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
+                                    data-bs-target="#detalleModal" data-titulo="Exportaciones">Ver</button></td>
+                        </tr>
+                        <tr>
+                            <td class="fw-semibold">Consumo Nacional Total</td>
+                            <td>10,217 PJ</td>
+                            <td><span class="badge bg-danger bg-opacity-10 text-danger">↓ 2.47%</span></td>
+                            <td><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
+                                    data-bs-target="#detalleModal" data-titulo="Consumo">Ver</button></td>
+                        </tr>
+                        <tr>
+                            <td class="fw-semibold">Sector Transporte</td>
+                            <td>2,567 PJ</td>
+                            <td><span class="badge bg-primary bg-opacity-10 text-primary">48.80% del total</span></td>
+                            <td><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
+                                    data-bs-target="#detalleModal" data-titulo="Transporte">Ver</button></td>
+                        </tr>
+                        <tr>
+                            <td class="fw-semibold">Sector Industrial</td>
+                            <td>1,239 PJ</td>
+                            <td><span class="badge bg-danger bg-opacity-10 text-danger">↓ 16.12%</span></td>
+                            <td><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
+                                    data-bs-target="#detalleModal" data-titulo="Industrial">Ver</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para detalles -->
+<div class="modal fade" id="detalleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitulo">Detalles</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalContenido">
+                Cargando información...
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Styles {
+    <style>
+        .highcharts-data-table table {
+            min-width: 100%;
+        }
+
+        .highcharts-credits {
+            display: none !important;
+        }
+
+        .node rect {
+            cursor: pointer;
+            fill-opacity: 0.9;
+            shape-rendering: crispEdges;
+        }
+
+        .node text {
+            pointer-events: none;
+            text-shadow: 0 1px 0 #fff;
+        }
+
+        .link {
+            fill: none;
+            stroke-opacity: 0.2;
+        }
+
+        .link:hover {
+            stroke-opacity: 0.5;
+        }
+
+        .card {
+            border-radius: 0.5rem;
+        }
+
+        .iconomenu {
+            width: 28px;
+            height: 28px;
+        }
+    </style>
+}
+
+@section Scripts {
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/sankey.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/modules/accessibility.js"></script>
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+
+    <script>
+        // Tooltips
+        $(function () {
+            $('[data-bs-toggle="tooltip"]').tooltip();
+        });
+
+        // Modal handler
+        $('#detalleModal').on('show.bs.modal', function (event) {
+            var button = $(event.relatedTarget);
+            var titulo = button.data('titulo');
+            var modal = $(this);
+
+            modal.find('.modal-title').text('Detalles: ' + titulo);
+
+            // Simular carga de datos
+            var contenido = '<h6>Detalles de ' + titulo + '</h6>' +
+                '<p>Información detallada sobre ' + titulo.toLowerCase() + ' en el balance energético nacional.</p>' +
+                '<div class="row">' +
+                '   <div class="col-md-6">' +
+                '       <div class="p-3 bg-light rounded">' +
+                '           <h6>Composición</h6>' +
+                '           <div id="modalChart1" style="height: 200px;"></div>' +
+                '       </div>' +
+                '   </div>' +
+                '   <div class="col-md-6">' +
+                '       <div class="p-3 bg-light rounded">' +
+                '           <h6>Evolución</h6>' +
+                '           <div id="modalChart2" style="height: 200px;"></div>' +
+                '       </div>' +
+                '   </div>' +
+                '</div>';
+
+            modal.find('#modalContenido').html(contenido);
+
+            // Gráficos del modal
+            Highcharts.chart('modalChart1', {
+                chart: { type: 'pie' },
+                title: { text: '' },
+                plotOptions: {
+                    pie: {
+                        allowPointSelect: true,
+                        cursor: 'pointer',
+                        dataLabels: { enabled: false },
+                        showInLegend: true
+                    }
+                },
+                series: [{
+                    name: 'Composición',
+                    data: [
+                        { name: 'Petróleo', y: 45 },
+                        { name: 'Gas Natural', y: 30 },
+                        { name: 'Carbón', y: 10 },
+                        { name: 'Renovables', y: 15 }
+                    ]
+                }]
+            });
+
+            Highcharts.chart('modalChart2', {
+                chart: { type: 'line' },
+                title: { text: '' },
+                xAxis: { categories: ['2019', '2020', '2021', '2022', '2023'] },
+                yAxis: { title: { text: 'PJ' } },
+                series: [{
+                    name: titulo,
+                    data: [4000, 3800, 4200, 4556, 4800].slice(0, titulo.length % 5 + 1)
+                }]
+            });
+        });
+
+        // Gráfico de flujo energético (Sankey mejorado)
+        Highcharts.chart('flujoEnergetico', {
+            chart: {
+                type: 'sankey',
+                backgroundColor: 'transparent',
+                height: '600px'
+            },
+            title: {
+                text: 'Flujo Energético Nacional 2023',
+                align: 'left',
+                style: { fontSize: '16px', fontWeight: 'bold' }
+            },
+            subtitle: {
+                text: 'Fuente: Secretaría de Energía | Valores en Petajoules (PJ)',
+                align: 'left',
+                style: { fontSize: '12px' }
+            },
+            accessibility: {
+                point: {
+                    valueDescriptionFormat: '{index}. {point.from} to {point.to}, {point.weight}.'
+                }
+            },
+            plotOptions: {
+                sankey: {
+                    dataLabels: {
+                        enabled: true,
+                        style: {
+                            fontSize: '11px',
+                            fontWeight: 'normal',
+                            textOutline: 'none'
+                        },
+                        nodeFormat: '{point.name}<br><b>{point.sum:.0f} PJ</b>',
+                        format: null
+                    },
+                    nodeWidth: 18,
+                    nodePadding: 10,
+                    width: '100%',
+                    height: '100%',
+                    cursor: 'pointer',
+                    events: {
+                        click: function () {
+                            // Lógica para expandir/colapsar nodos
+                        }
+                    }
+                }
+            },
+            series: [{
+                keys: ['from', 'to', 'weight'],
+                data: [
+                    // Producción Primaria
+                    ['Petróleo', 'Producción Primaria', 3650],
+                    ['Gas Natural', 'Producción Primaria', 2450],
+                    ['Carbón', 'Producción Primaria', 350],
+                    ['Hidroenergía', 'Producción Primaria', 250],
+                    ['Otras Renovables', 'Producción Primaria', 250],
+                    ['Nuclear', 'Producción Primaria', 50],
+
+                    // Importaciones
+                    ['Importación Petróleo', 'Importaciones', 1800],
+                    ['Importación Gas', 'Importaciones', 1500],
+                    ['Importación Electricidad', 'Importaciones', 200],
+
+                    // Exportaciones
+                    ['Petróleo', 'Exportaciones', 1500],
+                    ['Gas Natural', 'Exportaciones', 800],
+
+                    // Transformación
+                    ['Producción Primaria', 'Refinerías', 2800],
+                    ['Importaciones', 'Refinerías', 1200],
+                    ['Producción Primaria', 'Generación Eléctrica', 2200],
+                    ['Importaciones', 'Generación Eléctrica', 800],
+
+                    // Consumo Final
+                    ['Refinerías', 'Transporte', 2567],
+                    ['Refinerías', 'Industrial', 1239],
+                    ['Generación Eléctrica', 'Residencial', 973],
+                    ['Generación Eléctrica', 'Agropecuario', 183],
+                    ['Generación Eléctrica', 'Comercial/Servicios', 300],
+
+                    // Pérdidas
+                    ['Refinerías', 'Pérdidas', 400],
+                    ['Generación Eléctrica', 'Pérdidas', 500]
+                ],
+                nodes: [{
+                    id: 'Producción Primaria',
+                    name: 'Producción Nacional',
+                    color: '#2b908f',
+                    dataLabels: { style: { fontWeight: 'bold' } }
+                }, {
+                    id: 'Importaciones',
+                    name: 'Importaciones',
+                    color: '#f45b5b',
+                    dataLabels: { style: { fontWeight: 'bold' } }
+                }, {
+                    id: 'Exportaciones',
+                    name: 'Exportaciones',
+                    color: '#7cb5ec',
+                    dataLabels: { style: { fontWeight: 'bold' } }
+                }, {
+                    id: 'Refinerías',
+                    name: 'Refinerías',
+                    color: '#90ed7d'
+                }, {
+                    id: 'Generación Eléctrica',
+                    name: 'Generación Eléctrica',
+                    color: '#f7a35c'
+                }, {
+                    id: 'Pérdidas',
+                    name: 'Pérdidas',
+                    color: '#8085e9'
+                }],
+                tooltip: {
+                    headerFormat: '<span style="font-size: 13px"><b>{point.fromNode.name}</b> → <b>{point.toNode.name}</b></span><br/>',
+                    pointFormat: 'Flujo: <b>{point.weight} PJ</b>'
+                }
+            }]
+        });
+
+        // Gráfico de consumo por sector
+        Highcharts.chart('graficoConsumo', {
+            chart: {
+                type: 'column',
+                backgroundColor: 'transparent'
+            },
+            title: {
+                text: '',
+                align: 'left'
+            },
+            xAxis: {
+                categories: ['Transporte', 'Industrial', 'Residencial', 'Agropecuario', 'No Clasificado'],
+                crosshair: true
+            },
+            yAxis: {
+                title: { text: 'Petajoules (PJ)' }
+            },
+            tooltip: {
+                headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
+                pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
+                    '<td style="padding:0"><b>{point.y:.1f} PJ</b></td></tr>',
+                footerFormat: '</table>',
+                shared: true,
+                useHTML: true
+            },
+            plotOptions: {
+                column: {
+                    borderRadius: 3,
+                    pointPadding: 0.1,
+                    borderWidth: 0,
+                    groupPadding: 0.1
+                }
+            },
+            legend: { enabled: false },
+            credits: { enabled: false },
+            series: [{
+                name: 'Consumo',
+                colorByPoint: true,
+                data: [{
+                    name: 'Transporte',
+                    y: 2567.72,
+                    color: '#7cb5ec'
+                }, {
+                    name: 'Industrial',
+                    y: 1238.96,
+                    color: '#434348'
+                }, {
+                    name: 'Residencial',
+                    y: 972.58,
+                    color: '#90ed7d'
+                }, {
+                    name: 'Agropecuario',
+                    y: 183.22,
+                    color: '#f7a35c'
+                }, {
+                    name: 'No Clasificado',
+                    y: 299.49,
+                    color: '#8085e9'
+                }]
+            }]
+        });
+
+        // Gráfico de evolución
+        Highcharts.chart('graficoEvolucion', {
+            chart: {
+                type: 'line',
+                backgroundColor: 'transparent'
+            },
+            title: {
+                text: '',
+                align: 'left'
+            },
+            xAxis: {
+                categories: ['2019', '2020', '2021', '2022', '2023'],
+                crosshair: true
+            },
+            yAxis: {
+                title: { text: 'Petajoules (PJ)' }
+            },
+            tooltip: {
+                valueSuffix: ' PJ'
+            },
+            plotOptions: {
+                series: {
+                    marker: {
+                        radius: 4,
+                        lineWidth: 1
+                    }
+                }
+            },
+            legend: {
+                layout: 'horizontal',
+                align: 'center',
+                verticalAlign: 'bottom'
+            },
+            credits: { enabled: false },
+            series: [{
+                name: 'Transporte',
+                data: [2400, 2200, 2350, 2450, 2567],
+                color: '#7cb5ec'
+            }, {
+                name: 'Industrial',
+                data: [1500, 1350, 1400, 1475, 1239],
+                color: '#434348'
+            }, {
+                name: 'Residencial',
+                data: [900, 950, 925, 960, 973],
+                color: '#90ed7d'
+            }, {
+                name: 'Agropecuario',
+                data: [170, 175, 180, 182, 183],
+                color: '#f7a35c'
+            }]
+        });
+    </script>
+}

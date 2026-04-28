@@ -1,0 +1,879 @@
+@model dynamic
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+	ViewData["Title"] = "Catálogo de Tecnologías de Generación";
+	var httpContext = HttpContextAccessor.HttpContext;
+	var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+	var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+}
+
+@{
+	var header = new HeaderViewModel
+	{
+		Title = "Catálogo de Tecnologías de Generación",
+		IconPath = "analisis.png",
+		Description = "Consulta y compara las tecnologías de generación eléctrica.",
+		Section = "⚡ Sistema Eléctrico",
+		ModuleInfo = JsonConvert.SerializeObject(new
+		{
+			title = "Catálogo de Tecnologías",
+			description = "Base de datos nacional de tecnologías de generación eléctrica.",
+			functionality = "Permite consultar y comparar tecnologías por eficiencia y tipo.",
+			stage = "Consulta Técnica",
+			roles = new[] {
+new { icon = "building", text = "CENACE: Validación técnica" },
+new { icon = "graduation-cap", text = "Academia: Investigación" },
+new { icon = "industry", text = "Industria: Referencia técnica" }
+},
+			order = new { step = 1, description = "Consulta de especificaciones" }
+		}),
+		LegalDescription = "Información técnica conforme a normas CRE."
+	};
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<style>
+	/* Estilos específicos para PowerBI responsivo */
+	.powerbi-container {
+		position: relative;
+		width: 100%;
+		height: 0;
+		padding-bottom: 62.25%;
+		/* Ratio 16:10 para PowerBI */
+		background: var(--white);
+		border-radius: var(--border-radius-lg);
+		box-shadow: var(--shadow-soft);
+		overflow: hidden;
+		border: 1px solid var(--gray-200);
+	}
+
+	.powerbi-iframe {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		border: none;
+		border-radius: var(--border-radius-lg);
+	}
+
+	.powerbi-loading {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		text-align: center;
+		color: var(--gray-500);
+		z-index: 1;
+	}
+
+	.powerbi-overlay {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: var(--gray-50);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: opacity 0.3s ease;
+		z-index: 2;
+	}
+
+	.powerbi-overlay.hidden {
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	/* Responsive adjustments */
+	@@media (max-width: 768px) {
+		.powerbi-container {
+			padding-bottom: 75%;
+			/* Ratio más cuadrado para móviles */
+		}
+	}
+
+	@@media (max-width: 576px) {
+		.powerbi-container {
+			padding-bottom: 80%;
+			border-radius: var(--border-radius);
+		}
+	}
+
+	.stats-mini-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+		gap: 1rem;
+		margin-bottom: 2rem;
+	}
+
+	.stat-mini-item {
+		background: linear-gradient(135deg, var(--white) 0%, var(--gray-50) 100%);
+		padding: 1rem;
+		border-radius: var(--border-radius);
+		text-align: center;
+		border: 1px solid var(--gray-200);
+		transition: var(--transition);
+		border-left: 3px solid var(--snier-primary);
+	}
+
+	.stat-mini-item:hover {
+		box-shadow: var(--shadow-soft);
+		transform: translateY(-2px);
+	}
+
+	.stat-mini-value {
+		font-size: var(--font-size-xl);
+		font-weight: var(--font-weight-bold);
+		color: var(--snier-primary);
+		margin-bottom: 0.25rem;
+	}
+
+	.stat-mini-label {
+		font-size: var(--font-size-xs);
+		color: var(--gray-600);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.instrument-badge {
+		display: inline-block;
+		padding: 0.25rem 0.75rem;
+		font-size: var(--font-size-xs);
+		font-weight: var(--font-weight-semibold);
+		border-radius: var(--border-radius);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.instrument-prosener {
+		background: rgba(24, 156, 144, 0.1);
+		color: var(--snier-primary);
+		border: 1px solid rgba(24, 156, 144, 0.2);
+	}
+
+	.instrument-estrategia {
+		background: rgba(41, 74, 149, 0.1);
+		color: var(--snier-accent);
+		border: 1px solid rgba(41, 74, 149, 0.2);
+	}
+
+	.instrument-platease {
+		background: rgba(8, 145, 178, 0.1);
+		color: var(--snier-tertiary);
+		border: 1px solid rgba(8, 145, 178, 0.2);
+	}
+
+	.progress-indicator {
+		background: var(--gray-200);
+		border-radius: var(--border-radius);
+		height: 6px;
+		overflow: hidden;
+	}
+
+	.progress-bar {
+		height: 100%;
+		background: linear-gradient(90deg, var(--snier-primary), var(--snier-accent));
+		border-radius: var(--border-radius);
+		transition: width 0.3s ease;
+	}
+</style>
+
+<!-- Contenido principal -->
+<div class="container-fluid p-4">
+	@* <!-- Mini estadísticas -->
+    <div class="stats-mini-grid">
+        <div class="stat-mini-item">
+            <div class="stat-mini-value">5</div>
+            <div class="stat-mini-label">Instrumentos Monitoreados</div>
+        </div>
+        <div class="stat-mini-item">
+            <div class="stat-mini-value">100+</div>
+            <div class="stat-mini-label">Líneas de Acción</div>
+        </div>
+        <div class="stat-mini-item">
+            <div class="stat-mini-value">2024</div>
+            <div class="stat-mini-label">Año de Seguimiento</div>
+        </div>
+        <div class="stat-mini-item">
+            <div class="stat-mini-value">Tiempo Real</div>
+            <div class="stat-mini-label">Actualización</div>
+        </div>
+    </div>
+
+    <!-- Badges de instrumentos -->
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <span class="instrument-badge instrument-prosener">
+            <i class="bi bi-file-text me-1"></i>PROSENER
+        </span>
+        <span class="instrument-badge instrument-estrategia">
+            <i class="bi bi-flag me-1"></i>Estrategia Nacional
+        </span>
+        <span class="instrument-badge instrument-platease">
+            <i class="bi bi-graph-up me-1"></i>PLATEASE
+        </span>
+        <span class="instrument-badge instrument-prosener">
+            <i class="bi bi-lightning me-1"></i>PLADESE
+        </span>
+        <span class="instrument-badge instrument-estrategia">
+            <i class="bi bi-house me-1"></i>PLADESHi
+        </span>
+    </div>
+
+    <!-- Indicador de progreso general -->
+    <div class="row mb-3">
+        <div class="col-md-8">
+            <div class="d-flex align-items-center">
+                <span class="fw-semibold me-3">Avance General del Seguimiento:</span>
+                <div class="progress-indicator flex-grow-1 me-3">
+                    <div class="progress-bar" style="width: 78%"></div>
+                </div>
+                <span class="text-primary fw-bold">78%</span>
+            </div>
+        </div>
+        <div class="col-md-4 text-end">
+            <button class="btn btn-primary btn-sm" onclick="toggleFullscreen()">
+                <i class="bi bi-arrows-fullscreen me-1"></i>
+                Pantalla Completa
+            </button>
+        </div>
+    </div> *@
+
+	<!-- Contenedor del PowerBI -->
+	<div class="powerbi-container" id="powerbiContainer">
+		<!-- Overlay de carga -->
+		<div class="powerbi-overlay" id="powerbiOverlay">
+			<div class="powerbi-loading">
+				<div class="spinner-border text-primary mb-3" role="status">
+					<span class="visually-hidden">Cargando...</span>
+				</div>
+				<div>
+					<h5 class="mb-2">Cargando Panel de Seguimiento</h5>
+					<p class="small text-muted mb-0">Preparando indicadores de planeación...</p>
+				</div>
+			</div>
+		</div>
+
+		<!-- iframe del PowerBI -->
+		<iframe id="powerbiFrame" class="powerbi-iframe" title="Seguimiento a Instrumentos de Planeación Energética"
+			src="https://app.powerbi.com/view?r=eyJrIjoiYjZmOTYxMzctMWJhYS00OTJjLTllZmMtZTk1NjA1YThkYmI2IiwidCI6IjczMzY5OTZkLTMzNjctNDBhNC04NGFmLWRkMTI3NDY4YzA3OCIsImMiOjR9"
+			allowfullscreen="true" onload="hideLoadingOverlay()" style="display: none;">
+		</iframe>
+	</div>
+
+	@* <!-- Información adicional -->
+	<div class="row mt-4">
+		<div class="col-md-8">
+			<div class="alert alert-info border-0" style="background: rgba(24, 156, 144, 0.1);">
+				<div class="d-flex">
+					<i class="bi bi-info-circle text-primary me-3 fs-4"></i>
+					<div>
+						<h6 class="alert-heading mb-2">Instrumentos de Planeación Monitoreados</h6>
+						<p class="mb-1">
+							<strong>PROSENER:</strong> Programa Sectorial de Energía - Estrategias y objetivos del
+							sector energético
+						</p>
+						<p class="mb-1">
+							<strong>Estrategia Nacional:</strong> Estrategia de Transición para Promover el Uso de
+							Tecnologías y Combustibles más Limpios
+						</p>
+						<p class="mb-1">
+							<strong>PLATEASE:</strong> Plataforma de Transparencia en Eficiencia y Ahorro de Energía en
+							el Sector Eléctrico
+						</p>
+						<p class="mb-0">
+							<strong>PLADESE/PLADESHi:</strong> Planes de Desarrollo del Sistema Eléctrico e
+							Hidrocarburos
+						</p>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="col-md-4">
+			<div class="card border-0" style="background: var(--gray-50);">
+				<div class="card-body">
+					<h6 class="card-title">
+						<i class="bi bi-clipboard-data me-2"></i>Métricas de Seguimiento
+					</h6>
+					<ul class="list-unstyled small mb-3">
+						<li class="mb-1">
+							<i class="bi bi-check-circle me-1 text-success"></i>
+							Metas Cumplidas
+						</li>
+						<li class="mb-1">
+							<i class="bi bi-clock me-1 text-warning"></i>
+							Acciones en Proceso
+						</li>
+						<li class="mb-1">
+							<i class="bi bi-exclamation-triangle me-1 text-danger"></i>
+							Riesgos Identificados
+						</li>
+						<li class="mb-0">
+							<i class="bi bi-calendar-check me-1 text-info"></i>
+							Cronograma de Cumplimiento
+						</li>
+					</ul>
+					<div class="d-grid gap-2">
+						<button class="btn btn-outline-primary btn-sm" onclick="downloadReport()">
+							<i class="bi bi-file-earmark-excel me-1"></i>
+							Descargar Reporte
+						</button>
+						<button class="btn btn-outline-secondary btn-sm" onclick="shareReport()">
+							<i class="bi bi-share me-1"></i>
+							Compartir Dashboard
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div> *@
+</div>
+
+<script>
+	// Función para ocultar el overlay de carga
+	function hideLoadingOverlay() {
+		const overlay = document.getElementById('powerbiOverlay');
+		const iframe = document.getElementById('powerbiFrame');
+
+		if (overlay && iframe) {
+			setTimeout(() => {
+				overlay.classList.add('hidden');
+				iframe.style.display = 'block';
+			}, 1500); // Pequeño delay para mejor UX
+		}
+	}
+
+	// Función para pantalla completa
+	function toggleFullscreen() {
+		const container = document.getElementById('powerbiContainer');
+
+		if (!document.fullscreenElement) {
+			container.requestFullscreen().then(() => {
+				container.style.position = 'fixed';
+				container.style.top = '0';
+				container.style.left = '0';
+				container.style.width = '100vw';
+				container.style.height = '100vh';
+				container.style.zIndex = '9999';
+				container.style.paddingBottom = '0';
+			}).catch(err => {
+				console.log('Error al entrar en pantalla completa:', err);
+			});
+		} else {
+			document.exitFullscreen();
+		}
+	}
+
+	// Listener para salir de pantalla completa
+	document.addEventListener('fullscreenchange', function () {
+		const container = document.getElementById('powerbiContainer');
+		if (!document.fullscreenElement) {
+			// Restaurar estilos originales
+			container.style.position = '';
+			container.style.top = '';
+			container.style.left = '';
+			container.style.width = '';
+			container.style.height = '';
+			container.style.zIndex = '';
+			container.style.paddingBottom = '62.25%';
+		}
+	});
+
+	// Función para descargar reporte (placeholder)
+	function downloadReport() {
+		Swal.fire({
+			title: 'Descarga de Reporte',
+			text: 'Esta funcionalidad estará disponible próximamente.',
+			icon: 'info',
+			confirmButtonText: 'Entendido',
+			confirmButtonColor: 'var(--snier-primary)'
+		});
+	}
+
+	// Función para compartir (placeholder)
+	function shareReport() {
+		if (navigator.share) {
+			navigator.share({
+				title: 'Seguimiento a Instrumentos de Planeación Energética - SNIER',
+				text: 'Panel de seguimiento y monitoreo de instrumentos de planeación energética',
+				url: window.location.href
+			});
+		} else {
+			// Fallback para navegadores que no soportan Web Share API
+			navigator.clipboard.writeText(window.location.href).then(() => {
+				Swal.fire({
+					title: 'Enlace Copiado',
+					text: 'El enlace ha sido copiado al portapapeles',
+					icon: 'success',
+					timer: 2000,
+					showConfirmButton: false
+				});
+			});
+		}
+	}
+
+	// Inicialización cuando el DOM esté listo
+	document.addEventListener('DOMContentLoaded', function () {
+		// Verificar si el iframe se carga correctamente
+		const iframe = document.getElementById('powerbiFrame');
+
+		// Timeout de seguridad para ocultar el loading si el iframe no responde
+		setTimeout(() => {
+			if (document.getElementById('powerbiOverlay').style.opacity !== '0') {
+				hideLoadingOverlay();
+			}
+		}, 10000); // 10 segundos de timeout
+
+		// Manejo responsive del iframe
+		function adjustIframeHeight() {
+			const container = document.getElementById('powerbiContainer');
+			if (window.innerWidth <= 768) {
+				container.style.paddingBottom = '75%';
+			} else if (window.innerWidth <= 576) {
+				container.style.paddingBottom = '80%';
+			} else {
+				container.style.paddingBottom = '62.25%';
+			}
+		}
+
+		// Ajustar al cargar y al redimensionar
+		adjustIframeHeight();
+		window.addEventListener('resize', adjustIframeHeight);
+
+		// Animar la barra de progreso al cargar
+		setTimeout(() => {
+			document.querySelector('.progress-bar').style.width = '78%';
+		}, 500);
+	});
+</script>
+
+
+
+
+
+<!-- Scripts -->
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/highcharts-more.js"></script>
+<script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+<script>
+	// Datos de ejemplo para líneas de acción
+	const lineasAccionData = [
+		{
+			id: 1,
+			instrumento: "PROSENER",
+			linea: "Promover el desarrollo de energías renovables",
+			unidad: "SENER",
+			estatus: "en-progreso",
+			avance: 75,
+			fechaActualizacion: "2024-01-15",
+			evidencia: "/docs/evidencia-1.pdf"
+		},
+		{
+			id: 2,
+			instrumento: "Estrategia Nacional",
+			linea: "Reducir la intensidad energética en el sector industrial",
+			unidad: "CONUEE",
+			estatus: "completada",
+			avance: 100,
+			fechaActualizacion: "2024-01-10",
+			evidencia: "/docs/evidencia-2.pdf"
+		},
+		{
+			id: 3,
+			instrumento: "PLATEASE",
+			linea: "Implementar sistemas de almacenamiento de energía",
+			unidad: "CFE",
+			estatus: "iniciada",
+			avance: 25,
+			fechaActualizacion: "2024-01-20",
+			evidencia: "/docs/evidencia-3.pdf"
+		},
+		{
+			id: 4,
+			instrumento: "PLADESE",
+			linea: "Desarrollar infraestructura de hidrógeno verde",
+			unidad: "PEMEX",
+			estatus: "en-progreso",
+			avance: 45,
+			fechaActualizacion: "2024-01-18",
+			evidencia: "/docs/evidencia-4.pdf"
+		},
+		{
+			id: 5,
+			instrumento: "PLADESHi",
+			linea: "Modernizar redes de distribución eléctrica",
+			unidad: "CRE",
+			estatus: "en-progreso",
+			avance: 60,
+			fechaActualizacion: "2024-01-22",
+			evidencia: "/docs/evidencia-5.pdf"
+		}
+	];
+
+	// Datos de proyectos estratégicos
+	const proyectosData = [
+		{ id: 1, nombre: "Central Solar Sonora", lat: 29.2972, lng: -110.3309, tipo: "Solar", status: "active", avance: 85, instrumento: "PVIRCE" },
+		{ id: 2, nombre: "Parque Eólico Oaxaca", lat: 16.2518, lng: -95.1917, tipo: "Eólico", status: "active", avance: 92, instrumento: "PVIRCE" },
+		{ id: 3, nombre: "Gasoducto Tuxpan-Tula", lat: 20.9573, lng: -97.4056, tipo: "Gas Natural", status: "progress", avance: 67, instrumento: "PAM" },
+		{ id: 4, nombre: "Red Inteligente CDMX", lat: 19.4326, lng: -99.1332, tipo: "Smart Grid", status: "progress", avance: 45, instrumento: "Quinquenal" },
+		{ id: 5, nombre: "Central Hidroeléctrica Chiapas", lat: 16.7569, lng: -93.1292, tipo: "Hidráulica", status: "planned", avance: 15, instrumento: "PVIRCE" }
+	];
+
+	$(document).ready(function () {
+		initializeCharts();
+		initializeMap();
+		initializeDataTable();
+		setupEventHandlers();
+	});
+
+	function initializeCharts() {
+		// Gráfico de seguimiento de metas
+		Highcharts.chart('metasChart', {
+			chart: { type: 'line', backgroundColor: 'transparent' },
+			title: { text: null },
+			xAxis: {
+				categories: ['2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028', '2029', '2030'],
+				gridLineWidth: 1,
+				gridLineColor: '#f0f0f0'
+			},
+			yAxis: {
+				title: { text: 'Porcentaje (%)' },
+				gridLineColor: '#f0f0f0'
+			},
+			tooltip: {
+				shared: true,
+				backgroundColor: 'rgba(255,255,255,0.95)',
+				borderColor: '#ddd',
+				borderRadius: 8
+			},
+			legend: { align: 'center', verticalAlign: 'bottom' },
+			series: [{
+				name: 'Energías Limpias',
+				data: [25.1, 27.3, 29.8, 32.1, 35.2, 38.0, 41.2, 44.1, 46.8, 48.9, 50.0],
+				color: '#28a745',
+				marker: { radius: 4 }
+			}, {
+				name: 'Meta Energías Limpias',
+				data: [null, null, null, null, null, null, null, null, null, null, 50],
+				color: '#28a745',
+				dashStyle: 'dash',
+				marker: { symbol: 'diamond', radius: 6 }
+			}, {
+				name: 'Reducción Pobreza Energética',
+				data: [18.5, 17.2, 15.8, 14.1, 12.8, 11.2, 9.8, 8.5, 7.3, 6.8, 6.0],
+				color: '#17a2b8',
+				marker: { radius: 4 }
+			}, {
+				name: 'Intensidad Energética',
+				data: [0, -0.5, -1.1, -1.6, -2.1, -2.8, -3.5, -4.2, -4.9, -5.5, -6.0],
+				color: '#ffc107',
+				marker: { radius: 4 }
+			}],
+			credits: { enabled: false },
+			plotOptions: {
+				line: {
+					lineWidth: 3,
+					states: { hover: { lineWidth: 4 } }
+				}
+			}
+		});
+
+		// Gauge de avance general
+		Highcharts.chart('gaugeChart', {
+			chart: { type: 'solidgauge', backgroundColor: 'transparent' },
+			title: { text: null },
+			pane: {
+				center: ['50%', '85%'],
+				size: '140%',
+				startAngle: -90,
+				endAngle: 90,
+				background: {
+					backgroundColor: '#EEE',
+					innerRadius: '60%',
+					outerRadius: '100%',
+					shape: 'arc'
+				}
+			},
+			tooltip: { enabled: false },
+			yAxis: {
+				min: 0,
+				max: 100,
+				stops: [
+					[0.1, '#DF5353'],
+					[0.5, '#DDDF0D'],
+					[0.9, '#55BF3B']
+				],
+				lineWidth: 0,
+				tickWidth: 0,
+				minorTickInterval: null,
+				tickAmount: 2,
+				labels: { y: 16 }
+			},
+			plotOptions: {
+				solidgauge: {
+					dataLabels: {
+						y: 5,
+						borderWidth: 0,
+						useHTML: true,
+						format: '<div style="text-align:center"><span style="font-size:25px;color:black">{y}%</span><br/><span style="font-size:12px;color:silver">Avance General</span></div>'
+					}
+				}
+			},
+			series: [{
+				name: 'Avance',
+				data: [68.5],
+				dataLabels: { format: '<div style="text-align:center"><span style="font-size:25px;color:black">{y}%</span><br/><span style="font-size:12px;color:silver">Avance General</span></div>' }
+			}],
+			credits: { enabled: false }
+		});
+
+		// Gráfico de proyectos por tipo
+		Highcharts.chart('proyectosPorTipoChart', {
+			chart: { type: 'pie', backgroundColor: 'transparent' },
+			title: { text: null },
+			tooltip: { pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b>' },
+			accessibility: { point: { valueSuffix: '%' } },
+			plotOptions: {
+				pie: {
+					allowPointSelect: true,
+					cursor: 'pointer',
+					dataLabels: { enabled: false },
+					showInLegend: false,
+					size: '80%'
+				}
+			},
+			series: [{
+				name: 'Proyectos',
+				colorByPoint: true,
+				data: [{
+					name: 'Solar',
+					y: 35.2,
+					color: '#ffc107'
+				}, {
+					name: 'Eólico',
+					y: 28.1,
+					color: '#17a2b8'
+				}, {
+					name: 'Gas Natural',
+					y: 18.7,
+					color: '#fd7e14'
+				}, {
+					name: 'Hidráulica',
+					y: 12.3,
+					color: '#20c997'
+				}, {
+					name: 'Otros',
+					y: 5.7,
+					color: '#6c757d'
+				}]
+			}],
+			credits: { enabled: false }
+		});
+	}
+
+	function initializeMap() {
+		const map = L.map('proyectosMap').setView([23.6345, -102.5528], 5);
+
+		L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+			attribution: '© OpenStreetMap contributors'
+		}).addTo(map);
+
+		const statusColors = {
+			'active': '#28a745',
+			'progress': '#ffc107',
+			'planned': '#6c757d'
+		};
+
+		proyectosData.forEach(proyecto => {
+			const marker = L.circleMarker([proyecto.lat, proyecto.lng], {
+				radius: 8,
+				fillColor: statusColors[proyecto.status],
+				color: '#fff',
+				weight: 2,
+				opacity: 1,
+				fillOpacity: 0.8
+			}).addTo(map);
+
+			marker.bindPopup(`
+				<div class="p-2">
+					<h6 class="mb-1">${proyecto.nombre}</h6>
+					<p class="mb-1 small text-muted">${proyecto.tipo} - ${proyecto.instrumento}</p>
+					<div class="progress mb-2" style="height: 5px;">
+						<div class="progress-bar" style="width: ${proyecto.avance}%; background-color: ${statusColors[proyecto.status]}"></div>
+					</div>
+					<small>Avance: ${proyecto.avance}%</small>
+				</div>
+			`);
+		});
+
+		// Store map reference globally
+		window.proyectosMap = map;
+	}
+
+	function initializeDataTable() {
+		const table = $('#lineasAccionTable').DataTable({
+			data: lineasAccionData,
+			columns: [
+				{ data: 'id' },
+				{ data: 'instrumento' },
+				{ data: 'linea' },
+				{ data: 'unidad' },
+				{
+					data: 'estatus',
+					render: function (data) {
+						const badges = {
+							'iniciada': 'bg-secondary',
+							'en-progreso': 'bg-warning',
+							'completada': 'bg-success',
+							'pausada': 'bg-danger'
+						};
+						const labels = {
+							'iniciada': 'Iniciada',
+							'en-progreso': 'En Progreso',
+							'completada': 'Completada',
+							'pausada': 'Pausada'
+						};
+						return `<span class="badge ${badges[data]} text-white">${labels[data]}</span>`;
+					}
+				}, {
+					data: 'avance',
+					render: function (data) {
+						const color = data >= 80 ? 'success' : data >= 50 ? 'warning' : 'danger';
+						return `
+						<div class="snier-progress-enhanced">
+							<div class="snier-progress-bar bg-${color}" style="width: ${data}%">${data}%</div>
+						</div>
+					`;
+					}
+				},
+				{
+					data: 'fechaActualizacion',
+					render: function (data) {
+						return new Date(data).toLocaleDateString('es-MX');
+					}
+				},
+				{
+					data: null,
+					render: function (data, type, row) {
+						return `
+							<div class="btn-group btn-group-sm">
+								<button class="btn btn-outline-primary" onclick="verDetalle(${row.id})" title="Ver detalle">
+									<i class="bi bi-eye"></i>
+								</button>
+								<button class="btn btn-outline-success" onclick="descargarEvidencia('${row.evidencia}')" title="Descargar evidencia">
+									<i class="bi bi-download"></i>
+								</button>
+							</div>
+						`;
+					}
+				}
+			],
+			language: {
+				url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
+			},
+			responsive: true,
+			pageLength: 10,
+			order: [[0, 'asc']]
+		});
+
+		// Store table reference globally
+		window.lineasAccionTable = table;
+	}
+
+	function setupEventHandlers() {
+		// Filtros de instrumentos
+		$('[data-instrument]').click(function () {
+			$('[data-instrument]').removeClass('active');
+			$(this).addClass('active');
+			const instrument = $(this).data('instrument');
+			filterByInstrument(instrument);
+		});
+
+		// Filtros de mapa
+		$('[data-map-filter]').click(function () {
+			$('[data-map-filter]').removeClass('active');
+			$(this).addClass('active');
+			const filter = $(this).data('map-filter');
+			filterMapProjects(filter);
+		});
+	}
+
+	function filterByInstrument(instrument) {
+		if (instrument === 'all') {
+			window.lineasAccionTable.search('').draw();
+		} else {
+			window.lineasAccionTable.column(1).search(instrument).draw();
+		}
+	}
+
+	function filterMapProjects(filter) {
+		// Implementar filtrado del mapa según el estado del proyecto
+		console.log('Filtering map by:', filter);
+	}
+
+	function aplicarFiltros() {
+		const instrumento = $('#filtroInstrumento').val();
+		const estatus = $('#filtroEstatus').val();
+		const unidad = $('#filtroUnidad').val();
+
+		let searchTerms = [];
+		if (instrumento) searchTerms.push(instrumento);
+		if (estatus) searchTerms.push(estatus);
+		if (unidad) searchTerms.push(unidad);
+
+		window.lineasAccionTable.search(searchTerms.join(' ')).draw();
+		$('#filtrosModal').modal('hide');
+	}
+
+	function verDetalle(id) {
+		const linea = lineasAccionData.find(l => l.id === id);
+		const content = `
+			<div class="row">
+				<div class="col-md-6">
+					<h6>Información General</h6>
+					<table class="table table-sm">
+						<tr><td><strong>Instrumento:</strong></td><td>${linea.instrumento}</td></tr>
+						<tr><td><strong>Unidad Responsable:</strong></td><td>${linea.unidad}</td></tr>
+						<tr><td><strong>Estatus:</strong></td><td>${linea.estatus}</td></tr>
+						<tr><td><strong>Avance:</strong></td><td>${linea.avance}%</td></tr>
+					</table>
+				</div>
+				<div class="col-md-6">
+					<h6>Seguimiento</h6>
+					<div class="progress mb-2">
+						<div class="progress-bar" style="width: ${linea.avance}%">${linea.avance}%</div>
+					</div>
+					<p><strong>Última actualización:</strong> ${new Date(linea.fechaActualizacion).toLocaleDateString('es-MX')}</p>
+					<a href="${linea.evidencia}" class="btn btn-sm btn-primary" target="_blank">
+						<i class="bi bi-download me-1"></i>Descargar Evidencia
+					</a>
+				</div>
+			</div>
+			<hr>
+			<h6>Descripción de la Línea de Acción</h6>
+			<p>${linea.linea}</p>
+		`;
+		$('#detalleLineaContent').html(content);
+		$('#detalleLineaModal').modal('show');
+	}
+
+	function descargarEvidencia(url) {
+		window.open(url, '_blank');
+	}
+
+	function exportarLineasAccion() {
+		// Implementar exportación a Excel/PDF
+		alert('Funcionalidad de exportación en desarrollo');
+	}
+</script>

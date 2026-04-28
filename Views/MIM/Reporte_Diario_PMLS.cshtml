@@ -1,0 +1,2066 @@
+@model Mep
+
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+	var httpContext = HttpContextAccessor.HttpContext;
+	var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+	var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+	// Utilizar los datos del usuario para personalizar la vista
+	ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+	ViewData["RolUsuario"] = perfilUsuario.Rol;
+	ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+
+
+@{
+	ViewData["Title"] = "Reporte Diario de Precios Marginales Locales (PMLs)";
+}
+
+<div class="text-center">
+	<h4 class="cp-section cp-grouping-section">
+		<img src="/img/Electricidad.png" alt="Icono personalizado" class="iconomenu" />
+		@ViewData["Title"]
+	</h4>
+</div>
+
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+	aria-label="breadcrumb" style="padding-left:15px">
+	<ol class="breadcrumb lp-5">
+		<li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+		@* <li class="breadcrumb-item"><a href="@Url.Action("Hidrocarburos", "Home" )">Sector Petróleo y Gas</a></li>*@
+		<li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+	</ol>
+</nav>
+<button id="btnProbarConexion">Probar Conexión</button>
+<div id="resultadoConexion"></div>
+@*Sección que Despliega el Mapa Inicial*@
+
+
+
+
+<div class="container">
+
+	@* PMLS PROMEDIO *@
+	@* <div class="row">
+		<div class="col-md-12">
+
+			<h3 class="subtitulo">
+				PML Promedio
+			</h3>
+
+			<div class="row p-3">
+				<div class="col-md-4">
+					<h5>
+						SIN
+					</h5>
+					<div class="card app-card app-card-stat shadow-sm">
+						<h5 class="card-header">
+							$1,2000 $/MWh
+						</h5>
+						<div class="card-body">
+							<p class="card-text">
+								Card content
+							</p>
+						</div>
+						<div class="card-footer">
+							25% $234MXN
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-12 p-3">
+							<div id="candlestickChart" style="width: 100%; height: 400px;"></div>
+
+						</div>
+					</div>
+				</div>
+				<div class="col-md-4">
+					<h5>
+						BCA
+					</h5>
+					<div class="card app-card app-card-stat shadow-sm">
+						<h5 class="card-header">
+							$1,2000 $/MWh
+						</h5>
+						<div class="card-body">
+							<p class="card-text">
+								Card content
+							</p>
+						</div>
+						<div class="card-footer">
+							25% $234MXN
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-12 p-3">
+							<div id="candlestickChart" style="width: 100%; height: 400px;"></div>
+						</div>
+					</div>
+				</div>
+				<div class="col-md-4">
+					<h5>
+						BCS
+					</h5>
+					<div class="card app-card app-card-stat shadow-sm">
+						<h5 class="card-header">
+							$1,2000 $/MWh
+						</h5>
+						<div class="card-body">
+							<p class="card-text">
+								Card content
+							</p>
+						</div>
+						<div class="card-footer">
+							25% $234MXN
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-12">
+							<div id="candlestickChart" style="width: 100%; height: 400px;"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div> *@
+	@* PML PROMEDIO HORARIO *@
+	@* <div class="row pt-5">
+		<div class="col-md-12">
+			<h3 class="subtitulo">
+				PML PROMEDIO HORARIO
+			</h3>
+			<p class="pt-3">
+				En la siguiente grafica se muestran los PMLS de cada Zona de Potencia <strong>a lo largo del
+					día</strong>.
+			<div class="row">
+				<div class="col-md-4">
+					<h5>
+						SIN
+					</h5>
+					<p>
+						Costo del precio marginal local en las últimas 24 hrs por MWh.
+					</p>
+					<div id="chartdiv4" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-4">
+					<h5>
+						BCA
+					</h5>
+					<p>
+						Costo del precio marginal local en las últimas 24 hrs por MWh.
+					</p>
+					<div id="chartdiv5" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-4">
+					<h5>
+						BCS
+					</h5>
+					<p>
+						Costo del precio marginal local en las últimas 24 hrs por MWh.
+					</p>
+					<div id="chartdiv6" style="width: 100%; height: 400px;"></div>
+				</div>
+			</div>
+		</div>
+	</div> *@
+
+	@* PML Máximo *@
+	@* <div class="row pt-5">
+		<div class="col-md-12">
+			<h3 class="subtitulo">
+				PML MÁXIMO
+			</h3>
+			<p class="pt-3">
+				Precios máximos de PML por Zona de Potencia.
+			</p>
+			<table class="pt-3 table">
+				<thead>
+					<tr>
+						<th>
+							#
+						</th>
+						<th>
+							Product
+						</th>
+						<th>
+							Payment Taken
+						</th>
+						<th>
+							Status
+						</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>
+							1
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							01/04/2012
+						</td>
+						<td>
+							Default
+						</td>
+					</tr>
+					<tr class="table-active">
+						<td>
+							1
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							01/04/2012
+						</td>
+						<td>
+							Approved
+						</td>
+					</tr>
+					<tr class="table-success">
+						<td>
+							2
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							02/04/2012
+						</td>
+						<td>
+							Declined
+						</td>
+					</tr>
+					<tr class="table-warning">
+						<td>
+							3
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							03/04/2012
+						</td>
+						<td>
+							Pending
+						</td>
+					</tr>
+					<tr class="table-danger">
+						<td>
+							4
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							04/04/2012
+						</td>
+						<td>
+							Call in to confirm
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div> *@
+
+	@* Margen de Capacidad *@
+	@* <div class="row pt-5">
+		<div class="col-md-12">
+			<h3 class="subtitulo">
+				Margen de Capacidad
+			</h3>
+			<p class="pt-3">
+				Margen de capacidad oferta promedio en MW.
+			</p>
+			<div class="row">
+				<div class="col-md-6">
+					<table class="table">
+						<thead>
+							<tr>
+								<th>
+									#
+								</th>
+								<th>
+									Product
+								</th>
+								<th>
+									Payment Taken
+								</th>
+								<th>
+									Status
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>
+									1
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									01/04/2012
+								</td>
+								<td>
+									Default
+								</td>
+							</tr>
+							<tr class="table-active">
+								<td>
+									1
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									01/04/2012
+								</td>
+								<td>
+									Approved
+								</td>
+							</tr>
+							<tr class="table-success">
+								<td>
+									2
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									02/04/2012
+								</td>
+								<td>
+									Declined
+								</td>
+							</tr>
+							<tr class="table-warning">
+								<td>
+									3
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									03/04/2012
+								</td>
+								<td>
+									Pending
+								</td>
+							</tr>
+							<tr class="table-danger">
+								<td>
+									4
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									04/04/2012
+								</td>
+								<td>
+									Call in to confirm
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+				<div class="col-md-6">
+					<table class="table">
+						<thead>
+							<tr>
+								<th>
+									#
+								</th>
+								<th>
+									Product
+								</th>
+								<th>
+									Payment Taken
+								</th>
+								<th>
+									Status
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>
+									1
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									01/04/2012
+								</td>
+								<td>
+									Default
+								</td>
+							</tr>
+							<tr class="table-active">
+								<td>
+									1
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									01/04/2012
+								</td>
+								<td>
+									Approved
+								</td>
+							</tr>
+							<tr class="table-success">
+								<td>
+									2
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									02/04/2012
+								</td>
+								<td>
+									Declined
+								</td>
+							</tr>
+							<tr class="table-warning">
+								<td>
+									3
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									03/04/2012
+								</td>
+								<td>
+									Pending
+								</td>
+							</tr>
+							<tr class="table-danger">
+								<td>
+									4
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									04/04/2012
+								</td>
+								<td>
+									Call in to confirm
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div> *@
+
+	@* Demanda *@
+	@* <div class="row pt-5">
+		<div class="col-md-12">
+			<div class="row">
+				<div class="col-md-12">
+				</div>
+			</div>
+			<h3 class="subtitulo">
+				DEMANDA PROMEDIO
+			</h3>
+			<div class="row ">
+				<div class="col-md-8">
+
+					<table class="table pt-3">
+						<thead>
+							<tr>
+								<th>
+									#
+								</th>
+								<th>
+									Product
+								</th>
+								<th>
+									Payment Taken
+								</th>
+								<th>
+									Status
+								</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>
+									1
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									01/04/2012
+								</td>
+								<td>
+									Default
+								</td>
+							</tr>
+							<tr class="table-active">
+								<td>
+									1
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									01/04/2012
+								</td>
+								<td>
+									Approved
+								</td>
+							</tr>
+							<tr class="table-success">
+								<td>
+									2
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									02/04/2012
+								</td>
+								<td>
+									Declined
+								</td>
+							</tr>
+							<tr class="table-warning">
+								<td>
+									3
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									03/04/2012
+								</td>
+								<td>
+									Pending
+								</td>
+							</tr>
+							<tr class="table-danger">
+								<td>
+									4
+								</td>
+								<td>
+									TB - Monthly
+								</td>
+								<td>
+									04/04/2012
+								</td>
+								<td>
+									Call in to confirm
+								</td>
+							</tr>
+						</tbody>
+					</table>
+					<div class="row">
+						<div class="col-md-4">
+							<div id="chartdiv6" style="width: 100%; height: 400px;"></div>
+						</div>
+						<div class="col-md-4">
+							<div id="chartdiv7" style="width: 100%; height: 400px;"></div>
+						</div>
+						<div class="col-md-4">
+							<div id="chartdiv8" style="width: 100%; height: 400px;"></div>
+						</div>
+					</div>
+				</div>
+				<div class="col-md-4">
+					<div class="row">
+						<div class="col-md-12">
+							<div id="chartdiv9" style="width: 100%; height: 400px;"></div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-12">
+							<div id="chartdiv10" style="width: 100%; height: 400px;"></div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-12">
+							<div id="chartdiv11" style="width: 100%; height: 400px;"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div> *@
+	@* Despacho *@
+	@* <div class="row pt-5">
+		<div class="col-md-12">
+			<h3 class="subtitulo">
+				Asignación y Despacho
+			</h3>
+			<p class="pt-3">
+				Asignación y despacho por zonas de potencia.
+			</p>
+			<div class="row">
+				<div class="col-md-4">
+					<h5>
+						SIN
+					</h5>
+					<div id="chartdiv12" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-4">
+					<h5>
+						BCA
+					</h5>
+					<div id="chartdiv13" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-4">
+					<h5>
+						BCS
+					</h5>
+
+					<div id="chartdiv14" style="width: 100%; height: 400px;"></div>
+
+				</div>
+			</div>
+		</div>
+	</div> *@
+	@* Zonas de Carga *@
+	<div class="row pt-5">
+		<div class="col-md-12">
+			<h3 class="subtitulo">
+				Precio Medio Ponderado por Zonas de Carga
+			</h3>
+
+			@*Menu*@
+			<div class="navbarmapag">
+				<a id="electricidad" class="icono-texto">
+					<img src="/img/precio.png" alt="Icono personalizado" class="iconomenu" />
+					<span>PMLS - Precio Medio Ponderado Por Zonas de Carga</span>
+
+					<div id="total_gn"></div>
+				</a>
+			</div>
+
+
+			<div class="row">
+				<div class="col">
+
+
+
+
+					<div class="search-container p-3">
+						<label class="form-label">Buscar en el Mapa:</label>
+						<input type="text" id="busquedaGeneralInput" class="form-control"
+							placeholder="Zona de Carga, Entidad Federativa o Municipio">
+						<div id="autocomplete-list" class="autocomplete-items"></div>
+						<!-- El resto de tu código -->
+
+						<button class="btn btn-cre-rojo-home" onclick="buscarGeneral()" style="width:10% !important"><i
+								class="bi bi-search"></i></button>
+					</div>
+
+
+					<div class="app-card-body p-4">
+						<div class="chart-container">
+							<div id="" class="app-card-body p-4">
+								<div id="map" class="p-3 bg"></div>
+
+								<br />
+								<div class="" id="grafico"></div>
+								@* <div class="" id="grafico2"></div> *@
+								<br />
+								<div class="table" id="tablaPrecios"></div>
+
+							</div>
+						</div>
+					</div>
+
+				</div>
+			</div>
+		</div>
+	</div>
+	@* Servicios Conexos *@
+	@* <div class="row pt-5">
+		<div class="col-md-12">
+			<h3 class="subtitulo">
+				SERVICIOS CONEXOS
+			</h3>
+
+			<div class="row">
+				<div class="col-md-4">
+					<div id="chartdiv15" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-4">
+					<div id="chartdiv16" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-4">
+					<div id="chartdiv17" style="width: 100%; height: 400px;"></div>
+				</div>
+			</div>
+		</div>
+	</div> *@
+	@* Reservas *@
+	@* <div class="row pt-5">
+		<div class="col-md-12">
+			<h3 class="subtitulo">
+				RESERVAS
+			</h3>
+			<p class="pt-3">
+				Asignación de reservas por zonas de potencia.
+			</p>
+			<div class="row">
+				<div class="col-md-6">
+					<div id="chartdiv18" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-6">
+					<div id="chartdiv19" style="width: 100%; height: 400px;"></div>>
+				</div>
+			</div>
+			<div class="row">
+				<div class="col-md-6">
+					<div id="chartdiv20" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-6">
+					<div id="chartdiv21" style="width: 100%; height: 400px;"></div>
+				</div>
+			</div>
+			<div class="row">
+				<div class="col-md-6">
+					<div id="chartdiv22" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-6">
+					<div id="chartdiv23" style="width: 100%; height: 400px;"></div>
+				</div>
+			</div>
+		</div>
+	</div> *@
+	@* Indice de Precios de Combustibles *@
+	@* <div class="row pt-5">
+		<div class="col-md-12">
+			<h3 claass="subtitulo">
+				Indice de Precios de Combustibles
+			</h3>
+			<div id="chartdiv24" style="width: 100%; height: 400px;"></div>
+			<table class="table pt-3">
+				<thead>
+					<tr>
+						<th>
+							#
+						</th>
+						<th>
+							Product
+						</th>
+						<th>
+							Payment Taken
+						</th>
+						<th>
+							Status
+						</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>
+							1
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							01/04/2012
+						</td>
+						<td>
+							Default
+						</td>
+					</tr>
+					<tr class="table-active">
+						<td>
+							1
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							01/04/2012
+						</td>
+						<td>
+							Approved
+						</td>
+					</tr>
+					<tr class="table-success">
+						<td>
+							2
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							02/04/2012
+						</td>
+						<td>
+							Declined
+						</td>
+					</tr>
+					<tr class="table-warning">
+						<td>
+							3
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							03/04/2012
+						</td>
+						<td>
+							Pending
+						</td>
+					</tr>
+					<tr class="table-danger">
+						<td>
+							4
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							04/04/2012
+						</td>
+						<td>
+							Call in to confirm
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div> *@
+	@* Importaciones y Exportaciones *@
+	@* <div class="row pt-5">
+		<div class="col-md-12">
+			<h3 class="subtitulo">
+				Importaciones y Exportaciones
+			</h3>
+
+			<table class="table">
+				<thead>
+					<tr>
+						<th>
+							#
+						</th>
+						<th>
+							Product
+						</th>
+						<th>
+							Payment Taken
+						</th>
+						<th>
+							Status
+						</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>
+							1
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							01/04/2012
+						</td>
+						<td>
+							Default
+						</td>
+					</tr>
+					<tr class="table-active">
+						<td>
+							1
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							01/04/2012
+						</td>
+						<td>
+							Approved
+						</td>
+					</tr>
+					<tr class="table-success">
+						<td>
+							2
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							02/04/2012
+						</td>
+						<td>
+							Declined
+						</td>
+					</tr>
+					<tr class="table-warning">
+						<td>
+							3
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							03/04/2012
+						</td>
+						<td>
+							Pending
+						</td>
+					</tr>
+					<tr class="table-danger">
+						<td>
+							4
+						</td>
+						<td>
+							TB - Monthly
+						</td>
+						<td>
+							04/04/2012
+						</td>
+						<td>
+							Call in to confirm
+						</td>
+					</tr>
+				</tbody>
+			</table>
+			<div id="chartdiv25" style="width: 100%; height: 400px;"></div>
+			<div class="row">
+				<div class="col-md-4">
+					<div id="chartdiv26" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-4">
+					<div id="chartdiv27" style="width: 100%; height: 400px;"></div>
+				</div>
+				<div class="col-md-4">
+					<div id="chartdiv28" style="width: 100%; height: 400px;"></div>
+				</div>
+			</div>
+		</div>
+	</div> *@
+</div>
+
+
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+
+
+@*Ductos*@
+@*Petrolíferos*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_petroliferos_4326_0.js"></script>
+@*Gas L.P.*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_glp_4326_0.js"></script>
+
+@section scripts {
+
+	@* Grafico de velas *@
+	<script>
+		// Crear el gráfico
+		// Function to generate a sample set of Candlestick datapoints
+		function generateCandlestickData() {
+			return [
+				{
+					time: "2018-10-19",
+					open: 180.34,
+					high: 180.99,
+					low: 178.57,
+					close: 179.85,
+				},
+				{
+					time: "2018-10-22",
+					open: 180.82,
+					high: 181.4,
+					low: 177.56,
+					close: 178.75,
+				},
+				{
+					time: "2018-10-23",
+					open: 175.77,
+					high: 179.49,
+					low: 175.44,
+					close: 178.53,
+				},
+				{
+					time: "2018-10-24",
+					open: 178.58,
+					high: 182.37,
+					low: 176.31,
+					close: 176.97,
+				},
+				{
+					time: "2018-10-25",
+					open: 177.52,
+					high: 180.5,
+					low: 176.83,
+					close: 179.07,
+				},
+				{
+					time: "2018-10-26",
+					open: 176.88,
+					high: 177.34,
+					low: 170.91,
+					close: 172.23,
+				},
+				{
+					time: "2018-10-29",
+					open: 173.74,
+					high: 175.99,
+					low: 170.95,
+					close: 173.2,
+				},
+				{
+					time: "2018-10-30",
+					open: 173.16,
+					high: 176.43,
+					low: 172.64,
+					close: 176.24,
+				},
+				{
+					time: "2018-10-31",
+					open: 177.98,
+					high: 178.85,
+					low: 175.59,
+					close: 175.88,
+				},
+				{
+					time: "2018-11-01",
+					open: 176.84,
+					high: 180.86,
+					low: 175.9,
+					close: 180.46,
+				},
+				{
+					time: "2018-11-02",
+					open: 182.47,
+					high: 183.01,
+					low: 177.39,
+					close: 179.93,
+				},
+				{
+					time: "2018-11-05",
+					open: 181.02,
+					high: 182.41,
+					low: 179.3,
+					close: 182.19,
+				},
+				{
+					time: "2018-11-06",
+					open: 181.93,
+					high: 182.65,
+					low: 180.05,
+					close: 182.01,
+				},
+				{
+					time: "2018-11-07",
+					open: 183.79,
+					high: 187.68,
+					low: 182.06,
+					close: 187.23,
+				},
+				{
+					time: "2018-11-08",
+					open: 187.13,
+					high: 188.69,
+					low: 185.72,
+					close: 188.0,
+				},
+				{
+					time: "2018-11-09",
+					open: 188.32,
+					high: 188.48,
+					low: 184.96,
+					close: 185.99,
+				},
+				{
+					time: "2018-11-12",
+					open: 185.23,
+					high: 186.95,
+					low: 179.02,
+					close: 179.43,
+				},
+				{
+					time: "2018-11-13",
+					open: 177.3,
+					high: 181.62,
+					low: 172.85,
+					close: 179.0,
+				},
+				{
+					time: "2018-11-14",
+					open: 182.61,
+					high: 182.9,
+					low: 179.15,
+					close: 179.9,
+				},
+				{
+					time: "2018-11-15",
+					open: 179.01,
+					high: 179.67,
+					low: 173.61,
+					close: 177.36,
+				},
+				{
+					time: "2018-11-16",
+					open: 173.99,
+					high: 177.6,
+					low: 173.51,
+					close: 177.02,
+				},
+				{
+					time: "2018-11-19",
+					open: 176.71,
+					high: 178.88,
+					low: 172.3,
+					close: 173.59,
+				},
+				{
+					time: "2018-11-20",
+					open: 169.25,
+					high: 172.0,
+					low: 167.0,
+					close: 169.05,
+				},
+				{
+					time: "2018-11-21",
+					open: 170.0,
+					high: 170.93,
+					low: 169.15,
+					close: 169.3,
+				},
+				{
+					time: "2018-11-23",
+					open: 169.39,
+					high: 170.33,
+					low: 168.47,
+					close: 168.85,
+				},
+				{
+					time: "2018-11-26",
+					open: 170.2,
+					high: 172.39,
+					low: 168.87,
+					close: 169.82,
+				},
+				{
+					time: "2018-11-27",
+					open: 169.11,
+					high: 173.38,
+					low: 168.82,
+					close: 173.22,
+				},
+				{
+					time: "2018-11-28",
+					open: 172.91,
+					high: 177.65,
+					low: 170.62,
+					close: 177.43,
+				},
+				{
+					time: "2018-11-29",
+					open: 176.8,
+					high: 177.27,
+					low: 174.92,
+					close: 175.66,
+				},
+				{
+					time: "2018-11-30",
+					open: 175.75,
+					high: 180.37,
+					low: 175.11,
+					close: 180.32,
+				},
+				{
+					time: "2018-12-03",
+					open: 183.29,
+					high: 183.5,
+					low: 179.35,
+					close: 181.74,
+				},
+				{
+					time: "2018-12-04",
+					open: 181.06,
+					high: 182.23,
+					low: 174.55,
+					close: 175.3,
+				},
+				{
+					time: "2018-12-06",
+					open: 173.5,
+					high: 176.04,
+					low: 170.46,
+					close: 175.96,
+				},
+				{
+					time: "2018-12-07",
+					open: 175.35,
+					high: 178.36,
+					low: 172.24,
+					close: 172.79,
+				},
+				{
+					time: "2018-12-10",
+					open: 173.39,
+					high: 173.99,
+					low: 167.73,
+					close: 171.69,
+				},
+				{
+					time: "2018-12-11",
+					open: 174.3,
+					high: 175.6,
+					low: 171.24,
+					close: 172.21,
+				},
+				{
+					time: "2018-12-12",
+					open: 173.75,
+					high: 176.87,
+					low: 172.81,
+					close: 174.21,
+				},
+			];
+		}
+		// Create the Lightweight Chart within the container element
+		const chart = LightweightCharts.createChart(
+			document.getElementById('candlestickChart')
+		);
+
+		// Generate sample data to use within a candlestick series
+		const candleStickData = generateCandlestickData();
+
+		// Create the Main Series (Candlesticks)
+		const mainSeries = chart.addCandlestickSeries();
+		// Set the data for the Main Series
+		mainSeries.setData(candleStickData);
+		// Adding a window resize event handler to resize the chart when
+		// the window size changes.
+		// Note: for more advanced examples (when the chart doesn't fill the entire window)
+		// you may need to use ResizeObserver -> https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver
+		window.addEventListener('resize', () => {
+			chart.resize(window.innerWidth, window.innerHeight);
+		});
+
+	</script>
+
+	@* Graficos Armcharts *@
+
+	<script>
+
+		function createLineChart(chartId, chartData) {
+			am4core.ready(function () {
+
+				// Crear instancia de gráfico
+				var chart = am4core.create(chartId, am4charts.XYChart);
+
+				// Añadir datos
+				chart.data = chartData;
+
+				// Crear ejes
+				var dateAxis = chart.xAxes.push(new am4charts.DateAxis());
+				var valueAxis = chart.yAxes.push(new am4charts.ValueAxis());
+
+				// Crear series
+				var series = chart.series.push(new am4charts.LineSeries());
+				series.dataFields.valueY = "value";
+				series.dataFields.dateX = "date";
+				series.tooltipText = "{value}"
+
+				series.tooltip.pointerOrientation = "vertical";
+
+				// Hacer que el gráfico sea más dinámico
+				chart.cursor = new am4charts.XYCursor();
+				chart.cursor.snapToSeries = series;
+				chart.cursor.xAxis = dateAxis;
+
+				// Activar los temas animados
+				chart.scrollbarY = new am4core.Scrollbar();
+				chart.scrollbarX = new am4core.Scrollbar();
+
+			}); // fin de am4core.ready()
+		}
+
+		// Datos para el primer gráfico
+		var data1 = [{
+			"date": "2021-01-01",
+			"value": 50
+		}, {
+			"date": "2021-01-02",
+			"value": 53
+		}, {
+			"date": "2021-01-03",
+			"value": 56
+		}]
+
+		// Datos para el segundo gráfico
+		var data2 = [{
+			"date": "2021-02-01",
+			"value": 60
+		}, {
+			"date": "2021-02-02",
+			"value": 65
+		}, {
+			"date": "2021-02-03",
+			"value": 68
+		}];
+
+		// Crear gráficos
+		createLineChart("chartdiv1", data1);
+		createLineChart("chartdiv2", data2);
+		createLineChart("chartdiv3", data1);
+		createLineChart("chartdiv4", data2);
+		createLineChart("chartdiv5", data1);
+		createLineChart("chartdiv6", data2);
+		createLineChart("chartdiv7", data1);
+		createLineChart("chartdiv8", data2);
+		createLineChart("chartdiv9", data1);
+		createLineChart("chartdiv10", data2);
+		createLineChart("chartdiv11", data1);
+
+		createLineChart("chartdiv12", data1);
+		createLineChart("chartdiv13", data1);
+		createLineChart("chartdiv14", data1);
+		createLineChart("chartdiv15", data1);
+		createLineChart("chartdiv16", data1);
+		createLineChart("chartdiv17", data1);
+
+		createLineChart("chartdiv18", data1);
+		createLineChart("chartdiv19", data1);
+		createLineChart("chartdiv20", data1);
+		createLineChart("chartdiv21", data1);
+		createLineChart("chartdiv22", data1);
+		createLineChart("chartdiv23", data1);
+		createLineChart("chartdiv24", data1);
+		createLineChart("chartdiv25", data1);
+		createLineChart("chartdiv26", data1);
+		createLineChart("chartdiv27", data1);
+		createLineChart("chartdiv28", data1);
+	</script>
+
+
+	@*Campos Visbles de los popup*@
+	<script>
+		//Busqueda
+		var availableTerms = [];//Variable global para almacenar los terminos de búqueda Sugerencia de Terminos
+		var datosExpendios = []; // variable global para almacenar todos los expendios de Petrolíferos
+		var camposVisiblesGlobal = [];
+		var datosExpendiosAcumulados = [];
+		let tpet = 0;
+		let tglp = 0;
+		let tgn = 0;
+		let te = 0;
+		var tpetg = [];
+		var tglpg = [];
+		var tgng = [];
+		let teg = [];
+	</script>
+
+
+	@*Configuraciones del Mapa Inicial*@
+	<script type="text/javascript">
+
+
+		var map = L.map('map', {
+			zoomControl: true,
+			maxZoom: 28,
+			minZoom: 5
+		}).fitBounds([
+			[16.515297504744552, -116.01198143543994],
+			[31.280203931152798, -90.79533052556764]
+		]);
+
+		var hash = new L.Hash(map);
+		map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+		var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+		var bounds_group = new L.featureGroup([]);
+		function setBounds() {
+		}
+
+		// Crea los Iconos y Define su tamaño
+		var iconoBase = L.Icon.extend({
+			options: {
+				iconSize: [36, 36],
+				iconAnchor: [18, 16],
+				popupAnchor: [0, -26]
+			}
+		});
+
+		// Asignación de Iconos
+		//var iconoSolicitudes = new iconoBase({ iconUrl: '/img/Solicitudes.png' });
+		//iconoAprobado = new iconoBase({ iconUrl: '/img/Aprobado.png' });
+		//iconoNoaprobado = new iconoBase({ iconUrl: '/img/NoAprobado.png' });
+
+
+		var currentMarker = null; // Referencia al marcador actual
+		// var seleccionado = 'estado'; // Estado inicial
+		var municipiosFiltrados = null;
+
+
+
+		//Colores
+		var initialStyle = {
+			color: '#187A8C', // Color de línea
+			fillColor: '#187A8C', // Color de relleno
+			fillOpacity: 0.3, // Opacidad del relleno
+			weight: 3 // Ancho de la línea
+		};
+
+		// Estilo para el hover
+		var highlightStyle = {
+			color: '#FFDB2EC',
+			fillColor: '#FFDB2E', // Color de relleno
+			fillOpacity: 0.3, // Opacidad del relleno
+			weight: 3
+		};
+
+		// Capa de estados
+		var estadosLayer = L.geoJSON(estados, {
+			style: initialStyle, // Aplicar estilo inicial
+			onEachFeature: function (feature, layer) {
+				layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOMGEO + '</div>');
+				layer.on('click', function (e) {
+					cargarMunicipios(feature.properties.CVE_ENT);
+					map.fitBounds(layer.getBounds()); // Centra el mapa en el estado
+				});
+				// Efecto de hover
+				layer.on('mouseover', function (e) {
+					layer.setStyle(highlightStyle);
+				});
+				layer.on('mouseout', function (e) {
+					estadosLayer.resetStyle(layer);
+				});
+			}
+		}).addTo(map);
+
+		// Capa de municipios (inicialmente vacía)
+		var municipiosLayer = L.geoJSON(null, {
+			style: initialStyle, // Aplicar estilo inicial
+			onEachFeature: onEachMunicipio
+		}).addTo(map);
+
+		function onEachMunicipio(feature, layer) {
+			layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOM_MUN + ', ' + feature.properties.NOMGEO + '</div>');
+			// Efecto de hover
+			layer.on('mouseover', function (e) {
+				layer.setStyle(highlightStyle);
+			});
+			layer.on('mouseout', function (e) {
+				municipiosLayer.resetStyle(layer);
+			});
+
+		}
+
+		// Función para cargar los municipios correspondientes a un estado
+		function cargarMunicipios(cveEnt) {
+			municipiosLayer.clearLayers();
+
+			if (currentMarker) {
+				map.removeLayer(currentMarker);
+				currentMarker = null;
+			}
+
+			municipiosFiltrados = {
+				type: "FeatureCollection",
+				features: municipios_mapa.features.filter(function (feature) {
+					return feature.properties.CVE_ENT === cveEnt;
+				})
+			};
+
+			municipiosLayer.addData(municipiosFiltrados);
+		}
+
+		//Búsquedas
+		//Busquedas
+		var lastSearchedEstadoLayer = null; // para almacenar la última entidad federativa buscada
+		var lastSearchedMunicipioLayer = null; // para almacenar el último municipio buscado
+
+
+		function buscarGeneral() {
+			var terminoBuscado = document.getElementById('busquedaGeneralInput').value.trim();
+
+			if (!terminoBuscado) {
+				alert("Por favor, introduce un término de búsqueda.");
+				return;  // Termina la ejecución de la función si el campo está vacío
+			}
+
+			// Intenta buscar por número de permiso primero
+			var encontrado = false;
+			for (var i = 0; i < datosExpendios.length; i++) {
+				var expendio = datosExpendios[i];
+				if (expendio.numeroPermiso === terminoBuscado) {
+					var lat = expendio.latitudGeo;
+					var lon = expendio.longitudGeo;
+					map.setView([lat, lon], 17);
+					encontrado = true;
+					break;
+				}
+			}
+
+			// Si no se encontró por número de permiso, busca por entidad federativa
+			if (!encontrado) {
+				estadosLayer.eachLayer(function (layer) {
+					if (layer.feature.properties.NOMGEO === terminoBuscado) {
+						map.fitBounds(layer.getBounds());
+
+						// Si ya había una entidad federativa buscada anteriormente, restablecemos su estilo
+						if (lastSearchedEstadoLayer) {
+							estadosLayer.resetStyle(lastSearchedEstadoLayer);
+						}
+
+						// Resalta la entidad federativa encontrada
+						layer.setStyle({
+							color: '#FF0000',
+							fillColor: '#FF0000',
+							fillOpacity: 0.5
+						});
+
+						lastSearchedEstadoLayer = layer;
+
+						// Reiniciar el estilo de la entidad después de 5 segundos
+						setTimeout(function () {
+							estadosLayer.resetStyle(lastSearchedEstadoLayer);
+							lastSearchedEstadoLayer = null;
+						}, 5000);
+
+						encontrado = true;
+					}
+				});
+			}
+
+			// Si aún no se encontró, busca por municipio en la fuente de datos completa
+			if (!encontrado) {
+				// Divide el término de búsqueda en municipio y estado
+				var terminos = terminoBuscado.split(',');
+				var buscadoMunicipio = terminos[0].trim();
+				var buscadoEstado = terminos.length > 1 ? terminos[1].trim() : '';
+
+
+				for (var i = 0; i < municipios_mapa.features.length; i++) {
+					var municipio = municipios_mapa.features[i];
+					var nombreMunicipio = municipio.properties.NOM_MUN;
+					var nombreEstado = municipio.properties.NOMGEO;
+
+					// Comprueba si el nombre del municipio y del estado coinciden con el término de búsqueda
+					if (nombreMunicipio === buscadoMunicipio && (buscadoEstado === '' || nombreEstado === buscadoEstado)) {
+						var bounds = L.geoJSON(municipio).getBounds();
+						map.fitBounds(bounds);
+
+						// Si ya había un municipio buscado anteriormente, lo elimina
+						if (lastSearchedMunicipioLayer) {
+							map.removeLayer(lastSearchedMunicipioLayer);
+						}
+
+						// Agrega el municipio encontrado al mapa y lo resalta
+						lastSearchedMunicipioLayer = L.geoJSON(municipio, {
+							style: {
+								color: '#FF0000',
+								fillColor: '#FF0000',
+								fillOpacity: 0.5
+							}
+						}).addTo(map);
+
+						// Reiniciar el estilo y eliminar el municipio después de 5 segundos
+						setTimeout(function () {
+							map.removeLayer(lastSearchedMunicipioLayer);
+							lastSearchedMunicipioLayer = null;
+						}, 5000);
+
+						encontrado = true;
+						break;
+					}
+				}
+			}
+
+
+			if (!encontrado) {
+				alert("Término no encontrado.");
+			}
+
+
+
+
+		}
+
+		map.createPane('pane_GoogleSatellite_0');
+		map.getPane('pane_GoogleSatellite_0').style.zIndex = 0;
+		var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+			pane: 'pane_GoogleSatellite_0',
+			opacity: 1.0,
+			attribution: '<a href="https://www.google.at/permissions/geoguidelines/attr-guide.html">Map data ©2015 Google</a>',
+			minZoom: 1,
+			maxZoom: 28,
+			minNativeZoom: 0,
+			maxNativeZoom: 20
+		});
+
+		//Configura los Base Layers
+		var baseLayers = {
+			"OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+				attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+			}),
+			"Vista Satélite": layer_GoogleSatellite_0
+		};
+
+		// Control de capas para seleccionar la vista del mapa
+		L.control.layers(baseLayers).addTo(map);
+
+		// Activa una capa de mosaicos como vista inicial
+		baseLayers["OpenStreetMap"].addTo(map);
+
+
+		@*Herramientas Mapa*@
+
+			// Redibujar la capa cuando se seleccione
+			map.on('baselayerchange', function (eventLayer) {
+				if (eventLayer.name === "Vista Satélite") {
+					layer_GoogleSatellite_0.redraw();
+				}
+			});
+
+		L.control.scale().addTo(map); // Agregar la escala gráfica al mapa
+
+		//ZOOM
+		var resetZoomControl = L.control({ position: 'topleft' });
+
+		resetZoomControl.onAdd = function (map) {
+			var div = L.DomUtil.create('div', 'reset-zoom-control');
+			div.innerHTML = '<button class="btn btn-cre-rojo-home" onclick="resetZoom()"><i class="bi bi-house-door"></i></button>';
+			return div;
+		};
+
+		resetZoomControl.addTo(map);
+
+		function resetZoom() {
+			map.setView([24.572503, -101.768257], 5);
+		}
+		/////////////DISTANCIAS/////////////////////
+		// Configura las opciones de dibujo
+		var drawControl = new L.Control.Draw({
+			draw: {
+				polygon: false,
+				polyline: true,
+				rectangle: false,
+				circle: false,
+				marker: false,
+				circlemarker: false
+			},
+			edit: false
+		});
+
+		map.addControl(drawControl);
+
+		// Cuando se dibuja una línea, calcula la distancia
+		map.on('draw:created', function (e) {
+			var type = e.layerType,
+				layer = e.layer;
+
+			if (type === 'polyline') {
+				var latlngs = layer.getLatLngs();
+				var distance = 0;
+				for (var i = 1; i < latlngs.length; i++) {
+					distance += latlngs[i - 1].distanceTo(latlngs[i]);
+				}
+				// Convertir la distancia a km y redondear a 2 decimales
+				distance = Math.round((distance / 1000) * 100) / 100;
+				// Crear un popup con la distancia
+				layer.bindPopup('Distancia: ' + distance + ' km').openPopup();
+				// Añadir la línea al mapa
+				layer.addTo(map);
+			}
+		});
+
+
+	</script>
+
+	@*Funciones de los botones y del Mapa*@
+	<script>
+
+
+		function limpiarMarcadores() {
+			// Limpiar todas las capas de marcadores y círculos
+			map.eachLayer(function (layer) {
+				if (layer instanceof L.Marker || layer instanceof L.MarkerClusterGroup || layer instanceof L.Circle) {
+					map.removeLayer(layer);
+				}
+			});
+
+
+		}
+		function handleNull(value) {
+			return value ? value : "S/D-Sin Dato";
+		}
+		Highcharts.setOptions({
+			lang: {
+				decimalPoint: '.',
+				thousandsSep: ','
+			}
+		});
+
+
+		function CargaReporteDiarioPMLS() {
+			//Campo de busqueda
+			// Reiniciando availableTerms y las demas variables
+			availableTerms = [];
+			datosExpendios = [];
+
+			camposVisiblesGlobal = [];
+			totalpermisos = 0;
+
+			// Asignando a la búsqueda de términos
+			estadosLayer.eachLayer(function (layer) {
+				if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+					availableTerms.push(layer.feature.properties.NOMGEO);
+				}
+			});
+
+			for (var i = 0; i < municipios_mapa.features.length; i++) {
+				var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+				var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+				// Asegúrate de que ambas propiedades existen antes de concatenar
+				if (municipio && estado) {
+					var nombreCompleto = municipio + ", " + estado;
+					availableTerms.push(nombreCompleto);
+				}
+			}
+			return new Promise((resolve, reject) => {
+				$.ajax({
+					url: '/MIM/GetRD_PMLS',
+					type: 'GET', // Cambiado de POST a GET
+					success: function (response) {
+						console.log("Datos del Reporte Diario de PMLS", response);
+						resolve(response);
+
+
+
+						//Guardo los terminos en la  búsqueda
+						for (var i = 0; i < datosExpendios.length; i++) {
+							availableTerms.push(datosExpendios[i].nombreZonaCarga);
+							datosExpendiosAcumulados.push(datosExpendios[i].nombreZonaCarga);
+						}
+
+						//******Tarjetas Totales******///
+
+						// Contar el número total de elementos en el array 'response'
+						var totalElementos = response.length;
+						tgn = response.length;
+						tgng = response;
+						// Formatear el número con separadores de miles
+						var totalFormateado = totalElementos.toLocaleString();
+
+						console.log("Total de elementos en 'response' formateado:", totalFormateado);
+
+						// Mostrar este total formateado en el elemento span
+						var totalPetroliferos = document.getElementById('total_gn');
+						totalPetroliferos.textContent = "Total de PML's: " + totalFormateado;
+
+						//al mapa
+						var respuesta = response;
+
+						// Crea un grupo de marcadores con Leaflet.markercluster
+						// var markers = L.markerClusterGroup();
+
+
+
+
+
+						// Definir los íconos personalizados
+						var greenIcon = new L.Icon({
+							iconUrl: '/img/nodoverde.png',
+							iconSize: [36, 36],
+							iconAnchor: [18, 36],
+							popupAnchor: [0, -36]
+						});
+
+						var yellowIcon = new L.Icon({
+							iconUrl: '/img/nodoamarillo.png',
+							iconSize: [36, 36],
+							iconAnchor: [18, 36],
+							popupAnchor: [0, -36]
+						});
+						var orangeIcon = new L.Icon({
+							iconUrl: '/img/nodonaranja.png',
+							iconSize: [36, 36],
+							iconAnchor: [18, 36],
+							popupAnchor: [0, -36]
+						});
+
+						var redIcon = new L.Icon({
+							iconUrl: '/img/nodorojo.png',
+							iconSize: [36, 36],
+							iconAnchor: [18, 36],
+							popupAnchor: [0, -36]
+						});
+
+						// Define el icono personalizado
+						var iconoNodo = new L.Icon({
+							iconUrl: '/img/nodo.png',
+							iconSize: [36, 36],
+							iconAnchor: [18, 36],
+							popupAnchor: [0, -36]
+						});
+						// Función para determinar el ícono basado en el precio
+						function getIconoPorPrecio(precio) {
+							if (precio <= 1100) {
+								return greenIcon;
+							} else if (precio > 1100 && precio <= 2000) {
+								return yellowIcon;
+							} else if (precio > 2000 && precio <= 4000) {
+								// No hay ícono naranja definido en tu imagen, puedes agregar uno o ajustar las reglas
+								return yellowIcon;
+							} else {
+								return redIcon;
+							}
+						}
+
+
+
+
+						// Función para determinar el ícono basado en el precio
+						function getIconoPorPrecio(precio) {
+							if (precio <= 1100) {
+								return greenIcon;
+							} else if (precio > 1100 && precio <= 2000) {
+								return yellowIcon;
+							} else if (precio > 2000 && precio <= 4000) {
+								// No hay ícono naranja definido en tu imagen, puedes agregar uno o ajustar las reglas
+								return orangeIcon;
+							} else {
+								return redIcon;
+							}
+						}
+
+						function getIconoPorPrecioPopUp(precio) {
+							if (precio <= 1100) {
+								return '/img/nodoverde.png';
+							} else if (precio > 1100 && precio <= 2000) {
+								return '/img/nodoamarillo.png';
+							} else if (precio > 2000 && precio <= 4000) {
+								// Puedes agregar un ícono naranja si lo deseas
+								return '/img/nodonaranja.png';
+							} else {
+								return '/img/nodorojo.png';
+							}
+						}
+
+
+
+
+						function generarContenidoPopupNodo(item) {
+                            var imgSrc = getIconoPorPrecioPopUp(item.precioZonal_AVG); // Ícono por defecto si no hay coincidencia
+
+                            var contenido = "<style>" +
+                                ".popup-content {" +
+                                "    width: 280px;" +
+                                "    max-height: 180px;" +
+                                "    overflow-y: auto;" +
+                                "    padding: 10px;" +
+                                "}" +
+                                "h2, h3, h4, p, li {" +
+                                "    margin: 0 0 10px 0;" +
+                                "}" +
+                                "ul {" +
+                                "    padding-left: 20px;" +
+                                "}" +
+                                "img {" +
+                                "    vertical-align: middle;" +
+                                "    margin-right: 10px;" +
+                                "}" +
+                                "</style>";
+
+                            contenido += "<div class='popup-content'>" +
+                                "<h2 class='subtitulo'><img src='" + imgSrc + "' style='height: 24px; width: 24px;'/>" + item.nombreZonaCarga + "</h2><br>" +
+                                "<ul>" +
+                                "<li><strong>Clave Proceso Mercado:</strong> " + item.claveProcesoMercado + "</li>" +
+                                "<li><strong>Clave Sistema:</strong> " + item.claveSistema + "</li>" +
+                                "<li><strong>Comp Congestión AVG:</strong> " + item.compCongestion_AVG + "</li>" +
+                                "<li><strong>Comp Energía AVG:</strong> " + item.compEnergia_AVG + "</li>" +
+                                "<li><strong>Comp Pérdida AVG:</strong> " + item.compPerdida_AVG + "</li>" +
+                                "<li><strong>Fecha:</strong> " + item.fecha + "</li>" +
+                                "<li><strong>Latitud:</strong> " + item.latitud + "</li>" +
+                                "<li><strong>Lim Inf:</strong> " + (item.limInf || 'N/A') + "</li>" + // Usar 'N/A' si limInf es null
+                                "<li><strong>Lim Sup:</strong> " + item.limSup + "</li>" +
+                                "<li><strong>Longitud:</strong> " + item.longitud + "</li>" +
+                                "<li><strong>Nombre Zona Carga:</strong> " + item.nombreZonaCarga + "</li>" +
+                                "<li><strong>Precio Zonal AVG:</strong> " + item.precioZonal_AVG + "</li>" +
+                                "<li><strong>Step:</strong> " + item.step + "</li>";
+
+                            var url = '@Url.Action("Grafico_PMLS", "MIM")' + 
+                                    '?claveProceso=' + encodeURIComponent(item.claveProcesoMercado) + 
+                                    '&claveSistema=' + encodeURIComponent(item.claveSistema) + 
+                                    '&fecha=' + encodeURIComponent(item.fecha) + 
+                                    '&nombreZonaCarga=' + encodeURIComponent(item.nombreZonaCarga) +
+                                    '&precioZonal_AVG=' + encodeURIComponent(item.precioZonal_AVG);
+
+                            contenido += "<a class='btn btn-cre-rojo' target='_blank' href='" + url + "'>Ver precios durante el día</a>" +
+                                "</ul>" +
+                                "</div>";
+
+                            return contenido;
+                        }
+
+						// Suponiendo que 'respuesta' es tu array con los datos
+						respuesta.forEach(function (item) {
+							var iconoSeleccionado = getIconoPorPrecio(item.precioZonal_AVG);
+							var marcador = L.marker([item.latitud, item.longitud], { icon: iconoSeleccionado });
+							// Contenido del pop-up
+							// Llama a generarContenidoPopup para crear el contenido del pop-up
+							var contenidoPopup = generarContenidoPopupNodo(item);
+
+							marcador.bindPopup(contenidoPopup).addTo(map);;
+							// markers.addLayer(marcador); // Añade el marcador al grupo de marcadores
+						});
+
+						// Añade el grupo de marcadores al mapa
+						//  map.addLayer(markers);
+
+
+
+						//Tabla de Precios por Zona
+						var conteoPrecios = {
+							verde: 0,
+							amarillo: 0,
+							naranja: 0,
+							rojo: 0
+						};
+
+						respuesta.forEach(function (item) {
+							if (item.precioZonal_AVG <= 1100) {
+								conteoPrecios.verde++;
+							} else if (item.precioZonal_AVG > 1100 && item.precioZonal_AVG <= 2000) {
+								conteoPrecios.amarillo++;
+							} else if (item.precioZonal_AVG > 2000 && item.precioZonal_AVG <= 4000) {
+								conteoPrecios.naranja++; // Asumiendo que decides agregar un ícono naranja
+							} else {
+								conteoPrecios.rojo++;
+							}
+						});
+
+						var tabla = '<table>' +
+							'<tr><th>Rango de Precios</th><th>Observaciones</th></tr>' +
+							'<tr><td>p <= 1,100</td><td>' + conteoPrecios.verde + ' <img src="/img/nodoverde.png" style="width:24px;" /></td></tr>' +
+							'<tr><td>1,100 < p <= 2,000</td><td>' + conteoPrecios.amarillo + ' <img src="/img/nodoamarillo.png" style="width:24px;" /></td></tr>' +
+							'<tr><td>2,000 < p <= 4,000</td><td>' + conteoPrecios.naranja + ' <img src="/img/nodonaranja.png" style="width:24px;" /></td></tr>' +
+							'<tr><td>p > 4,000</td><td>' + conteoPrecios.rojo + ' <img src="/img/nodorojo.png" style="width:24px;" /></td></tr>' +
+							'</table>';
+
+
+						// Añade la tabla al DOM, suponiendo que tienes un div con id="tablaPrecios" debajo de tu mapa
+						document.getElementById('tablaPrecios').innerHTML = tabla;
+
+
+						//Mete el autocompetar Búsquedas
+						// Función para inicializar el autocompletar
+						function autocomplete(inp, arr) {
+							var currentFocus;
+
+							inp.addEventListener("input", function (e) {
+								var a, b, i, val = this.value;
+								closeAllLists();
+								if (!val) { return false; }
+								currentFocus = -1;
+
+								a = document.getElementById("autocomplete-list");
+								a.innerHTML = "";
+
+								for (i = 0; i < arr.length; i++) {
+									if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+										b = document.createElement("DIV");
+										b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+										b.innerHTML += arr[i].substr(val.length);
+										b.addEventListener("click", function (e) {
+											inp.value = this.innerText;
+											closeAllLists();
+											buscarGeneral(); // Llama a tu función de búsqueda aquí
+										});
+										a.appendChild(b);
+									}
+								}
+							});
+
+							function closeAllLists(elmnt) {
+								var x = document.getElementById("autocomplete-list");
+								if (elmnt != x && elmnt != inp) {
+									x.innerHTML = "";
+								}
+							}
+
+							document.addEventListener("click", function (e) {
+								closeAllLists(e.target);
+							});
+						}
+						// Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+						var uniqueTerms = [...new Set(availableTerms)];
+
+						// Inicializa el autocompletar
+						autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+
+
+					},
+					error: function (error) {
+						reject(error);
+					}
+				});
+			});
+		}
+
+		async function initReporteDiarioPMLS() {
+			try {
+				const response = await CargaReporteDiarioPMLS();
+				console.log("Datos cargados con éxito", response);
+			} catch (error) {
+				console.error("Error al cargar los datos", error);
+			}
+		}
+
+		$(document).ready(function () {
+			initReporteDiarioPMLS();
+		});
+
+	</script>
+
+	<script>
+		$(document).ready(function () {
+			$('#btnProbarConexion').click(function () {
+				$.ajax({
+					url: '/MIM/ChequearConexion',
+					type: 'GET',
+					success: function (res) {
+						if (res) {
+							$('#resultadoConexion').text('Conexión exitosa.');
+						} else {
+							$('#resultadoConexion').text('Error en la conexión.');
+						}
+					},
+					error: function () {
+						$('#resultadoConexion').text('Error al realizar la solicitud.');
+					}
+				});
+			});
+		});
+	</script>
+}

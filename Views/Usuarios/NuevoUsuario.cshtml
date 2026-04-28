@@ -1,0 +1,197 @@
+@model UserViewModel
+@inject IHttpContextAccessor HttpContextAccessor
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Alta de Nuevo Usuario";
+}
+
+
+
+
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Alta de Nuevo Usuario",
+        IconPath = "mexicoi.png",
+        Description = "Crea perfiles, roles y accesos según normativa.",
+        Section = "Gobernanza y Seguridad",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Alta de Usuarios y Perfiles",
+            description = "Sistema de alta de usuarios y control de accesos del SNIEr.",
+            functionality = "Permite dar de alta usuarios, asignar roles y mantener la trazabilidad de accesos.",
+            stage = "Inicialización",
+            roles = new[] {
+                new { icon = "building", text = "Secretaría de Energía: Administración general" },
+                new { icon = "users-cog", text = "Unidad SNIEr: Gestión de perfiles" },
+                new { icon = "user-shield", text = "Dirección TICs: Control técnico" },
+                new { icon = "user-tie", text = "Consejo: Supervisión de accesos" }
+            },
+            order = new { step = 1, description = "Control de accesos desde el inicio (Art. 70)" }
+        }),
+        LegalDescription = "Creación de accesos y perfiles conforme a los lineamientos establecidos en el Art. 70 del Reglamento.",
+        Fundamentos = new List<FundamentoLegal> {
+            new() { Reference = "Art. 70 Reglamento", Description = "Establece los controles de acceso y gestión de usuarios" },
+            new() { Reference = "Art. 71 Reglamento", Description = "Define la administración de perfiles" },
+            new() { Reference = "Art. 76 Reglamento", Description = "Establece la trazabilidad y seguridad" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container">
+    <form asp-action="NuevoUsuario" method="post">
+          <input type="hidden" name="IDUsuario" value="@ViewData["IDUsuario"]" />
+    <input type="hidden" name="RolUsuario" value="@ViewData["RolUsuario"]" />
+        <h6 class="display-6 fw-bold subtitulo pl-3%">Información del Usuario</h6>
+      
+        <div class="row p-3">
+            <div class="col-md-6 form-group">
+                <label asp-for="Nombre">Nombre Completo:</label>
+                <input asp-for="Nombre" class="form-control" required />
+                <span asp-validation-for="Nombre" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-6 form-group">
+                <label asp-for="RFC">RFC:</label>
+                <input asp-for="RFC" class="form-control" required />
+                <span asp-validation-for="RFC" class="text-danger"></span>
+            </div>
+
+                <div class="col-md-6 form-group">
+                    <label asp-for="Correo">Correo:</label>
+                    <div class="input-group">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text" style="font-size:24px"><i class="fas fa-envelope"></i></span>
+                        </div>
+                        <input asp-for="Correo" type="email" class="form-control" placeholder="Correo" required />
+                    </div>
+                    <span asp-validation-for="Correo" class="text-danger"></span>
+                </div>
+
+            <div class="col-md-6 form-group">
+                <label asp-for="Cargo">Cargo:</label>
+                <input asp-for="Cargo" class="form-control" required />
+                <span asp-validation-for="Cargo" class="text-danger"></span>
+            </div>
+            <div class="col-md-6 form-group">
+                <label asp-for="Unidad_de_Adscripcion">Unidad de Adscripción</label>
+                <input asp-for="Unidad_de_Adscripcion" class="form-control" required />
+                <span asp-validation-for="Unidad_de_Adscripcion" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-6 form-group">
+                <label asp-for="ClaveEmpleado">ClaveEmpleado:</label>
+                <input asp-for="ClaveEmpleado" class="form-control" required />
+                <span asp-validation-for="ClaveEmpleado" class="text-danger"></span>
+            </div>
+            <div class="col-md-6 form-group">
+                <label asp-for="SesionActiva">Sesión Activa:</label>
+                <input asp-for="SesionActiva" type="checkbox" class="form-check-input" />
+            </div>
+            <div class="col-md-6 form-group">
+                <label asp-for="Vigente">¿Usuario Vigente?:</label>
+                <input asp-for="Vigente" type="checkbox" class="form-check-input" />
+            </div>
+
+        </div>
+
+
+        <h6 class="display-6 fw-bold subtitulo pl-3%">Roles del Usuario</h6>
+        <div class="row p-3">
+
+            <div class="col-md-6 form-group">
+                <label asp-for="Rol_Nombre">Escoger Rol:</label>
+                <select id="roleSelector" class="form-control" asp-for="Rol_ID" asp-items="@(ViewBag.Roles as IEnumerable<SelectListItem>)">
+                </select>
+
+            </div>
+
+
+            <div class="col-md-6 form-group">
+                <label asp-for="Mercado_Nombre">Mercado del Usuario:</label>
+                <select id="marketSelector" class="form-control" asp-for="Mercado_ID" asp-items="@(ViewBag.Mercados as IEnumerable<SelectListItem>)">
+                </select>
+            </div>
+
+            <div class="col-md-12 form-group">
+                <label asp-for="RolUsuario_Comentarios">Comentarios:</label>
+                <input asp-for="RolUsuario_Comentarios" class="form-control" />
+            </div>
+        </div>
+       
+        <h6 class="display-6 fw-bold subtitulo pl-3%">Definir Contraseña</h6>
+                <div class="row p-3">
+                    <div class="col-md-6 form-group">
+                <label asp-for="Clave">Contraseña:</label>
+                <input asp-for="Clave" type="password" class="form-control" required />
+                <span asp-validation-for="Clave" class="text-danger"></span>
+            </div>
+            <div class="col-md-6 form-group">
+                <label asp-for="ConfirmarClave">Confirmar Contraseña:</label>
+                <input asp-for="ConfirmarClave" type="password" class="form-control" required />
+                <span asp-validation-for="ConfirmarClave" class="text-danger"></span>
+            </div>
+        </div>
+
+
+        @if (ViewData["Mensaje"] != null)
+        {
+            <div class="alert alert-danger text-center" role="alert">
+                @ViewData["Mensaje"]
+            </div>
+        }
+        <hr />
+        <div class="d-flex justify-content-center mt-3 login_container">
+            <button type="submit" name="button" class="btn btn-danger">Registrar</button>
+        </div>
+        <br>
+    </form>
+</div>
+
+
+@section Scripts {
+<script>
+    $(document).ready(function(){
+            $("#Correo").on("focusout", function () {
+                var correoUsuario = $(this).val();
+                if (!correoUsuario.includes("@@")) { // Escapar el "arroba" aquí
+                    $(this).val(correoUsuario + "@@cre.gob.mx"); // Y aquí
+                }
+            });
+
+            $('input[type="text"]').blur(function () {
+                var inputValue = $(this).val();
+                $(this).val($.trim(inputValue));
+            });
+
+
+
+
+
+       });
+
+    document.getElementById('roleSelector').addEventListener('change', function () {
+        console.log('Valor seleccionado:', this.value);
+    });
+
+    document.getElementById('marketSelector').addEventListener('change', function () {
+        console.log('Valor Mercado:', this.value);
+    });
+</script>
+}

@@ -1,0 +1,2747 @@
+<!-- CargaInformacion.cshtml - Vista unificada estilo SIE con carga y visualización de series -->
+@model NSIE.Models.DashboardViewModel
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@using System.IO
+@using Microsoft.AspNetCore.Hosting
+
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Recursos del Fondo Mexicano del Petróleo";
+}
+
+<style>
+    #previewContent { overflow-x: auto; }
+    #previewContent canvas { max-width: 100% !important; height: auto !important; display: block; margin: auto; }
+    .modal-body { overflow-x: auto; }
+       /* Elegant Card Styles */
+    .stat-card {
+        transition: all 0.3s ease;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .card-icon i {
+        font-size: 1.5rem;
+    }
+
+    /* Elegant Gradients */
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+    }
+
+    .bg-gradient-success {
+        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
+    }
+
+    .bg-gradient-warning {
+        background: linear-gradient(135deg, #f6c23e 0%, #dda20a 100%);
+    }
+
+    .bg-gradient-info {
+        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%);
+    }
+
+    /* Card Content */
+    .stat-card .card-body {
+        padding: 1.5rem;
+    }
+
+    .stat-card h2 {
+        font-size: 2rem;
+        font-weight: 600;
+    }
+
+    .stat-card .badge {
+        font-size: 0.75rem;
+        padding: 0.5em 0.75em;
+    }
+
+    .stat-card small {
+        font-size: 0.875rem;
+    }
+</style>
+
+<div class="text-center">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="~/img/mexicoi.png" alt="Icono personalizado" class="iconomenu">@ViewData["Title"]
+    </h3>
+</div>
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);" aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        <li class="breadcrumb-item">Proyectos Estratégicos</li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+<br />
+
+<div class="container">
+
+    @{
+        // Cambia el rol para simular la vista deseada: "Secretario", "Sujeto", "Comite", "Evaluacion" 
+        string rolUsuario = "Secretario"; 
+
+        bool listadoPublicado = ViewData["ListadoPublicado"] != null && (bool)ViewData["ListadoPublicado"];
+        string urlListadoPublicado = ViewData["UrlListado"]?.ToString() ?? "#";
+
+        var propuestaEnviada = Context.Session.GetString("PropuestaEnviada") == "true";
+        var propuestasComite = ViewData["PropuestasComite"] as IEnumerable<dynamic>;
+    }
+
+    <h2 class="fw-bold subtitulo">Propuestas para asignación de fondos del Instituto Mexicano del Petróleo</h2>
+    <br>
+
+    @if (rolUsuario == "Comite")
+    {
+        <div class="alert alert-primary">
+            Vista del Comité de Decisión
+        </div>
+
+        @if (!listadoPublicado && (propuestasComite == null || !propuestasComite.Any()))
+        {
+            <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="SubirListado">
+                <div class="mb-3">
+                    <label for="archivoListado" class="form-label">Subir Listado de Necesidades</label>
+                    <input type="file" name="ArchivoListado" id="archivoListado" class="form-control" accept=".pdf,.docx" />
+                </div>
+                <button type="submit" class="btn btn-primary">Subir</button>
+            </form>
+            <div class="alert alert-warning mt-3">
+                ⚠️ Aún no se ha publicado un listado.
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-success mt-3">
+            ✅ El listado ha sido publicado. Los sujetos de apoyo ya pueden registrar propuestas. <br />
+            <a href="@urlListadoPublicado" target="_blank" class="fw-bold text-decoration-underline">Ver documento publicado</a>
+
+            <form method="post" asp-controller="Proyectos" asp-action="EliminarListado" class="d-inline ms-3">
+                <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('¿Estás seguro de que deseas eliminar el documento?')">
+                    <i class="bi bi-trash3"></i> Eliminar documento
+                </button>
+            </form>
+        </div>
+        }
+
+        @if (propuestasComite != null && propuestasComite.Any())
+        {
+            <hr />
+            <h5 class="mt-4">📥 Propuestas enviadas por el Secretario Administrativo</h5>
+
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Demanda/Propuesta</th>
+                        <th>Tipo</th>
+                        <th>Documentos</th>
+                        <th>Acciones</th>
+                        <th>Decisión</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in propuestasComite)
+                    {
+                        var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                        <tr>
+                            <td>@p.Nombre</td>
+                            <td>
+                                @if (p.Tipo == "integrada")
+                                {
+                                    <span class="badge bg-success">Integrada</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-info text-dark">Abierta</span>
+                                }
+                            </td>
+                            <td>
+                                <a href="@($"{baseUrl}/Demanda_Especifica.pdf")" target="_blank">Demanda</a> |
+                                <a href="@($"{baseUrl}/Cuestionario.pdf")" target="_blank">Cuestionario</a> |
+                                @if (p.Tipo == "integrada")
+                                {
+                                   <a href="@($"{baseUrl}/Propuesta_Tecnica.pdf")" target="_blank">Propuesta Técnica</a>
+                                }
+                            </td>
+                            <td>
+                                @if (p.Tipo == "integrada")
+                                {
+                                    if (p.Evaluado)
+                                    {
+                                        <span class="badge bg-secondary">
+                                            ✅ Cuestionario registrado
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-outline-primary btn-sm"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#modalEvaluacion"
+                                                data-proyecto="@p.Nombre"
+                                                data-carpeta="@p.Carpeta">
+                                            Enviar Evaluación
+                                        </button>
+                                    }
+                                }
+                                else
+                                {
+                                    @if (!p.ConvocatoriaAutorizada)
+                                    {
+                                        <form method="post" asp-controller="Proyectos" asp-action="AutorizarConvocatoria" class="d-inline">
+                                            <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                            <button type="submit" class="btn btn-outline-success btn-sm">
+                                                <i class="bi bi-check2-circle"></i> Autorizar Convocatoria
+                                            </button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">✅ Convocatoria Autorizada</span>
+                                    }
+                                }
+                            </td>
+                            <td>
+                                @if (p.Tipo == "integrada" && p.EsViable)
+                                {
+                                    @if (p.Aprobado)
+                                    {
+                                        <span class="badge bg-success">✔️ Aprobado</span>
+                                        <a href="@($"{baseUrl}/Oficio_Aprobacion.pdf")" class="btn btn-outline-secondary btn-sm ms-2" target="_blank">
+                                            <i class="bi bi-eye"></i> Ver Oficio
+                                        </a>
+                                    }
+                                    else if (!string.IsNullOrEmpty(p.Observaciones))
+                                    {
+                                        if (!p.TieneCorreccion && !p.CorreccionEnviada && !p.Aprobado)
+                                        {
+                                            <span class="badge bg-danger">📝 Observaciones enviadas</span>
+                                            <p class="mt-1 small">@p.Observaciones</p>
+                                        }
+                                        else if (p.TieneCorreccion && p.CorreccionEnviada && !p.Aprobado)
+                                        {
+                                            <div class="btn-group">
+                                                <button class="btn btn-sm btn-outline-success"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalAprobar"
+                                                        data-proyecto="@p.Nombre"
+                                                        data-carpeta="@p.Carpeta">
+                                                    Aceptar y Subir Oficio
+                                                </button>
+
+                                                <button class="btn btn-sm btn-outline-danger"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalObservacion"
+                                                        data-proyecto="@p.Nombre"
+                                                        data-carpeta="@p.Carpeta">
+                                                    Enviar Nueva Observación
+                                                </button>
+                                            </div>
+                                            <div class="mt-1 small text-muted">⚠️ Se está revisando la corrección enviada.</div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-success"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#modalAprobar"
+                                                    data-proyecto="@p.Nombre"
+                                                    data-carpeta="@p.Carpeta">
+                                                Aceptar y Subir Oficio
+                                            </button>
+
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#modalObservacion"
+                                                    data-proyecto="@p.Nombre"
+                                                    data-carpeta="@p.Carpeta">
+                                                Enviar Observación
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                                else if(p.Tipo == "abierta" && p.EsViable && p.SusceptiblePresupuesto)
+                                {
+                                    @if (p.Aprobado)
+                                    {
+                                        <span class="badge bg-success">✔️ Aprobado</span>
+                                        <a href="@($"{baseUrl}/Oficio_Aprobacion.pdf")" class="btn btn-outline-secondary btn-sm ms-2" target="_blank">
+                                            <i class="bi bi-eye"></i> Ver Oficio
+                                        </a>
+                                    }
+                                    else if (!string.IsNullOrEmpty(p.Observaciones))
+                                    {
+                                        if (!p.TieneCorreccion && !p.CorreccionEnviada && !p.Aprobado)
+                                        {
+                                            <span class="badge bg-danger">📝 Observaciones enviadas</span>
+                                            <p class="mt-1 small">@p.Observaciones</p>
+                                        }
+                                        else if (p.TieneCorreccion && p.CorreccionEnviada && !p.Aprobado)
+                                        {
+                                            <div class="btn-group">
+                                                <button class="btn btn-sm btn-outline-success"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalAprobar"
+                                                        data-proyecto="@p.Nombre"
+                                                        data-carpeta="@p.Carpeta">
+                                                    Aceptar y Subir Oficio
+                                                </button>
+
+                                                <button class="btn btn-sm btn-outline-danger"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#modalObservacion"
+                                                        data-proyecto="@p.Nombre"
+                                                        data-carpeta="@p.Carpeta">
+                                                    Enviar Nueva Observación
+                                                </button>
+                                            </div>
+                                            <div class="mt-1 small text-muted">⚠️ Se está revisando la corrección enviada.</div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-success"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#modalAprobar"
+                                                    data-proyecto="@p.Nombre"
+                                                    data-carpeta="@p.Carpeta">
+                                                Aceptar y Subir Oficio
+                                            </button>
+
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#modalObservacion"
+                                                    data-proyecto="@p.Nombre"
+                                                    data-carpeta="@p.Carpeta">
+                                                Enviar Observación
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">Aún no se ha aprobado el presupuesto de la propuesta</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="alert alert-info mt-4">
+                No hay propuestas del Secretario Administrativo disponibles por el momento.
+            </div>
+        }
+    }
+    else if (rolUsuario == "Sujeto")
+    {
+        <div class="alert alert-secondary d-flex align-items-center" role="alert">
+            <i class="bi bi-person-fill me-2"></i>
+            Vista del Sujeto de Apoyo
+        </div>
+
+        @if (!listadoPublicado)
+        {
+            <div class="alert alert-warning d-flex align-items-center" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                Aún no hay un listado de necesidades prioritarias publicado. Por favor, vuelve más tarde.
+            </div>
+        }
+        else if (propuestaEnviada)
+        {
+            <div class="alert alert-success d-flex align-items-center" role="alert">
+                <i class="bi bi-check-circle-fill me-2"></i>
+                Tu propuesta fue enviada correctamente. Espera validación por parte del Secretario Administrativo.
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-info" role="alert">
+                <div class="d-flex">
+                    <i class="bi bi-info-circle-fill me-2 mt-1"></i>
+                    <div>
+                        <p class="mb-1">
+                            Ya se encuentra disponible el listado de necesidades prioritarias.
+                        </p>
+                        <p class="mb-1">
+                            Puedes consultarlo en la página oficial de la SENER: <br />
+                            <a href="https://www.gob.mx/sener/es/articulos/recursos-para-desarrollo-tecnologico-e-innovacion" target="_blank" class="fw-bold text-decoration-underline">
+                                www.gob.mx/sener/es/articulos/recursos-para-desarrollo-tecnologico-e-innovacion
+                            </a>
+                        </p>
+                        <p class="mb-0">
+                            O bien, puedes verlo directamente desde el sistema: <br />
+                            <a href="@urlListadoPublicado" target="_blank" class="fw-bold text-decoration-underline">
+                                Ver listado publicado
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4 d-flex gap-3">
+                <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalLlenarFormulario">
+                    <i class="bi bi-pencil-square"></i> Nueva propuesta
+                </button>
+                <p class="mb-1">
+                    *Recuerda envíar tu propuesta por correo electrónico a sustentabilidad.fmp@energia.gob.mx
+                </p>
+            </div>
+        }
+        @if (propuestasComite != null && propuestasComite.Any(p => p.FueNotificadoSujeto))
+        {
+            <hr />
+            <h5 class="mt-4">🛠 Propuestas con observaciones</h5>
+
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Proyecto</th>
+                        <th>Observaciones</th>
+                        <th>Adjunto (si aplica)</th>
+                        <th>Respuesta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in propuestasComite.Where(p => p.FueNotificadoSujeto))
+                    {
+                        var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                        <tr>
+                            <td>@p.Nombre</td>
+                            <td class="text-wrap" style="max-width: 400px;">
+                                @p.Observaciones
+                            </td>
+                            <td>
+                                @if (p.ObservacionesArchivo)
+                                {
+                                    <a href="@($"{baseUrl}/Observaciones_Adjunto.pdf")" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-file-earmark-pdf"></i> Ver adjunto
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Sin archivo</span>
+                                }
+                            </td>
+                            <td>
+                                @if (p.TieneCorreccion)
+                                {
+                                    <span class="badge bg-success">✅ Corregido</span>
+                                    <a href="@($"{baseUrl}/Correccion_Propuesta.pdf")" target="_blank" class="btn btn-sm btn-outline-info ms-2">
+                                        <i class="bi bi-eye"></i> Ver envío
+                                    </a>
+                                }
+                                else
+                                {
+                                    <form method="post" asp-controller="Proyectos" asp-action="SubirCorreccion" enctype="multipart/form-data" class="d-flex gap-2">
+                                        <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                        <input type="file" name="archivoCorreccion" accept=".pdf,.docx" class="form-control form-control-sm" required />
+                                        <button type="submit" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-upload"></i> Enviar
+                                        </button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        @if (propuestasComite != null && propuestasComite.Any(p => p.ConvocatoriaNotificada))
+        {
+            <hr />
+            <h5 class="mt-4">📑 Enviar propuesta y oficio</h5>
+
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Proyecto</th>
+                        <th>Estado</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in propuestasComite.Where(p => p.ConvocatoriaNotificada))
+                    {
+                        <tr>
+                            <td>@p.Nombre</td>
+                            <td>
+                                @if (p.PropuestaOficioEnviada)
+                                {
+                                    <span class="badge bg-success">📤 Enviado</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                }
+                            </td>
+                            <td>
+                                @if (!p.PropuestaOficioEnviada)
+                                {
+                                    <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="SubirPropuestaOficio" class="d-flex flex-column gap-2">
+                                        <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                        
+                                        <div>
+                                            <label class="form-label">Oficio (PDF):</label>
+                                            <input type="file" name="archivoOficio" accept=".pdf" class="form-control form-control-sm" required />
+                                        </div>
+                                        <div>
+                                            <label class="form-label">Propuesta detallada (DOCX):</label>
+                                            <input type="file" name="archivoPropuesta" accept=".docx" class="form-control form-control-sm" required />
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm mt-2">
+                                            <i class="bi bi-upload"></i> Enviar
+                                        </button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <a href="~/documentos/revision_secretario/@p.Carpeta/Propuesta_Oficio.pdf" target="_blank" class="btn btn-outline-secondary btn-sm me-1">
+                                        Ver oficio
+                                    </a>
+                                    <a href="~/documentos/revision_secretario/@p.Carpeta/Propuesta_Detalles.docx" target="_blank" class="btn btn-outline-primary btn-sm">
+                                        Ver propuesta
+                                    </a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        @if (propuestasComite != null && propuestasComite.Any(p => p.Aprobado))
+        {
+            <hr />
+            <h5 class="mt-4">📜 Documentación para formalizar Convenio de Asignación de Recursos</h5>
+            <p class="small text-muted">
+                Conforme al <strong>Capítulo VII</strong> de los Lineamientos para la administración y operación de las actividades
+                de investigación científica, desarrollo tecnológico e innovación en materia de sustentabilidad, 
+                sube un solo archivo PDF con toda la información solicitada.
+            </p>
+
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Proyecto</th>
+                        <th>Oficio de aprobación</th>
+                        <th>Observaciones</th>
+                        <th>Documento enviado</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in propuestasComite.Where(p => p.Aprobado))
+                    {
+                        var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                        <tr>
+                            <td>@p.Nombre</td>
+
+                            <!-- Oficio de aprobación -->
+                            <td>
+                                <a href="@($"{baseUrl}/Oficio_Aprobacion.pdf")" target="_blank" class="btn btn-sm btn-outline-success">
+                                    <i class="bi bi-file-earmark-pdf"></i> Ver oficio
+                                </a>
+                            </td>
+
+                            <!-- Observaciones (si las hay) -->
+                            <td>
+                                @if (p.TieneCorreccion)
+                                {
+                                    <div class="text-wrap" style="max-width: 300px;">
+                                        <strong>Observaciones:</strong> @p.Observaciones
+                                    </div>
+                                    @if (p.ObservacionesArchivo)
+                                    {
+                                        <a href="@($"{baseUrl}/Observaciones_Adjunto.pdf")" target="_blank" class="btn btn-sm btn-outline-secondary mt-1">
+                                            <i class="bi bi-file-earmark-pdf"></i> Ver adjunto
+                                        </a>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Sin observaciones</span>
+                                }
+                            </td>
+
+                            <!-- Documento ya enviado -->
+                            <td>
+                                @if (p.DocumentoConvenioSubido)
+                                {
+                                    <span class="badge bg-success">✅ Enviado</span>
+                                    <a href="@($"{baseUrl}/Documentacion_Convenio.pdf")" target="_blank" class="btn btn-sm btn-outline-info ms-2">
+                                        <i class="bi bi-eye"></i> Ver documento
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                }
+                            </td>
+
+                            <!-- Subir documento -->
+                            <td>
+                                @if (!p.DocumentoConvenioSubido)
+                                {
+                                    <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="SubirDocumentacionConvenio" class="d-flex gap-2">
+                                        <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                        <input type="file" name="archivoConvenio" accept=".pdf" class="form-control form-control-sm" required />
+                                        <button type="submit" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-upload"></i> Subir
+                                        </button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Ya enviado</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        @if (propuestasComite != null && propuestasComite.Any(p => p.OficioSolicitudCuentaSubido))
+        {
+            <hr />
+            <h5 class="mt-4">🏦 Documentos para apertura de cuenta bancaria</h5>
+            <p class="small text-muted">
+                Una vez recibido el oficio de solicitud de apertura de cuenta bancaria, debe subir los siguientes documentos en formato PDF:
+            </p>
+            <ul class="small text-muted">
+                <li>RFC (Constancia de Situación Fiscal actualizada).</li>
+                <li>Comprobante de Domicilio (no mayor a tres meses).</li>
+                <li>Estado de cuenta bancario (con N° CLABE interbancaria).</li>
+                <li>CURP (certificada).</li>
+                <li>Identificación oficial y designación del representante legal.</li>
+            </ul>
+
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Proyecto</th>
+                        <th>Oficio de Solicitud</th>
+                        <th>Documentos enviados</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in propuestasComite.Where(p => p.OficioSolicitudCuentaSubido))
+                    {
+                        var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                        <tr>
+                            <td>@p.Nombre</td>
+
+                            <!-- Oficio de solicitud -->
+                            <td>
+                                <a href="@($"{baseUrl}/Oficio_Solicitud_Cuenta.pdf")" target="_blank" class="btn btn-sm btn-outline-success">
+                                    <i class="bi bi-file-earmark-pdf"></i> Ver oficio
+                                </a>
+                            </td>
+
+                            <!-- Documentos enviados -->
+                            <td>
+                                @if (p.DocumentosCuentaBancariaSubidos)
+                                {
+                                    <span class="badge bg-success">✅ Enviados</span>
+                                    <a href="@($"{baseUrl}/Documentos_CuentaBancaria.pdf")" target="_blank" class="btn btn-sm btn-outline-info ms-2">
+                                        <i class="bi bi-eye"></i> Ver documentos
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                }
+                            </td>
+
+                            <!-- Acción -->
+                            <td>
+                                @if (!p.DocumentosCuentaBancariaSubidos)
+                                {
+                                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalSubirCuenta"
+                                            data-proyecto="@p.Nombre" data-carpeta="@p.Carpeta">
+                                        <i class="bi bi-upload"></i> Subir Documentos
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Ya enviado</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <!-- Modal para subir documentos -->
+        <div class="modal fade" id="modalSubirCuenta" tabindex="-1" aria-labelledby="modalSubirCuentaLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="SubirDocumentosCuentaBancaria">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="modalSubirCuentaLabel">Subir Documentos de Apertura de Cuenta</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <input type="hidden" name="carpeta" id="cuentaCarpeta" />
+                            <div class="mb-3">
+                                <label class="form-label">Seleccione el archivo PDF con todos los documentos:</label>
+                                <input type="file" name="archivoCuenta" class="form-control" accept=".pdf" required />
+                                <div class="form-text">
+                                    El archivo debe incluir RFC, comprobante de domicilio, estado de cuenta, CURP y documentos del representante legal en un solo archivo en formato .pdf.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-success">Subir Documentos</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            var modalSubirCuenta = document.getElementById('modalSubirCuenta');
+            modalSubirCuenta.addEventListener('show.bs.modal', function (event) {
+                var button = event.relatedTarget;
+                var carpeta = button.getAttribute('data-carpeta');
+                document.getElementById('cuentaCarpeta').value = carpeta;
+            });
+        </script>
+
+        @if (propuestasComite != null && propuestasComite.Any(p => p.TransferenciaConfirmada))
+        {
+            <hr />
+            <h5 class="mt-4">✅ Transferencia confirmada</h5>
+            <p class="small text-muted">
+                La transferencia de este proyecto ya se ha realizado. 
+                El proyecto ahora aparece en la sección de proyectos. 
+                Por favor, esté al pendiente para la entrega de informes técnicos y financieros.
+            </p>
+
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Proyecto</th>
+                        <th>Estado de transferencia</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in propuestasComite.Where(p => p.TransferenciaConfirmada))
+                    {
+                        <tr>
+                            <td>@p.Nombre</td>
+                            <td>
+                                <span class="badge bg-success">Transferencia realizada ✅</span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+    else if (rolUsuario == "Secretario")
+    {
+        <div class="alert alert-warning d-flex align-items-center" role="alert">
+            <i class="bi bi-person-badge-fill me-2"></i>
+            Vista del Secretario Administrativo
+        </div>
+
+        @if (TempData["MensajeExito"] != null)
+        {
+            <div class="alert alert-success d-flex align-items-center mt-3">
+                <i class="bi bi-check-circle-fill me-2"></i>
+                @TempData["MensajeExito"]
+            </div>
+        }
+
+        <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="EnviarSecretario">
+            <div class="mb-3">
+                <label class="form-label">Nombre del Demanda/Propuesta:</label>
+                <input type="text" name="nombreProyecto" class="form-control" required />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Demandas Específicas (PDF):</label>
+                <input type="file" name="archivoDemanda" class="form-control" accept=".pdf" required />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Cuestionario (PDF):</label>
+                <input type="file" name="archivoCuestionario" class="form-control" accept=".pdf" required />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Tipo de Demanda:</label>
+                <select class="form-select" name="tipoDemanda" id="tipoDemanda" required onchange="mostrarPropuesta(this.value)">
+                    <option value="" disabled selected>Seleccione una opción</option>
+                    <option value="integrada">Específica Integrada</option>
+                    <option value="abierta">Específica Abierta</option>
+                </select>
+            </div>
+
+            <div id="bloquePropuesta" style="display: none;">
+                <div class="mb-3">
+                    <label class="form-label">Propuesta Técnica (PDF):</label>
+                    <input type="file" name="archivoPropuesta" class="form-control" accept=".pdf" />
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-success mt-3">
+                <i class="bi bi-send-check"></i> Enviar al Comité
+            </button>
+        </form>
+
+        @if (propuestasComite != null && propuestasComite.Any(p => p.Evaluado))
+        {
+            <hr />
+            <h5 class="mt-4">📤 Cuestionarios Evaluados disponibles</h5>
+
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Proyecto</th>
+                        <th>Descargar Evaluación</th>
+                        <th>Subir Formato de Evaluación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in propuestasComite.Where(p => p.Evaluado))
+                    {
+                        var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                        <tr>
+                            <td>@p.Nombre</td>
+                            <td>
+                                <a href="@($"{baseUrl}/Cuestionario_Evaluado.pdf")" target="_blank" class="btn btn-outline-info btn-sm">
+                                    <i class="bi bi-download"></i> Descargar
+                                </a>
+                            </td>
+                            <td>
+                                @if (p.FormatoListo)
+                                {
+                                    <span class="badge bg-success">
+                                        ✅ Formato enviado
+                                    </span>
+                                    <a href="@($"{baseUrl}/Formato_Evaluacion.pdf")" target="_blank" class="btn btn-outline-secondary btn-sm ms-2">
+                                        <i class="bi bi-eye"></i> Ver
+                                    </a>
+                                }
+                                else
+                                {
+                                    <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="SubirFormatoEvaluacion" class="d-flex gap-2">
+                                        <input type="hidden" name="carpetaProyecto" value="@p.Carpeta" />
+                                        <input type="file" name="formatoEvaluacion" accept=".pdf" class="form-control form-control-sm" required />
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="bi bi-upload"></i> Subir
+                                        </button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (propuestasComite != null && propuestasComite.Any(p => p.EsViable) && propuestasComite.Any(p => p.TienePropuesta))
+            {
+                <hr />
+                <h5 class="mt-4">📨 Propuestas aprobadas para presupuesto para el envío al Comité de Decisión</h5>
+
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Proyecto</th>
+                            <th>Documentos</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in propuestasComite.Where(p => p.EsViable && p.Tipo == "integrada"))
+                        {
+                            var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                            <tr>
+                                <td>@p.Nombre</td>
+                                <td>
+                                    <a href="@($"{baseUrl}/Demanda_Especifica.pdf")" target="_blank" class="btn btn-sm btn-outline-primary me-1">Demanda</a>
+                                    @if (p.Tipo == "integrada")
+                                    {
+                                        <a href="@($"{baseUrl}/Propuesta_Tecnica.pdf")" target="_blank" class="btn btn-sm btn-outline-secondary me-1">Propuesta</a>
+                                    }
+                                    <a href="@($"{baseUrl}/Formato_Evaluacion_Sustentabilidad.pdf")" target="_blank" class="btn btn-sm btn-outline-success">Evaluación</a>
+                                </td>
+                                <td>
+                                    @if (p.FueEnviado)
+                                    {
+                                        <span class="badge bg-info">📤 Enviado</span>
+                                    }
+                                    else
+                                    {
+                                        <form method="post" asp-controller="Proyectos" asp-action="EnviarAFinanciamiento" class="d-inline">
+                                            <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                            <button type="submit" class="btn btn-success btn-sm">
+                                                <i class="bi bi-send"></i> Enviar a Comité
+                                            </button>
+                                        </form>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            @* Propuestas abiertas *@
+            @if (propuestasComite != null && propuestasComite.Any(p => p.ConvocatoriaAutorizada))
+            {
+                <hr />
+                <h5 class="mt-4">📢 Convocatorias autorizadas por el Comité</h5>
+
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Proyecto</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in propuestasComite.Where(p => p.ConvocatoriaAutorizada))
+                        {
+                            <tr>
+                                <td>@p.Nombre</td>
+                                <td>
+                                    @if (p.ConvocatoriaNotificada)
+                                    {
+                                        <span class="badge bg-success">📤 Notificado</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">Pendiente de notificar</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!p.ConvocatoriaNotificada)
+                                    {
+                                        <form method="post" asp-controller="Proyectos" asp-action="NotificarSujetoConvocatoria" class="d-inline">
+                                            <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                            <button type="submit" class="btn btn-warning btn-sm">
+                                                <i class="bi bi-envelope-exclamation"></i> Notificar Sujeto
+                                            </button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Ya notificado</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            @if (propuestasComite != null && propuestasComite.Any(p =>
+                p.ConvocatoriaNotificada &&
+                p.PropuestaOficioEnviada))
+            {
+                <hr />
+                <h5 class="mt-4">📂 Propuestas y oficios recibidos de los Sujetos</h5>
+
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Proyecto</th>
+                            <th>Documentos recibidos</th>
+                            <th>Formato de Evaluación</th>
+                            <th>Enviar al Comité de Decisión</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in propuestasComite.Where(p =>
+                            p.ConvocatoriaNotificada &&
+                            p.PropuestaOficioEnviada))
+                        {
+                            var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                            <tr>
+                                <td>@p.Nombre</td>
+                                <td>
+                                    <a href="@($"{baseUrl}/Propuesta_Oficio.pdf")" target="_blank" class="btn btn-outline-primary btn-sm">Oficio (PDF)</a>
+                                    <a href="@($"{baseUrl}/Propuesta_Detalles.docx")" target="_blank" class="btn btn-outline-secondary btn-sm ms-1">Propuesta (DOCX)</a>
+                                </td>
+                                <td>
+                                    @if (p.FormatoEvaluacionSubido)
+                                    {
+                                        <span class="badge bg-success">✅ Subido</span>
+                                        <a href="@($"{baseUrl}/Formato_Evaluacion.pdf")" target="_blank" class="btn btn-outline-info btn-sm ms-1">Ver</a>
+                                    }
+                                    else
+                                    {
+                                        <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="SubirFormatoEvaluacionSujeto" class="d-flex gap-2">
+                                            <input type="hidden" name="carpetaProyecto" value="@p.Carpeta" />
+                                            <input type="file" name="formatoEvaluacion" accept=".pdf" class="form-control form-control-sm" required />
+                                            <button type="submit" class="btn btn-success btn-sm">
+                                                <i class="bi bi-upload"></i> Subir
+                                            </button>
+                                        </form>
+                                    }
+                                </td>
+                                <td>
+                                    @if (p.EnviadoComite)
+                                    {
+                                        <span class="badge bg-primary">📤 Enviado</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Suba primero el formato</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            @if (propuestasComite != null && propuestasComite.Any(p => p.EsViable))
+            {
+                <hr />
+                <h5 class="mt-4">💰 Proyectos viables para marcar como susceptibles a presupuesto</h5>
+
+                <table class="table table-bordered align-middle text-center">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Proyecto</th>
+                            <th>Evaluación</th> <!-- 🆕 Nueva columna -->
+                            <th>Estado</th>
+                            <th>Acción</th>              
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in propuestasComite.Where(p => p.EsViable && p.Tipo == "abierta"))
+                        {
+                            var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                            <tr>
+                                <td class="text-start">@p.Nombre</td>
+                                <td>
+                                    @if (p.TieneEvaluacionSustentabilidad)
+                                    {
+                                        <a href="@($"{baseUrl}/Formato_Evaluacion_Sustentabilidad.pdf")" target="_blank" class="btn btn-outline-info btn-sm ms-1">Ver evaluación</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted fst-italic">Sin evaluación</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (p.SusceptiblePresupuesto)
+                                    {
+                                        <span class="badge bg-success">✅ Susceptible</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">Pendiente</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!p.SusceptiblePresupuesto)
+                                    {
+                                        <form method="post" asp-controller="Proyectos" asp-action="MarcarSusceptiblePresupuesto">
+                                            <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                            <button type="submit" class="btn btn-primary btn-sm">
+                                                <i class="bi bi-cash-stack"></i> Marcar como Susceptible
+                                            </button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Ya marcado</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            @* Propuestas con observaciones *@
+
+            @if (propuestasComite != null && propuestasComite.Any(p => !string.IsNullOrEmpty(p.Observaciones)))
+            {
+                <hr />
+                <h5 class="mt-4">📝 Propuestas con observaciones del Comité</h5>
+
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Proyecto</th>
+                            <th>Observaciones</th>
+                            <th>Documentos</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in propuestasComite.Where(p => !string.IsNullOrEmpty(p.Observaciones)))
+                        {
+                            var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                            <tr>
+                                <td>@p.Nombre</td>
+                                <td class="text-wrap" style="max-width: 400px;">
+                                    @p.Observaciones
+                                </td>
+                                <td>
+                                    <a href="@($"{baseUrl}/Demanda_Especifica.pdf")" target="_blank" class="btn btn-sm btn-outline-primary me-1">Demanda</a>
+                                    @if (p.Tipo == "integrada")
+                                    {
+                                        <a href="@($"{baseUrl}/Propuesta_Tecnica.pdf")" target="_blank" class="btn btn-sm btn-outline-secondary me-1">Propuesta</a>
+                                    }
+                                </td>
+                                <td>
+                                    @if (p.FueNotificadoSujeto)
+                                    {
+                                        <span class="badge bg-info">📤 Notificado</span>
+                                        @if (p.ObservacionesArchivo)
+                                        {
+                                            <div class="mt-2">
+                                                <a href="~/documentos/revision_secretario/@p.Carpeta/Observaciones_Adjunto.pdf"
+                                                target="_blank"
+                                                class="btn btn-sm btn-outline-secondary">
+                                                    <i class="bi bi-file-earmark-pdf"></i> Ver archivo adjunto
+                                                </a>
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <form method="post" asp-controller="Proyectos" asp-action="NotificarSujetoObservaciones">
+                                            <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                            <button type="submit" class="btn btn-warning btn-sm">
+                                                <i class="bi bi-envelope-exclamation"></i> Notificar Sujeto
+                                            </button>
+                                        </form>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            @if (propuestasComite != null && propuestasComite.Any(p => p.TieneCorreccion && !p.CorreccionEnviada))
+            {
+                <hr />
+                <h5 class="mt-4">♻️ Correcciones de propuestas por reenviar al Comité</h5>
+
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Proyecto</th>
+                            <th>Corrección enviada por el Sujeto</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in propuestasComite.Where(p => p.TieneCorreccion && !p.CorreccionEnviada))
+                        {
+                            var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                            <tr>
+                                <td>@p.Nombre</td>
+                                <td>
+                                    <a href="@($"{baseUrl}/Correccion_Propuesta.pdf")" target="_blank" class="btn btn-outline-info btn-sm">
+                                        <i class="bi bi-download"></i> Ver corrección
+                                    </a>
+                                </td>
+                                <td>
+                                    <form method="post" asp-controller="Proyectos" asp-action="ReenviarCorreccionComite">
+                                        <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="bi bi-send-check"></i> Enviar al Comité
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            @if (propuestasComite != null && propuestasComite.Any(p => p.DocumentoConvenioSubido))
+            {
+                <hr />
+                <h5 class="mt-4">🏦 Oficio para Solicitud de Apertura de Cuenta Bancaria</h5>
+                <p class="text-muted">
+                    Suba el oficio correspondiente para solicitar al sujeto de apoyo la apertura de su cuenta bancaria.
+                </p>
+
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Proyecto</th>
+                            <th>Documento Convenio</th>
+                            <th>Estado Oficio</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in propuestasComite.Where(p => p.DocumentoConvenioSubido))
+                        {
+                            var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                            <tr>
+                                <td>@p.Nombre</td>
+                                <td>
+                                    <a href="@($"{baseUrl}/Documento_Convenio.pdf")" 
+                                    target="_blank" 
+                                    class="btn btn-outline-primary btn-sm">
+                                        <i class="bi bi-file-earmark-pdf"></i> Ver convenio
+                                    </a>
+                                </td>
+                                <td>
+                                    @if (p.OficioSolicitudCuentaSubido)
+                                    {
+                                        <span class="badge bg-success">📤 Oficio Subido</span>
+                                        <a href="@($"{baseUrl}/Oficio_Solicitud_Cuenta.pdf")" 
+                                        target="_blank" 
+                                        class="btn btn-outline-secondary btn-sm ms-2">
+                                            <i class="bi bi-eye"></i> Ver Oficio
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">Pendiente</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!p.OficioSolicitudCuentaSubido)
+                                    {
+                                        <form method="post" enctype="multipart/form-data" 
+                                            asp-controller="Proyectos" 
+                                            asp-action="SubirOficioSolicitudCuenta" 
+                                            class="d-flex gap-2">
+                                            <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                            <input type="file" name="archivoOficio" accept=".pdf" 
+                                                class="form-control form-control-sm" required />
+                                            <button type="submit" class="btn btn-success btn-sm">
+                                                <i class="bi bi-upload"></i> Subir Oficio
+                                            </button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Ya subido</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            @if (propuestasComite != null && propuestasComite.Any(p => p.DocumentosCuentaBancariaSubidos))
+            {
+                <hr />
+                <h5 class="mt-4">💳 Confirmación de Transferencia</h5>
+                <p class="text-muted">
+                    Revise los datos bancarios enviados por el sujeto de apoyo y confirme la transferencia una vez realizada.
+                </p>
+
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Proyecto</th>
+                            <th>Datos Bancarios</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in propuestasComite.Where(p => p.DocumentosCuentaBancariaSubidos))
+                        {
+                            var baseUrl = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                            <tr>
+                                <td>@p.Nombre</td>
+                                <td>
+                                    <a href="@($"{baseUrl}/Documentos_CuentaBancaria.pdf")" 
+                                    target="_blank" 
+                                    class="btn btn-outline-primary btn-sm">
+                                        <i class="bi bi-file-earmark-pdf"></i> Ver datos bancarios
+                                    </a>
+                                </td>
+                                <td>
+                                    @if (p.TransferenciaConfirmada)
+                                    {
+                                        <span class="badge bg-success">✅ Transferencia confirmada</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">Pendiente</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!p.TransferenciaConfirmada)
+                                    {
+                                        <button class="btn btn-success btn-sm"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#modalConfirmarTransferencia"
+                                                data-carpeta="@p.Carpeta"
+                                                data-proyecto="@p.Nombre">
+                                            <i class="bi bi-check-circle"></i> Confirmar
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Ya confirmada</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <!-- Modal Confirmar Transferencia -->
+            <div class="modal fade" id="modalConfirmarTransferencia" tabindex="-1" aria-labelledby="modalConfirmarLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form method="post" asp-controller="Proyectos" asp-action="ConfirmarTransferencia">
+                            <div class="modal-header bg-warning">
+                                <h5 class="modal-title" id="modalConfirmarLabel">⚠️ Confirmar Transferencia</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>
+                                    Está a punto de confirmar que ya se realizó la transferencia para el proyecto:
+                                    <strong id="proyectoNombre"></strong>.
+                                </p>
+                                <p class="text-danger fw-bold">
+                                    Esta acción no se puede deshacer. Asegúrese de haber realizado la transferencia bancaria.
+                                </p>
+                                <input type="hidden" name="carpeta" id="transferenciaCarpeta" />
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-success">Confirmar Transferencia</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                var modalTransferencia = document.getElementById('modalConfirmarTransferencia');
+                modalTransferencia.addEventListener('show.bs.modal', function (event) {
+                    var button = event.relatedTarget;
+                    var carpeta = button.getAttribute('data-carpeta');
+                    var nombreProyecto = button.getAttribute('data-proyecto');
+
+                    document.getElementById('transferenciaCarpeta').value = carpeta;
+                    document.getElementById('proyectoNombre').textContent = nombreProyecto;
+                });
+            </script>
+        }
+        <script>
+            function mostrarPropuesta(tipo) {
+                const bloque = document.getElementById('bloquePropuesta');
+                bloque.style.display = tipo === "integrada" ? "block" : "none";
+            }
+        </script>
+    }
+    else if (rolUsuario == "Evaluacion")
+    {
+        <div class="alert alert-info d-flex align-items-center">
+            <i class="bi bi-people-fill me-2"></i>
+            Vista del Comité de Evaluación
+        </div>
+
+        var propuestasEval = ViewData["PropuestasEvaluacion"] as List<dynamic>;
+
+        @if (propuestasEval != null && propuestasEval.Any())
+        {
+            <h5 class="mt-4">📋 Proyectos para evaluación de presupuesto</h5>
+
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Proyecto</th>
+                        <th>Documentos</th>
+                        <th>Evaluación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in propuestasEval)
+                    {
+                        var urlBase = Url.Content($"~/documentos/revision_secretario/{p.Carpeta}");
+                        var idModal = "modalEvaluacion-" + p.Carpeta.Replace(" ", "_").Replace(".", "_").Replace("/", "_");
+                        
+                        <tr>
+                            <td>@p.Nombre</td>
+                            <td>
+                                <a href="@($"{urlBase}/Demanda_Especifica.pdf")" target="_blank" class="btn btn-outline-primary btn-sm">
+                                    Demanda
+                                </a>
+                                @if (p.TienePropuesta)
+                                {
+                                    <a href="@($"{urlBase}/Propuesta_Tecnica.pdf")" target="_blank" class="btn btn-outline-secondary btn-sm ms-1">
+                                        Propuesta
+                                    </a>
+                                }
+                                <a href="@($"{urlBase}/Formato_Evaluacion.pdf")" target="_blank" class="btn btn-outline-success btn-sm ms-1">
+                                    Formato Evaluación
+                                </a>
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(p.EstadoEvaluacion))
+                                {
+                                    <div class="alert alert-@(p.EstadoEvaluacion.Contains("VIABLE") ? "success" : "danger") p-2 mb-2">
+                                        <i class="bi bi-check2-circle me-1"></i> @p.EstadoEvaluacion
+                                    </div>
+                                }
+                                else if (!string.IsNullOrEmpty(p.EstadoEvaluacionAbierta))
+                                {
+                                    <div class="alert alert-@(p.EstadoEvaluacionAbierta.Contains("VIABLE") ? "success" : "danger") p-2 mb-2">
+                                        <i class="bi bi-check2-circle me-1"></i> @p.EstadoEvaluacionAbierta
+                                    </div>
+                                }                          
+                                else if (p.TieneEvaluacionSustentabilidad)
+                                {
+                                    <form method="post" asp-controller="Proyectos" asp-action="EvaluarViabilidad" class="d-flex gap-2">
+                                        <input type="hidden" name="carpeta" value="@p.Carpeta" />
+                                        <button name="decision" value="viable" class="btn btn-success btn-sm">
+                                            ✅ Viable
+                                        </button>
+                                        <button name="decision" value="no_viable" class="btn btn-danger btn-sm">
+                                            ❌ No viable
+                                        </button>
+                                    </form>
+                                }
+                                else
+                                {
+
+                                    <!-- Botón que abre el modal -->
+                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#@idModal">
+                                        📝 Evaluar
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @foreach(var p in propuestasEval)
+            {
+                var idModal = "modalEvaluacion-" + p.Carpeta.Replace(" ", "_").Replace(".", "_").Replace("/", "_");
+                <!-- Modal -->
+                <div class="modal fade" id="@idModal" tabindex="-1" aria-labelledby="modalEvaluacionLabel-@p.Carpeta" aria-hidden="true">
+                    <div class="modal-dialog modal-xl"> <!-- más ancho porque es un formato largo -->
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Evaluación del proyecto: @p.Nombre</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form method="post" asp-controller="Proyectos" asp-action="GuardarEvaluacion" enctype="multipart/form-data">
+                                    <input type="hidden" name="carpeta" value="@p.Carpeta" />
+
+                                    <!-- Instrucciones -->
+                                    <div class="alert alert-info">
+                                        <h6 class="fw-bold">📌 Instrucciones para el evaluador</h6>
+                                        <p>
+                                            Evalue la propuesta considerando si esta atiende satisfactoriamente las preguntas relacionadas al 
+                                            cumplimiento de los criterios especificados; asignando un valor con base en la siguiente 
+                                            <strong>Escala de Referencia</strong>:
+                                        </p>
+
+                                        <!-- Tabla de escala -->
+                                        <table class="table table-sm table-bordered text-center align-middle">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Valor</th>
+                                                    <th>Equivalencia (%)</th>
+                                                    <th>Interpretación</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td><strong>1</strong></td>
+                                                    <td>25%</td>
+                                                    <td>No cumple / Cumplimiento muy bajo</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>2</strong></td>
+                                                    <td>50%</td>
+                                                    <td>Cumplimiento parcial</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>3</strong></td>
+                                                    <td>75%</td>
+                                                    <td>Cumple satisfactoriamente</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><strong>4</strong></td>
+                                                    <td>100%</td>
+                                                    <td>Cumplimiento excelente / totalmente satisfactorio</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <!-- Justificación -->
+                                    <h6 class="fw-bold text-primary">🟨 Justificación</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿La propuesta atiende de manera directa alguno de los temas específicos?</label>
+                                        <input type="number" name="justificacion_temas" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_justificacion_temas" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿La propuesta da atención a la necesidad que dio origen a la demanda?</label>
+                                        <input type="number" name="justificacion_demanda" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_justificacion_demanda" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿La propuesta incorpora elementos que favorezcan su trascendencia y sostenibilidad en el tiempo?</label>
+                                        <input type="number" name="justificacion_sostenibilidad" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_justificacion_sostenibilidad" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿La propuesta presenta un impacto potencial que aumente su probabilidad de aprobación?</label>
+                                        <input type="number" name="justificacion_impacto" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_justificacion_impacto" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+
+                                    <!-- Calidad -->
+                                    <h6 class="fw-bold text-success mt-4">🟩 Calidad</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿Los objetivos general y específicos son claros, congruentes y aseguran la contribución esperada?</label>
+                                        <input type="number" name="calidad_objetivos" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_calidad_objetivos" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿La metodología o estrategia de ejecución es clara, congruente y permite alcanzar los objetivos planteados?</label>
+                                        <input type="number" name="calidad_metodologia" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_calidad_metodologia" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿Se detallan claramente los instrumentos, equipos, materiales y recursos humanos requeridos para el adecuado desarrollo de la propuesta?</label>
+                                        <input type="number" name="calidad_recursos" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_calidad_recursos" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿Las metas, etapas y actividades son congruentes y aseguran la atención a la demanda específica?</label>
+                                        <input type="number" name="calidad_metas" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_calidad_metas" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿Se identifican de manera clara en la propuesta los resultados que se espera lograr y cómo se estiman alcanzarlos con los objetivos específicos y metas?</label>
+                                        <input type="number" name="calidad_resultados" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_calidad_resultados" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿Se cuenta con indicadores o métricas que permitan verificar el logro de las metas esperadas?</label>
+                                        <input type="number" name="calidad_indicadores" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_calidad_indicadores" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿Se identifican de manera clara los productos esperados como ejemplo: patentes, software, capital humano, laboratorio, etc.?</label>
+                                        <input type="number" name="calidad_productos" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_calidad_productos" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿La propuesta identifica los riesgos y retos que pueden presentarse durante su desarrollo?</label>
+                                        <input type="number" name="calidad_riesgos" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_calidad_riesgos" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+
+                                    <!-- Viabilidad -->
+                                    <h6 class="fw-bold text-warning mt-4">🟦 Viabilidad</h6>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿El cronograma de actividades es coherente con el objetivo del proyecto y metodología en términos de alcance y tiempos de ejecución?</label>
+                                        <input type="number" name="viabilidad_cronograma" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_viabilidad_cronograma" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿Se presentan de manera detallada los recursos materiales y humanos necesarios y suficientes para cumplir con los objetivos y metas propuestos?</label>
+                                        <input type="number" name="viabilidad_recursos" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_viabilidad_recursos" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">¿Existe congruencia técnico-financiera en cada uno de los conceptos contemplados para el desarrollo de las actividades establecidas en el proyecto?</label>
+                                        <input type="number" name="viabilidad_presupuesto" class="form-control" min="1" max="4" required />
+                                        <textarea name="obs_viabilidad_presupuesto" class="form-control mt-1" placeholder="Observaciones"></textarea>
+                                    </div>
+
+                                    <!-- Subir documento -->
+                                    <div class="mb-3">
+                                        <label class="form-label">Subir documento con evaluación</label>
+                                        <input type="file" class="form-control" name="archivoEvaluacion" />
+                                    </div>
+
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                        <button type="submit" class="btn btn-primary">Guardar evaluación</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="alert alert-warning mt-4">
+                No hay proyectos listos para evaluación de presupuesto.
+            </div>
+        }
+    }
+    <br>
+    <h2 class="fw-bold subtitulo">Proyectos aprobados para asignación de fondos del Instituto Mexicano del Petróleo</h2>
+    <div class="table-responsive mt-4">
+        <table id="tablaProyectos" class="table table-striped table-hover" style="width:100%">
+            <thead class="table-dark">
+                <tr>
+                    <th>Nombre del Proyecto</th>
+                    <th>Inicio</th>
+                    <th>Fin</th>
+                    <th>Progreso</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="cuerpoTablaProyectos">
+                @foreach (var proyecto in (IEnumerable<dynamic>)ViewData["ProyectosAprobados"])
+                {
+                    <tr>
+                        <td>@proyecto.Nombre</td>
+                        <td>@proyecto.Inicio</td>
+                        <td>@proyecto.Fin</td>
+                        <td>@proyecto.Progreso%</td>
+                        <td>@proyecto.Estado</td>
+                        <td>
+                            <!-- Botón Editar con data-* -->
+                            <button class="btn btn-success btn-sm btn-editar"
+                                    data-nombre="@proyecto.Nombre"
+                                    data-inicio="@proyecto.Inicio"
+                                    data-fin="@proyecto.Fin"
+                                    data-progreso="@proyecto.Progreso"
+                                    data-estado="@proyecto.Estado"
+                                    data-carpeta="@proyecto.Carpeta"
+                                    data-fechaentregainformes="@proyecto.FechaEntregaInformes"
+                                    data-fechalimite="@proyecto.FechaLimite"
+                                    data-fechareunion="@proyecto.FechaReunion"
+                                    data-requieredocumento="@proyecto.RequiereDocumento"
+                                    data-habilitarinformefinal = "@proyecto.HabilitarInformeFinal"
+                                    data-informefinal = "@proyecto.InformeFinalGuardado"
+                                    data-fechafinal = "@proyecto.FechaEntregaFinal"
+                                    data-finalproyecto = "@proyecto.FinalProyecto"
+                                    data-finiquito = "@proyecto.Finiquito"
+                                    data-rol="@rolUsuario">
+                                Editar
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <br><br>
+
+    <h2 class="fw-bold   subtitulo ">Cronograma de Recursos del Fondo Mexicano del Petróleo</h2>
+    <br>
+
+    @* SECCIÓN DE SEMAFORO Y GANTT *@
+    <section id="semaforo_proyectos" class="container mb-4">
+        <div class="row">
+            <!-- Semáforo -->
+            <div class="col-md-3 d-flex flex-column justify-content-between" style="min-height: 100%;">
+                <!-- Tarjeta 1 -->
+                    <!-- Prototipo con datos simulados -->
+                    <div class="card stat-card bg-gradient-success border-0 mb-1">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="badge rounded-pill bg-white bg-opacity-25" id="porcentaje-terminados">0%</span>
+                                <div class="card-icon bg-white bg-opacity-25">
+                                    <i class="bi bi-check-circle-fill fs-4 text-white"></i>
+                                </div>
+                            </div>
+                            <h2 class="mb-0 text-white" id="proyectos-terminados">0</h2>
+                            <p class="card-title h6 text-white-50">Proyectos Terminados</p>
+                        </div>
+                    </div>
+
+                    <div class="card stat-card bg-gradient-warning border-0 mb-1">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="badge rounded-pill bg-white bg-opacity-25" id="porcentaje-en-curso">0%</span>
+                                <div class="card-icon bg-white bg-opacity-25">
+                                    <i class="bi bi-clock-fill fs-4 text-dark"></i>
+                                </div>
+                            </div>
+                            <h2 class="mb-0 text-dark" id="proyectos-en-curso">0</h2>
+                            <p class="card-title h6 text-dark">Proyectos en Curso</p>
+                        </div>
+                    </div>
+
+                    <div class="card stat-card bg-danger border-0">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="badge rounded-pill bg-white bg-opacity-25" id="porcentaje-cancelados">0%</span>
+                                <div class="card-icon bg-white bg-opacity-25">
+                                    <i class="bi bi-x-circle-fill fs-4 text-white"></i>
+                                </div>
+                            </div>
+                            <h2 class="mb-0 text-white" id="proyectos-cancelados">0</h2>
+                            <p class="card-title h6 text-white-50">Proyectos Cancelados</p>
+                        </div>
+                    </div>
+            </div>
+
+            <!-- Gráfica Gantt con Highcharts -->
+            <div class="col-md-9">
+                <div class="app-card app-card-chart shadow-sm" style="min-height: 100%;">
+                    <div class="app-card-header p-3 border-0">
+                        <h4 class="app-card-title">Cronograma de Proyectos (Gantt)</h4>
+                    </div>
+                    <div class="app-card-body p-4">
+                        <div id="gantt-chart" style="height: 500px; width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modal -->
+    <div class="modal fade" id="modalProyecto" tabindex="-1" aria-labelledby="modalProyectoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-xl-custom">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalProyectoLabel">Detalle del Proyecto</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <!-- Columna izquierda -->
+                        <div class="col-md-8">
+                            <p><strong>Nombre:</strong> <span id="modalNombre"></span></p>
+                            <p><strong>Estado:</strong> <span id="modalEstado"></span></p>
+                            <p><strong>Fecha de Inicio:</strong> <span id="modalInicio"></span></p>
+                            <p><strong>Fecha Final:</strong> <span id="modalFin"></span></p>
+                            <p><strong>Progreso:</strong> <span id="modalProgreso"></span>%</p>
+
+                            <hr>
+                            <h6>Línea del tiempo del proyecto</h6>
+                            <div class="pb-3">
+                                <button id="zoomIn" class="btn btn-primary btn-sm">Zoom In</button>
+                                <button id="zoomOut" class="btn btn-primary btn-sm">Zoom Out</button>
+                            </div>
+                            <div id="timeline" style="border: 1px solid #ddd;"></div>
+                        </div>
+
+                        <input type="hidden" id="fechaLimite" name="carpeta" />
+
+                        <!-- Columna derecha: solo visible si el rol es Sujeto -->
+                        @if (rolUsuario == "Sujeto")
+                        {
+                            <div class="col-md-4 border-start">
+                                <h6>Entrega de informes</h6>
+
+                                <div id="mensajeEnviado" class="alert alert-success" style="display:none;"></div>
+
+                                <div id="contenedorForm">
+                                    <p class="small text-muted">
+                                        Adjunte los informes técnicos y financieros mediante oficio acompañado de los formatos:
+                                        <br><strong>Cronograma Técnico (Anexo 5)</strong> y 
+                                        <strong>Desglose Financiero (Anexo 6)</strong>.
+                                    </p>
+
+                                    <form id="formInformes" enctype="multipart/form-data" method="post" asp-action="SubirInformes">
+                                        <!-- Campo oculto para enviar la carpeta -->
+                                        <input type="hidden" id="carpetaInput" name="carpeta" />
+
+                                        <div class="mb-3">
+                                            <label for="informeTecnico" class="form-label">Informe Técnico (Anexo 5)</label>
+                                            <input type="file" class="form-control" id="informeTecnico" name="informeTecnico" accept=".pdf,.doc,.docx,.xlsx" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="informeFinanciero" class="form-label">Informe Financiero (Anexo 6)</label>
+                                            <input type="file" class="form-control" id="informeFinanciero" name="informeFinanciero" accept=".pdf,.doc,.docx,.xlsx" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="oficio" class="form-label">Oficio</label>
+                                            <input type="file" class="form-control" id="oficio" name="oficio" accept=".pdf,.doc,.docx" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-success w-100">Subir Informes</button>
+                                    </form>
+                                </div>
+                                <!-- NUEVO: formulario para informe técnico final -->
+                                <div id="contenedorInformeFinal" style="display:none;">
+                                    <p class="small text-muted">
+                                        📑 Puede subir aquí su <strong>Informe Técnico Final</strong> ya que el proyecto está próximo a concluir.
+                                    </p>
+                                    <form id="formInformeFinal" enctype="multipart/form-data" method="post" asp-action="SubirInformeFinal">
+                                        <input type="hidden" id="carpetaInputFinal" name="carpeta" />
+                                        <div class="mb-3">
+                                            <label for="informeFinal" class="form-label">Informe Técnico Final</label>
+                                            <input type="file" class="form-control" id="informeFinal" name="informeFinal" accept=".pdf,.doc,.docx,.xlsx" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-warning w-100">Subir Informe Final</button>
+                                    </form>
+                                </div>
+                                <div id="estadoReunionSuj"><!-- Aquí va el mensaje dinámico --></div>
+                            </div>
+                        }
+                        else if (rolUsuario == "Secretario")
+                        {
+                            <div class="col-md-4 border-start">
+                                <h6>Acciones del Secretario</h6>
+
+                                <!-- Caso: aún NO se entregaron informes -->
+                                <div id="contenedorPlazo" style="display:none;">
+                                    <p class="small text-muted">
+                                        El sujeto aún no ha entregado los informes.  
+                                        Puede asignar un plazo límite mediante convenio:
+                                    </p>
+
+                                    <form id="formPlazo" method="post" asp-action="AsignarPlazo"> 
+                                        <!-- Campo oculto para enviar la carpeta -->
+                                        <input type="hidden" id="carpetaInputSec" name="carpeta" />
+
+                                        <div class="mb-3">
+                                            <label for="fechaLimite" class="form-label">Fecha límite</label>
+                                            <input type="date" class="form-control" id="fechaLimite" name="fechaLimite" />
+                                            <small class="text-muted">Si no se establece fecha, se considerará "sin límite".</small>
+                                        </div>
+
+                                        <button type="submit" class="btn btn-warning w-100">Guardar Plazo</button>
+                                    </form> 
+                                </div>
+
+                                <!-- Caso: sí se entregaron informes -->
+                                <div id="contenedorRevision" style="display:none;">
+                                    <div class="alert alert-info">
+                                        📂 Los informes y el oficio ya se encuentran disponibles para revisión.
+                                    </div>
+
+                                    <ul id="listaArchivos" class="list-group mb-3">
+                                        <!-- Se llenará dinámicamente con los archivos -->
+                                    </ul>
+
+                                    <button type="button" class="btn btn-primary w-100" id="btnSolicitarReunion">Solicitar reunión</button>
+
+                                    <div id="estadoReunion"><!-- Aquí va el mensaje dinámico --></div>
+
+                                    <!-- Formulario dinámico -->
+                                    <div id="formReunion" class="mt-3" style="display:none;">
+                                        <form id="formReuniones" enctype="multipart/form-data" method="post" asp-action="SubirReuniones">
+                                            <!-- Campo oculto para enviar la carpeta -->
+                                            <input type="hidden" id="carpetaInputSecReu" name="carpeta" />
+                                            <div class="mb-3">
+                                                <label for="fechaReunion" class="form-label">📅 Fecha de la reunión</label>
+                                                <input type="datetime-local" id="fechaReunion" name="fechaReunion" class="form-control">
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label for="requiereDoc" class="form-label">📑 ¿Se requiere entregar documento?</label>
+                                                <select id="requiereDoc" name="requiereDoc" class="form-select">
+                                                    <option value="">Seleccione...</option>
+                                                    <option value="si">Sí, se requiere</option>
+                                                    <option value="no">No se requiere</option>
+                                                </select>
+                                            </div>
+
+                                            <button type="submit" class="btn btn-success w-100" id="btnGuardarReunion">
+                                                Agendar reunión
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                <!-- Caso: suscribir acta de finiquito -->
+                                <div id="contenedorActaFiniquito" style="display:none;">
+                                    <div class="alert alert-warning">
+                                        📝 El proyecto ya cumplió con todas sus etapas.  
+                                        El Secretario Administrativo puede suscribir el acta de finiquito.
+                                    </div>
+
+                                    <form id="formActaFiniquito" method="post" asp-action="SuscribirActaFiniquito">
+                                        <!-- Campo oculto para enviar la carpeta -->
+                                        <input type="hidden" id="carpetaInputSecFiniquito" name="carpeta" />
+
+                                        <button type="submit" class="btn btn-danger w-100">
+                                            Suscribir Acta de Finiquito
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                        else if(rolUsuario == "Comite"){
+                            <div class="col-md-4 border-start">
+                                <h6>Acciones del Comité</h6>
+                                <div id="contenedorRevisionCom" style="display:none;">
+                                    <div class="alert alert-info">
+                                        📂 Los informes y el oficio ya se encuentran disponibles para revisión.
+                                    </div>
+
+                                    <ul id="listaArchivosCom" class="list-group mb-3">
+                                        <!-- Se llenará dinámicamente con los archivos -->
+                                    </ul>
+
+                                    <button type="button" class="btn btn-primary w-100" id="btnSolicitarReunionCom">Solicitar reunión</button>
+
+                                    <div id="estadoReunionCom"><!-- Aquí va el mensaje dinámico --></div>
+
+                                    <!-- Formulario dinámico -->
+                                    <div id="formReunionCom" class="mt-3" style="display:none;">
+                                        <form id="formReunionesCom" enctype="multipart/form-data" method="post" asp-action="SubirReuniones">
+                                            <!-- Campo oculto para enviar la carpeta -->
+                                            <input type="hidden" id="carpetaInputComReu" name="carpeta" />
+                                            <div class="mb-3">
+                                                <label for="fechaReunion" class="form-label">📅 Fecha de la reunión</label>
+                                                <input type="datetime-local" id="fechaReunion" name="fechaReunion" class="form-control">
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label for="requiereDoc" class="form-label">📑 ¿Se requiere entregar documento?</label>
+                                                <select id="requiereDoc" name="requiereDoc" class="form-select">
+                                                    <option value="">Seleccione...</option>
+                                                    <option value="si">Sí, se requiere</option>
+                                                    <option value="no">No se requiere</option>
+                                                </select>
+                                            </div>
+
+                                            <button type="submit" class="btn btn-success w-100" id="btnGuardarReunionCom">
+                                                Agendar reunión
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                                <div id="contenedorPlazoCom">
+                                    <p class="small text-muted">
+                                        Sin acciones disponibles
+                                    </p>
+                                </div>
+                                <div id="contenedorInformeFinalCom" style="display:none;">
+                                    <div class="alert alert-warning">
+                                        📑 El Informe Técnico Final ya está disponible para revisión del Comité.
+                                    </div>
+                                    <ul id="listaArchivosFinalCom" class="list-group mb-3"></ul>
+                                    <button type="button" class="btn btn-primary w-100" id="btnSolicitarReunionFinalCom">Solicitar reunión final</button>
+
+                                    <div id="estadoReunionFinalCom"><!-- Mensaje dinámico --></div>
+
+                                    <div id="formReunionFinalCom" class="mt-3" style="display:none;">
+                                        <form id="formReunionFinalComite" enctype="multipart/form-data" method="post" asp-action="SubirReunionFinal">
+                                            <input type="hidden" id="carpetaInputComFinalReu" name="carpeta" />
+                                            <div class="mb-3">
+                                                <label for="fechaReunionFinal" class="form-label">📅 Fecha de la reunión final</label>
+                                                <input type="datetime-local" id="fechaReunionFinal" name="fechaReunion" class="form-control">
+                                            </div>
+                                            <button type="submit" class="btn btn-success w-100">
+                                                Agendar reunión final
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        else if(rolUsuario == "Evaluacion"){
+                            <div id="contenedorInformeFinalEv" style="display:none;">
+                                <div class="alert alert-warning">
+                                    📑 El Informe Técnico Final ya está disponible para revisión del Comité.
+                                </div>
+                                <ul id="listaArchivosFinalEv" class="list-group mb-3"></ul>
+                                <button type="button" class="btn btn-primary w-100" id="btnSolicitarReunionFinalEv">Solicitar reunión final</button>
+
+                                <div id="estadoReunionFinalEv"><!-- Mensaje dinámico --></div>
+
+                                <div id="formReunionFinalEv" class="mt-3" style="display:none;">
+                                    <form id="formReunionFinalEv" enctype="multipart/form-data" method="post" asp-action="SubirReunionFinal">
+                                        <input type="hidden" id="carpetaInputEvFinalReu" name="carpeta" />
+                                        <div class="mb-3">
+                                            <label for="fechaReunionFinal" class="form-label">📅 Fecha de la reunión final</label>
+                                            <input type="datetime-local" id="fechaReunionFinal" name="fechaReunion" class="form-control">
+                                        </div>
+                                        <button type="submit" class="btn btn-success w-100">
+                                            Agendar reunión final
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="small text-muted">
+                                Sin acciones disponibles
+                            </p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <style>
+        .modal-xl-custom {
+            max-width: 95%;
+        }
+        .modal-body {
+            max-height: 200vh;
+            overflow-y: auto;
+        }
+    </style>
+
+    <!-- Modal para enviar evaluación -->
+    <div class="modal fade" id="modalEvaluacion" tabindex="-1" aria-labelledby="modalEvaluacionLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="EnviarEvaluacion">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalEvaluacionLabel">Enviar Cuestionario Evaluado</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="carpetaProyecto" id="carpetaProyecto" />
+                        <div class="mb-3">
+                            <label for="cuestionarioEvaluado" class="form-label">Subir Cuestionario Evaluado (PDF):</label>
+                            <input type="file" class="form-control" name="cuestionarioEvaluado" accept=".pdf" required />
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-success">Enviar al Comité</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Llenar Formulario -->
+    <div class="modal fade" id="modalLlenarFormulario" tabindex="-1" aria-labelledby="modalLlenarFormularioLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Registro de Demanda Específica</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="formNuevoProyecto" method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="EnviarPropuesta">
+                        <!-- 🧑 Datos del Solicitante -->
+                        <h5 class="mt-3">Datos del Solicitante</h5>
+
+                        <div class="mb-3">
+                            <label for="nombreSolicitante" class="form-label">Nombre del Solicitante:</label>
+                            <input type="text" class="form-control" id="nombreSolicitante" name="nombreSolicitante" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="institucion" class="form-label">Institución:</label>
+                            <input type="text" class="form-control" id="institucion" name="institucion" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="responsable" class="form-label">Responsable Técnico del Proyecto:</label>
+                            <input type="text" class="form-control" id="responsable" name="responsable" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="correo" class="form-label">Correo de contacto:</label>
+                            <input type="email" class="form-control" id="correo" name="correo" required>
+                        </div>
+
+                        <!-- 📄 Datos del Proyecto -->
+                        <h5 class="mt-4">Datos del Proyecto</h5>
+
+                        <div class="mb-3">
+                            <label for="nombreProyecto" class="form-label">Nombre del Proyecto:</label>
+                            <input type="text" class="form-control" id="nombreProyecto" name="nombreProyecto" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="tipoDemanda" class="form-label">Tipo de Demanda:</label>
+                            <select class="form-select" id="tipoDemanda" name="tipoDemanda" required>
+                                <option value="" disabled selected>Seleccione una opción</option>
+                                <option value="integrada">Integrada</option>
+                                <option value="abierta">Abierta</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="descripcion" class="form-label">Descripción general del Proyecto:</label>
+                            <textarea class="form-control" id="descripcion" name="descripcion" rows="3" required></textarea>
+                        </div>
+
+                        <!-- 📎 Archivos Requeridos -->
+                        <h5 class="mt-4">Carga de Anexos Obligatorios</h5>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Anexo 1 - Demanda Específica (PDF firmado)</label>
+                                <input type="file" class="form-control" name="anexo1_pdf" accept=".pdf" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Anexo 1 - Demanda Específica (Editable .doc/.docx)</label>
+                                <input type="file" class="form-control" name="anexo1_editable" accept=".doc,.docx" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Anexo 2 - Propuesta Técnica (PDF firmado)</label>
+                                <input type="file" class="form-control" name="anexo2_pdf" accept=".pdf" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Anexo 2 - Propuesta Técnica (Editable .doc/.docx)</label>
+                                <input type="file" class="form-control" name="anexo2_editable" accept=".doc,.docx" required>
+                            </div>
+                        </div>
+
+                        <!-- ✅ Botón Final -->
+                        <div class="text-end mt-4">
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-send"></i> Enviar Propuesta
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Aprobar una propuesta -->
+    <div class="modal fade" id="modalAprobar" tabindex="-1" aria-labelledby="modalAprobarLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+            <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="AprobarProyecto">
+                <div class="modal-header">
+                <h5 class="modal-title">Subir Oficio de Aprobación</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                <input type="hidden" name="carpeta" id="aprobacionCarpeta" />
+                <div class="mb-3">
+                    <label class="form-label">Selecciona el oficio en PDF:</label>
+                    <input type="file" name="oficio" class="form-control" accept=".pdf" required />
+                </div>
+                </div>
+                <div class="modal-footer">
+                <button type="submit" class="btn btn-success">Subir Oficio</button>
+                </div>
+            </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Rechazar propuesta (con observaciones) -->
+    <div class="modal fade" id="modalObservacion" tabindex="-1" aria-labelledby="modalObservacionLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="post" enctype="multipart/form-data" asp-controller="Proyectos" asp-action="EnviarObservacion">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Enviar Observaciones</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="carpeta" id="obsCarpeta" />
+
+                        <div class="mb-3">
+                            <label class="form-label">Observaciones escritas:</label>
+                            <textarea name="observaciones" class="form-control" rows="4" placeholder="Escribe aquí las observaciones si lo deseas..."></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Adjuntar documento (opcional):</label>
+                            <input type="file" name="oficio" class="form-control" accept=".pdf" />
+                        </div>
+
+                        <div class="alert alert-secondary small">
+                            Puedes llenar solo el campo de observaciones o solo adjuntar el documento, o ambos. Al menos uno es requerido.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-danger">Enviar Observación</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        #fullscreen-search-container {
+            background-color: white;
+        }
+
+        #fullscreen-elements {
+            display: flex;
+            flex-direction: column;
+            height: auto; /* Valor inicial para cuando no esté en pantalla completa */
+        }
+
+        #fullscreen-last-update,
+        #fullscreen-select,
+        #fullscreen-search-container {
+            flex-shrink: 0;
+        }
+
+        #map {
+            flex-grow: 1;
+        }
+
+        #main-container.fullscreen-active #fullscreen-elements {
+            height: 100vh;
+        }
+
+        #main-container.fullscreen-active #map {
+            height: calc(100vh - 60px);
+        }
+
+        #main-container:not(.fullscreen-active) #map {
+            height: 500px;
+        }
+    </style>
+
+</div>
+
+@section Scripts {
+
+    <!-- Bootstrap JS + Popper.js desde CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    @* BOTONES FORMULARIO *@
+    <!-- MODAL -->
+    <script>
+        var modalEvaluacion = document.getElementById('modalEvaluacion');
+        modalEvaluacion.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var carpeta = button.getAttribute('data-carpeta');
+            document.getElementById('carpetaProyecto').value = carpeta;
+        });
+    </script>
+
+    <script>
+        var modalAprobar = document.getElementById('modalAprobar');
+        modalAprobar.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var carpeta = button.getAttribute('data-carpeta');
+            document.getElementById('aprobacionCarpeta').value = carpeta;
+        });
+
+        var modalObs = document.getElementById('modalObservacion');
+        modalObs.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var carpeta = button.getAttribute('data-carpeta');
+            document.getElementById('obsCarpeta').value = carpeta;
+        });
+    </script>
+
+    <!-- PROYECTOS -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Delegación de eventos para los botones Editar
+            document.querySelectorAll(".btn-editar").forEach(btn => {
+                btn.addEventListener("click", function () {
+                    console.log("Hasta aqui llegamos"); 
+                    // Obtener datos desde atributos data-*
+                    document.getElementById("modalNombre").innerText = this.dataset.nombre;
+                    document.getElementById("modalEstado").innerText = this.dataset.estado;
+                    document.getElementById("modalInicio").innerText = this.dataset.inicio;
+                    document.getElementById("modalFin").innerText = this.dataset.fin;
+                    document.getElementById("modalProgreso").innerText = this.dataset.progreso; 
+                    document.getElementById("fechaLimite").innerText = this.dataset.fechalimite;
+                    @* document.getElementById("fechaReunion").innerText = this.dataset.fechareunion;             *@
+
+                    var rolUsuario = this.dataset.rol;
+                    let fechaEntrega = this.dataset.fechaentregainformes;
+                    let fechaLimite = this.dataset.fechalimite;
+                    let fechaReunion = this.dataset.fechareunion;
+                    let requiereDocumento = this.dataset.requieredocumento;
+
+                    let informeFinalEntregado = this.dataset.informefinal === "true";
+                    let fechaFinal = this.dataset.fechafinal;
+                    // 🔹 Leemos el valor del atributo data-finalproyecto
+                    let finalProyecto = this.dataset.finalproyecto === "true";
+                    let finiquito = this.dataset.finiquito === "true";
+
+                    console.log("Rol: ", rolUsuario);
+                    console.log("Fecha Limite: ", fechaLimite);
+
+                    if (finiquito) {
+                        // Ocultamos cualquier contenedor de acciones
+                        document.querySelectorAll("#contenedorForm, #contenedorInformeFinal, #contenedorPlazo, #contenedorRevision, #contenedorActaFiniquito, #contenedorRevisionCom, #contenedorPlazoCom, #contenedorInformeFinalCom, #contenedorInformeFinalEv")
+                            .forEach(div => {
+                                if (div) div.style.display = "none";
+                            });
+
+                        // Insertamos mensaje de proyecto finalizado en la columna del rol actual
+                        let columnaAcciones = document.querySelector(".col-md-4.border-start");
+                        if (columnaAcciones) {
+                            columnaAcciones.innerHTML = `
+                                <div class="alert alert-dark text-center">
+                                    ✅ El proyecto ha concluido oficialmente. 
+                                    No hay más acciones disponibles para el rol <strong>${rolUsuario}</strong>.
+                                </div>
+                            `;
+                        }
+
+                    } else { 
+                        // ROL DE USUARIO
+                        if (rolUsuario === "Sujeto"){ 
+                            document.getElementById('carpetaInput').value = this.dataset.carpeta;
+                            document.getElementById('carpetaInputFinal').value = this.dataset.carpeta;         
+
+                            // NUEVO: manejar la entrega de informes/oficio
+                            let mensajeEnviado = document.getElementById("mensajeEnviado");
+                            let contenedorForm = document.getElementById("contenedorForm");
+
+                            if (fechaEntrega) {
+                                // Ya entregó → mostrar mensaje
+                                mensajeEnviado.style.display = "block";
+                                mensajeEnviado.innerHTML = `✅ Los informes y el oficio se entregaron correctamente el 
+                                    <strong>${fechaEntrega}</strong>.`;
+
+                                contenedorForm.style.display = "none";
+
+                                let habilitarInformeFinal = this.dataset.habilitarinformefinal === "true";
+                                let contenedorInformeFinal = document.getElementById("contenedorInformeFinal");
+
+                                if (habilitarInformeFinal) {
+                                    contenedorInformeFinal.style.display = "block";
+                                } else {
+                                    contenedorInformeFinal.style.display = "none";
+                                }
+
+                                if(fechaReunion){
+                                    // Mostrar detalles de reunión al Sujeto
+                                    let estadoReunion = document.getElementById("estadoReunionSuj");
+                                    estadoReunion.innerHTML = `
+                                        <div class="alert alert-success">
+                                            ✅ Reunión agendada para el <strong>${new Date(fechaReunion).toLocaleString()}</strong><br>
+                                            📑 Se requiere documento: <strong>${requiereDocumento === "si" ? "Sí" : "No"}</strong>
+                                        </div>
+                                    `;
+                                }
+                            } else {
+                                // No entregó → mostrar formulario
+                                mensajeEnviado.style.display = "none";
+                                contenedorForm.style.display = "block";
+                                if(fechaLimite){
+                                    let hoy = new Date();
+                                    let limite = new Date(fechaLimite);
+
+                                    console.log("Hoy: ", hoy);
+                                    console.log("Limite: ", limite);
+
+                                    if (hoy > limite) {
+                                        // Ya pasó el plazo
+                                        alert(`⚠️ El plazo de entrega venció el ${limite.toLocaleDateString()}. Contacte al Secretario.`);
+                                        // Opcional: deshabilitar el formulario
+                                        contenedorForm.querySelector("button[type=submit]").disabled = true;
+                                    } else {
+                                        // Todavía está dentro del plazo
+                                        let diasRestantes = Math.ceil((limite - hoy) / (1000 * 60 * 60 * 24));
+                                        alert(`📅 Tiene plazo hasta el ${limite.toLocaleDateString()} (${diasRestantes} días restantes) para entregar sus informes.`);
+                                    }
+                                }
+                                let estadoReunion = document.getElementById("estadoReunionSuj");
+                                estadoReunion.innerHTML = "";
+                            }
+
+                        } 
+                        //ROL DE SECRETARIO
+                        else if (rolUsuario === "Secretario"){
+                            document.getElementById("btnSolicitarReunion").addEventListener("click", function () {
+                                document.getElementById("formReunion").style.display = "block";
+                            });
+                            document.getElementById('carpetaInputSec').value = this.dataset.carpeta;
+                            let carpeta = this.dataset.carpeta;
+                            let contenedorPlazo = document.getElementById("contenedorPlazo");
+                            let contenedorRevision = document.getElementById("contenedorRevision");
+                            let listaArchivos = document.getElementById("listaArchivos");
+                            let contenedorFiniquito = document.getElementById("contenedorActaFiniquito");
+
+                            if (fechaEntrega) {
+                                document.getElementById('carpetaInputSecReu').value = this.dataset.carpeta;
+
+                                // Ya entregó informes → mostrar revisión
+                                contenedorPlazo.style.display = "none";
+                                contenedorRevision.style.display = "block";
+
+                                // Demo: agregar archivos ficticios
+                                listaArchivos.innerHTML = `
+                                    <li class="list-group-item">
+                                        📄 Informe Técnico (Anexo 5) 
+                                        <a href="/documentos/revision_secretario/${carpeta}/Informe_Tecnico_Proyecto.pdf" target="_blank" class="btn btn-sm btn-outline-secondary float-end">Ver</a>
+                                    </li>
+                                    <li class="list-group-item">
+                                        📄 Informe Financiero (Anexo 6)
+                                        <a href="/documentos/revision_secretario/${carpeta}/Informe_Financiero_Proyecto.pdf" target="_blank" class="btn btn-sm btn-outline-secondary float-end">Ver</a>
+                                    </li>
+                                    <li class="list-group-item">
+                                        📄 Oficio
+                                        <a href="/documentos/revision_secretario/${carpeta}/Oficio_Proyecto.pdf" target="_blank" class="btn btn-sm btn-outline-secondary float-end">Ver</a>
+                                    </li>
+                                `;
+
+                                if(fechaReunion){
+
+                                    // Solo actualizamos el div de estado
+                                    let estadoReunion = document.getElementById("estadoReunion");
+                                    estadoReunion.innerHTML = `
+                                        <div class="alert alert-success">
+                                            ✅ Reunión agendada para el <strong>${new Date(fechaReunion).toLocaleString()}</strong><br>
+                                            📑 Se requiere documento: <strong>${requiereDocumento === "si" ? "Sí" : "No"}</strong>
+                                        </div>
+                                    `;
+                                }
+
+                                if (finalProyecto) {
+                                    // Si existe → mostramos el acta finiquito
+                                    document.getElementById('carpetaInputSecFiniquito').value = carpeta;
+                                    contenedorFiniquito.style.display = "block";
+
+                                    // Ocultamos lo demás porque ya es etapa final
+                                    contenedorRevision.style.display = "none";
+                                    contenedorPlazo.style.display = "none";
+                                }
+
+                            } else {
+                                // No entregó informes → mostrar plazo
+                                contenedorRevision.style.display = "none";
+                                contenedorPlazo.style.display = "block";
+                                if (fechaLimite) {
+                                    let hoy = new Date();
+                                    let limite = new Date(fechaLimite);
+
+                                    console.log("Hoy: ", hoy);
+                                    console.log("Limite: ", limite);
+
+                                    let mensaje = (hoy > limite)
+                                        ? `⚠️ El plazo venció el ${limite.toLocaleDateString()}.`
+                                        : `📅 El plazo vence el ${limite.toLocaleDateString()}.`;
+
+                                    // Borra solo la alerta previa si existe
+                                    let alertaExistente = contenedorPlazo.querySelector(".alert-warning");
+                                    if (alertaExistente) alertaExistente.remove();
+
+                                    contenedorPlazo.insertAdjacentHTML("beforeend", `<div class="alert alert-warning mt-2">${mensaje}</div>`);
+                                }
+                            }
+                        }
+                        //ROL DE COMITE
+                        else if (rolUsuario === "Comite"){
+                            document.getElementById("btnSolicitarReunionCom").addEventListener("click", function () {
+                                document.getElementById("formReunionCom").style.display = "block";
+                            });
+
+                            let carpeta = this.dataset.carpeta;
+                            let contenedorRevision = document.getElementById("contenedorRevisionCom");
+                            let contenedorPlazo = document.getElementById("contenedorPlazoCom");
+                            let listaArchivos = document.getElementById("listaArchivosCom");
+
+                            if (fechaEntrega) {
+                                document.getElementById('carpetaInputComReu').value = this.dataset.carpeta;
+
+                                // Ya entregó informes → mostrar revisión
+                                contenedorRevision.style.display = "block";
+                                contenedorPlazo.style.display = "none";
+
+                                // Demo: agregar archivos ficticios
+                                listaArchivos.innerHTML = `
+                                    <li class="list-group-item">
+                                        📄 Informe Técnico (Anexo 5) 
+                                        <a href="/documentos/revision_secretario/${carpeta}/Informe_Tecnico_Proyecto.pdf" target="_blank" class="btn btn-sm btn-outline-secondary float-end">Ver</a>
+                                    </li>
+                                    <li class="list-group-item">
+                                        📄 Informe Financiero (Anexo 6)
+                                        <a href="/documentos/revision_secretario/${carpeta}/Informe_Financiero_Proyecto.pdf" target="_blank" class="btn btn-sm btn-outline-secondary float-end">Ver</a>
+                                    </li>
+                                    <li class="list-group-item">
+                                        📄 Oficio
+                                        <a href="/documentos/revision_secretario/${carpeta}/Oficio_Proyecto.pdf" target="_blank" class="btn btn-sm btn-outline-secondary float-end">Ver</a>
+                                    </li>
+                                `;
+
+                                if(fechaReunion){
+
+                                    // Solo actualizamos el div de estado
+                                    let estadoReunion = document.getElementById("estadoReunionCom");
+                                    estadoReunion.innerHTML = `
+                                        <div class="alert alert-success">
+                                            ✅ Reunión agendada para el <strong>${new Date(fechaReunion).toLocaleString()}</strong><br>
+                                            📑 Se requiere documento: <strong>${requiereDocumento === "si" ? "Sí" : "No"}</strong>
+                                        </div>
+                                    `;
+                                }
+                                let contenedorInformeFinalCom = document.getElementById("contenedorInformeFinalCom");
+                                let listaArchivosFinalCom = document.getElementById("listaArchivosFinalCom");
+                                let informeFinalEntregado = this.dataset.informefinal === "true";
+
+                                if (informeFinalEntregado) {
+                                    document.getElementById("carpetaInputComFinalReu").value = carpeta;
+                                    contenedorInformeFinalCom.style.display = "block";
+
+                                    listaArchivosFinalCom.innerHTML = `
+                                        <li class="list-group-item">
+                                            📄 Informe Técnico Final
+                                            <a href="/documentos/revision_secretario/${carpeta}/Informe_Final_Proyecto.pdf" target="_blank" class="btn btn-sm btn-outline-secondary float-end">Ver</a>
+                                        </li>
+                                    `;
+
+                                    document.getElementById("btnSolicitarReunionFinalCom").addEventListener("click", function () {
+                                        document.getElementById("formReunionFinalCom").style.display = "block";
+                                    });
+                                } else {
+                                    contenedorInformeFinalCom.style.display = "none";
+                                }
+                            } else {
+                                contenedorRevision.style.display = "none";
+                                contenedorPlazo.style.display = "block";
+                            }
+                        }
+                        //ROL DE COMITE EVALUACION
+                        else if (rolUsuario === "Evaluacion")
+                        {
+                            let contenedorInformeFinalCom = document.getElementById("contenedorInformeFinalEv");
+                            let listaArchivosFinalCom = document.getElementById("listaArchivosFinalEv");
+                            
+
+                            if (informeFinalEntregado) {
+                                document.getElementById("carpetaInputEvFinalReu").value = carpeta;
+                                contenedorInformeFinalCom.style.display = "block";
+
+                                listaArchivosFinalCom.innerHTML = `
+                                    <li class="list-group-item">
+                                        📄 Informe Técnico Final
+                                        <a href="/documentos/revision_secretario/${carpeta}/Informe_Final_Proyecto.pdf" target="_blank" class="btn btn-sm btn-outline-secondary float-end">Ver</a>
+                                    </li>
+                                `;
+
+                                document.getElementById("btnSolicitarReunionFinalEv").addEventListener("click", function () {
+                                    document.getElementById("formReunionFinalEv").style.display = "block";
+                                });
+                            } else {
+                                contenedorInformeFinalCom.style.display = "none";
+                            }
+                        }
+                    }
+
+                    // Abrir modal con Bootstrap
+                    let modal = new bootstrap.Modal(document.getElementById("modalProyecto"));
+                    modal.show();
+
+                    // Inicializar timeline (ejemplo con datos dummy)
+                    setTimeout(() => {
+                        const container = document.getElementById('timeline');
+                        container.innerHTML = '';
+
+                        // Accedemos a los datos del proyecto desde data-*
+                        const inicio = this.dataset.inicio;
+                        const fin = this.dataset.fin;
+
+                        const items = new vis.DataSet([
+                            {
+                                id: 1,
+                                content: '<div style="width: 150px;">Solicitud Informes<br><small>' + inicio + '</small></div>',
+                                start: inicio
+                            }
+                        ]);
+
+                        // Si ya entregó informes
+                        if (fechaEntrega) {
+                            items.add({
+                                id: 2,
+                                content: '<div style="width: 150px;">Entrega de Informes<br><small>' + fechaEntrega + '</small></div>',
+                                start: fechaEntrega
+                            });
+                        }
+
+                        //Si hay reunión
+                        if(fechaReunion) {
+                            items.add({
+                                id: 3,
+                                content: '<div style="width: 150px;">Verificación<br><small>' + fechaReunion + '</small></div>',
+                                start: fechaReunion
+                            });
+                        }
+
+                        if (informeFinalEntregado){
+                            items.add({
+                                id: 4,
+                                content: '<div style="width: 150px;">Verificación<br><small>' + fechaFinal + '</small></div>',
+                                start: fechaFinal
+                            });
+                        }
+
+                        if (finiquito){
+                            items.add({
+                                id: 5,
+                                content: '<div style="width: 150px;">Verificación<br><small>' + fin + '</small></div>',
+                                start: fin
+                            });
+                        }
+
+                        const timeline = new vis.Timeline(container, items, {
+                            editable: false,
+                            height: '300px',
+                            maxHeight: '300px',
+                            margin: { item: 20 },
+                            horizontalScroll: true,
+                            stack: true,
+                            zoomMin: 10000000,
+                            zoomMax: 100000000000,
+                            zoomKey: 'ctrlKey',
+                        });
+
+                        document.getElementById('zoomIn').onclick = () => {
+                            const range = timeline.getWindow();
+                            const interval = range.end - range.start;
+                            timeline.setWindow({
+                                start: range.start.valueOf(),
+                                end: range.start.valueOf() + interval * 0.8,
+                            });
+                        };
+
+                        document.getElementById('zoomOut').onclick = () => {
+                            const range = timeline.getWindow();
+                            const interval = range.end - range.start;
+                            timeline.setWindow({
+                                start: range.start.valueOf(),
+                                end: range.start.valueOf() + interval * 1.25,
+                            });
+                        };
+                    }, 200);
+                });
+            });
+        });
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const form = document.getElementById("formSubirListado");
+            const bloqueSubida = document.getElementById("bloqueSubida");
+            const bloquePublicado = document.getElementById("bloquePublicado");
+
+            // Verifica en localStorage si ya se ha subido el listado
+            const listadoPublicado = localStorage.getItem("listadoPublicado") === "true";
+
+            if (listadoPublicado) {
+                bloqueSubida.style.display = "none";
+                bloquePublicado.style.display = "block";
+            } else {
+                bloqueSubida.style.display = "block";
+                bloquePublicado.style.display = "none";
+            }
+
+            // Simula carga de archivo
+            form?.addEventListener("submit", function (e) {
+                e.preventDefault();
+                const archivo = document.getElementById("archivoListado").files[0];
+
+                if (!archivo) {
+                    alert("Por favor selecciona un archivo.");
+                    return;
+                }
+
+                // Simulación de guardado y persistencia
+                localStorage.setItem("listadoPublicado", "true");
+
+                bloqueSubida.style.display = "none";
+                bloquePublicado.style.display = "block";
+
+                console.log("Archivo cargado (simulado):", archivo.name);
+
+                setTimeout(() => {
+                    location.reload(); // forzar recarga con estado actualizado
+                }, 500);
+            });
+        });
+    </script>
+
+    @* SEMÁFORO *@
+    @* GRÁFICA DE GANTT *@
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Obtenemos datos desde el backend
+            var proyectos = @Html.Raw(Json.Serialize(ViewData["ProyectosAprobados"]));
+
+            
+            console.log("Proyectos: ", proyectos);
+
+            // Semáforo
+            let total = proyectos.length;
+            let enCurso = proyectos.filter(p => p.estado === "En curso").length;
+            let terminados = proyectos.filter(p => p.estado === "Terminado").length;
+            let cancelados = proyectos.filter(p => p.estado === "Cancelado").length;
+
+            let porcEnCurso = total ? Math.round((enCurso / total) * 100) : 0;
+            let porcTerminados = total ? Math.round((terminados / total) * 100) : 0;
+            let porcCancelados = total ? Math.round((cancelados / total) * 100) : 0;
+
+            document.getElementById("proyectos-en-curso").innerText = enCurso;
+            document.getElementById("proyectos-terminados").innerText = terminados;
+            document.getElementById("proyectos-cancelados").innerText = cancelados;
+
+            document.getElementById("porcentaje-en-curso").innerText = porcEnCurso + "%";
+            document.getElementById("porcentaje-terminados").innerText = porcTerminados + "%";
+            document.getElementById("porcentaje-cancelados").innerText = porcCancelados + "%";
+
+            // Gantt con Highcharts
+            Highcharts.setOptions({
+                time: {
+                    useUTC: false // <- Mostrar todo en hora local del navegador
+                },
+                lang: {
+                    week: 'Semana',
+                    months: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+                    weekdays: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
+                    shortMonths: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 
+                                'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+                    downloadPNG: "Descargar PNG",
+                    downloadJPEG: "Descargar JPEG",
+                    downloadPDF: "Descargar PDF",
+                    downloadSVG: "Descargar SVG",
+                    printChart: "Imprimir gráfico",
+                    viewFullscreen: "Ver en pantalla completa",
+                    exitFullscreen: "Salir de pantalla completa",
+                    downloadCSV: "Descargar CSV",
+                    downloadXLS: "Descargar Excel",
+                    viewData: "Ver tabla de datos",
+                    hideData: "Ocultar tabla de datos",
+                    contextButtonTitle: "Opciones del gráfico"
+                },
+                // Este bloque cambia el formato del texto que aparece para las semanas
+                dateTimeLabelFormats: {
+                    week: "'Semana' W"
+                },
+            });
+
+            Highcharts.ganttChart('gantt-chart', {
+                title: { text: 'Cronograma de Proyectos' },
+                xAxis: { currentDateIndicator: true },
+                series: [{
+                    name: 'Proyectos',
+                    data: proyectos.map((p, i) => ({
+                        id: 'p' + i,
+                        name: p.nombre,
+                        start: new Date(p.inicio).getTime(),  // 👈 aquí ya regresa epoch
+                        end: new Date(p.fin).getTime(),
+                        completed: { amount: p.progreso / 100 }
+                    }))
+                }]
+            });
+        });
+    </script>
+}

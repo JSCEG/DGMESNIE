@@ -1,0 +1,309 @@
+﻿@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Balance Nacional de Energía";
+}
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Balance Nacional de Energía",
+        IconPath = "sankey.png",
+        Description = "Visualiza flujo energético nacional",
+        Section = "📊 Datos Públicos",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Balance Nacional de Energía",
+            description = "Sistema de visualización del flujo energético nacional mediante diagramas Sankey.",
+            functionality = "Permite analizar la transformación y flujo de energía en el sistema nacional.",
+            stage = "Visualización Estratégica",
+            roles = new[] {
+new { icon = "building", text = "SENER: Validación oficial" },
+new { icon = "graduation-cap", text = "Universidades: Investigación" },
+new { icon = "microscope", text = "Centros de Investigación: Análisis" },
+new { icon = "chart-bar", text = "INEGI: Datos estadísticos" }
+},
+            order = new { step = 2, description = "Sintetiza flujo energético nacional" }
+        }),
+        LegalDescription = "Visualización del balance energético conforme al Art. 70 del Reglamento.",
+        Fundamentos = new List<FundamentoLegal> {
+new() { Reference = "Art. 70 Reglamento", Description = "Establece los lineamientos para el balance energético nacional"
+}
+}
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+
+
+
+
+<div class="ps-2 pe-2 pt-5 style=" overflow-x:auto;">
+
+    <div class="row">
+        <div class="col-12">
+            <h2 class="fw-bold subtitulobus">Seleccione un Año:</h2>
+        </div>
+    </div>
+
+
+    <br>
+    <br>
+    <!-- Mensaje de alerta -->
+    <div class="row">
+        <div class="col-12">
+            <div id="message" class="alert alert-warning d-none" role="alert">
+                <!-- Mensaje aquí -->
+            </div>
+        </div>
+    </div>
+
+
+    <div id="flujoPantallaCompleta" class="pt-3">
+        <!-- Selector de año y botón -->
+        <div class="row">
+            <div class="col-4 ">
+                <select id="year" class="form-select">
+                    @foreach (var year in ViewBag.Years)
+
+                    {
+
+                        if (year == 2022)
+
+                        {
+                            <option value="@year" selected>@year</option>
+                        }
+
+                        else
+
+                        {
+                            <option value="@year">@year</option>
+                        }
+
+                    }
+                </select>
+            </div>
+
+            <div class="col-4 ">
+                <button id="btnEjecutar" class="btn btn-primary w-100">Consulta</button>
+            </div>
+
+            <div class="col-4 ">
+                <button id="btnPantallaCompleta" class="btn btn-cre-rojo">Ver en Pantalla Completa</button>
+            </div>
+
+
+        </div>
+
+        <br>
+        <br>
+
+        <div class="alert alert-light border-0 shadow-sm" role="alert"
+            style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);">
+            <div class="text-center mb-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div></div>
+                    <div>
+                        <h3 class="alert-heading text-primary fw-bold mb-0">
+                            <i class="bi bi-graph-up me-2"></i>Totales por Nivel Energético
+                        </h3>
+                        <p class="text-muted mb-0">Visualización de los totales energéticos por cada nivel del Balance
+                            Nacional
+                            de Energía</p>
+                    </div>
+                    <div>
+                        <button id="btn-mostrar-debug" class="btn btn-sm btn-outline-info">
+                            <i class="bi bi-bug"></i> Debug
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tarjetas-totales"
+                class="d-flex flex-wrap justify-content-center align-items-stretch gap-3 mt-4 mb-4">
+                <!-- Las tarjetas se generarán aquí dinámicamente -->
+            </div>
+
+            <!-- Div de depuración para mostrar totales en forma de lista -->
+            <div id="debug-totales" class="mt-4 p-3 border rounded bg-light" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="text-muted mb-0">
+                        <i class="bi bi-bug me-2"></i>Depuración de Totales por Año: <span id="debug-year"></span>
+                    </h6>
+                    <button id="btn-ocultar-debug" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-eye-slash"></i> Ocultar
+                    </button>
+                </div>
+                <div id="debug-lista">
+                    <!-- Los totales de depuración se mostrarán aquí -->
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Gráfico SVG -->
+        <div style="overflow-x:auto;">
+
+            <div class="map-container_sankey">
+
+
+                <div class="container-fluid">
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div
+                                style="overflow-x:auto; display:flex; justify-content:center; align-items:center; position: relative; z-index: 2;">
+                                <svg width="100%" height="1400px" id="sankeySvg" style="position: relative;">
+                                    <!-- height de 1400 -->
+                                    <g id="particlesGroup"></g>
+                                    <!-- Otros elementos del gráfico Sankey -->
+                                </svg>
+                            </div>
+                        </div>
+                        <br>
+                        <br>
+                    </div>
+
+
+
+                </div>
+            </div>
+
+        </div>
+        <!-- Fuentes y enlace -->
+        <div class="row mt-3" style="position: relative;">
+            <div class="col-12" style="text-align: left;">
+                <i>
+                    <font face="Montserrat" size=1>Fuente: Inventario Nacional de Emisiones de Gases y Compuestos de
+                        Efecto Invernadero (INEGyCEI) (<a
+                            href="https://datos.gob.mx/busca/dataset/inventario-nacional-de-emisiones-de-gases-y-compuestos-de-efecto-invernadero-inegycei"
+                            target="_blank" style="color: #9f2241;">
+                            https://datos.gob.mx/busca/dataset/inventario-nacional-de-emisiones-de-gases-y-compuestos-de-efecto-invernadero-inegycei</a>)
+                    </font>
+                </i>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <div class="container-fluid">
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <table id="Tipos" class="table table-hover table-responsive table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Año</th>
+
+                                    <th>Nivel</th>
+                                    <th>Dato</th>
+                                    <th>Valores (PJ)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Los datos se cargarán aquí -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-3" style="position: relative;">
+
+            <div style="position: relative;">
+                <div style="position: absolute; top: 5px; right: 15px; z-index: 1000;">
+                    <button id="regresarSankeyButton" class="btn btn-cre-rojo"
+                        style="display: none; background-color: #9f2241; color: white; font-size: 15px; width: 80px; height: 40px; line-height: 1;">Ocultar</button>
+                </div>
+            </div>
+            <!-- Gráfica original y controles -->
+            <div class="col-md-6" style="position: relative;">
+                <br>
+                <br>
+                <div id="highchartsContainer"
+                    style="width: 100%; max-height: 400px; margin: 0 auto; display: none; position: relative; z-index: 1;">
+                    <!-- Aquí se insertará el gráfico de Highcharts -->
+                </div>
+                <div class="d-flex justify-content-center align-items-center">
+                    <button id="playButton" class="btn btn-cre-rojo"
+                        style="display: none; background-color: #9f2241; color: white; font-size: 15px; width: 63px; height: 40px; line-height: 1; padding: 0; position: relative;">
+                        <img src="/img/play.png" alt="Play"
+                            style="width: 30%; height: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                    </button>
+                    <input type="range" id="yearSlider" class="ml-3"
+                        style="width: 80%; display: none; background-color: #9f2241; color: white; border: 1px solid white; -webkit-appearance: none;">
+                    <style>
+                        /* Establece la apariencia de la barra del slider */
+                        input[type="range"]::-webkit-slider-runnable-track {
+                            width: 100%;
+                            height: 8px;
+                            background: #9f2241;
+                            /* Cambia a tu color preferido */
+                            border-radius: 5px;
+                            border: none;
+                        }
+
+                        /* Establece la apariencia de la bola del slider */
+                        input[type="range"]::-webkit-slider-thumb {
+                            -webkit-appearance: none;
+                            width: 20px;
+                            height: 20px;
+                            background: #BFBFBF;
+                            /* Cambia a tu color preferido */
+                            border-radius: 50%;
+                            border: 2px solid #9f2241;
+                            /* Cambia a tu color preferido */
+                            cursor: pointer;
+                            margin-top: -6px;
+                            /* Alinea verticalmente la bola con la barra */
+                        }
+
+                        /* Establece la apariencia del slider cuando está en su valor máximo */
+                        input[type="range"]::-webkit-slider-runnable-track {
+                            background: linear-gradient(to right, #9f2241 0%, #9f2241 calc((100% - 20px) * var(--webkit-slider-runnable-track-value)), #e9e9e9 calc((100% - 20px) * var(--webkit-slider-runnable-track-value)), #e9e9e9 100%);
+                        }
+
+                        /* Establece la apariencia del slider cuando está en su valor mínimo */
+                        input[type="range"]::-webkit-slider-runnable-track:after {
+                            background-color: #9f2241;
+                            /* Cambia a tu color preferido */
+                        }
+
+                        /* Establece la apariencia del slider al hacer clic y mantener pulsado */
+                        input[type="range"]::-webkit-slider-thumb:active {
+                            background: white;
+                            /* Cambia a tu color preferido */
+                            border-color: #9f2241;
+                            /* Cambia a tu color preferido */
+                        }
+                    </style>
+                </div>
+            </div>
+
+            <!-- Nueva gráfica -->
+            <div class="col-md-6" style="position: relative;">
+                <br>
+                <br>
+                <div id="newChartContainer"
+                    style="width: 100%; max-height: 400px; margin: 0 auto; position: relative; z-index: 1; height: 400px; display:none;">
+                    <!-- Inserta tu nueva gráfica aquí -->
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="/js/sankey.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        iniciarSankey();
+    });
+</script>

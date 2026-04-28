@@ -1,0 +1,152 @@
+@model NSIE.Models.SeccionSNIER
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Editar sección";
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+}
+
+<div class="modal-header">
+    <h5 class="modal-title">
+        <i class="fas fa-edit text-warning me-2"></i> @ViewData["Title"]
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+</div>
+
+<div class="modal-body">
+    <form id="formEditarSeccion">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="Titulo" class="form-label">Título de la Sección</label>
+                <input asp-for="Titulo" class="form-control" required />
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="FundamentoLegal" class="form-label">Fundamento Legal</label>
+                <input asp-for="FundamentoLegal" class="form-control" />
+            </div>
+
+            <div class="col-md-12 mb-3">
+                <label asp-for="Descripcion" class="form-label">Descripción</label>
+                <textarea asp-for="Descripcion" class="form-control" rows="2"></textarea>
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="Objetivo" class="form-label">Objetivo</label>
+                <input asp-for="Objetivo" class="form-control" />
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="ResponsableNormativo" class="form-label">Responsable Normativo</label>
+                <input asp-for="ResponsableNormativo" class="form-control" />
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="PublicoObjetivo" class="form-label">Público Objetivo</label>
+                <input asp-for="PublicoObjetivo" class="form-control" />
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="Ayuda" class="form-label">Ayuda General</label>
+                <input asp-for="Ayuda" class="form-control" />
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="Orden" class="form-label">Orden</label>
+                <input asp-for="Orden" type="number" class="form-control" min="1" max="100" />
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="SeccionActiva" class="form-label">¿Activa?</label>
+                <select asp-for="SeccionActiva" class="form-select">
+                    <option value="true">Sí</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="text-end">
+            <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">
+                <i class="fas fa-times"></i> Cancelar
+            </button>
+            <button type="button" class="btn btn-warning" onclick="guardarEdicionSeccion()">
+                <i class="fas fa-save"></i> Actualizar sección
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    function guardarEdicionSeccion() {
+        const form = document.getElementById('formEditarSeccion');
+        const formData = new FormData(form);
+
+        // Deshabilitar botón
+        const $btn = $('button[onclick="guardarEdicionSeccion()"]');
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Actualizando...');
+
+        // Convertir FormData a objeto para debugging
+        const data = {};
+        formData.forEach((value, key) => {
+            data[key] = value;
+        });
+
+        console.log('>>> Datos a enviar para editar:', data);
+
+        $.ajax({
+            url: '@Url.Action("GuardarEdicionSeccion", "Secciones")', // ✅ MÉTODO CORRECTO
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function (response) {
+                console.log('>>> Respuesta del servidor:', response);
+
+                if (response.mensaje) { // ✅ VERIFICAR 'mensaje'
+                    // Cerrar modal
+                    seccionModal.hide();
+
+                    Swal.fire({
+                        title: '¡Actualizado!',
+                        text: response.mensaje,
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => {
+                        location.reload();
+                    });
+                } else if (response.error) {
+                    Swal.fire('Error', response.error, 'error');
+                    $btn.prop('disabled', false).html('<i class="fas fa-save"></i> Actualizar sección');
+                } else {
+                    console.error('>>> Respuesta inesperada:', response);
+                    Swal.fire('Error', 'Respuesta inesperada del servidor', 'error');
+                    $btn.prop('disabled', false).html('<i class="fas fa-save"></i> Actualizar sección');
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error('>>> Error AJAX:', xhr.responseText);
+
+                let mensaje = 'Error de comunicación con el servidor';
+                if (xhr.responseText) {
+                    try {
+                        const errorObj = JSON.parse(xhr.responseText);
+                        mensaje = errorObj.error || errorObj.mensaje || xhr.responseText;
+                    } catch {
+                        mensaje = xhr.responseText;
+                    }
+                }
+
+                Swal.fire('Error', mensaje, 'error');
+                $btn.prop('disabled', false).html('<i class="fas fa-save"></i> Actualizar sección');
+            }
+        });
+    }
+</script>

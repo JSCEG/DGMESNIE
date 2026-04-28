@@ -1,0 +1,205 @@
+@model NSIE.Models.SeccionSNIER
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Crear nueva sección";
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+}
+
+<div class="modal-header">
+    <h5 class="modal-title">
+        <i class="fas fa-plus-circle text-success me-2"></i> @ViewData["Title"]
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+</div>
+
+<div class="modal-body">
+    <form id="formCrearSeccion">
+        @Html.AntiForgeryToken()
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="Titulo" class="form-label">
+                    <i class="fas fa-heading"></i> Título de la Sección *
+                </label>
+                <input asp-for="Titulo" class="form-control" required placeholder="Ingrese el título..." />
+                <span asp-validation-for="Titulo" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="FundamentoLegal" class="form-label">
+                    <i class="fas fa-balance-scale"></i> Fundamento Legal
+                </label>
+                <input asp-for="FundamentoLegal" class="form-control" placeholder="Ej: Art. 70, 71, 75 Reglamento" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label asp-for="Descripcion" class="form-label">
+                    <i class="fas fa-align-left"></i> Descripción
+                </label>
+                <textarea asp-for="Descripcion" class="form-control" rows="3"
+                    placeholder="Descripción general de la sección..."></textarea>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="Objetivo" class="form-label">
+                    <i class="fas fa-bullseye"></i> Objetivo
+                </label>
+                <input asp-for="Objetivo" class="form-control" placeholder="Objetivo principal..." />
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="ResponsableNormativo" class="form-label">
+                    <i class="fas fa-user-tie"></i> Responsable Normativo
+                </label>
+                <input asp-for="ResponsableNormativo" class="form-control" placeholder="Unidad responsable..." />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="PublicoObjetivo" class="form-label">
+                    <i class="fas fa-users"></i> Público Objetivo
+                </label>
+                <input asp-for="PublicoObjetivo" class="form-control" placeholder="A quién va dirigido..." />
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="Ayuda" class="form-label">
+                    <i class="fas fa-question-circle"></i> Ayuda General
+                </label>
+                <input asp-for="Ayuda" class="form-control" placeholder="Información de ayuda..." />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="SeccionActiva" class="form-label">
+                    <i class="fas fa-toggle-on"></i> ¿Activa?
+                </label>
+                <select asp-for="SeccionActiva" class="form-select">
+                    <option value="true" selected>Sí</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+        <i class="fas fa-times"></i> Cancelar
+    </button>
+    <button type="button" class="btn btn-success" id="btnGuardarSeccion">
+        <i class="fas fa-save"></i> Guardar sección
+    </button>
+</div>
+
+<script>
+    $(document).ready(function () {
+        console.log('>>> Script del modal crear sección cargado');
+
+        // Evento click del botón guardar
+        $('#btnGuardarSeccion').on('click', function (e) {
+            e.preventDefault();
+            console.log('>>> Click en btnGuardarSeccion');
+
+            const $btn = $(this);
+            const $form = $('#formCrearSeccion');
+
+            // Validación básica
+            const titulo = $form.find('input[name="Titulo"]').val().trim();
+            if (!titulo) {
+                Swal.fire('Error', 'El título es obligatorio', 'error');
+                return;
+            }
+
+            // Deshabilitar botón
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
+
+            const formData = $form.serialize();
+            console.log('>>> Datos del formulario:', formData);
+
+            $.ajax({
+                url: '@Url.Action("GuardarNuevaSeccion", "Secciones")',
+                method: 'POST',
+                data: formData,
+                timeout: 30000,
+                success: function (response) {
+                    console.log('>>> Respuesta del servidor:', response);
+
+                    if (response.mensaje) {
+                        console.log('>>> Sección creada exitosamente');
+
+                        // Cerrar modal
+                        seccionModal.hide();
+
+                        // Mostrar mensaje de éxito
+                        Swal.fire({
+                            title: '¡Éxito!',
+                            text: response.mensaje,
+                            icon: 'success',
+                            timer: 2000,
+                            showConfirmButton: false
+                        }).then(() => {
+                            console.log('>>> Recargando página...');
+                            location.reload();
+                        });
+                    } else if (response.error) {
+                        console.error('>>> Error del servidor:', response.error);
+                        Swal.fire('Error', response.error, 'error');
+
+                        // Rehabilitar botón
+                        $btn.prop('disabled', false).html('<i class="fas fa-save"></i> Guardar sección');
+                    } else {
+                        console.error('>>> Respuesta inesperada:', response);
+                        Swal.fire('Error', 'Respuesta inesperada del servidor', 'error');
+
+                        // Rehabilitar botón
+                        $btn.prop('disabled', false).html('<i class="fas fa-save"></i> Guardar sección');
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error('>>> Error AJAX:', {
+                        status: xhr.status,
+                        statusText: xhr.statusText,
+                        responseText: xhr.responseText,
+                        error: error
+                    });
+
+                    let mensaje = 'Error de comunicación con el servidor';
+
+                    if (xhr.status === 400) {
+                        mensaje = xhr.responseText || 'Datos incorrectos';
+                    } else if (xhr.status === 404) {
+                        mensaje = 'Método no encontrado en el servidor';
+                    } else if (xhr.status === 500) {
+                        mensaje = 'Error interno del servidor';
+                    } else if (status === 'timeout') {
+                        mensaje = 'Tiempo de espera agotado';
+                    }
+
+                    Swal.fire('Error', mensaje, 'error');
+
+                    // Rehabilitar botón
+                    $btn.prop('disabled', false).html('<i class="fas fa-save"></i> Guardar sección');
+                }
+            });
+        });
+
+        // También manejar submit del form por si acaso
+        $('#formCrearSeccion').on('submit', function (e) {
+            e.preventDefault();
+            $('#btnGuardarSeccion').click();
+        });
+    });
+</script>
+

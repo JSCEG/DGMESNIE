@@ -1,0 +1,1302 @@
+@model Mep
+
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+
+
+@{
+    ViewData["Title"] = "Infraestructura del Sector Energético Mexicano";
+}
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="/img/mexicoi.png" alt="Icono personalizado" class="iconomenu" />
+        @ViewData["Title"]
+    </h4>
+</div>
+
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        @* <li class="breadcrumb-item"><a href="@Url.Action("Hidrocarburos", "Home" )">Sector Petróleo y Gas</a></li>*@
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+
+@*Sección que Despliega el Mapa Inicial*@
+<div class="container">
+    <h2 class="fw-bold   subtitulo ">Seleccione un Mercado para ver la infraestructura</h2>
+
+    <section id="despliega_mapa" class="pb-5">
+
+        <br />
+
+        <div class="app-card-header p-3 border-0">
+
+
+            @*Menu*@
+            <div class="navbarmapag">
+
+
+                <a id="petroliferos" class="active icono-texto"
+                    onclick="activarElemento('petroliferos'); CargaPetrolíferos()">
+                    <img src="/img/gasolinera.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Petrolíferos</span>
+
+                    <div id="total_petroliferos"></div>
+                </a>
+
+                <a id="glp" class="icono-texto" onclick="activarElemento('glp'); CargaGLP()">
+                    <img src="/img/glpmapa.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Gas L.P.</span>
+
+                    <div id="total_glp"></div>
+                </a>
+
+                <a id="gn" class="icono-texto" onclick="activarElemento('gn'); CargaGN()">
+                    <img src="/img/gasnaturali.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Gas Natural</span>
+
+                    <div id="total_gn"></div>
+                </a>
+
+                <a id="electricidad" class="icono-texto" onclick="activarElemento('electricidad'); CargaElectricidad()">
+                    <img src="/img/central_electrica.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Electricidad</span>
+
+                    <div id="total_electricidad"></div>
+                </a>
+                <a id="infra" class="icono-texto" onclick="activarElemento('infra'); CargaSEM()">
+                    <img src="/img/energeo.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Toda la Infraestructura</span>
+                    <div id="total_infra"></div>
+                </a>
+
+            </div>
+
+            <!-- Nuevo Div para Conteo de Tipos de Permisos -->
+            <div id="conteo_tipos_permisos" class="conteo-permisos">
+                <!-- Aquí se mostrarán los conteos de tipos de permisos -->
+            </div>
+
+
+
+            <div id="main-container">
+
+                <div class="row g-4 mb-4">
+                    <div class="col">
+                        <div class="app-card app-card-chart h-100 shadow-sm">
+
+                            <div class="search-container p-3" id="search-container">
+                                <label class="form-label">Buscar en el Mapa:</label>
+                                <input type="text" id="busquedaGeneralInput" class="form-control"
+                                    placeholder="Número de Permiso, Entidad Federativa o Municipio">
+                                <div id="autocomplete-list" class="autocomplete-items"></div>
+                                <!-- El resto de tu código -->
+
+                                <button class="btn btn-cre-rojo-home" onclick="buscarGeneral()"
+                                    style="width:10% !important"><i class="bi bi-search"></i></button>
+                            </div>
+
+                            @*Menu de Botones*@
+
+                            <div class="app-card-body ">
+                                <div class="chart-container">
+                                    <div id="" class="">
+
+
+                                        @* Huracan Jhon *@
+                                        @*Menu de Botones*@
+
+                                        <div class="app-card-body ">
+                                            <div class="chart-container">
+                                                <div id="" class="app-card-body p-1">
+
+                                                    <div class="alert alert-warning" role="alert">
+                                                        <h4 class="alert-heading">Posible Trayectoria del Huracán
+                                                            Eleven-E
+                                                        </h4>
+                                                        <p>La posible trayectoria del huracán está marcada en el mapa
+                                                            con un polígono negro y naranja.
+                                                        </p>
+                                                        <hr>
+                                                        <p id="ultima-actualizacion" class="mb-0"></p>
+                                                        <p class="mb-0">Mantente informado y sigue las indicaciones de
+                                                            las autoridades
+                                                            para tu seguridad.</p>
+                                                        <p class="mb-0">Referencia de la trayectoria del huracán: <a
+                                                                href="https://www.nhc.noaa.gov/"
+                                                                target="_blank">National Hurricane
+                                                                Center</a></p>
+                                                        <hr>
+                                                        <p>El paso del huracán por el territorio nacional se muestra
+                                                            claramente
+                                                            permitiendo a los usuarios identificar la infraestructura
+                                                            del sistema
+                                                            energético que podrían verse impactadas.</p>
+                                                        <div class="infraestructura-container">
+                                                            <div class="infra-item">
+                                                                <img src="/img/gasolinera.png" alt="Petrolíferos"
+                                                                    class="infra-icon">
+                                                                <span>Petrolíferos</span>
+                                                                <span id="total_petroliferos"><strong>Total:
+                                                                        195</strong></span>
+                                                            </div>
+                                                            <div class="infra-item">
+                                                                <img src="/img/glpmapa.png" alt="Gas L.P."
+                                                                    class="infra-icon">
+                                                                <span>Gas L.P.</span>
+                                                                <span id="total_glp"><strong>Total: 89</strong></span>
+                                                            </div>
+                                                            <div class="infra-item">
+                                                                <img src="/img/gasnaturali.png" alt="Gas Natural"
+                                                                    class="infra-icon">
+                                                                <span>Gas Natural</span>
+                                                                <span id="total_gn"><strong>Total: 0</strong></span>
+                                                            </div>
+                                                            <div class="infra-item">
+                                                                <img src="/img/central_electrica.png" alt="Electricidad"
+                                                                    class="infra-icon">
+                                                                <span>Electricidad</span>
+                                                                <span id="total_electricidad"><strong>Total:
+                                                                        39</strong></span>
+                                                            </div>
+                                                            <div class="infra-item">
+                                                                <img src="/img/energeo.png"
+                                                                    alt="Toda la Infraestructura" class="infra-icon">
+                                                                <span>Infraestructura total potencialmente a ser
+                                                                    afectada por el paso
+                                                                    del Huracán:</span>
+                                                                <span id="total_infra"><strong> 323</strong></span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    @* Fin Huracan Jhon *@
+                                                    <button id="fullscreen-btn" class="btn btn-primary">Pantalla
+                                                        Completa</button>
+                                                    <div id="alert-message" class="alert alert-info ms-3" role="alert"
+                                                        style="margin-left: 15px; padding: 10px; background-color: #FCFEE7; border-left: 6px solid #DEF321; color: #818F31;">
+                                                        Para el caso del mercado de electricidad, las ubicaciones
+                                                        corresponden a la
+                                                        dirección proporcionada en la documentación del permiso otorgado
+                                                        que puede
+                                                        corresponder a la ubicación física de central eléctrica que
+                                                        representa.
+                                                    </div>
+                                                </div>
+                                                <div id="map" class="bg"></div>
+                                                @* Leyendas Huracan *@
+                                                <div class="m-3">
+                                                    <p class="table-title">Probabilidad de vientos, Fuente: <a
+                                                            class="source-link"
+                                                            href="hhttps://www.nhc.noaa.gov/refresh/graphics_ep1+shtml/173330.shtml?tswind120#contents"
+                                                            target="_blank">https://www.nhc.noaa.gov/refresh/graphics_ep1+shtml/173330.shtml?tswind120#contents</a>
+                                                    </p>
+                                                    <div class="table-responsive">
+                                                        <table class="table table-bordered custom-table">
+                                                            <colgroup span="21" width="107"></colgroup>
+                                                            <tr>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #FFFF;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #008E00;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #00CE00;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #80FF00;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #FFFF00;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #FFD800;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #CE8600;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #FF8000;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #CE0000;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #8C0000;">&nbsp;</td>
+                                                                <td colspan="2" align="left"
+                                                                    style="background-color: #8C008C;">&nbsp;</td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td colspan="2" height="21" align="center"
+                                                                    valign="middle">&lt;5%</td>
+                                                                <td colspan="2" align="center" valign="middle">5%-10%
+                                                                </td>
+                                                                <td colspan="2" align="center" valign="middle">10%-20%
+                                                                </td>
+                                                                <td colspan="2" align="center" valign="middle">20%-30%
+                                                                </td>
+                                                                <td colspan="2" align="center" valign="middle">30%-40%
+                                                                </td>
+                                                                <td colspan="2" align="center" valign="middle">40%-50%
+                                                                </td>
+                                                                <td colspan="2" align="center" valign="middle">50%-60%
+                                                                </td>
+                                                                <td colspan="2" align="center" valign="middle">60%-70%
+                                                                </td>
+                                                                <td colspan="2" align="center" valign="middle">70%-80%
+                                                                </td>
+                                                                <td colspan="2" align="center" valign="middle">80%-90%
+                                                                </td>
+                                                                <td colspan="2" align="center" valign="middle">&gt;90%
+                                                                </td>
+
+
+                                                            </tr>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                                @* Fin Leyendas Huracan *@
+
+
+                                                <div class="leyenda pt-3">
+                                                    <p>Mayor Concentración</p>
+                                                    <p>Concentración Promedio</p>
+                                                    <p>Menor Concentración</p>
+                                                    <p> Ductos</p>
+                                                </div>
+                                                <br />
+                                                <br />
+                                                @* windy *@
+                                                <div class="container">
+
+                                                    <iframe width="650" height="450"
+                                                        src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=default&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=14.562&lon=-94.065&detailLat=22.999&detailLon=-100.459&detail=true&pressure=true"
+                                                        frameborder="0"></iframe>
+                                                </div>
+
+
+                                                <div class="alert alert-success text-center mb-4" role="alert">
+                                                    <p>La Comisión Reguladora de Energía, dio seguimiento a la potencial
+                                                        infraestructura dañada del "Sistema Energético Mexicano" durante
+                                                        el paso del Huracán Eleven-E. A continuación, se presenta la
+                                                        trayectoria del huracán.</p>
+                                                </div>
+
+                                                <div class="text-center">
+                                                    <img src="@Cdn.Url/img_snier/vistas/eventos/11E.gif"
+                                                        alt="Trayectoria del Huracán Eleven-E"
+                                                        style="width: 100%; max-width: 800px;">
+                                                </div>
+
+
+
+                                                <div id="grafico"></div>
+                                                @* <div class="" id="grafico2"></div> *@
+                                                <br />
+                                                @* </div> *@
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+    </section>
+
+
+
+</div>
+<style>
+    #fullscreen-search-container {
+        background-color: white;
+    }
+
+    #fullscreen-elements {
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        /* Valor inicial para cuando no esté en pantalla completa */
+    }
+
+    #fullscreen-last-update,
+    #fullscreen-select,
+    #fullscreen-search-container {
+        flex-shrink: 0;
+    }
+
+    #map {
+        flex-grow: 1;
+    }
+
+    #main-container.fullscreen-active #fullscreen-elements {
+        height: 100vh;
+    }
+
+    #main-container.fullscreen-active #map {
+        height: calc(100vh - 60px);
+    }
+
+    #main-container:not(.fullscreen-active) #map {
+        height: 500px;
+    }
+</style>
+<style>
+    .infraestructura-container {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 10px;
+    }
+
+    .infra-item {
+        text-align: center;
+    }
+
+    .infra-icon {
+        width: 36px;
+        height: 36px;
+    }
+
+    .containerw {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    iframe {
+        width: 100%;
+        height: 450px;
+        /* Puedes ajustar la altura según sea necesario */
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+    }
+
+    .custom-table td,
+    .custom-table th {
+        white-space: nowrap;
+    }
+
+    .custom-table td {
+        padding: 0 !important;
+    }
+
+    .table-title {
+        white-space: normal;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .source-link {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+    }
+
+    .custom-table th:first-child,
+    .custom-table td:first-child {
+        position: static;
+        /* Override the global sticky positioning */
+        background-color: inherit;
+        /* Override the global background color */
+        color: inherit;
+        /* Override the global text color */
+        text-align: left;
+        /* Override the global text alignment */
+    }
+</style>
+
+<style>
+    .infraestructura-container {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 10px;
+    }
+
+    .infra-item {
+        text-align: center;
+    }
+
+    .infra-icon {
+        width: 36px;
+        height: 36px;
+    }
+
+    .containerw {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    iframe {
+        width: 100%;
+        height: 450px;
+        /* Puedes ajustar la altura según sea necesario */
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+    }
+
+    .custom-table td,
+    .custom-table th {
+        white-space: nowrap;
+    }
+
+    .custom-table td {
+        padding: 0 !important;
+    }
+
+    .table-title {
+        white-space: normal;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .source-link {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+    }
+
+    .custom-table th:first-child,
+    .custom-table td:first-child {
+        position: static;
+        /* Override the global sticky positioning */
+        background-color: inherit;
+        /* Override the global background color */
+        color: inherit;
+        /* Override the global text color */
+        text-align: left;
+        /* Override the global text alignment */
+    }
+</style>
+
+@*Script de Pantalla Completa*@
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const mapElement = document.getElementById('map');
+        const fullscreenButton = document.getElementById('fullscreen-btn');
+        const searchContainer = document.getElementById('search-container');
+        const mainContainer = document.getElementById('main-container');
+        const fullscreenElements = document.createElement('div');
+        fullscreenElements.id = 'fullscreen-elements';
+
+        const originalMapParent = mapElement.parentNode;
+        const originalSearchParent = searchContainer.parentNode;
+        const originalMapNextSibling = mapElement.nextSibling;
+        const originalSearchNextSibling = searchContainer.nextSibling;
+
+        fullscreenButton.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                mainContainer.appendChild(fullscreenElements); // Asegurarnos de que fullscreenElements esté en el DOM
+                fullscreenElements.appendChild(searchContainer);
+                fullscreenElements.appendChild(mapElement);
+                fullscreenElements.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', (event) => {
+            if (document.fullscreenElement) {
+                fullscreenButton.textContent = "Salir de Pantalla Completa";
+                mainContainer.classList.add('fullscreen-active');
+                mapElement.style.height = "calc(100vh - 60px)";
+                searchContainer.style.backgroundColor = "white";
+            } else {
+                fullscreenButton.textContent = "Pantalla Completa";
+                if (originalSearchNextSibling) {
+                    originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+                } else {
+                    originalSearchParent.appendChild(searchContainer);
+                }
+                if (originalMapNextSibling) {
+                    originalMapParent.insertBefore(mapElement, originalMapNextSibling);
+                } else {
+                    originalMapParent.appendChild(mapElement);
+                }
+                mainContainer.classList.remove('fullscreen-active');
+                mapElement.style.height = "500px";
+
+                // Asegurarse de que los estilos se restablezcan
+                fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+            }
+        });
+    });
+</script>
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+}
+<script src="@Cdn.Url/Geovisualizador/shapes/2024100312_wsp34knt120hr_5km_1.js"></script>
+<script
+    src="@Cdn.Url/Geovisualizador/shapes/EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2.js"></script>
+<script src="@Cdn.Url/Geovisualizador/shapes/EP112024_008adv_TRACKForecastTrack_3.js"></script>
+<script src="@Cdn.Url/Geovisualizador/shapes/EP112024_008adv_TRACKForecastTrack_4.js"></script>
+<script
+    src="@Cdn.Url/Geovisualizador/shapes/EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5.js"></script>
+
+@*Ductos*@
+@*Petrolíferos*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_petroliferos_4326_0.js"></script>
+@*Gas L.P.*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_glp_4326_0.js"></script>
+
+@section scripts {
+
+    <script type="text/javascript" src="/js/configura_mapa.js"></script>
+    <script type="text/javascript" src="/js/infraestructura_sem.js"></script>
+    @* //Tal cual *@
+    <script>
+        // remove popup's row if "visible-with-data"
+        function removeEmptyRowsFromPopupContent(content, feature) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            var rows = tempDiv.querySelectorAll('tr');
+            for (var i = 0; i < rows.length; i++) {
+                var td = rows[i].querySelector('td.visible-with-data');
+                var key = td ? td.id : '';
+                if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                    rows[i].parentNode.removeChild(rows[i]);
+                }
+            }
+            return tempDiv.innerHTML;
+        }
+        // add class to format popup if it contains media
+        function addClassToPopupIfMedia(content, popup) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            if (tempDiv.querySelector('td img')) {
+                popup._contentNode.classList.add('media');
+                // Delay to force the redraw
+                setTimeout(function () {
+                    popup.update();
+                }, 10);
+            } else {
+                popup._contentNode.classList.remove('media');
+            }
+        }
+        var zoomControl = L.control.zoom({
+            position: 'topleft'
+        }).addTo(map);
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+
+        function pop_2024100312_wsp34knt120hr_5km_1(feature, layer) {
+            var popupContent = '<table>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['PERCENTAGE'] !== null ? autolinker.link(feature.properties['PERCENTAGE'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                        </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_2024100312_wsp34knt120hr_5km_1_0(feature) {
+            switch (String(feature.properties['PERCENTAGE'])) {
+                case '<5%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(252,251,253,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '5-10%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(0,142,0,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '10-20%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(0,206,0,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '20-30%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(128,255,0,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '30-40%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(255,255,0,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '40-50%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(255,216,0,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '50-60%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(206,134,0,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '60-70%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(255,128,0,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '70-80%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(206,0,0,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '80-90%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(140,0,0,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                case '>90%':
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(140,0,140,0.6)',
+                        interactive: true,
+                    }
+                    break;
+                default:
+                    return {
+                        pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+                        opacity: 1,
+                        color: 'rgba(35,35,35,0.6)',
+                        dashArray: '',
+                        lineCap: 'butt',
+                        lineJoin: 'miter',
+                        weight: 1.0,
+                        fill: true,
+                        fillOpacity: 1,
+                        fillColor: 'rgba(140,0,140,0.6)',
+                        interactive: true,
+                    }
+                    break;
+            }
+        }
+        map.createPane('pane_2024100312_wsp34knt120hr_5km_1');
+        map.getPane('pane_2024100312_wsp34knt120hr_5km_1').style.zIndex = 401;
+        map.getPane('pane_2024100312_wsp34knt120hr_5km_1').style['mix-blend-mode'] = 'normal';
+        var layer_2024100312_wsp34knt120hr_5km_1 = new L.geoJson(json_2024100312_wsp34knt120hr_5km_1, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_2024100312_wsp34knt120hr_5km_1',
+            layerName: 'layer_2024100312_wsp34knt120hr_5km_1',
+            pane: 'pane_2024100312_wsp34knt120hr_5km_1',
+            onEachFeature: pop_2024100312_wsp34knt120hr_5km_1,
+            style: style_2024100312_wsp34knt120hr_5km_1_0,
+        });
+        bounds_group.addLayer(layer_2024100312_wsp34knt120hr_5km_1);
+        map.addLayer(layer_2024100312_wsp34knt120hr_5km_1);
+        function pop_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2(feature, layer) {
+            var popupContent = '<table>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['Name'] !== null ? autolinker.link(feature.properties['Name'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['description'] !== null ? autolinker.link(feature.properties['description'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['timestamp'] !== null ? autolinker.link(feature.properties['timestamp'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['begin'] !== null ? autolinker.link(feature.properties['begin'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['end'] !== null ? autolinker.link(feature.properties['end'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['altitudeMode'] !== null ? autolinker.link(feature.properties['altitudeMode'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['tessellate'] !== null ? autolinker.link(feature.properties['tessellate'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['extrude'] !== null ? autolinker.link(feature.properties['extrude'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['visibility'] !== null ? autolinker.link(feature.properties['visibility'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['drawOrder'] !== null ? autolinker.link(feature.properties['drawOrder'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['icon'] !== null ? autolinker.link(feature.properties['icon'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['timezone'] !== null ? autolinker.link(feature.properties['timezone'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormType'] !== null ? autolinker.link(feature.properties['stormType'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['advisoryDate'] !== null ? autolinker.link(feature.properties['advisoryDate'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['basin'] !== null ? autolinker.link(feature.properties['basin'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['fcstpd'] !== null ? autolinker.link(feature.properties['fcstpd'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['storm'] !== null ? autolinker.link(feature.properties['storm'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['atcfid'] !== null ? autolinker.link(feature.properties['atcfid'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['advisoryNum'] !== null ? autolinker.link(feature.properties['advisoryNum'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormNum'] !== null ? autolinker.link(feature.properties['stormNum'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormName'] !== null ? autolinker.link(feature.properties['stormName'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                        </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2_0() {
+            return {
+                pane: 'pane_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(255,127,0,1.0)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2');
+        map.getPane('pane_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2').style.zIndex = 402;
+        map.getPane('pane_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2').style['mix-blend-mode'] = 'normal';
+        var layer_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2 = new L.geoJson(json_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2',
+            layerName: 'layer_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2',
+            pane: 'pane_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2',
+            onEachFeature: pop_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2,
+            style: style_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2_0,
+        });
+        bounds_group.addLayer(layer_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2);
+        map.addLayer(layer_EP112024_008adv_CONETropicalDepressionElevenEAdvisory8ForecastTrackUncertainty_2);
+        function pop_EP112024_008adv_TRACKForecastTrack_3(feature, layer) {
+            var popupContent = '<table>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['Name'] !== null ? autolinker.link(feature.properties['Name'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['description'] !== null ? autolinker.link(feature.properties['description'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['timestamp'] !== null ? autolinker.link(feature.properties['timestamp'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['begin'] !== null ? autolinker.link(feature.properties['begin'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['end'] !== null ? autolinker.link(feature.properties['end'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['altitudeMode'] !== null ? autolinker.link(feature.properties['altitudeMode'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['tessellate'] !== null ? autolinker.link(feature.properties['tessellate'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['extrude'] !== null ? autolinker.link(feature.properties['extrude'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['visibility'] !== null ? autolinker.link(feature.properties['visibility'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['drawOrder'] !== null ? autolinker.link(feature.properties['drawOrder'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['icon'] !== null ? autolinker.link(feature.properties['icon'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['timezone'] !== null ? autolinker.link(feature.properties['timezone'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormType'] !== null ? autolinker.link(feature.properties['stormType'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['basin'] !== null ? autolinker.link(feature.properties['basin'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['fcstpd'] !== null ? autolinker.link(feature.properties['fcstpd'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['storm'] !== null ? autolinker.link(feature.properties['storm'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['atcfid'] !== null ? autolinker.link(feature.properties['atcfid'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['advisoryNum'] !== null ? autolinker.link(feature.properties['advisoryNum'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormNum'] !== null ? autolinker.link(feature.properties['stormNum'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormName'] !== null ? autolinker.link(feature.properties['stormName'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['pubAdvTime'] !== null ? autolinker.link(feature.properties['pubAdvTime'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['TCInitLocation'] !== null ? autolinker.link(feature.properties['TCInitLocation'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['maxWindKnots'] !== null ? autolinker.link(feature.properties['maxWindKnots'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['maxWindMPH'] !== null ? autolinker.link(feature.properties['maxWindMPH'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['maxGustKnots'] !== null ? autolinker.link(feature.properties['maxGustKnots'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['maxGustMPH'] !== null ? autolinker.link(feature.properties['maxGustMPH'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormMovement'] !== null ? autolinker.link(feature.properties['stormMovement'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['minimumPressure'] !== null ? autolinker.link(feature.properties['minimumPressure'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['snippet'] !== null ? autolinker.link(feature.properties['snippet'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                        </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_EP112024_008adv_TRACKForecastTrack_3_0() {
+            return {
+                pane: 'pane_EP112024_008adv_TRACKForecastTrack_3',
+                opacity: 1,
+                color: 'rgba(0,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_EP112024_008adv_TRACKForecastTrack_3');
+        map.getPane('pane_EP112024_008adv_TRACKForecastTrack_3').style.zIndex = 403;
+        map.getPane('pane_EP112024_008adv_TRACKForecastTrack_3').style['mix-blend-mode'] = 'normal';
+        var layer_EP112024_008adv_TRACKForecastTrack_3 = new L.geoJson(json_EP112024_008adv_TRACKForecastTrack_3, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_EP112024_008adv_TRACKForecastTrack_3',
+            layerName: 'layer_EP112024_008adv_TRACKForecastTrack_3',
+            pane: 'pane_EP112024_008adv_TRACKForecastTrack_3',
+            onEachFeature: pop_EP112024_008adv_TRACKForecastTrack_3,
+            style: style_EP112024_008adv_TRACKForecastTrack_3_0,
+        });
+        bounds_group.addLayer(layer_EP112024_008adv_TRACKForecastTrack_3);
+        map.addLayer(layer_EP112024_008adv_TRACKForecastTrack_3);
+        function pop_EP112024_008adv_TRACKForecastTrack_4(feature, layer) {
+            var popupContent = '<table>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['Name'] !== null ? autolinker.link(feature.properties['Name'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['description'] !== null ? autolinker.link(feature.properties['description'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['timestamp'] !== null ? autolinker.link(feature.properties['timestamp'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['begin'] !== null ? autolinker.link(feature.properties['begin'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['end'] !== null ? autolinker.link(feature.properties['end'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['altitudeMode'] !== null ? autolinker.link(feature.properties['altitudeMode'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['tessellate'] !== null ? autolinker.link(feature.properties['tessellate'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['extrude'] !== null ? autolinker.link(feature.properties['extrude'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['visibility'] !== null ? autolinker.link(feature.properties['visibility'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['drawOrder'] !== null ? autolinker.link(feature.properties['drawOrder'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['icon'] !== null ? autolinker.link(feature.properties['icon'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['timezone'] !== null ? autolinker.link(feature.properties['timezone'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormType'] !== null ? autolinker.link(feature.properties['stormType'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['basin'] !== null ? autolinker.link(feature.properties['basin'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['fcstpd'] !== null ? autolinker.link(feature.properties['fcstpd'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['storm'] !== null ? autolinker.link(feature.properties['storm'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['atcfid'] !== null ? autolinker.link(feature.properties['atcfid'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['advisoryNum'] !== null ? autolinker.link(feature.properties['advisoryNum'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormNum'] !== null ? autolinker.link(feature.properties['stormNum'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormName'] !== null ? autolinker.link(feature.properties['stormName'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['pubAdvTime'] !== null ? autolinker.link(feature.properties['pubAdvTime'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['TCInitLocation'] !== null ? autolinker.link(feature.properties['TCInitLocation'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['maxWindKnots'] !== null ? autolinker.link(feature.properties['maxWindKnots'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['maxWindMPH'] !== null ? autolinker.link(feature.properties['maxWindMPH'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['maxGustKnots'] !== null ? autolinker.link(feature.properties['maxGustKnots'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['maxGustMPH'] !== null ? autolinker.link(feature.properties['maxGustMPH'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormMovement'] !== null ? autolinker.link(feature.properties['stormMovement'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['minimumPressure'] !== null ? autolinker.link(feature.properties['minimumPressure'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['snippet'] !== null ? autolinker.link(feature.properties['snippet'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                        </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_EP112024_008adv_TRACKForecastTrack_4_0() {
+            return {
+                pane: 'pane_EP112024_008adv_TRACKForecastTrack_4',
+                radius: 8.0,
+                opacity: 1,
+                color: 'rgba(255,255,255,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 2.0,
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(0,0,0,1.0)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_EP112024_008adv_TRACKForecastTrack_4');
+        map.getPane('pane_EP112024_008adv_TRACKForecastTrack_4').style.zIndex = 404;
+        map.getPane('pane_EP112024_008adv_TRACKForecastTrack_4').style['mix-blend-mode'] = 'normal';
+        var layer_EP112024_008adv_TRACKForecastTrack_4 = new L.geoJson(json_EP112024_008adv_TRACKForecastTrack_4, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_EP112024_008adv_TRACKForecastTrack_4',
+            layerName: 'layer_EP112024_008adv_TRACKForecastTrack_4',
+            pane: 'pane_EP112024_008adv_TRACKForecastTrack_4',
+            onEachFeature: pop_EP112024_008adv_TRACKForecastTrack_4,
+            pointToLayer: function (feature, latlng) {
+                var context = {
+                    feature: feature,
+                    variables: {}
+                };
+                return L.circleMarker(latlng, style_EP112024_008adv_TRACKForecastTrack_4_0(feature));
+            },
+        });
+        bounds_group.addLayer(layer_EP112024_008adv_TRACKForecastTrack_4);
+        map.addLayer(layer_EP112024_008adv_TRACKForecastTrack_4);
+        function pop_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5(feature, layer) {
+            var popupContent = '<table>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['Name'] !== null ? autolinker.link(feature.properties['Name'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['description'] !== null ? autolinker.link(feature.properties['description'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['timestamp'] !== null ? autolinker.link(feature.properties['timestamp'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['begin'] !== null ? autolinker.link(feature.properties['begin'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['end'] !== null ? autolinker.link(feature.properties['end'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['altitudeMode'] !== null ? autolinker.link(feature.properties['altitudeMode'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['tessellate'] !== null ? autolinker.link(feature.properties['tessellate'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['extrude'] !== null ? autolinker.link(feature.properties['extrude'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['visibility'] !== null ? autolinker.link(feature.properties['visibility'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['drawOrder'] !== null ? autolinker.link(feature.properties['drawOrder'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['icon'] !== null ? autolinker.link(feature.properties['icon'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['timezone'] !== null ? autolinker.link(feature.properties['timezone'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormType'] !== null ? autolinker.link(feature.properties['stormType'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['advisoryDate'] !== null ? autolinker.link(feature.properties['advisoryDate'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['basin'] !== null ? autolinker.link(feature.properties['basin'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['fcstpd'] !== null ? autolinker.link(feature.properties['fcstpd'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['storm'] !== null ? autolinker.link(feature.properties['storm'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['atcfid'] !== null ? autolinker.link(feature.properties['atcfid'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['advisoryNum'] !== null ? autolinker.link(feature.properties['advisoryNum'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormNum'] !== null ? autolinker.link(feature.properties['stormNum'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                            <tr>\
+                                <td colspan="2">' + (feature.properties['stormName'] !== null ? autolinker.link(feature.properties['stormName'].toLocaleString()) : '') + '</td>\
+                            </tr>\
+                        </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+            layer.on('popupopen', function (e) {
+                addClassToPopupIfMedia(content, e.popup);
+            });
+            layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5_0() {
+            return {
+                pane: 'pane_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5',
+                opacity: 1,
+                color: 'rgba(31,120,180,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5');
+        map.getPane('pane_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5').style.zIndex = 405;
+        map.getPane('pane_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5').style['mix-blend-mode'] = 'normal';
+        var layer_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5 = new L.geoJson(json_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5',
+            layerName: 'layer_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5',
+            pane: 'pane_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5',
+            onEachFeature: pop_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5,
+            style: style_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5_0,
+        });
+        bounds_group.addLayer(layer_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5);
+        map.addLayer(layer_EP112024_008adv_WWTropicalDepressionElevenEAdvisory8WatchWarnings_5);
+        setBounds();
+
+    </script>
+
+
+
+    <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function () {
+            function actualizarFechaHora() {
+                var ahora = new Date();
+                var dia = ahora.getDate().toString().padStart(2, '0');
+                var mes = (ahora.getMonth() + 1).toString().padStart(2, '0'); // Los meses empiezan en 0
+                var anio = ahora.getFullYear();
+                var horas = ahora.getHours().toString().padStart(2, '0');
+                var minutos = ahora.getMinutes().toString().padStart(2, '0');
+                var segundos = ahora.getSeconds().toString().padStart(2, '0');
+
+                var fechaHoraActual = `Última actualización: ${dia}/${mes}/${anio} a las ${horas}:${minutos}:${segundos}`;
+                document.getElementById('ultima-actualizacion').textContent = fechaHoraActual;
+            }
+
+            // Actualizar la fecha y hora inmediatamente
+            actualizarFechaHora();
+
+            // Actualizar la fecha y hora cada segundo
+            setInterval(actualizarFechaHora, 1000);
+        });
+    </script>
+
+
+}

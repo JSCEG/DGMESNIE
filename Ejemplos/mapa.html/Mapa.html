@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AZEL - Mapa Interactivo de Energías Renovables</title>
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css">
+  <!-- Leaflet Draw CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f6f9;
+    }
+    .navbar {
+      background-color: #343a40;
+    }
+    .navbar-brand, .navbar-nav .nav-link {
+      color: #fff !important;
+    }
+    .instructions {
+      background: linear-gradient(135deg, #e0f7fa, #e8f5e9);
+      border: 1px solid #27ae60;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+    #map {
+      width: 100%;
+      height: 50vh;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+    }
+    #report {
+      margin-top: 20px;
+      display: none;
+    }
+    /* Informe con el mismo estilo que las instrucciones */
+    .report-alert {
+      background: linear-gradient(135deg, #e0f7fa, #e8f5e9);
+      border: 1px solid #27ae60;
+      border-radius: 8px;
+      padding: 20px;
+      color: #0f1c3f;
+    }
+    #areaComboContainer {
+      margin-bottom: 20px;
+      display: none;
+    }
+    #techFormContainer label,
+    #techFormContainer input {
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Barra de navegación -->
+  <nav class="navbar navbar-expand-lg">
+    <div class="container">
+      <a class="navbar-brand" href="#">AZEL</a>
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarContent" 
+              aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon" style="color:#fff;"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarContent">
+        <ul class="navbar-nav ml-auto">
+          <li class="nav-item active"><a class="nav-link" href="#">Inicio</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">Contacto</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Contenedor principal -->
+  <div class="container">
+    <!-- Sección de instrucciones -->
+    <div class="instructions">
+      <h3 class="mb-3">Instrucciones</h3>
+      <p>
+        Selecciona una tecnología desde el menú superior. Luego, en el panel derecho se habilitará el bloque para capturar el área (combo y botón "Capturar área") y se mostrará el formulario específico. Pulsa el botón <strong>"Capturar área"</strong> para activar la herramienta de dibujo y definir la zona del proyecto en el mapa (ubicado en la columna izquierda). Una vez capturada, la herramienta se deshabilitará y se te preguntará si deseas capturar otra área. Al cambiar de tecnología se limpiará todo.
+      </p>
+    </div>
+
+    <!-- Menú de controles generales -->
+    <div class="menu my-3">
+      <div class="d-flex flex-wrap align-items-center">
+        <button onclick="setViewMexico()" class="btn btn-primary mr-2 mb-2">Vista Completa</button>
+        <button onclick="clearMap()" class="btn btn-danger mr-2 mb-2">Limpiar Mapa y Cálculos</button>
+        <button onclick="localizarPunto()" class="btn btn-secondary mr-2 mb-2">Localizar Punto</button>
+        <button onclick="downloadMap()" class="btn btn-info mr-2 mb-2">Descargar Mapa</button>
+        <button onclick="downloadData()" class="btn btn-info mr-2 mb-2">Descargar Datos (Excel)</button>
+      </div>
+      <div class="form-row mt-2">
+        <div class="col">
+          <select id="baseMapSelector" onchange="changeBaseMap()" class="form-control">
+            <option value="osm">Calles (OSM)</option>
+            <option value="satellite">Satélite</option>
+            <option value="topo">Topográfico</option>
+          </select>
+        </div>
+        <div class="col">
+          <select id="layerSelector" onchange="toggleLayer()" class="form-control">
+            <option value="none">Seleccionar Capa</option>
+            <option value="solar">Zonas de Potencial Solar</option>
+            <option value="eolica">Zonas de Potencial Eólico</option>
+            <option value="geotermica">Yacimientos Geotérmicos</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fila con mapa y formulario -->
+    <div class="row">
+      <div class="col-md-6 mb-3" id="mapCol">
+        <div id="map"></div>
+      </div>
+      <div class="col-md-6" id="formCol">
+        <div class="form-section" id="projectForm">
+          <div id="areaComboContainer"></div>
+          <div id="techFormContainer"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fila para el informe -->
+    <div class="row">
+      <div class="col-md-12">
+        <div id="report" class="text-center"></div>
+      </div>
+    </div>
+    
+  </div>
+
+  <!-- Dependencias JavaScript -->
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+  <script>
+    // VARIABLES GLOBALES
+    var currentTech = '';
+    var drawingEnabled = false;
+    var drawnAreaLayers = [];
+    var selectedAreas = [];
+    var layer_Geotermica; // Capa GeoJSON para yacimientos geotérmicos
+
+    // OVERLAYS RASTER
+    var urlRasterViento = "/Geovisualizador/rasters/viento.png";
+    var esquinaSupIzqViento = L.latLng(32.734349540232256, -118.3537828525035);
+    var esquinaInfDerViento = L.latLng(14.533412477527252, -86.74104147980864);
+    var boundsViento = L.latLngBounds(esquinaSupIzqViento, esquinaInfDerViento);
+    var capaRasterViento = L.imageOverlay(urlRasterViento, boundsViento, { opacity: 0.7 });
+
+    var urlRasterSolar = "/Geovisualizador/rasters/rs.png";
+    var esquinaSupIzqSolar = L.latLng(32.734349540232256, -117.1237828525035);
+    var esquinaInfDerSolar = L.latLng(14.533412477527252, -86.74104147980864);
+    var boundsSolar = L.latLngBounds(esquinaSupIzqSolar, esquinaInfDerSolar);
+    var capaRasterSolar = L.imageOverlay(urlRasterSolar, boundsSolar, { opacity: 0.7 });
+
+    // INICIALIZACIÓN DEL MAPA
+    var map = L.map('map', { center: [23.6345, -102.5528], zoom: 5 });
+    var baseMaps = {
+      osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: 'OSM' }),
+      satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Satellite' }),
+      topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { attribution: 'Topográfico' })
+    };
+    baseMaps.osm.addTo(map);
+
+    // LIMITE DEL MAPA A MÉXICO
+    var southWest = L.latLng(14.5, -118.5);
+    var northEast = L.latLng(32.7, -86.7);
+    var bounds = L.latLngBounds(southWest, northEast);
+    map.setMaxBounds(bounds);
+    map.on('drag', function() { map.panInsideBounds(bounds, { animate: false }); });
+
+    // GRUPO PARA LOS LAYERS DIBUJADOS
+    var drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    // CONTROL DE DIBUJO: SOLO POLÍGONOS Y RECTÁNGULOS
+    var drawControl = new L.Control.Draw({
+      edit: false,
+      draw: { polygon: true, rectangle: true, circle: false, marker: false, polyline: false }
+    });
+
+    // EVENTO AL DIBUJAR UN ÁREA
+    map.on(L.Draw.Event.CREATED, function (e) {
+      var layer = e.layer;
+      drawnItems.addLayer(layer);
+      drawnAreaLayers.push(layer);
+      var area = L.GeometryUtil.geodesicArea(layer.getLatLngs()[0]);
+      selectedAreas.push(area);
+      updateAreaCombo();
+      if(drawingEnabled) { map.removeControl(drawControl); drawingEnabled = false; }
+      showCapturePrompt();
+    });
+
+    // FUNCION createCaptureUI(): crea el bloque de captura de área (combo y botón)
+    function createCaptureUI() {
+      var areaContainer = document.getElementById('areaComboContainer');
+      areaContainer.innerHTML = "";
+      areaContainer.style.display = "block";
+      
+      var alertDiv = document.createElement('div');
+      alertDiv.id = "areaAlert";
+      areaContainer.appendChild(alertDiv);
+      
+      var inlineDiv = document.createElement('div');
+      inlineDiv.className = "d-flex align-items-center";
+      
+      var label = document.createElement('label');
+      label.setAttribute('for', 'areaCombo');
+      label.textContent = "Área Capturada:";
+      label.className = "mr-2 mb-0";
+      
+      var select = document.createElement('select');
+      select.id = "areaCombo";
+      select.className = "form-control mr-2";
+      select.addEventListener('change', function(){
+        updateLayerStyles();
+      });
+      select.addEventListener('click', function(){
+        if(selectedAreas.length === 0) {
+          showAlert("No se ha capturado ninguna área. Haz clic en 'Capturar área' y dibuja en el mapa.", "warning", "areaAlert");
+        }
+      });
+      
+      var btn = document.createElement('button');
+      btn.id = "captureAreaBtn";
+      btn.className = "btn btn-secondary";
+      btn.textContent = "Capturar área";
+      btn.onclick = activateDrawing;
+      
+      inlineDiv.appendChild(label);
+      inlineDiv.appendChild(select);
+      inlineDiv.appendChild(btn);
+      areaContainer.appendChild(inlineDiv);
+    }
+
+    // ACTUALIZA el combo de áreas y llama a updateLayerStyles()
+    function updateAreaCombo() {
+      if (!document.getElementById("areaCombo")) { createCaptureUI(); }
+      var select = document.getElementById("areaCombo");
+      select.innerHTML = "";
+      selectedAreas.forEach((area, index) => {
+        var option = document.createElement("option");
+        option.value = area;
+        option.textContent = `Área ${index + 1}: ${area.toFixed(2)} m²`;
+        select.appendChild(option);
+      });
+      updateLayerStyles();
+    }
+
+    // ACTUALIZA el estilo de los layers según la opción seleccionada (la seleccionada en verde, demás en gris)
+    function updateLayerStyles() {
+      var select = document.getElementById("areaCombo");
+      var selectedIndex = select.selectedIndex;
+      drawnAreaLayers.forEach(function(layer, index) {
+        if(index === selectedIndex) { layer.setStyle({ color: "green", fillColor: "green" }); }
+        else { layer.setStyle({ color: "gray", fillColor: "gray" }); }
+      });
+      if(currentTech === "solar") {
+        var panelAreaInput = document.getElementById("panelArea");
+        if(panelAreaInput) { panelAreaInput.value = select.value; }
+      }
+    }
+
+    // Activa la herramienta de dibujo
+    function activateDrawing() {
+      showAlert("Por favor, dibuja un área en el mapa.", "info", "areaAlert");
+      if(!drawingEnabled) { map.addControl(drawControl); drawingEnabled = true; }
+    }
+
+    // Muestra un prompt para capturar otra área
+    function showCapturePrompt() {
+      var promptHTML = `
+      <div class="alert alert-info alert-dismissible fade show" role="alert">
+        ¿Deseas capturar otra área?
+        <button type="button" class="btn btn-success btn-sm ml-2" id="captureYes">Sí, capturar otra</button>
+        <button type="button" class="btn btn-danger btn-sm ml-2" id="captureNo">No, finalizar captura</button>
+        <button type="button" class="close" data-dismiss="alert" aria-label="Cerrar">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>`;
+      showAlert(promptHTML, "", "areaAlert");
+      setTimeout(function() {
+        var btnYes = document.getElementById("captureYes");
+        var btnNo = document.getElementById("captureNo");
+        if(btnYes) {
+          btnYes.addEventListener("click", function() {
+            document.getElementById("areaAlert").innerHTML = "";
+            map.addControl(drawControl);
+            drawingEnabled = true;
+            showAlert("Dibuja la siguiente área en el mapa.", "info", "areaAlert");
+          });
+        }
+        if(btnNo) {
+          btnNo.addEventListener("click", function() { document.getElementById("areaAlert").innerHTML = ""; });
+        }
+      }, 100);
+    }
+
+    // FUNCIÓN: Muestra alertas en el contenedor indicado
+    function showAlert(message, type = "danger", targetId) {
+      var alertHTML = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                         ${message}
+                         <button type="button" class="close" data-dismiss="alert" aria-label="Cerrar">
+                           <span aria-hidden="true">&times;</span>
+                         </button>
+                       </div>`;
+      if(targetId) { document.getElementById(targetId).innerHTML = alertHTML; }
+      else { document.getElementById("alert").innerHTML = alertHTML; }
+    }
+
+    // --- CAMBIO DE TECNOLOGÍA, LIMPIEZA Y OVERLAYS ---
+    function toggleLayer() {
+      var selectedLayer = document.getElementById("layerSelector").value;
+      document.getElementById("areaComboContainer").innerHTML = "";
+      document.getElementById("techFormContainer").innerHTML = "";
+      document.getElementById("report").innerHTML = "";
+      document.getElementById("report").style.display = "none";
+      selectedAreas = [];
+      drawnAreaLayers = [];
+      drawnItems.clearLayers();
+      if (map.hasLayer(capaRasterViento)) { map.removeLayer(capaRasterViento); }
+      if (map.hasLayer(capaRasterSolar)) { map.removeLayer(capaRasterSolar); }
+      if (layer_Geotermica && map.hasLayer(layer_Geotermica)) { map.removeLayer(layer_Geotermica); }
+      if(selectedLayer === "none") {
+        document.getElementById("areaComboContainer").style.display = "none";
+      } else {
+        document.getElementById("areaComboContainer").style.display = "block";
+        createCaptureUI();
+        currentTech = selectedLayer;
+        displayForm(selectedLayer);
+        updateOverlayLayer();
+      }
+    }
+
+    function displayForm(type) {
+      var techContainer = document.getElementById("techFormContainer");
+      var techHTML = "";
+      if(type === "eolica") {
+        techHTML += "<h3>Datos del Proyecto (Eólica)</h3>";
+        techHTML += "<label>Velocidad del viento promedio (m/s)</label>";
+        techHTML += '<input type="number" id="windSpeed" class="form-control" oninput="validateForm(\'eolica\')">';
+        techHTML += "<label>Altura de las turbinas (m)</label>";
+        techHTML += '<input type="number" id="turbineHeight" class="form-control" oninput="validateForm(\'eolica\')">';
+        techHTML += "<label>Factor de planta (%)</label>";
+        techHTML += '<input type="number" id="plantFactor" class="form-control" oninput="validateForm(\'eolica\')">';
+        techHTML += "<label>Eficiencia del aerogenerador (%)</label>";
+        techHTML += '<input type="number" id="windEfficiency" class="form-control" oninput="validateForm(\'eolica\')">';
+        techHTML += "<label>Número de turbinas</label>";
+        techHTML += '<input type="number" id="numTurbines" class="form-control" oninput="validateForm(\'eolica\')">';
+        techHTML += '<button class="btn btn-primary btn-block mt-3" id="generateButton" disabled onclick="generateReport(\'eolica\')">Generar Informe</button>';
+      } else if(type === "solar") {
+        techHTML += "<h3>Datos del Proyecto (Solar)</h3>";
+        techHTML += "<label>Radiación solar promedio (kWh/m²/día)</label>";
+        techHTML += '<input type="number" id="solarRadiation" class="form-control" oninput="validateForm(\'solar\')">';
+        techHTML += "<label>Área disponible para paneles (m²) [Capturada]</label>";
+        techHTML += '<input type="number" id="panelArea" class="form-control" readonly>';
+        techHTML += "<label>Eficiencia de los paneles solares (%)</label>";
+        techHTML += '<input type="number" id="panelEfficiency" class="form-control" oninput="validateForm(\'solar\')">';
+        techHTML += "<label>Factor de planta (%)</label>";
+        techHTML += '<input type="number" id="plantFactor" class="form-control" oninput="validateForm(\'solar\')">';
+        techHTML += "<label>Ángulo de inclinación de los paneles (°)</label>";
+        techHTML += '<input type="number" id="panelAngle" class="form-control" oninput="validateForm(\'solar\')">';
+        techHTML += "<label>Número de paneles</label>";
+        techHTML += '<input type="number" id="numPanels" class="form-control" oninput="validateForm(\'solar\')">';
+        techHTML += '<button class="btn btn-primary btn-block mt-3" id="generateButton" disabled onclick="generateReport(\'solar\')">Generar Informe</button>';
+      } else if(type === "geotermica") {
+        techHTML += "<h3>Datos del Proyecto (Geotérmica)</h3>";
+        techHTML += "<label>Temperatura del recurso (°C)</label>";
+        techHTML += '<input type="number" id="resourceTemp" class="form-control" oninput="validateForm(\'geotermica\')">';
+        techHTML += "<label>Profundidad del pozo (m)</label>";
+        techHTML += '<input type="number" id="wellDepth" class="form-control" oninput="validateForm(\'geotermica\')">';
+        techHTML += "<label>Caudal del fluido geotérmico (kg/s)</label>";
+        techHTML += '<input type="number" id="flowRateGeo" class="form-control" oninput="validateForm(\'geotermica\')">';
+        techHTML += "<label>Eficiencia del ciclo Rankine (%)</label>";
+        techHTML += '<input type="number" id="geoEfficiency" class="form-control" oninput="validateForm(\'geotermica\')">';
+        techHTML += "<label>Factor de planta (%)</label>";
+        techHTML += '<input type="number" id="plantFactorGeo" class="form-control" oninput="validateForm(\'geotermica\')">';
+        techHTML += '<button class="btn btn-primary btn-block mt-3" id="generateButton" disabled onclick="generateReport(\'geotermica\')">Generar Informe</button>';
+      }
+      techContainer.innerHTML = techHTML;
+    }
+
+    function validateForm(techType) {
+      let isValid = true;
+      if (techType === 'eolica') {
+        let windSpeed = document.getElementById("windSpeed").value;
+        let turbineHeight = document.getElementById("turbineHeight").value;
+        let plantFactor = document.getElementById("plantFactor").value;
+        let windEfficiency = document.getElementById("windEfficiency").value;
+        let numTurbines = document.getElementById("numTurbines").value;
+        if(windSpeed === "" || turbineHeight === "" || plantFactor === "" || windEfficiency === "" || numTurbines === "") {
+          isValid = false;
+        }
+      } else if (techType === 'solar') {
+        let solarRadiation = document.getElementById("solarRadiation").value;
+        let panelArea = document.getElementById("panelArea").value;
+        let panelEfficiency = document.getElementById("panelEfficiency").value;
+        let plantFactor = document.getElementById("plantFactor").value;
+        let panelAngle = document.getElementById("panelAngle").value;
+        let numPanels = document.getElementById("numPanels").value;
+        if(solarRadiation === "" || panelArea === "" || panelEfficiency === "" || plantFactor === "" || panelAngle === "" || numPanels === "") {
+          isValid = false;
+        }
+      } else if (techType === 'geotermica') {
+        let resourceTemp = document.getElementById("resourceTemp").value;
+        let wellDepth = document.getElementById("wellDepth").value;
+        let flowRateGeo = document.getElementById("flowRateGeo").value;
+        let geoEfficiency = document.getElementById("geoEfficiency").value;
+        let plantFactorGeo = document.getElementById("plantFactorGeo").value;
+        if(resourceTemp === "" || wellDepth === "" || flowRateGeo === "" || geoEfficiency === "" || plantFactorGeo === "") {
+          isValid = false;
+        }
+      }
+      let btn = document.getElementById("generateButton");
+      if(btn) { btn.disabled = !isValid; }
+    }
+
+    function generateReport(techType) {
+      var reportSection = document.getElementById("report");
+      var areaCombo = document.getElementById("areaCombo");
+      if(!areaCombo || areaCombo.options.length === 0) {
+        showAlert("Debes capturar al menos un área en el mapa antes de generar el informe.", "danger");
+        return;
+      }
+      var selectedArea = parseFloat(areaCombo.value);
+      var energyGenerated = 0;
+      var formulaText = "";
+      var returnRate = 0;
+      
+      if(techType === "eolica") {
+        var windSpeed = parseFloat(document.getElementById("windSpeed").value);
+        var turbineHeight = parseFloat(document.getElementById("turbineHeight").value);
+        var plantFactor = parseFloat(document.getElementById("plantFactor").value);
+        var windEfficiency = parseFloat(document.getElementById("windEfficiency").value);
+        var numTurbines = parseFloat(document.getElementById("numTurbines").value);
+        var plantFactorDec = plantFactor / 100;
+        var windEfficiencyDec = windEfficiency / 100;
+        var airDensity = 1.225;
+        var powerPerTurbine = 0.5 * airDensity * selectedArea * Math.pow(windSpeed, 3) * windEfficiencyDec;
+        energyGenerated = powerPerTurbine * numTurbines * plantFactorDec;
+        formulaText = "Fórmula Eólica: Potencia (W) = 0.5 × 1.225 × Área (m²) × (Velocidad (m/s))³ × Eficiencia × Factor de Planta × Número de Turbinas";
+      } else if(techType === "solar") {
+        var solarRadiation = parseFloat(document.getElementById("solarRadiation").value);
+        var panelArea = parseFloat(document.getElementById("panelArea").value);
+        var panelEfficiency = parseFloat(document.getElementById("panelEfficiency").value);
+        var plantFactor = parseFloat(document.getElementById("plantFactor").value);
+        var panelAngle = parseFloat(document.getElementById("panelAngle").value);
+        var numPanels = parseFloat(document.getElementById("numPanels").value);
+        var panelEfficiencyDec = panelEfficiency / 100;
+        var plantFactorDec = plantFactor / 100;
+        energyGenerated = solarRadiation * panelArea * panelEfficiencyDec * plantFactorDec * 1000;
+        formulaText = "Fórmula Solar: Potencia (W) = Radiación solar (kWh/m²/día) × Área disponible (m²) × Eficiencia × Factor de Planta";
+      } else if(techType === "geotermica") {
+        var resourceTemp = parseFloat(document.getElementById("resourceTemp").value);
+        var wellDepth = parseFloat(document.getElementById("wellDepth").value);
+        var flowRateGeo = parseFloat(document.getElementById("flowRateGeo").value);
+        var geoEfficiency = parseFloat(document.getElementById("geoEfficiency").value);
+        var plantFactorGeo = parseFloat(document.getElementById("plantFactorGeo").value);
+        var geoEfficiencyDec = geoEfficiency / 100;
+        var plantFactorDec = plantFactorGeo / 100;
+        var deltaT = resourceTemp - 25;
+        var cp = 4180;
+        energyGenerated = flowRateGeo * cp * deltaT * geoEfficiencyDec * plantFactorDec;
+        formulaText = "Fórmula Geotérmica: Potencia (W) = Caudal (kg/s) × 4180 J/(kg°C) × ΔT (°C) × Eficiencia × Factor de Planta";
+      }
+      
+      var energyMW = energyGenerated / 1e6;
+      returnRate = energyMW * 10;
+      
+      var returnRateFormula = "<p><strong>Fórmula de Tasa de Retorno:</strong> Tasa = Energía generada (MW) × 10</p>";
+      
+      var reportHTML = `
+      <div class="alert report-alert alert-dismissible fade show mt-3" role="alert">
+        <h3 class="alert-heading">Informe de Viabilidad Energética</h3>
+        <p><strong>Área seleccionada:</strong> ${selectedArea.toFixed(2)} m²</p>
+        <p><strong>Energía generada:</strong> ${energyMW.toFixed(3)} MW</p>
+        <p><strong>Tasa de retorno:</strong> ${returnRate.toFixed(2)}%</p>
+        ${returnRateFormula}
+        <hr>
+        <p class="mb-0">${formulaText}</p>
+        <button type="button" class="close" data-dismiss="alert" aria-label="Cerrar">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>`;
+      
+      reportSection.innerHTML = reportHTML;
+      reportSection.style.display = "block";
+    }
+
+    function localizarPunto() {
+      var lat = prompt("Introduce la latitud:");
+      var lng = prompt("Introduce la longitud:");
+      if(lat && lng) {
+        var marker = L.marker([parseFloat(lat), parseFloat(lng)]).addTo(map);
+        map.setView([parseFloat(lat), parseFloat(lng)], 10);
+        marker.bindPopup(`Lat: ${lat}, Lng: ${lng}`).openPopup();
+      }
+    }
+
+    function setViewMexico() {
+      map.setView([23.6345, -102.5528], 5);
+    }
+
+    function clearMap() {
+      drawnItems.clearLayers();
+      selectedAreas = [];
+      drawnAreaLayers = [];
+      document.getElementById("areaComboContainer").innerHTML = "";
+      document.getElementById("techFormContainer").innerHTML = "";
+      document.getElementById("report").innerHTML = "";
+      document.getElementById("report").style.display = "none";
+      if(drawingEnabled) { map.removeControl(drawControl); drawingEnabled = false; }
+    }
+
+    function changeBaseMap() {
+      var selectedMap = document.getElementById("baseMapSelector").value;
+      map.eachLayer(function(layer) { if(layer instanceof L.TileLayer) { map.removeLayer(layer); } });
+      baseMaps[selectedMap].addTo(map);
+    }
+
+    function downloadMap() { showAlert("Función de descarga de mapa no implementada.", "info"); }
+    function downloadData() { showAlert("Función de descarga de datos no implementada.", "info"); }
+
+    // FUNCIONES PARA OVERLAYS SEGÚN TECNOLOGÍA
+    function updateOverlayLayer() {
+      if (currentTech === "eolica") {
+        if (!map.hasLayer(capaRasterViento)) { capaRasterViento.addTo(map); }
+      } else {
+        if (map.hasLayer(capaRasterViento)) { map.removeLayer(capaRasterViento); }
+      }
+      if (currentTech === "solar") {
+        if (!map.hasLayer(capaRasterSolar)) { capaRasterSolar.addTo(map); }
+      } else {
+        if (map.hasLayer(capaRasterSolar)) { map.removeLayer(capaRasterSolar); }
+      }
+      if (currentTech === "geotermica") {
+        if (typeof json_Geotermica_ok_4326_0 !== 'undefined') {
+          if (!layer_Geotermica) {
+            if (!map.getPane('pane_Geotermica')) {
+              map.createPane('pane_Geotermica');
+              map.getPane('pane_Geotermica').style.zIndex = 400;
+              map.getPane('pane_Geotermica').style['mix-blend-mode'] = 'normal';
+            }
+            layer_Geotermica = L.geoJson(json_Geotermica_ok_4326_0, {
+              onEachFeature: pop_Geotermica_ok_4326_0,
+              pointToLayer: function(feature, latlng) {
+                return L.circleMarker(latlng, style_Geotermica_ok_4326_0_0(feature));
+              },
+              pane: 'pane_Geotermica'
+            });
+          }
+          if (!map.hasLayer(layer_Geotermica)) { map.addLayer(layer_Geotermica); }
+        } else { console.log("GeoJSON de geotermica no está definido"); }
+      } else {
+        if (layer_Geotermica && map.hasLayer(layer_Geotermica)) { map.removeLayer(layer_Geotermica); }
+      }
+    }
+
+    function toggleLayer() {
+      var selectedLayer = document.getElementById("layerSelector").value;
+      document.getElementById("areaComboContainer").innerHTML = "";
+      document.getElementById("techFormContainer").innerHTML = "";
+      document.getElementById("report").innerHTML = "";
+      document.getElementById("report").style.display = "none";
+      selectedAreas = [];
+      drawnAreaLayers = [];
+      drawnItems.clearLayers();
+      if (map.hasLayer(capaRasterViento)) { map.removeLayer(capaRasterViento); }
+      if (map.hasLayer(capaRasterSolar)) { map.removeLayer(capaRasterSolar); }
+      if (layer_Geotermica && map.hasLayer(layer_Geotermica)) { map.removeLayer(layer_Geotermica); }
+      if(selectedLayer === "none") {
+        document.getElementById("areaComboContainer").style.display = "none";
+      } else {
+        document.getElementById("areaComboContainer").style.display = "block";
+        createCaptureUI();
+        currentTech = selectedLayer;
+        displayForm(selectedLayer);
+        updateOverlayLayer();
+      }
+    }
+
+    // Función para mostrar alertas
+    function showAlert(message, type = "danger", targetId) {
+      var alertHTML = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                         ${message}
+                         <button type="button" class="close" data-dismiss="alert" aria-label="Cerrar">
+                           <span aria-hidden="true">&times;</span>
+                         </button>
+                       </div>`;
+      if(targetId) { document.getElementById(targetId).innerHTML = alertHTML; }
+      else { document.getElementById("alert").innerHTML = alertHTML; }
+    }
+  </script>
+</body>
+</html>

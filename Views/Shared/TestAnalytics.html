@@ -1,0 +1,242 @@
+<!-- Página de prueba para Analytics MCP -->
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SNIER - Test Analytics MCP</title>
+    <link href="~/css/snier.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .analytics-test {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 2rem;
+        }
+
+        .test-section {
+            background: rgba(13, 75, 110, 0.05);
+            border: 1px solid rgba(13, 75, 110, 0.2);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .test-button {
+            background: linear-gradient(135deg, #0D4B6E, #1E88E5);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .test-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(13, 75, 110, 0.3);
+        }
+
+        .result-container {
+            background: white;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .loading {
+            color: #1E88E5;
+            font-style: italic;
+        }
+
+        .error {
+            color: #dc3545;
+            background: rgba(220, 53, 69, 0.1);
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+
+        .success {
+            color: #28a745;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="analytics-test">
+        <h1>🔬 SNIER Analytics MCP - Pruebas</h1>
+        <p>Esta página te permite probar las funcionalidades del servidor MCP Analytics</p>
+
+        <!-- Test 1: Health Check -->
+        <div class="test-section">
+            <h3>1. Verificar Conexión Analytics</h3>
+            <p>Verifica si el servidor MCP Analytics está funcionando</p>
+            <button class="test-button" onclick="testHealthCheck()">🔍 Verificar Estado</button>
+            <div id="result-health" class="result-container" style="display: none;"></div>
+        </div>
+
+        <!-- Test 2: Consumo Sectorial -->
+        <div class="test-section">
+            <h3>2. Análisis de Consumo Sectorial</h3>
+            <p>Obtiene datos de consumo energético por sector</p>
+            <select id="año-consumo">
+                <option value="2024">2024</option>
+                <option value="2023">2023</option>
+                <option value="2022">2022</option>
+            </select>
+            <button class="test-button" onclick="testConsumoSectorial()">📊 Analizar Consumo</button>
+            <div id="result-consumo" class="result-container" style="display: none;"></div>
+        </div>
+
+        <!-- Test 3: Tendencias Renovables -->
+        <div class="test-section">
+            <h3>3. Tendencias Energías Renovables</h3>
+            <p>Analiza las tendencias de energías renovables en los últimos meses</p>
+            <select id="meses-renovables">
+                <option value="3">3 meses</option>
+                <option value="6">6 meses</option>
+                <option value="12">12 meses</option>
+            </select>
+            <button class="test-button" onclick="testTendenciasRenovables()">🌱 Analizar Renovables</button>
+            <div id="result-renovables" class="result-container" style="display: none;"></div>
+        </div>
+
+        <!-- Test 4: Dashboard Completo -->
+        <div class="test-section">
+            <h3>4. Dashboard Completo</h3>
+            <p>Genera un dashboard con múltiples métricas energéticas</p>
+            <button class="test-button" onclick="testDashboardCompleto()">📈 Dashboard Completo</button>
+            <div id="result-dashboard" class="result-container" style="display: none;"></div>
+        </div>
+
+        <!-- Test 5: Generar Reporte -->
+        <div class="test-section">
+            <h3>5. Generar Reporte Excel</h3>
+            <p>Genera un reporte Excel usando datos de Analytics</p>
+            <button class="test-button" onclick="testGenerarReporte()">📄 Generar Reporte</button>
+            <div id="result-reporte" class="result-container" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Función auxiliar para mostrar resultados
+        function mostrarResultado(containerId, data, isError = false) {
+            const container = document.getElementById(containerId);
+            container.style.display = 'block';
+
+            if (isError) {
+                container.innerHTML = `<div class="error">❌ ${data}</div>`;
+            } else {
+                container.innerHTML = `
+                    <div class="success">✅ Éxito</div>
+                    <pre style="background: #f8f9fa; padding: 1rem; border-radius: 4px; overflow-x: auto; max-height: 400px;">
+${JSON.stringify(data, null, 2)}
+                    </pre>
+                `;
+            }
+        }
+
+        function mostrarCargando(containerId) {
+            const container = document.getElementById(containerId);
+            container.style.display = 'block';
+            container.innerHTML = '<div class="loading">⏳ Cargando...</div>';
+        }
+
+        // Test 1: Health Check
+        async function testHealthCheck() {
+            try {
+                mostrarCargando('result-health');
+
+                const response = await fetch('/api/analytics/health-check');
+                const data = await response.json();
+
+                mostrarResultado('result-health', data);
+            } catch (error) {
+                mostrarResultado('result-health', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Test 2: Consumo Sectorial
+        async function testConsumoSectorial() {
+            try {
+                mostrarCargando('result-consumo');
+
+                const año = document.getElementById('año-consumo').value;
+                const response = await fetch(`/api/analytics/consumo-sectorial?año=${año}`);
+                const data = await response.json();
+
+                mostrarResultado('result-consumo', data);
+            } catch (error) {
+                mostrarResultado('result-consumo', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Test 3: Tendencias Renovables
+        async function testTendenciasRenovables() {
+            try {
+                mostrarCargando('result-renovables');
+
+                const meses = document.getElementById('meses-renovables').value;
+                const response = await fetch(`/api/analytics/renovables-tendencias?meses=${meses}`);
+                const data = await response.json();
+
+                mostrarResultado('result-renovables', data);
+            } catch (error) {
+                mostrarResultado('result-renovables', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Test 4: Dashboard Completo
+        async function testDashboardCompleto() {
+            try {
+                mostrarCargando('result-dashboard');
+
+                const response = await fetch('/api/analytics/dashboard-completo');
+                const data = await response.json();
+
+                mostrarResultado('result-dashboard', data);
+            } catch (error) {
+                mostrarResultado('result-dashboard', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Test 5: Generar Reporte
+        async function testGenerarReporte() {
+            try {
+                mostrarCargando('result-reporte');
+
+                const requestBody = {
+                    año: 2024,
+                    template: "reporte_analytics",
+                    tipoAnalisis: "consumo_sectorial",
+                    incluirGraficos: true
+                };
+
+                const response = await fetch('/api/analytics/generar-reporte', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const data = await response.json();
+                mostrarResultado('result-reporte', data);
+            } catch (error) {
+                mostrarResultado('result-reporte', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Auto-ejecutar health check al cargar la página
+        document.addEventListener('DOMContentLoaded', function () {
+            console.log('🚀 Página de pruebas Analytics MCP cargada');
+            // Opcional: ejecutar health check automáticamente
+            // testHealthCheck();
+        });
+    </script>
+</body>
+
+</html>

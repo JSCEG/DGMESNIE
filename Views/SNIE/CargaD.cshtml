@@ -1,0 +1,209 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Carga Definitiva de Series Energéticas";
+
+    var header = new HeaderViewModel
+    {
+        Title = "Carga Definitiva de Series Energéticas",
+        IconPath = "analisis.png",
+        Description = "Formaliza la entrega final de datos validados al Balance Nacional de Energía.",
+        Section = "📦 Integración Final de Datos",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Carga Definitiva de Series",
+            description = "Entrega formal de series validadas para consolidación del BNE.",
+            functionality = "Carga final con validaciones, firma y control institucional.",
+            stage = "Consolidación Final",
+            roles = new[] {
+new { icon = "building", text = "Dependencias: Entrega Oficial" },
+new { icon = "user-check", text = "SNIEr: Revisión y Recepción" },
+new { icon = "file-signature", text = "Firmantes: Autorización Final" }
+},
+            order = new { step = 3, description = "Consolida la información validada para el cierre del ciclo energético." }
+        }),
+        LegalDescription = "Integración formal de datos conforme a lo establecido en los Lineamientos del SNIEr.",
+        Fundamentos = new List<FundamentoLegal> {
+new() { Reference = "Art. 76 RLPT", Description = "Formaliza la entrega definitiva al sistema nacional." },
+new() { Reference = "Lineamientos SNIEr", Description = "Validación y firma obligatoria en la entrega final." }
+}
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container ps-5 pe-5">
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-bg-info">
+                <div class="card-body">
+                    <h6><i class="fas fa-file-upload"></i> Series Pendientes de Carga</h6>
+                    <p class="fs-4 mb-0">4</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-bg-success">
+                <div class="card-body">
+                    <h6><i class="fas fa-check-double"></i> Series Integradas al BNE</h6>
+                    <p class="fs-4 mb-0">12</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-bg-warning">
+                <div class="card-body">
+                    <h6><i class="fas fa-user-shield"></i> En espera de firma institucional</h6>
+                    <p class="fs-4 mb-0">2</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <label class="form-label">Filtrar por Mes</label>
+            <select class="form-select">
+                <option>Enero</option>
+                <option>Febrero</option>
+                <option>Marzo</option>
+                <option>Abril</option>
+                <option>Mayo</option>
+                <option>Junio</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Tipo de Serie</label>
+            <select class="form-select">
+                <option>Producción</option>
+                <option>Consumo</option>
+                <option>Transformación</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Tabla de semáforo por dependencia -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5><i class="fas fa-traffic-light"></i> Semáforo por Dependencia</h5>
+            <table class="table table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Dependencia</th>
+                        <th>Series Entregadas</th>
+                        <th>Series Faltantes</th>
+                        <th>Fecha Límite</th>
+                        <th>Semáforo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>CFE</td>
+                        <td>5</td>
+                        <td>1</td>
+                        <td>2025-06-20</td>
+                        <td><span class="badge bg-warning">Pendiente</span></td>
+                    </tr>
+                    <tr>
+                        <td>CRE</td>
+                        <td>3</td>
+                        <td>2</td>
+                        <td>2025-06-10</td>
+                        <td><span class="badge bg-danger">Retraso</span></td>
+                    </tr>
+                    <tr>
+                        <td>SENER</td>
+                        <td>4</td>
+                        <td>0</td>
+                        <td>2025-06-01</td>
+                        <td><span class="badge bg-success">Completo</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Formulario de carga definitiva -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5><i class="fas fa-upload"></i> Subir Serie Validada</h5>
+            <form>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Serie Energética</label>
+                        <input type="text" class="form-control" placeholder="Ej. Consumo Industrial de Gas Natural">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Archivo (.xlsx)</label>
+                        <input type="file" class="form-control">
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Dependencia Responsable</label>
+                        <input type="text" class="form-control" value="@perfilUsuario.Nombre" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Año</label>
+                        <input type="number" class="form-control" value="2025">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Firma Digital (.cer y .key)</label>
+                        <input type="file" class="form-control mb-1">
+                        <input type="file" class="form-control">
+                    </div>
+                </div>
+                <button class="btn btn-primary"><i class="fas fa-paper-plane"></i> Enviar Definitivo</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Historial de entregas -->
+    <div class="card">
+        <div class="card-body">
+            <h5><i class="fas fa-history"></i> Historial de Entregas</h5>
+            <table class="table table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Serie</th>
+                        <th>Dependencia</th>
+                        <th>Fecha de Entrega</th>
+                        <th>Estado</th>
+                        <th>Firmado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Balance Eléctrico 2024</td>
+                        <td>CFE</td>
+                        <td>2025-05-10</td>
+                        <td><span class="badge bg-success">Integrado</span></td>
+                        <td><i class="fas fa-check-circle text-success"></i></td>
+                    </tr>
+                    <tr>
+                        <td>Consumo GLP Comercial</td>
+                        <td>CRE</td>
+                        <td>2025-05-12</td>
+                        <td><span class="badge bg-warning">En Revisión</span></td>
+                        <td><i class="fas fa-times-circle text-danger"></i></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Aquí puedes integrar validaciones JS o lógica de carga AJAX
+    </script>
+}

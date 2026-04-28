@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="es">
+  <style>
+    #sankeyContainer {
+      position: relative;
+      width: 1500px;
+      height: 800px;
+      border: 1px solid black;
+    }
+
+    .link {
+      position: absolute;
+      background-color: gray;
+      transform-origin: top left;
+      z-index: 1;
+      /* Índice z más bajo */
+    }
+
+    .node {
+      position: absolute;
+      width: 100px;
+      height: 50px;
+      background-color: lightblue;
+      border-radius: 8px;
+      z-index: 2;
+      padding: 5px;
+      box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+      font-family: "Montserrat", sans-serif;
+    }
+
+    .node .nodeName {
+      font-weight: bold;
+    }
+
+    .node .nodeValue {
+      font-size: 12px;
+      color: white;
+    }
+
+    #nodesGroup rect {
+      stroke-width: 1;
+      /* Ancho del borde inicial */
+      transition: stroke-width 0.3s;
+      /* Suave transición del ancho del borde */
+      cursor: pointer;
+      /* Cambia el cursor a una mano al hacer hover */
+    }
+
+    #nodesGroup rect:hover {
+      stroke-width: 3;
+      /* Aumenta el ancho del borde al hacer hover */
+    }
+    #tooltipText {
+      font-size: 10px; /* o cualquier otro tamaño que prefieras */
+    }
+    .link-shadow {
+      filter: drop-shadow(3px 6px 3px rgba(0, 0, 0, 0.3));
+    }
+    .node-shadow {
+      filter: drop-shadow(3px 3px 3px rgba(0, 0, 0, 0.3));
+    }
+  </style>
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sankey Básico</title>
+  </head>
+
+  <body>
+    <svg id="sankeyContainer">
+      <g id="linksGroup"></g>
+      <g id="particlesGroup"></g>
+      <!-- Grupo para las partículas -->
+      <g id="nodesGroup"></g>
+      <g id="tooltip" style="display: none">
+        <rect
+          id="tooltipRect"
+          x="0"
+          y="0"
+          width="200"
+          height="50"
+          fill="white"
+          stroke="black"
+          stroke-width="1"
+          rx="5"
+          ry="5"
+        />
+        <text id="tooltipText" x="10" y="25" dominant-baseline="middle"></text>
+      </g>
+      <!-- Sombra links -->
+      <defs>
+        <filter id="f1" x="0" y="0" width="150%" height="150%">
+          <feOffset result="offOut" in="SourceAlpha" dx="3" dy="3" />
+          <feGaussianBlur result="blurOut" in="offOut" stdDeviation="3" />
+          <feBlend in="SourceGraphic" in2="blurOut" mode="normal" />
+        </filter>
+      </defs>
+    </svg>
+
+    <!-- <div id="sankeyContainer"></div> -->
+    <script>
+      let nodes = [];
+      let links = [];
+      let highlightedLinks = [];
+
+      function darkenColor(color) {
+        const factor = 0.7; // Factor de oscurecimiento, puedes ajustar esto según lo necesites
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+
+        const newR = Math.floor(r * factor)
+          .toString(16)
+          .padStart(2, "0");
+        const newG = Math.floor(g * factor)
+          .toString(16)
+          .padStart(2, "0");
+        const newB = Math.floor(b * factor)
+          .toString(16)
+          .padStart(2, "0");
+
+        return "#" + newR + newG + newB;
+      }
+
+      function lightenColor(hex, percent) {
+        let r = parseInt(hex.slice(1, 3), 16),
+          g = parseInt(hex.slice(3, 5), 16),
+          b = parseInt(hex.slice(5, 7), 16);
+
+        r = Math.min(255, Math.floor(r + ((255 - r) * percent) / 100));
+        g = Math.min(255, Math.floor(g + ((255 - g) * percent) / 100));
+        b = Math.min(255, Math.floor(b + ((255 - b) * percent) / 100));
+
+        return (
+          "#" +
+          ((1 << 24) | (r << 16) | (g << 8) | b)
+            .toString(16)
+            .slice(1)
+            .toUpperCase()
+        );
+      }
+
+      //Función findAllConnectedNodes:
+      function findAllConnectedNodes(nodeIndex, visited = new Set()) {
+        visited.add(nodeIndex);
+
+        links.forEach((link) => {
+          if (link.source === nodeIndex && !visited.has(link.target)) {
+            findAllConnectedNodes(link.target, visited);
+          } else if (link.target === nodeIndex && !visited.has(link.source)) {
+            findAllConnectedNodes(link.source, visited);
+          }
+        });
+
+        return visited;
+      }
+
+      function highlightNodeAndConnections(nodeIndex) {
+        const connectedNodes = findAllConnectedNodes(nodeIndex);
+
+        nodes.forEach((_, idx) => {
+          const nodeGroupEl = document.getElementById("nodeGroup-" + idx);
+          const nodeEl = document.getElementById("node-" + idx);
+          const nodeNameEl = document.getElementById("nodeName-" + idx);
+          const nodeValueEl = document.getElementById("nodeValue-" + idx);
+          const nodeNumberEl = document.getElementById("nodeNumber-" + idx);
+
+          if (connectedNodes.has(idx)) {
+            if (nodeGroupEl) nodeGroupEl.style.display = ""; // Muestra el grupo del nodo
+            [nodeEl, nodeNameEl, nodeValueEl, nodeNumberEl].forEach((el) => {
+              if (el) el.style.display = ""; // Muestra el elemento
+            });
+          } else {
+            if (nodeGroupEl) nodeGroupEl.style.display = "none"; // Oculta el grupo del nodo
+            [nodeEl, nodeNameEl, nodeValueEl, nodeNumberEl].forEach((el) => {
+              if (el) el.style.display = "none"; // Oculta el elemento
+            });
+          }
+        });
+
+        links.forEach((link) => {
+          const el = document.getElementById(
+            "link-" + link.source + "-" + link.target
+          );
+          if (
+            connectedNodes.has(link.source) ||
+            connectedNodes.has(link.target)
+          ) {
+            el.style.display = ""; // Muestra el enlace
+          } else {
+            el.style.display = "none"; // Oculta el enlace
+          }
+        });
+
+        // Manejo de las partículas
+        const particles = document.querySelectorAll("#particlesGroup circle");
+        particles.forEach((particle) => {
+          const animateMotionElement = particle.querySelector("animateMotion");
+          const mpathElement = animateMotionElement.querySelector("mpath");
+          const pathHref = mpathElement.getAttributeNS(
+            "http://www.w3.org/1999/xlink",
+            "href"
+          );
+          const associatedPath = document.querySelector(pathHref);
+
+          if (associatedPath.style.display === "none") {
+            particle.style.display = "none"; // Oculta la partícula
+          } else {
+            particle.style.display = ""; // Muestra la partícula
+          }
+        });
+      }
+
+      function restoreOriginalState() {
+        nodes.forEach((_, index) => {
+          const nodeGroupEl = document.getElementById("nodeGroup-" + index);
+          if (nodeGroupEl) nodeGroupEl.style.display = ""; // Muestra el grupo del nodo
+
+          // Si aún tienes elementos individuales fuera del grupo, puedes mostrarlos aquí.
+          const nodeEl = document.getElementById("node-" + index);
+          const nodeNameEl = document.getElementById("nodeName-" + index);
+          const nodeValueEl = document.getElementById("nodeValue-" + index);
+          const nodeNumberEl = document.getElementById("nodeNumber-" + index);
+
+          [nodeEl, nodeNameEl, nodeValueEl, nodeNumberEl].forEach((el) => {
+            if (el) el.style.display = ""; // Muestra todos los elementos
+          });
+        });
+
+        links.forEach((link) => {
+          const el = document.getElementById(
+            "link-" + link.source + "-" + link.target
+          );
+          el.style.display = ""; // Muestra todos los enlaces
+        });
+
+        // Restauración de partículas
+        const particles = document.querySelectorAll("#particlesGroup circle");
+        particles.forEach((particle) => {
+          // Muestra la partícula
+          particle.style.display = "";
+
+          // Solo restablecer el color si la partícula NO ha pasado por el nodo "cinturón"
+          if (!particle.hasAttribute("fromBeltNode")) {
+            const sourceNodeIndex = parseInt(particle.getAttribute("source"));
+            if (nodes[sourceNodeIndex]) {
+              particle.setAttribute("fill", nodes[sourceNodeIndex].color);
+            } else {
+              console.warn(
+                "No se encontró un nodo fuente válido para la partícula."
+              );
+            }
+          }
+
+          // Restablecer la animación de la partícula
+          const animateMotion = particle.querySelector("animateMotion");
+          if (animateMotion) {
+            const clonedAnimateMotion = animateMotion.cloneNode(true);
+            particle.removeChild(animateMotion);
+            particle.appendChild(clonedAnimateMotion);
+          }
+        });
+      }
+
+      document
+        .getElementById("sankeyContainer")
+        .addEventListener("click", function (e) {
+          if (e.target.id === "sankeyContainer") {
+            restoreOriginalState();
+          }
+        });
+
+      function createParticleForLink(source, target, forceColor) {
+        const svgNS = "http://www.w3.org/2000/svg";
+        const sourceNode = nodes[source];
+
+        if (!sourceNode) {
+          console.warn(
+            "No se encontró un nodo fuente válido para la partícula."
+          );
+          return; // Termina la ejecución de la función si no hay nodo fuente
+        }
+
+        let nodeValue = 0; // Valor por defecto
+        if (sourceNode.value && sourceNode.value.split(":").length > 1) {
+          nodeValue = parseFloat(sourceNode.value.split(":")[1].trim());
+        }
+
+        const particleCount = Math.ceil(Math.log(nodeValue + 1) * 5);
+        const linkPath = document.querySelector(
+          `path[source="${source}"][target="${target}"]`
+        );
+        if (!linkPath) {
+          console.warn(
+            `No se encontró el enlace para source=${source} y target=${target}`
+          );
+          return;
+        }
+
+        for (let i = 0; i < particleCount; i++) {
+          const particle = document.createElementNS(svgNS, "circle");
+          const colorToUse = forceColor || sourceNode.color;
+
+          particle.setAttribute("r", "2");
+          //particle.setAttribute("fill", sourceNode.color);
+          particle.setAttribute("fill", colorToUse);
+          particle.setAttribute("source", source);
+          particle.setAttribute("target", target);
+          //////////////////////////////////////////////
+          particle.setAttribute("fromBeltNode", "true");
+          document.getElementById("particlesGroup").appendChild(particle);
+
+          const animateMotion = document.createElementNS(
+            svgNS,
+            "animateMotion"
+          );
+          const animationDuration = 3 + 5 / (nodeValue + 1);
+          animateMotion.setAttribute("dur", `${animationDuration}s`);
+          animateMotion.setAttribute("repeatCount", "indefinite");
+          const delay = Math.random() * 5;
+          animateMotion.setAttribute("begin", `${delay}s`);
+          animateMotion.setAttribute("data-delay", delay);
+
+          const mpath = document.createElementNS(svgNS, "mpath");
+          mpath.setAttributeNS(
+            "http://www.w3.org/1999/xlink",
+            "xlink:href",
+            "#" + linkPath.id
+          );
+          animateMotion.appendChild(mpath);
+          particle.appendChild(animateMotion);
+
+          // Introduce una variación aleatoria en la posición vertical
+          const offsetY = (Math.random() - 0.5) * 12; // Variación aleatoria entre -2.5 y 2.5
+          const particleY = parseFloat(particle.getAttribute("cy") || 0);
+          particle.setAttribute("cy", particleY + offsetY);
+        }
+      }
+
+      function createLink(source, target) {
+        const svgNS = "http://www.w3.org/2000/svg";
+        const sourceNode = nodes[source];
+        const targetNode = nodes[target];
+
+        const sourceCenterX = sourceNode.x + 50;
+        const sourceCenterY = sourceNode.y + 25;
+        const targetCenterX = targetNode.x + 50;
+        const targetCenterY = targetNode.y + 25;
+
+        let pathData;
+
+        if (sourceCenterY === targetCenterY) {
+          pathData = `M ${sourceCenterX} ${sourceCenterY} L ${targetCenterX} ${targetCenterY}`;
+        } else {
+          let controlPointX1, controlPointY1, controlPointX2, controlPointY2;
+          const offset = 100;
+
+          if (source < target) {
+            controlPointX1 =
+              sourceCenterX + (targetCenterX - sourceCenterX) / 2;
+            controlPointY1 = sourceCenterY - offset;
+
+            controlPointX2 = controlPointX1;
+            controlPointY2 = targetCenterY - offset;
+          } else {
+            controlPointX1 =
+              sourceCenterX - (sourceCenterX - targetCenterX) / 2;
+            controlPointY1 = sourceCenterY + offset;
+
+            controlPointX2 = controlPointX1;
+            controlPointY2 = targetCenterY + offset;
+          }
+
+          pathData = `M ${sourceCenterX} ${sourceCenterY} C ${controlPointX1} ${controlPointY1}, ${controlPointX2} ${controlPointY2}, ${targetCenterX} ${targetCenterY}`;
+        }
+
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("stroke", "#D3D3D3");
+        path.setAttribute("fill", "none");
+        path.setAttribute("class", "link-shadow");
+
+        let nodeValue = 0; // Valor por defecto
+        if (sourceNode.value && sourceNode.value.split(":").length > 1) {
+          nodeValue = parseFloat(sourceNode.value.split(":")[1].trim());
+        }
+
+        const linkThickness = Math.max(1, 5 * Math.log(nodeValue + 1));
+        path.setAttribute("stroke-width", linkThickness + "px");
+
+        const uniqueLinkID = "link-" + source + "-" + target;
+        path.setAttribute("id", uniqueLinkID);
+        path.setAttribute("source", source);
+        path.setAttribute("target", target);
+
+        document.getElementById("linksGroup").appendChild(path);
+        links.push({ source: source, target: target });
+
+        ///////////////////aui
+        //createParticleForLink(source, target);
+
+        path.addEventListener("mouseover", function (event) {
+          const sourceNode = nodes[source];
+          const targetNode = nodes[target];
+
+          const tooltipText = `${sourceNode.name}: ${sourceNode.value} -> ${targetNode.name}: ${targetNode.value}`;
+          document.getElementById("tooltipText").textContent = tooltipText;
+
+          const tooltip = document.getElementById("tooltip");
+          tooltip.setAttribute(
+            "transform",
+            `translate(${event.clientX + 10}, ${event.clientY - 25})`
+          );
+          tooltip.style.display = "block";
+        });
+
+        path.addEventListener("mouseout", function () {
+          document.getElementById("tooltip").style.display = "none";
+        });
+      }
+      function createLink_original(source, target) {
+        const svgNS = "http://www.w3.org/2000/svg";
+        const sourceNode = nodes[source];
+        const targetNode = nodes[target];
+
+        const sourceCenterX = sourceNode.x + 50;
+        const sourceCenterY = sourceNode.y + 25;
+        const targetCenterX = targetNode.x + 50;
+        const targetCenterY = targetNode.y + 25;
+
+        let pathData;
+
+        if (sourceCenterY === targetCenterY) {
+          pathData = `M ${sourceCenterX} ${sourceCenterY} L ${targetCenterX} ${targetCenterY}`;
+        } else {
+          let controlPointX1, controlPointY1, controlPointX2, controlPointY2;
+          const offset = 100;
+
+          if (source < target) {
+            controlPointX1 =
+              sourceCenterX + (targetCenterX - sourceCenterX) / 2;
+            controlPointY1 = sourceCenterY - offset;
+
+            controlPointX2 = controlPointX1;
+            controlPointY2 = targetCenterY - offset;
+          } else {
+            controlPointX1 =
+              sourceCenterX - (sourceCenterX - targetCenterX) / 2;
+            controlPointY1 = sourceCenterY + offset;
+
+            controlPointX2 = controlPointX1;
+            controlPointY2 = targetCenterY + offset;
+          }
+
+          pathData = `M ${sourceCenterX} ${sourceCenterY} C ${controlPointX1} ${controlPointY1}, ${controlPointX2} ${controlPointY2}, ${targetCenterX} ${targetCenterY}`;
+        }
+
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("stroke", "#D3D3D3");
+        path.setAttribute("fill", "none");
+        path.setAttribute("class", "link-shadow");
+
+        let nodeValue = 0; // Valor por defecto
+        if (sourceNode.value && sourceNode.value.split(":").length > 1) {
+          nodeValue = parseFloat(sourceNode.value.split(":")[1].trim());
+        }
+
+        const linkThickness = Math.max(1, 5 * Math.log(nodeValue + 1));
+        path.setAttribute("stroke-width", linkThickness + "px");
+
+        const uniqueLinkID = "link-" + source + "-" + target;
+        path.setAttribute("id", uniqueLinkID);
+        path.setAttribute("source", source);
+        path.setAttribute("target", target);
+
+        document.getElementById("linksGroup").appendChild(path);
+        links.push({ source: source, target: target });
+
+        ///////////////////aui
+        createParticleForLink(source, target);
+
+        path.addEventListener("mouseover", function (event) {
+          const sourceNode = nodes[source];
+          const targetNode = nodes[target];
+
+          const tooltipText = `${sourceNode.name}: ${sourceNode.value} -> ${targetNode.name}: ${targetNode.value}`;
+          document.getElementById("tooltipText").textContent = tooltipText;
+
+          const tooltip = document.getElementById("tooltip");
+          tooltip.setAttribute(
+            "transform",
+            `translate(${event.clientX + 10}, ${event.clientY - 25})`
+          );
+          tooltip.style.display = "block";
+        });
+
+        path.addEventListener("mouseout", function () {
+          document.getElementById("tooltip").style.display = "none";
+        });
+      }
+
+      function createNode(x, y, name, value, color, iconURL) {
+        const svgNS = "http://www.w3.org/2000/svg";
+        const nodeNumber = nodes.length; // Índice actual del nodo en el array
+        const nodeGroup = document.createElementNS(svgNS, "g");
+        nodeGroup.setAttribute("id", "nodeGroup-" + nodeNumber);
+
+        const rectWidth = 180;
+        const rectHeight = 60;
+
+        // Rectángulo del nodo
+        const rect = document.createElementNS(svgNS, "rect");
+        rect.setAttribute("x", x);
+        rect.setAttribute("y", y);
+        rect.setAttribute("width", rectWidth);
+        rect.setAttribute("height", rectHeight);
+        rect.setAttribute("fill", color);
+        rect.setAttribute("class", "node-shadow");
+
+        rect.setAttribute("id", "node-" + nodeNumber);
+        rect.addEventListener("mouseover", function () {
+          rect.setAttribute("fill", darkenColor(color, 20));
+
+          numberText.setAttribute("fill", "white");
+        });
+        rect.addEventListener("mouseout", function () {
+          rect.setAttribute("fill", color);
+          numberText.setAttribute("fill", "black");
+        });
+        rect.addEventListener("click", function () {
+          highlightNodeAndConnections(nodeNumber);
+        });
+        nodeGroup.appendChild(rect);
+
+        // Número del nodo
+        const numberText = document.createElementNS(svgNS, "text");
+        numberText.setAttribute("x", x + 5);
+        numberText.setAttribute("y", y + 15);
+        numberText.setAttribute("fill", "white");
+        numberText.setAttribute("font-weight", "bold");
+        numberText.setAttribute("font-size", "12px"); // Reduzca el tamaño si es necesario
+        numberText.textContent = "#" + nodeNumber;
+        nodeGroup.appendChild(numberText);
+
+        // Nombre del nodo
+        const text = document.createElementNS(svgNS, "text");
+        text.setAttribute("x", x + rectWidth / 2);
+        text.setAttribute("y", y + rectHeight / 3); // Ajusta para que esté un tercio del camino hacia abajo
+        text.setAttribute("fill", "white");
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("dominant-baseline", "central");
+        text.setAttribute("font-size", "12px");
+        text.textContent = name;
+        nodeGroup.appendChild(text);
+
+        // Valor del nodo
+        const valueText = document.createElementNS(svgNS, "text");
+        valueText.setAttribute("x", x + rectWidth / 3);
+        valueText.setAttribute("y", y + (2 * rectHeight) / 3); // Ajusta para que esté dos tercios del camino hacia abajo
+        valueText.setAttribute("fill", "white");
+        valueText.setAttribute("dominant-baseline", "central");
+        valueText.setAttribute("font-size", "10px");
+        valueText.textContent = value + " PJ";
+        nodeGroup.appendChild(valueText);
+        // Agregando elementos al grupo del nodo
+        nodeGroup.appendChild(rect);
+        nodeGroup.appendChild(text);
+        nodeGroup.appendChild(valueText);
+        nodeGroup.appendChild(numberText); // Asegúrate de agregarlo al grupo del nodo
+
+        if (iconURL) {
+          const imageSize = 30;
+          const image = document.createElementNS(svgNS, "image");
+          image.setAttribute("href", iconURL);
+
+          // Cambiar la posición x e y para que el ícono esté dentro del nodo
+          image.setAttribute("x", x + rectWidth - imageSize - 5); // Esquina inferior derecha
+          image.setAttribute("y", y + rectHeight - imageSize - 5); // Esquina inferior derecha
+
+          image.setAttribute("width", imageSize);
+          image.setAttribute("height", imageSize);
+          nodeGroup.appendChild(image); // Agregar al grupo del nodo
+        }
+
+        const nodesGroup = document.getElementById("nodesGroup");
+        nodesGroup.appendChild(nodeGroup); // Agregamos el grupo completo del nodo al SVG principal
+        nodes.push({
+          x: x,
+          y: y,
+          centerX: x + rectWidth / 2,
+          centerY: y + rectHeight / 2,
+          name: name,
+          value: value,
+          color: color,
+        });
+
+        //  nodes.push({ x: x, y: y, name: name, value: value, color: color });
+      }
+
+      //Crear el Nodo "Cinturón"
+      function createBeltNode(
+        x,
+        y,
+        width,
+        height,
+        name,
+        value,
+        color,
+        iconURL
+      ) {
+        const svgNS = "http://www.w3.org/2000/svg";
+        const nodeNumber = nodes.length; // Índice actual del nodo en el array
+        const beltNodeGroup = document.createElementNS(svgNS, "g");
+        beltNodeGroup.setAttribute("id", "nodeGroup-" + nodeNumber); // Asigna el ID basado en el índice
+
+        // Rectángulo del nodo "cinturón"
+        const rect = document.createElementNS(svgNS, "rect");
+        rect.setAttribute("x", x);
+        rect.setAttribute("y", y);
+        rect.setAttribute("width", width);
+        rect.setAttribute("height", height);
+        rect.setAttribute("fill", color); // Utiliza el argumento color
+        beltNodeGroup.appendChild(rect);
+
+        // Mostrar el ID del nodo "cinturón"
+        const numberText = document.createElementNS(svgNS, "text");
+        numberText.setAttribute("x", x + 5);
+        numberText.setAttribute("y", y + 15);
+        numberText.setAttribute("fill", "white");
+        numberText.setAttribute("font-weight", "bold");
+        numberText.setAttribute("font-size", "12px");
+        numberText.textContent = "#" + nodeNumber;
+        beltNodeGroup.appendChild(numberText);
+
+        // Nombre del nodo "cinturón"
+        const text = document.createElementNS(svgNS, "text");
+        text.setAttribute("x", x + width / 2);
+        text.setAttribute("y", y + height / 3); // Ajusta para que esté un tercio del camino hacia abajo
+        text.setAttribute("fill", "white");
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("dominant-baseline", "central");
+        text.setAttribute("font-size", "12px");
+        text.textContent = name;
+        beltNodeGroup.appendChild(text);
+
+        // Valor del nodo "cinturón"
+        const valueText = document.createElementNS(svgNS, "text");
+        valueText.setAttribute("x", x + width / 3);
+        valueText.setAttribute("y", y + (2 * height) / 3); // Ajusta para que esté dos tercios del camino hacia abajo
+        valueText.setAttribute("fill", "white");
+        valueText.setAttribute("dominant-baseline", "central");
+        valueText.setAttribute("font-size", "10px");
+        valueText.textContent = value + " PJ";
+        beltNodeGroup.appendChild(valueText);
+
+        // Icono del nodo "cinturón"
+        if (iconURL) {
+          const imageSize = 30;
+          const image = document.createElementNS(svgNS, "image");
+          image.setAttribute("href", iconURL);
+          image.setAttribute("x", x + width - imageSize - 5); // Esquina inferior derecha
+          image.setAttribute("y", y + height - imageSize - 5); // Esquina inferior derecha
+          image.setAttribute("width", imageSize);
+          image.setAttribute("height", imageSize);
+          beltNodeGroup.appendChild(image); // Agregar al grupo del nodo
+        }
+
+        // Agregar el nodo "cinturón" al SVG principal
+        const nodesGroup = document.getElementById("nodesGroup");
+        nodesGroup.appendChild(beltNodeGroup);
+
+        // Agrega el nodo "cinturón" al array de nodos
+        nodes.push({
+          x: x,
+          y: y,
+          name: name,
+          value: value,
+          color: color, // Aquí también guardamos el color para futuras referencias
+        });
+      }
+
+      /*
+Función createLinkThroughBelt. Esta función creará un enlace que pasa por el nodo "cinturón". 
+Tomará tres argumentos: el índice del nodo de origen, el índice del nodo "cinturón", y el 
+índice del nodo de destino.
+*/
+      function createLinkThroughBelt(sourceIndices, beltIndex, targetIndex) {
+        // Calcula el valor total de todos los nodos fuente
+        let totalValue = 0;
+        for (let sourceIndex of sourceIndices) {
+          const sourceNode = nodes[sourceIndex];
+          totalValue += parseFloat(sourceNode.value.split(":")[1].trim());
+        }
+
+        // Asigna el valor acumulado al nodo "cinturón"
+        const beltNode = nodes[beltIndex];
+        beltNode.value = "Valor: " + totalValue;
+
+        // Crea enlaces desde cada nodo fuente al nodo "cinturón"
+        for (let sourceIndex of sourceIndices) {
+          createLink(sourceIndex, beltIndex);
+        }
+
+        // Crea un enlace del nodo "cinturón" al nodo de destino
+        createLink(beltIndex, targetIndex);
+
+        // Ahora, agrega partículas a estos enlaces
+        for (let sourceIndex of sourceIndices) {
+          const sourceColor = nodes[sourceIndex].color;
+          createParticleForLink(sourceIndex, beltIndex, sourceColor);
+         createParticleForLink(beltIndex, targetIndex, sourceColor);
+        }
+      }
+
+
+      //Del nodo cintiron hacia adelante
+function createLinkFromBeltToTarget(beltNode, targetNode) {
+    // 1. Crear el enlace
+    createLink(beltNode, targetNode);
+    
+    // 2. Obtener las partículas que entran en el nodo cinturón
+    const incomingParticles = document.querySelectorAll(`circle[target="${beltNode}"]`);
+    
+    // 3. Clonar y re-enruta las partículas entrantes al nuevo objetivo
+    incomingParticles.forEach(particle => {
+        const clonedParticle = particle.cloneNode(true);
+        document.getElementById("particlesGroup").appendChild(clonedParticle);
+        
+        // Cambia el atributo 'target' de la partícula clonada
+        clonedParticle.setAttribute("target", targetNode);
+        
+        // Encuentra el <animateMotion> dentro de la partícula clonada y actualiza su mpath para el nuevo enlace
+        const animateMotion = clonedParticle.querySelector("animateMotion");
+        const linkPath = document.querySelector(`path[source="${beltNode}"][target="${targetNode}"]`);
+        if (animateMotion && linkPath) {
+            const mpath = animateMotion.querySelector("mpath");
+            if (mpath) {
+                mpath.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "#" + linkPath.id);
+            }
+        }
+    });
+}
+
+      // Primer Renglon:
+
+      createNode(
+        50,
+        50,
+        "Petróleo Crudo",
+        "Valor: 122",
+        "#13538a",
+        "/wwwroot/img/petroleoi.png"
+      );
+      createNode(
+        50,
+        130,
+        "Biomasa",
+        "Valor: 1260",
+        "#59b25d",
+        "/wwwroot/img/biomasai.png"
+      );
+      createNode(
+        50,
+        210,
+        "Carbón",
+        "Valor: 126",
+        "#fabe2c",
+        "/wwwroot/img/carboni.png"
+      );
+      createNode(
+        50,
+        290,
+        "Gas Natural",
+        "Valor: 2060",
+        "#191919",
+        "/wwwroot/img/gasnaturali.png"
+      );
+      createNode(
+        50,
+        370,
+        "Energía Hídrica",
+        "Valor: 2691",
+        "#0a88b1",
+        "/wwwroot/img/aguai.png"
+      );
+      createNode(
+        50,
+        450,
+        "Energía Solar",
+        "Valor: 2691",
+        "#e04135",
+        "/wwwroot/img/soli.png"
+      );
+      createNode(
+        50,
+        530,
+        "Energía Eólica",
+        "Valor: 2691",
+        "#05796e",
+        "/wwwroot/img/eolica.png"
+      );
+      createNode(
+        50,
+        610,
+        "Geotermia",
+        "Valor: 2691",
+        "#a26a55",
+        "/wwwroot/img/geotermiai.png"
+      );
+      createNode(
+        50,
+        690,
+        "Biogás",
+        "Valor: 2691",
+        "#0a88b1",
+        "/wwwroot/img/aguai.png"
+      );
+      createNode(
+        550,
+        550,
+        "Refinería ",
+        "Valor: 122",
+        "#13538a",
+        "/wwwroot/img/petroleoi.png"
+      );
+      //#10
+      createBeltNode(
+        350,
+        280,
+        100,
+        150,
+        "Cinturóns1",
+        "Valor: 5000",
+        "#FF5733",
+        "/wwwroot/img/beltIcon.png"
+      );
+      //#11
+      createNode(
+        650,
+        350,
+        "Electricidad ",
+        "Valor: 5000",
+        "#fabe2c",
+        "/wwwroot/img/petroleoi.png"
+      );
+      //creando los nodos cinturon
+
+      createLinkThroughBelt([0], 10, 9);
+      createLinkThroughBelt([1, 2, 3, 4, 5, 6, 7, 8], 10, 11); // Agrupa los enlaces de los nodos 0, 1 y 2 a través del nodo "cinturón" 21 hacia el nodo destino 18
+      //#12
+      createBeltNode(
+        850,
+        180,
+        100,
+        150,
+        "Cinturón3",
+        "Valor: 5000",
+        "#FF5733",
+        "/wwwroot/img/beltIcon.png"
+      );
+      createLink_original( 11, 12);
+      createLink_original( 9,11);
+      //createBeltNode(950, 280, 100, 150);
+      createLinkThroughBelt([0,1, 2, 3, 4, 5], 10, 12); // Agrupa los enlaces de los nodos 0, 1 y 2 a través del nodo "cinturón" 21 hacia el nodo destino 18
+   
+      createNode(
+        1100,
+        150,
+        "Sector Industrial",
+        "Valor: 122",
+        "#fabe2c",
+        "/wwwroot/img/petroleoi.png"
+      );
+      createNode(
+        1100,
+        250,
+        "Sector Transporte",
+        "Valor: 122",
+        "red",
+        "/wwwroot/img/petroleoi.png"
+      );
+      createNode(
+        1100,
+        350,
+        "Sector Comercial Público y Residencial",
+        "Valor: 122",
+        "red",
+        "/wwwroot/img/petroleoi.png"
+      );
+      createNode(
+        1100,
+        450,
+        "Consumo",
+        "Valor: 122",
+        "red",
+        "/wwwroot/img/petroleoi.png"
+      );
+      createNode(
+        1100,
+        550,
+        "No Energeético",
+        "Valor: 122",
+        "red",
+        "/wwwroot/img/petroleoi.png"
+      );
+      // createLinkThroughBelt([1,2,], 12, 14);
+    </script>
+  </body>
+</html>

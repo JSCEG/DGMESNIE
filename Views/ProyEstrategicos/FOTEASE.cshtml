@@ -1,0 +1,573 @@
+<!-- CargaInformacion.cshtml - Vista unificada estilo SIE con carga y visualización de series -->
+@model dynamic
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Proyectos FOTEASE";
+}
+
+<style>
+    #previewContent {
+        overflow-x: auto;
+    }
+
+    #previewContent canvas {
+        max-width: 100% !important;
+        height: auto !important;
+        display: block;
+        margin: auto;
+    }
+
+    .modal-body {
+        overflow-x: auto;
+    }
+
+    /* Elegant Card Styles */
+    .stat-card {
+        transition: all 0.3s ease;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .card-icon i {
+        font-size: 1.5rem;
+    }
+
+    /* Elegant Gradients */
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+    }
+
+    .bg-gradient-success {
+        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
+    }
+
+    .bg-gradient-warning {
+        background: linear-gradient(135deg, #f6c23e 0%, #dda20a 100%);
+    }
+
+    .bg-gradient-info {
+        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%);
+    }
+
+    /* Card Content */
+    .stat-card .card-body {
+        padding: 1.5rem;
+    }
+
+    .stat-card h2 {
+        font-size: 2rem;
+        font-weight: 600;
+    }
+
+    .stat-card .badge {
+        font-size: 0.75rem;
+        padding: 0.5em 0.75em;
+    }
+
+    .stat-card small {
+        font-size: 0.875rem;
+    }
+</style>
+
+<div class="text-center">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/mexicoi.png" alt="Icono personalizado" class="iconomenu">@ViewData["Title"]
+    </h3>
+</div>
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        <li class="breadcrumb-item">Proyectos Estratégicos</li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+<br />
+
+<div class="container">
+    <h2 class="fw-bold   subtitulo ">Infraestructura de Proyectos FOTEASE</h2>
+
+    @* SECCIÓN DE MAPA *@
+
+    <section id="despliega_mapa" class="pb-5">
+
+        <br />
+
+        <div class="app-card-header p-3 border-0">
+
+            @*Menu*@
+            <div class="navbarmapag">
+
+
+                <a id="electricidad" class="icono-texto">
+                    <img src="@Cdn.Url/img_snier/vistas/inspeccion.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Proyectos FOTEASE</span>
+
+                    <div id="total_petroliferos"></div>
+                </a>
+
+
+            </div>
+
+
+
+            <!-- Nuevo Div para Conteo de Tipos de Permisos -->
+            <div id="conteo_tipos_permisos" class="conteo-permisos">
+                <!-- Aquí se mostrarán los conteos de tipos de permisos -->
+            </div>
+
+            <br>
+
+            <div id="main-container">
+
+                <div class="row g-4 mb-4">
+                    <div class="col">
+                        <div class="app-card app-card-chart h-100 shadow-sm">
+
+                            <div class="search-container p-3" id="search-container">
+                                <label class="form-label">Buscar en el Mapa:</label>
+                                <input type="text" id="busquedaGeneralInput" class="form-control"
+                                    placeholder="Número de Permiso, Entidad Federativa o Municipio">
+                                <div id="autocomplete-list" class="autocomplete-items"></div>
+                                <!-- El resto de tu código -->
+
+                                <button class="btn btn-cre-rojo-home" onclick="buscarGeneral()"
+                                    style="width:10% !important"><i class="bi bi-search"></i></button>
+                            </div>
+
+                            @*Menu de Botones*@
+                            <div class="container-fluid">
+                            </div>
+                            <div class="app-card-body p-4">
+                                <div class="chart-container">
+                                    <div id="" class="app-card-body p-4">
+                                        <button id="fullscreen-btn" class="btn btn-primary">Pantalla Completa</button>
+                                        <div id="map" class="p-3 bg"></div>
+                                        <div class="leyenda pt-3">
+                                            <p>Mayor Concentración</p>
+                                            <p>Concentración Promedio</p>
+                                            <p>Menor Concentración</p>
+                                            <p> Ductos</p>
+                                        </div>
+                                        <br />
+                                        <div class="" id="grafico"></div>
+                                        @* <div class="" id="grafico2"></div> *@
+
+                                        @* Precios de Gasolina  *@
+                                        @if (Convert.ToInt32(ViewData["RolUsuario"]) == 1)
+                                        {
+                                            <div id="graficoPrecios" style="width: 100%; height: 400px; margin-top: 20px;">
+                                            </div>
+                                        }
+
+
+                                        <br />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <h2 class="fw-bold   subtitulo ">Cronograma de proyectos FOTEASE</h2>
+
+    @* SECCIÓN DE SEMAFORO Y GANTT *@
+    <section id="semaforo_proyectos" class="container mb-4">
+        <div class="row">
+            <!-- Semáforo -->
+            <div class="col-md-3 d-flex flex-column justify-content-between" style="min-height: 100%;">
+                <!-- Tarjeta 1 -->
+                <div class="card stat-card bg-gradient-success border-0 mb-1">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="card-icon bg-white bg-opacity-25">
+                                <i class="bi bi-check-circle"></i>
+                            </div>
+                            <span class="badge rounded-pill bg-white bg-opacity-25">60%</span>
+                        </div>
+                        <h3 class="card-title h6 text-white-50">Proyectos Terminados</h3>
+                        <div class="d-flex align-items-baseline">
+                            <h2 class="mb-0 text-white">180</h2>
+                            <small class="ms-2 text-white-50">del total</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tarjeta 2 -->
+                <div class="card stat-card bg-gradient-warning border-0 mb-1">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="card-icon bg-white bg-opacity-25">
+                                <i class="bi bi-hourglass-split text-dark"></i>
+                            </div>
+                            <span class="badge rounded-pill bg-white bg-opacity-25 text-dark">30%</span>
+                        </div>
+                        <h3 class="card-title h6 text-dark">Proyectos en Curso</h3>
+                        <div class="d-flex align-items-baseline">
+                            <h2 class="mb-0 text-dark">90</h2>
+                            <small class="ms-2 text-dark">del total</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tarjeta 3 -->
+                <div class="card stat-card bg-danger border-0">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="card-icon bg-white bg-opacity-25">
+                                <i class="bi bi-x-circle"></i>
+                            </div>
+                            <span class="badge rounded-pill bg-white bg-opacity-25">10%</span>
+                        </div>
+                        <h3 class="card-title h6 text-white-50">Proyectos Cancelados</h3>
+                        <div class="d-flex align-items-baseline">
+                            <h2 class="mb-0 text-white">30</h2>
+                            <small class="ms-2 text-white-50">del total</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráfica Gantt con Highcharts -->
+            <div class="col-md-9">
+                <div class="app-card app-card-chart shadow-sm" style="min-height: 100%;">
+                    <div class="app-card-header p-3 border-0">
+                        <h4 class="app-card-title">Cronograma de Proyectos (Gantt)</h4>
+                    </div>
+                    <div class="app-card-body p-4">
+                        <div id="gantt-chart" style="height: 500px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <style>
+        #fullscreen-search-container {
+            background-color: white;
+        }
+
+        #fullscreen-elements {
+            display: flex;
+            flex-direction: column;
+            height: auto;
+            /* Valor inicial para cuando no esté en pantalla completa */
+        }
+
+        #fullscreen-last-update,
+        #fullscreen-select,
+        #fullscreen-search-container {
+            flex-shrink: 0;
+        }
+
+        #map {
+            flex-grow: 1;
+        }
+
+        #main-container.fullscreen-active #fullscreen-elements {
+            height: 100vh;
+        }
+
+        #main-container.fullscreen-active #map {
+            height: calc(100vh - 60px);
+        }
+
+        #main-container:not(.fullscreen-active) #map {
+            height: 500px;
+        }
+    </style>
+
+</div>
+
+@section Scripts {
+
+    @*Script de Pantalla Completa*@
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => {
+            const mapElement = document.getElementById('map');
+            const fullscreenButton = document.getElementById('fullscreen-btn');
+            const searchContainer = document.getElementById('search-container');
+            const mainContainer = document.getElementById('main-container');
+            const fullscreenElements = document.createElement('div');
+            fullscreenElements.id = 'fullscreen-elements';
+
+            const originalMapParent = mapElement.parentNode;
+            const originalSearchParent = searchContainer.parentNode;
+            const originalMapNextSibling = mapElement.nextSibling;
+            const originalSearchNextSibling = searchContainer.nextSibling;
+
+            fullscreenButton.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    mainContainer.appendChild(fullscreenElements); // Asegurarnos de que fullscreenElements esté en el DOM
+                    fullscreenElements.appendChild(searchContainer);
+                    fullscreenElements.appendChild(mapElement);
+                    fullscreenElements.requestFullscreen().catch(err => {
+                        alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            });
+
+            document.addEventListener('fullscreenchange', (event) => {
+                if (document.fullscreenElement) {
+                    fullscreenButton.textContent = "Salir de Pantalla Completa";
+                    mainContainer.classList.add('fullscreen-active');
+                    mapElement.style.height = "calc(100vh - 60px)";
+                    searchContainer.style.backgroundColor = "white";
+                } else {
+                    fullscreenButton.textContent = "Pantalla Completa";
+                    if (originalSearchNextSibling) {
+                        originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+                    } else {
+                        originalSearchParent.appendChild(searchContainer);
+                    }
+                    if (originalMapNextSibling) {
+                        originalMapParent.insertBefore(mapElement, originalMapNextSibling);
+                    } else {
+                        originalMapParent.appendChild(mapElement);
+                    }
+                    mainContainer.classList.remove('fullscreen-active');
+                    mapElement.style.height = "500px";
+
+                    // Asegurarse de que los estilos se restablezcan
+                    fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+                }
+            });
+        });
+    </script>
+
+    @*Shapes Estados*@
+    <script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+    <script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+
+
+    @*Ductos*@
+    @*Petrolíferos*@
+    <script src="@Cdn.Url/Geovisualizador/data/ductos_petroliferos_4326_0.js"></script>
+    @*Gas L.P.*@
+    <script src="@Cdn.Url/Geovisualizador/data/ductos_glp_4326_0.js"></script>
+    <script>
+        window.userRole = @ViewData["RolUsuario"]; // Define userRole globalmente
+        console.log(window.userRole);
+
+    </script>
+
+
+    <script type="text/javascript" src="/js/configura_mapa.js"></script>
+    <script type="text/javascript" src="/js/I_petroliferos.js"></script>
+    <script>
+        var userRole = @ViewData["RolUsuario"]; // Define userRole desde el servidor
+
+        // Solo cargar el gráfico si el usuario tiene rol 1
+        if (userRole === 1) {
+            // Datos sintéticos
+            // Generar datos sintéticos
+            var preciosPorEF = [
+                { EfNombre: "CIUDAD DE MÉXICO", PrecioRegular: 19.87, PrecioPremium: 21.95, PrecioDiesel: 20.45 },
+                { EfNombre: "GUANAJUATO", PrecioRegular: 20.12, PrecioPremium: 22.34, PrecioDiesel: 19.78 },
+                { EfNombre: "VERACRUZ DE IGNACIO DE LA LLAVE", PrecioRegular: 19.92, PrecioPremium: 21.50, PrecioDiesel: 20.30 },
+                { EfNombre: "CHIAPAS", PrecioRegular: 20.40, PrecioPremium: 22.10, PrecioDiesel: 20.00 },
+                { EfNombre: "JALISCO", PrecioRegular: 20.25, PrecioPremium: 22.45, PrecioDiesel: 20.12 },
+                { EfNombre: "MÉXICO", PrecioRegular: 20.05, PrecioPremium: 22.00, PrecioDiesel: 20.25 },
+                { EfNombre: "QUINTANA ROO", PrecioRegular: 19.95, PrecioPremium: 21.75, PrecioDiesel: 20.10 },
+                { EfNombre: "TABASCO", PrecioRegular: 20.10, PrecioPremium: 22.30, PrecioDiesel: 19.85 },
+                { EfNombre: "PUEBLA", PrecioRegular: 19.89, PrecioPremium: 21.95, PrecioDiesel: 20.20 },
+                { EfNombre: "MICHOACÁN DE OCAMPO", PrecioRegular: 20.20, PrecioPremium: 22.50, PrecioDiesel: 19.95 },
+                { EfNombre: "TAMAULIPAS", PrecioRegular: 20.30, PrecioPremium: 22.40, PrecioDiesel: 20.00 },
+                { EfNombre: "NUEVO LEÓN", PrecioRegular: 20.50, PrecioPremium: 22.80, PrecioDiesel: 20.25 },
+                { EfNombre: "GUERRERO", PrecioRegular: 20.15, PrecioPremium: 22.35, PrecioDiesel: 20.10 },
+                { EfNombre: "BAJA CALIFORNIA", PrecioRegular: 20.45, PrecioPremium: 22.75, PrecioDiesel: 20.20 },
+                { EfNombre: "HIDALGO", PrecioRegular: 19.95, PrecioPremium: 21.85, PrecioDiesel: 20.15 },
+                { EfNombre: "MORELOS", PrecioRegular: 20.05, PrecioPremium: 22.00, PrecioDiesel: 19.90 },
+                { EfNombre: "COAHUILA", PrecioRegular: 20.35, PrecioPremium: 22.65, PrecioDiesel: 20.30 },
+                { EfNombre: "SONORA", PrecioRegular: 20.25, PrecioPremium: 22.50, PrecioDiesel: 20.15 },
+                { EfNombre: "YUCATÁN", PrecioRegular: 19.85, PrecioPremium: 21.75, PrecioDiesel: 20.00 },
+                { EfNombre: "DURANGO", PrecioRegular: 20.10, PrecioPremium: 22.25, PrecioDiesel: 20.05 },
+                { EfNombre: "ZACATECAS", PrecioRegular: 20.20, PrecioPremium: 22.35, PrecioDiesel: 20.10 },
+                { EfNombre: "COLIMA", PrecioRegular: 19.95, PrecioPremium: 21.85, PrecioDiesel: 20.20 },
+                { EfNombre: "CHIHUAHUA", PrecioRegular: 20.35, PrecioPremium: 22.60, PrecioDiesel: 20.10 },
+                { EfNombre: "BAJA CALIFORNIA SUR", PrecioRegular: 20.50, PrecioPremium: 22.75, PrecioDiesel: 20.30 },
+                { EfNombre: "SINALOA", PrecioRegular: 20.15, PrecioPremium: 22.40, PrecioDiesel: 20.05 },
+                { EfNombre: "NAYARIT", PrecioRegular: 20.25, PrecioPremium: 22.50, PrecioDiesel: 19.95 },
+                { EfNombre: "QUERÉTARO", PrecioRegular: 20.05, PrecioPremium: 22.20, PrecioDiesel: 20.10 },
+                { EfNombre: "OAXACA", PrecioRegular: 20.00, PrecioPremium: 22.15, PrecioDiesel: 19.85 },
+                { EfNombre: "SAN LUIS POTOSÍ", PrecioRegular: 20.30, PrecioPremium: 22.55, PrecioDiesel: 20.10 },
+                { EfNombre: "TLAXCALA", PrecioRegular: 19.95, PrecioPremium: 21.85, PrecioDiesel: 20.00 },
+                { EfNombre: "CAMPECHE", PrecioRegular: 20.20, PrecioPremium: 22.40, PrecioDiesel: 20.15 },
+                { EfNombre: "AGUASCALIENTES", PrecioRegular: 20.10, PrecioPremium: 22.30, PrecioDiesel: 20.05 },
+            ];
+
+
+            // Procesar datos para el gráfico
+            var categories = preciosPorEF.map(item => item.EfNombre);
+            var regularData = preciosPorEF.map(item => item.PrecioRegular);
+            var premiumData = preciosPorEF.map(item => item.PrecioPremium);
+            var dieselData = preciosPorEF.map(item => item.PrecioDiesel);
+
+            // Configurar y renderizar el gráfico
+            Highcharts.chart('graficoPrecios', {
+                chart: {
+                    type: 'line',
+                },
+                title: {
+                    text: 'Proyectos por Entidad Federativa'
+                },
+                xAxis: {
+                    categories: categories,
+                    title: {
+                        text: 'Entidad Federativa'
+                    }
+                },
+                yAxis: {
+                    min: 0,
+                    title: {
+                        text: 'Precio ($MXN)'
+                    }
+                },
+                tooltip: {
+                    shared: true,
+                    valueSuffix: ' MXN'
+                },
+                plotOptions: {
+                    column: {
+                        dataLabels: {
+                            enabled: true,
+                            format: '${point.y:.2f} MXN'
+                        }
+                    }
+                },
+                series: [
+                    {
+                        name: 'En curso',
+                        data: regularData,
+                        color: '#1f77b4' // Azul
+                    },
+                    {
+                        name: 'Cancelado',
+                        data: premiumData,
+                        color: '#ff7f0e' // Naranja
+                    },
+                    {
+                        name: 'Terminado',
+                        data: dieselData,
+                        color: '#2ca02c' // Verde
+                    }
+                ]
+            });
+        }
+    </script>
+    <script src="https://code.highcharts.com/gantt/highcharts-gantt.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            Highcharts.setOptions({
+                lang: {
+                    week: 'Semana',
+                    months: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+                    weekdays: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
+                    shortMonths: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+                        'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+                    downloadPNG: "Descargar PNG",
+                    downloadJPEG: "Descargar JPEG",
+                    downloadPDF: "Descargar PDF",
+                    downloadSVG: "Descargar SVG",
+                    printChart: "Imprimir gráfico"
+                },
+                // Este bloque cambia el formato del texto que aparece para las semanas
+                dateTimeLabelFormats: {
+                    week: "'Semana' W"
+                },
+            });
+            Highcharts.ganttChart('gantt-chart', {
+                title: {
+                    text: ''
+                },
+                tooltip: {
+                    pointFormat: '<b>{point.name}</b><br>Inicio: {point.start:%e de %B}<br>Fin: {point.end:%e de %B}'
+                },
+                xAxis: {
+                    currentDateIndicator: true,
+                    min: Date.UTC(2025, 4, 1),
+                    max: Date.UTC(2025, 5, 30)
+                },
+                series: [{
+                    name: 'Proyecto',
+                    data: [
+                        {
+                            id: 'P1',
+                            name: 'Diseño del Sistema',
+                            start: Date.UTC(2025, 4, 1),
+                            end: Date.UTC(2025, 4, 10),
+                            completed: { amount: 1.0 }
+                        },
+                        {
+                            id: 'P2',
+                            name: 'Desarrollo Backend',
+                            dependency: ['P1'],
+                            start: Date.UTC(2025, 4, 11),
+                            end: Date.UTC(2025, 4, 25),
+                            completed: { amount: 0.6 }
+                        },
+                        {
+                            id: 'P3',
+                            name: 'Integración Frontend',
+                            dependency: ['P2'],
+                            start: Date.UTC(2025, 4, 26),
+                            end: Date.UTC(2025, 5, 5),
+                            completed: { amount: 0.3 }
+                        },
+                        {
+                            id: 'P4',
+                            name: 'Pruebas y QA',
+                            dependency: ['P3'],
+                            start: Date.UTC(2025, 5, 6),
+                            end: Date.UTC(2025, 5, 15),
+                            completed: { amount: 0.0 }
+                        },
+                        {
+                            id: 'P5',
+                            name: 'Implementación',
+                            dependency: ['P4'],
+                            start: Date.UTC(2025, 5, 16),
+                            end: Date.UTC(2025, 5, 25),
+                            completed: { amount: 0.0 }
+                        }
+                    ]
+                }]
+            });
+        });
+    </script>
+}

@@ -1,0 +1,119 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Líneas de Acción";
+}
+
+@{
+    var header = new HeaderViewModel {
+        Title = "Líneas de Acción",
+        IconPath = "metas_consejo.png",
+        Description = "Evalúa resultados frente al Programa Anual, facilitando el seguimiento de compromisos institucionales del Consejo.",
+        Section = "📊 Seguimiento Estratégico",
+        ModuleInfo = JsonConvert.SerializeObject(new {
+            title = "Evaluación de Metas",
+            description = "Sistema de seguimiento del grado de cumplimiento de metas y líneas estratégicas establecidas por el Consejo.",
+            functionality = "Permite visualizar KPIs, semáforos de avance y análisis por trimestre.",
+            stage = "Evaluación",
+            roles = new[] {
+                new { icon = "check-square", text = "Secretaría Técnica: Reporta avances" },
+                new { icon = "eye", text = "Consejo: Analiza cumplimiento" }
+            },
+            order = new { step = 2, description = "Paso 2 del ciclo institucional: evaluación del avance anual" }
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container-fluid ps-5 pe-5">
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="bg-white rounded shadow-sm p-4 d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="h2 mb-0">12</div>
+                    <small class="text-muted">Total de Metas</small>
+                </div>
+                <i class="fas fa-bullseye fa-2x text-primary"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="bg-white rounded shadow-sm p-4 d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="h2 mb-0">5</div>
+                    <small class="text-muted">Cumplidas</small>
+                </div>
+                <i class="fas fa-check-circle fa-2x text-success"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="bg-white rounded shadow-sm p-4 d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="h2 mb-0">4</div>
+                    <small class="text-muted">En Proceso</small>
+                </div>
+                <i class="fas fa-spinner fa-2x text-warning"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="bg-white rounded shadow-sm p-4 d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="h2 mb-0">3</div>
+                    <small class="text-muted">Pendientes</small>
+                </div>
+                <i class="fas fa-clock fa-2x text-danger"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="bg-white p-3 rounded shadow-sm">
+                <div id="graficoDistribucionMetas" style="height: 400px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            Highcharts.chart('graficoDistribucionMetas', {
+                chart: {
+                    type: 'pie',
+                    style: { fontFamily: 'inherit' }
+                },
+                title: { text: 'Distribución de Metas por Estado' },
+                plotOptions: {
+                    pie: {
+                        allowPointSelect: true,
+                        cursor: 'pointer',
+                        dataLabels: {
+                            enabled: true,
+                            format: '<b>{point.name}</b>: {point.percentage:.1f}%'
+                        }
+                    }
+                },
+                series: [{
+                    name: 'Metas',
+                    colorByPoint: true,
+                    data: [
+                        { name: 'Cumplidas', y: 5, color: '#198754' },
+                        { name: 'En Proceso', y: 4, color: '#ffc107' },
+                        { name: 'Pendientes', y: 3, color: '#dc3545' }
+                    ]
+                }],
+                credits: { enabled: false }
+            });
+        });
+    </script>
+}

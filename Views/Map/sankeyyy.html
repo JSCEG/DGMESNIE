@@ -1,0 +1,1657 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sankey SEM</title>
+    <style>
+      #sankeySvg g {
+        cursor: pointer;
+      }
+
+      .infoBox {
+        cursor: pointer;
+      }
+
+      .infoBox rect {
+        fill: rgba(255, 255, 255, 0.9);
+        /* Fondo semi-transparente */
+        stroke: #aaa;
+        /* Borde del tooltip */
+        stroke-width: 0.5;
+        /* Grosor del borde */
+
+        filter: drop-shadow(3px 3px 3px rgba(0, 0, 0, 0.2));
+        /* Sombra */
+      }
+
+      .infoBox text {
+        font-family: Montserrat, sans-serif;
+        /* Familia de fuentes */
+        font-size: 8px;
+        /* Tamaño de fuente */
+        fill: #333;
+        /* Color del texto */
+      }
+
+      .nodeRect {
+        cursor: pointer;
+        filter: drop-shadow(3px 3px 3px rgba(0, 0, 0, 0.2));
+        transition: all 0.3s ease;
+        /* Añadimos una transición suave */
+        /* Sombra */
+      }
+
+      .nodeRectHover {
+        fill: #0f2b67;
+        stroke: #0a1c4a;
+        stroke-width: 2;
+        filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.4));
+      }
+
+      .nodeValue {
+        font-family: Montserrat, sans-serif;
+        /* Familia de fuentes */
+        font-size: 10px;
+        /* Tamaño de fuente */
+        fill: #333;
+        /* Color del texto */
+      }
+
+      .nodeName {
+        font-family: Montserrat, sans-serif;
+        /* Familia de fuentes */
+        font-weight: bold;
+        font-size: 12px;
+        /* Tamaño de fuente */
+        fill: #333;
+        /* Color del texto */
+      }
+
+      .tooltipBullet {
+        fill: #333;
+        /* Color del cuadrado */
+      }
+
+      .tooltipText {
+        font-family: Montserrat, sans-serif;
+        font-size: 6px;
+        fill: #333;
+      }
+
+      .linkTooltipRect {
+        fill: #fafa;
+        /* Este color será sobreescrito por el color del link */
+        filter: drop-shadow(3px 3px 3px rgba(0, 0, 0, 0.2));
+        /* Sombra */
+      }
+
+      .linkTooltipTriangle {
+        fill: #fafa;
+        /* Este color será sobreescrito por el color del link */
+      }
+
+      .linkTooltipText {
+        font-family: Montserrat, sans-serif;
+        font-size: 8px;
+        font-weight: bold;
+        fill: black;
+        /* Cambiado a blanco */
+        padding: 3%;
+      }
+    </style>
+  </head>
+
+  <body style="background-color:#efefee;">
+    <svg width="1200" height="1000" id="sankeySvg">
+      <g id="particlesGroup"></g>
+      <!-- Otros elementos -->
+    </svg>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        let nodes = [];
+        let enlaces = [];
+        //Nodos Excluidos del evento lcik
+        const excludedNodes = [
+          "nodoHogar",
+          "nodoTransporte",
+          "nodoSPyC",
+          "nodoAgricultura",
+          "nodoIndustria",
+          "nodoEnergía",
+        ];
+
+        //Clases
+        class Nodo {
+          constructor(
+            id,
+            x,
+            y,
+            nombre,
+            valor,
+            color,
+            imgSrc,
+            width,
+            height,
+            infoData,
+            tooltipPosition = "bottom" // Valor por defecto es 'bottom'
+          ) {
+            this.id = id;
+            this.x = x;
+            this.y = y;
+            this.nombre = nombre;
+            this.valor = valor;
+            this.color = color;
+            this.imgSrc = imgSrc;
+            this.width = width;
+            this.height = height;
+            this.tooltipPosition = tooltipPosition; // 'bottom', 'left', 'right'
+            this.infoData = infoData; // Datos adicionales a mostrar
+
+            this.draw(document.getElementById("sankeySvg"));
+          }
+          draw(svgElement) {
+            this.group = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "g"
+            );
+            this.group.setAttribute("id", this.id);
+
+            const rect = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "rect"
+            );
+            rect.setAttribute("x", this.x);
+            rect.setAttribute("y", this.y);
+            rect.setAttribute("width", this.width);
+            rect.setAttribute("height", this.height);
+            rect.setAttribute("fill", this.color);
+            rect.setAttribute("rx", "5"); // Redondear las esquinas horizontalmente
+            rect.setAttribute("ry", "5"); // Redondear las esquinas verticalmente
+            rect.setAttribute("id", this.id + "_rect");
+            rect.setAttribute("class", "nodeRect"); // Añadir la clase
+            this.group.appendChild(rect);
+
+            const textValue = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "text"
+            );
+            textValue.setAttribute("x", this.x + this.width / 2);
+            textValue.setAttribute("y", this.y - 10);
+            textValue.setAttribute("text-anchor", "middle");
+            textValue.setAttribute("class", "nodeValue"); // Añadir la clase
+            textValue.textContent = this.valor;
+            this.group.appendChild(textValue);
+
+            const textName = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "text"
+            );
+            textName.setAttribute("x", this.x + this.width / 2);
+            textName.setAttribute("y", this.y - 25);
+            textName.setAttribute("text-anchor", "middle");
+            textName.textContent = this.nombre;
+            textName.setAttribute("class", "nodeName"); // Añadir la clase
+            this.group.appendChild(textName);
+
+            if (this.imgSrc) {
+              const image = document.createElementNS(
+                "http://www.w3.org/2000/svg",
+                "image"
+              );
+              image.setAttribute("x", this.x);
+              image.setAttribute("y", this.y);
+              image.setAttribute("width", this.width); // Ajustar al ancho del nodo
+              image.setAttribute("height", this.height); // Ajustar al alto del nodo
+              image.setAttributeNS(
+                "http://www.w3.org/1999/xlink",
+                "xlink:href",
+                this.imgSrc
+              );
+              this.group.appendChild(image);
+            }
+            svgElement.appendChild(this.group);
+            this.addEventListeners();
+          }
+
+          showTooltip(evt) {
+            let tooltip = document.getElementById(this.id + "_tooltip");
+
+            if (!tooltip) {
+              tooltip = document.createElementNS(
+                "http://www.w3.org/2000/svg",
+                "g"
+              );
+              tooltip.setAttribute("id", this.id + "_tooltip");
+              tooltip.setAttribute("class", "infoBox");
+
+              const rect = document.createElementNS(
+                "http://www.w3.org/2000/svg",
+                "rect"
+              );
+
+              // Posicionamiento basado en tooltipPosition
+              if (this.tooltipPosition === "bottom") {
+                rect.setAttribute("x", this.x);
+                rect.setAttribute("y", this.y + this.height + 5);
+              } else if (this.tooltipPosition === "left") {
+                rect.setAttribute("x", this.x - this.width - 10); // Ajusta como necesites
+                rect.setAttribute("y", this.y);
+              } else if (this.tooltipPosition === "right") {
+                rect.setAttribute("x", this.x + this.width + 5); // Ajusta como necesites
+                rect.setAttribute("y", this.y);
+              }
+
+              rect.setAttribute("width", this.width);
+              rect.setAttribute("height", 70);
+              rect.setAttribute("fill", "#FFF");
+              rect.setAttribute("rx", "5");
+              rect.setAttribute("ry", "5");
+              tooltip.appendChild(rect);
+
+              let offsetY = 20;
+              for (let key in this.infoData) {
+                const square = document.createElementNS(
+                  "http://www.w3.org/2000/svg",
+                  "rect"
+                );
+                square.setAttribute(
+                  "x",
+                  parseFloat(rect.getAttribute("x")) + 5
+                );
+                square.setAttribute(
+                  "y",
+                  parseFloat(rect.getAttribute("y")) + offsetY - 5
+                );
+                square.setAttribute("width", 6);
+                square.setAttribute("height", 6);
+                square.setAttribute("class", "tooltipBullet");
+                tooltip.appendChild(square);
+
+                const text = document.createElementNS(
+                  "http://www.w3.org/2000/svg",
+                  "text"
+                );
+                text.setAttribute("x", parseFloat(rect.getAttribute("x")) + 20);
+                text.setAttribute(
+                  "y",
+                  parseFloat(rect.getAttribute("y")) + offsetY
+                );
+                text.textContent = key + ": " + this.infoData[key];
+                text.setAttribute("class", "tooltipText");
+                tooltip.appendChild(text);
+
+                offsetY += 20;
+              }
+
+              this.group.appendChild(tooltip);
+            }
+
+            // Mueve el tooltip al final del grupo para asegurar que esté encima de otros elementos.
+            this.group.appendChild(tooltip);
+            tooltip.style.visibility = "visible";
+          }
+
+          hideTooltip(evt) {
+            const tooltip = document.getElementById(this.id + "_tooltip");
+            if (tooltip) {
+              tooltip.style.visibility = "hidden";
+            }
+          }
+
+          addEventListeners() {
+            // Mantén tus eventos de mouseover y mouseout intactos
+            this.group.addEventListener("mouseover", (evt) => {
+              this.showTooltip(evt);
+            });
+
+            this.group.addEventListener("mouseout", (evt) => {
+              this.hideTooltip(evt);
+            });
+            //Para Resaltar u Opacar los nodos
+            // Al hacer clic en un nodo
+
+            // Verificar si el nodo no está en la lista de nodos excluidos antes de asignar el manejador de eventos
+            if (!excludedNodes.includes(this.id)) {
+              this.group.addEventListener("click", (evt) => {
+                nodes.forEach((n) => (n.group.style.opacity = 0.1));
+                enlaces.forEach((link) => {
+                  if (!link.pathElement) {
+                    console.error("Enlace sin pathElement:", link);
+                  } else {
+                    link.pathElement.style.opacity = 0.1; // Opacar link
+                    if (link.particles) {
+                      link.particles.forEach((particle) => {
+                        particle.style.opacity = 0.1;
+                      });
+                    }
+                  }
+                });
+
+                // Resaltar el nodo seleccionado
+                this.group.style.opacity = 1;
+
+                // Llamar a la función de iluminación descendente
+                highlightDescendantsByParticleColors(this, enlaces);
+
+                evt.stopPropagation();
+              });
+            }
+          }
+        }
+        // Al hacer clic fuera de un nodo
+        sankeySvg.addEventListener("click", (evt) => {
+          nodes.forEach((node) => (node.group.style.opacity = 1)); // Restaura la opacidad de todos los nodos
+          enlaces.forEach((link) => {
+            link.pathElement.style.opacity = 1; // Restaura la opacidad del enlace
+            if (link.particles) {
+              link.particles.forEach((particle) => {
+                particle.style.opacity = 1; // Restaura la opacidad de las partículas
+              });
+            }
+          });
+        });
+
+        function highlightDescendantsByParticleColors(node, links) {
+          // Obtener los colores de las partículas del enlace que sale del nodo seleccionado
+          const particleColorsToHighlight = [];
+          links.forEach((link) => {
+            if (link.source === node) {
+              particleColorsToHighlight.push(...link.particleColors);
+            }
+          });
+
+          // Función recursiva para resaltar nodos y enlaces descendentes
+          function highlightDescendants(currentNode) {
+            links.forEach((link) => {
+              if (
+                link.source === currentNode &&
+                particleColorsToHighlight.some((color) =>
+                  link.particleColors.includes(color)
+                )
+              ) {
+                link.pathElement.style.opacity = 1; // Resalta el enlace
+                link.target.group.style.opacity = 1; // Resalta el nodo destino
+
+                // Resalta las partículas
+                if (link.particles) {
+                  link.particles.forEach((particle) => {
+                    if (
+                      particleColorsToHighlight.includes(
+                        particle.getAttribute("fill")
+                      )
+                    ) {
+                      particle.style.opacity = 1;
+                    } else {
+                      particle.style.opacity = 0.1; // Atenua las partículas no relacionadas
+                    }
+                  });
+                }
+
+                // Excepción para el nodo de retroalimentación
+                if (nodeShouldTriggerFeedback(node)) {
+                  const feedbackLink = links.find(
+                    (link) => link.type === "retroalimentacion"
+                  );
+                  if (feedbackLink) {
+                    feedbackLink.pathElement.style.opacity = 1; // Resaltar link
+                    feedbackLink.particles.forEach((particle) => {
+                      if (
+                        particleColorsToHighlight.includes(
+                          particle.getAttribute("fill")
+                        )
+                      ) {
+                        particle.style.opacity = 1; // Resaltar partículas que coinciden con el color
+                      } else {
+                        particle.style.opacity = 0.1; // Atenuar otras partículas
+                      }
+                    });
+                  }
+                }
+                // Llamar recursivamente para el nodo destino
+                highlightDescendants(link.target);
+              }
+            });
+          }
+
+          // Iniciar la iluminación descendente desde el nodo seleccionado
+          highlightDescendants(node);
+        }
+
+        function nodeShouldTriggerFeedback(node) {
+          // Aquí puedes definir qué nodos específicos deberían activar la retroalimentación.
+          // En este ejemplo, todos los nodos activan la retroalimentación. Modifícalo según tus necesidades.
+          return true;
+        }
+
+        class Link {
+          static linkCounter = 0;
+          constructor(
+            source,
+            target,
+            width,
+            color,
+            value,
+            offset = 0,
+            particleColors = ["#888"],
+            type = "normal"
+          ) {
+            this.source = source;
+            this.target = target;
+            this.width = width;
+            this.color = color;
+            this.value = value;
+            this.unitText = "PJ";
+            this.offset = offset;
+            this.particleColors = particleColors;
+            this.type = type;
+            this.draw(document.getElementById("sankeySvg"));
+            this.addEventListeners();
+          }
+
+          getControlPoints(start, end) {
+            const diffX = end[0] - start[0];
+            const diffY = end[1] - start[1];
+            const halfX = start[0] + diffX / 2;
+            return [
+              [halfX, start[1]],
+              [halfX, start[1] + diffY],
+            ];
+          }
+
+          createParticleForLink(particleColor, linkPath) {
+            console.log(
+              "Intentando crear partícula para el enlace",
+              linkPath.id
+            );
+            if (!linkPath) {
+              console.warn("linkPath no proporcionado.");
+              return;
+            }
+            const svgNS = "http://www.w3.org/2000/svg";
+            const particle = document.createElementNS(svgNS, "circle");
+            particle.setAttribute("r", "3");
+            particle.setAttribute("fill", particleColor);
+
+            const particlesGroup = document.getElementById("particlesGroup");
+            if (!particlesGroup) {
+              console.error("particlesGroup no encontrado en el DOM.");
+              return;
+            }
+            console.log("particlesGroup encontrado en el DOM.");
+
+            particlesGroup.appendChild(particle);
+            console.log("Partícula añadida al particlesGroup.");
+
+            const animateMotion = document.createElementNS(
+              svgNS,
+              "animateMotion"
+            );
+            const animationDuration = 3 + 5 / (this.value + 1);
+            animateMotion.setAttribute("dur", `${animationDuration}s`);
+            animateMotion.setAttribute("repeatCount", "indefinite");
+            const delay = Math.random() * 5;
+            animateMotion.setAttribute("begin", `${delay}s`);
+
+            const mpath = document.createElementNS(svgNS, "mpath");
+            mpath.setAttributeNS(
+              "http://www.w3.org/1999/xlink",
+              "xlink:href",
+              "#" + linkPath.id
+            );
+            animateMotion.appendChild(mpath);
+            particle.appendChild(animateMotion);
+            console.log("Partícula creada:", particle);
+            return particle;
+          }
+
+          generateParticles(linkPath) {
+            console.log("Dentro de generateParticles. linkPath:", linkPath);
+
+            if (!linkPath) {
+              console.error("linkPath es indefinido.");
+              return;
+            }
+
+            console.log("Antes de crear las partículas");
+            console.log("Valor de this.value:", this.value);
+            this.value = parseFloat(this.value.match(/\d+/)[0]);
+
+            const particleCount = Math.ceil(Math.log(this.value + 1) * 5);
+            this.particles = [];
+            for (let i = 0; i < particleCount; i++) {
+              console.log("Intentando crear la partícula número", i);
+              let particleColor =
+                this.particleColors[i % this.particleColors.length];
+              const particle = this.createParticleForLink(
+                particleColor,
+                linkPath
+              );
+              this.particles.push(particle);
+            }
+            console.log("Valor de particleCount:", particleCount);
+
+            console.log("Después de crear las partículas");
+          }
+
+          drawParticles(svgElement) {
+            this.particleElements = this.particles.map((particle) => {
+              console.log("Añadiendo partícula al SVG", particle);
+              svgElement.appendChild(particle);
+              return particle;
+            });
+          }
+
+          draw(svgElement) {
+            let startX, startY, endX, endY;
+            let controlPoints; // Declaramos la variable controlPoints aquí para que esté disponible en todo el ámbito de la función
+
+            const margin = 0; // Espacio entre el nodo y el inicio de la 'U'
+            const uDepth = 200; // Profundidad de la 'U' más pronunciada
+
+            if (!this.source || !this.target) {
+              console.error("Link con source o target no definidos:", this);
+              return;
+            }
+            if (
+              this.source.x === undefined ||
+              this.source.y === undefined ||
+              this.target.x === undefined ||
+              this.target.y === undefined
+            ) {
+              console.error("Link con coordenadas no definidas:", this);
+              return;
+            }
+
+            if (this.type === "retroalimentacion") {
+              startX = this.source.x + this.source.width / 2; // Centro del nodo origen
+              startY = this.source.y + this.source.height + margin;
+
+              endX = this.target.x + this.target.width / 2; // Centro del nodo destino
+              endY = this.target.y + this.target.height + margin;
+
+              // Puntos de control para la 'U'
+              controlPoints = [
+                [startX, startY + uDepth],
+                [endX, endY + uDepth],
+              ];
+            } else {
+              startX = this.source.x + this.source.width;
+              startY = this.source.y + this.source.height / 2 + this.offset;
+
+              endX = this.target.x;
+              endY = this.target.y + this.target.height / 2 + this.offset;
+
+              // Calcula los puntos de control como lo hacías anteriormente
+              controlPoints = this.getControlPoints(
+                [startX, startY],
+                [endX, endY]
+              );
+            }
+
+            const pathD = `M${startX} ${startY} C${controlPoints[0][0]} ${controlPoints[0][1]} ${controlPoints[1][0]} ${controlPoints[1][1]} ${endX} ${endY}`;
+
+            const path = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "path"
+            );
+            this.originalColor = this.color;
+            const uniqueId = `link_${this.source.id}_to_${
+              this.target.id
+            }_${Link.linkCounter++}`;
+            path.setAttribute("id", uniqueId);
+
+            path.setAttribute("d", pathD);
+            path.setAttribute("stroke", this.color);
+            path.setAttribute("stroke-width", this.width);
+            path.setAttribute("fill", "none");
+
+            this.group = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "g"
+            );
+
+            this.pathElement = path;
+
+            svgElement.appendChild(this.group);
+            this.group.appendChild(path);
+
+            // Generar partículas después de dibujar el enlace
+            this.generateParticles(path);
+            this.drawParticles(svgElement);
+            //this.animateParticles();
+          }
+
+          addEventListeners() {
+            this.group.addEventListener("mouseover", (evt) => {
+              this.showTooltip(evt);
+            });
+
+            this.group.addEventListener("mouseout", (evt) => {
+              this.hideTooltip(evt);
+            });
+          }
+
+          showTooltip(evt) {
+            // Crear un rectángulo para el fondo del tooltip
+            const rect = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "rect"
+            );
+            rect.setAttribute("x", evt.clientX);
+            rect.setAttribute("y", evt.clientY);
+            rect.setAttribute("width", 60); // Puedes ajustar esto según el tamaño del texto
+            rect.setAttribute("height", 25); // Puedes ajustar esto según el tamaño del texto
+            rect.style.fill = this.color;
+            rect.setAttribute("class", "linkTooltipRect"); // Añadido: Clase del rectángulo
+
+            rect.setAttribute("id", "link_tooltip_rect");
+
+            // Crear un triángulo pequeño que apunte al link
+            const triangle = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "polygon"
+            );
+            triangle.setAttribute(
+              "points",
+              `${evt.clientX},${evt.clientY + 10} ${evt.clientX - 5},${
+                evt.clientY + 5
+              } ${evt.clientX - 5},${evt.clientY + 15}`
+            );
+            triangle.style.fill = this.color;
+
+            triangle.setAttribute("class", "linkTooltipTriangle"); // Añadido: Clase del triángulo
+            triangle.setAttribute("id", "link_tooltip_triangle");
+
+            // Crear texto para el tooltip
+            const text = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "text"
+            );
+            text.setAttribute("x", evt.clientX + 30);
+            text.setAttribute("y", evt.clientY + 15);
+            text.setAttribute("fill", "#fafafa"); // Cambio aquí: Color del texto
+            text.setAttribute("class", "linkTooltipText"); // Añadido: Clase del texto
+            text.setAttribute("text-anchor", "middle");
+
+            text.setAttribute("id", "link_tooltip_text");
+            text.textContent = this.value + " " + this.unitText;
+
+            // Añadir tooltip al SVG
+            const svg = document.getElementById("sankeySvg");
+            svg.appendChild(rect);
+            svg.appendChild(triangle);
+            svg.appendChild(text);
+          }
+
+          hideTooltip(evt) {
+            const svg = document.getElementById("sankeySvg");
+            svg.removeChild(document.getElementById("link_tooltip_rect"));
+            svg.removeChild(document.getElementById("link_tooltip_triangle"));
+            svg.removeChild(document.getElementById("link_tooltip_text"));
+          }
+          highlight() {
+            // Cambia el color o el estilo del enlace para resaltarlo
+            this.pathElement.setAttribute("stroke", "red"); // Cambia el color a rojo, por ejemplo
+            this.pathElement.setAttribute("stroke-width", "4");
+          }
+
+          resetHighlight() {
+            // Restablece el color o el estilo del enlace
+            this.pathElement.setAttribute("stroke", this.originalColor);
+            this.pathElement.setAttribute("stroke-width", this.originalWidth);
+          }
+
+          //Generación de particulas
+        }
+
+        class WrapperNode extends Nodo {
+          constructor(id, x, y, nombre, color, width, height) {
+            super(id, x, y, nombre, null, color, null, width, height, null);
+          }
+
+          draw(svgElement) {
+            this.group = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "g"
+            );
+            this.group.setAttribute("id", this.id);
+
+            const rect = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "rect"
+            );
+            rect.setAttribute("x", this.x);
+            rect.setAttribute("y", this.y);
+            rect.setAttribute("width", this.width);
+            rect.setAttribute("height", this.height);
+            rect.setAttribute("fill", "none"); // No relleno
+            rect.setAttribute("stroke", this.color); // Color del borde
+            rect.setAttribute("stroke-dasharray", "4,2"); // Borde punteado
+            rect.setAttribute("rx", "5"); // Redondear las esquinas horizontalmente
+            rect.setAttribute("ry", "5"); // Redondear las esquinas verticalmente
+            rect.setAttribute("id", this.id + "_rect");
+            rect.setAttribute("class", "nodeRect"); // Añadir la clase
+            this.group.appendChild(rect);
+
+            const textName = document.createElementNS(
+              "http://www.w3.org/2000/svg",
+              "text"
+            );
+            textName.setAttribute("x", this.x + this.width / 2);
+            textName.setAttribute("y", this.y - 10);
+            textName.setAttribute("text-anchor", "middle");
+            textName.textContent = this.nombre;
+            textName.setAttribute("class", "nodeName"); // Añadir la clase
+            this.group.appendChild(textName);
+
+            svgElement.appendChild(this.group);
+          }
+
+          // Sobrescribimos el método addEventListeners para que no haga nada
+          addEventListeners() {}
+        }
+        //Catalogos
+        // const coloresEnergia = {
+        //  Petroleo: '#24469c',
+        //  Biomasa: '#61ae40',
+        //  Carbon: '#3c3d48',
+        //  GasNatural: '#a8b3ba',
+        //  EnergiaHidrica: '#4894d1',
+        //  EnergiaSolar: '#efc50c',
+        //  EnergiaEolica: '#fe2120',
+        //  Geotermia: '#4e1f02',
+        //  Biogas: '#770fad',
+        //  Uranio: '#1a8092',
+        //  Envoltura: '#ceced1',
+        //  FondoNodo: '#efefee'
+        //};
+        //Limites Cajas (nodos que envuelven mas Nodos)
+        const coloresEnergia = {
+            Petroleo: "#1B263B",
+            Biomasa: "#4CAF50",
+            Carbon: "#424242",
+            GasNatural: "#64B5F6",
+            EnergiaHidrica: "#1976D2",
+            EnergiaSolar: "#FFEB3B",
+            EnergiaEolica: "#90CAF9",
+            Geotermia: "#8D6E63",
+            Biogas: "#2E7D32",
+            Uranio: "#CDDC39",
+            Envoltura: "#a9b3ba",
+            FondoNodo: "#E0E0E0",
+        };
+
+        const datosWrapperNodes = [
+          {
+            id: "nodo23",
+            x: 70,
+            y: 50,
+            name: "FEP - Fuentes de Energía Primaria",
+            colorKey: "Envoltura",
+            width: 120,
+            height: 750,
+          },
+          {
+            id: "nodoUsosFinales",
+            x: 980,
+            y: 120,
+            name: "Usos Finales",
+            colorKey: "Envoltura",
+            width: 120,
+            height: 450,
+          },
+          {
+            id: "Transformación",
+            x: 270,
+            y: 120,
+            name: "Transformación",
+            colorKey: "Envoltura",
+            width: 270,
+            height: 450,
+          },
+          {
+            id: "Retroalimentación",
+            x: 380,
+            y: 580,
+            name: "Retroalimentación",
+            colorKey: "Envoltura",
+            width: 680,
+            height: 150,
+          },
+        ];
+        const nodosEnvoltura = datosWrapperNodes.map((data) => {
+          const colorReal = coloresEnergia[data.colorKey];
+          return new WrapperNode(
+            data.id,
+            data.x,
+            data.y,
+            data.name,
+            colorReal,
+            data.width,
+            data.height
+          );
+        });
+        nodes = nodes.concat(nodosEnvoltura);
+
+        const catalogoNodos = [
+          {
+            id: "nodoCrudo",
+            x: 100,
+            y: 100,
+            nombre: "Petróleo Crudo",
+            energia: "122 PJ",
+            colorKey: "Petroleo",
+            imagen: "/wwwroot/img/s_crudo.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              EDO: "150 Barriles",
+              EXP: "2000",
+              "VSP/E": "85",
+              "Otro":12,
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoBiomasa",
+            x: 100,
+            y: 170,
+            nombre: "Biomasa",
+            energia: "1220 PJ",
+            colorKey: "Biomasa",
+            imagen: "/wwwroot/img/biomasai.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoCarbon",
+            x: 100,
+            y: 240,
+            nombre: "Carbón",
+            energia: "1220 PJ",
+            colorKey: "Carbon",
+            imagen: "/wwwroot/img/carboni.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoGasN",
+            x: 100,
+            y: 310,
+            nombre: "Gas Natural",
+            energia: "1220 PJ",
+            colorKey: "GasNatural",
+            imagen: "/wwwroot/img/gasnaturali.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoAgua",
+            x: 100,
+            y: 380,
+            nombre: "Energía Hídrica",
+            energia: "1220 PJ",
+            colorKey: "EnergiaHidrica",
+            imagen: "/wwwroot/img/aguai.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoSolar",
+            x: 100,
+            y: 450,
+            nombre: "Energía Solar",
+            energia: "1220 PJ",
+            colorKey: "EnergiaSolar",
+            imagen: "/wwwroot/img/soli.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoEolica",
+            x: 100,
+            y: 520,
+            nombre: "Energía Eólica",
+            energia: "1220 PJ",
+            colorKey: "EnergiaEolica",
+            imagen: "/wwwroot/img/vientoi.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoGeo",
+            x: 100,
+            y: 590,
+            nombre: "Geotermia",
+            energia: "1220 PJ",
+            colorKey: "Geotermia",
+            imagen: "/wwwroot/img/geotermiai.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoBiogas",
+            x: 100,
+            y: 660,
+            nombre: "Biogas",
+            energia: "1220 PJ",
+            colorKey: "Biogas",
+            imagen: "/wwwroot/img/biogasi.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoUranio",
+            x: 100,
+            y: 730,
+            nombre: "Uranio",
+            energia: "1220 PJ",
+            colorKey: "Uranio",
+            imagen: "/wwwroot/img/uranioi.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "left",
+          },
+          {
+            id: "nodoOfertaTotal",
+            x: 280,
+            y: 300,
+            nombre: "Oferta Total",
+            energia: "122 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/s_recurso.png",
+            width: 100,
+            height: 100,
+            infoData: {
+              algo: "a",
+              Producción: "b",
+              "VSP/E": "q/E",
+            },
+            tooltipPos: "bottom",
+          },
+          {
+            id: "nodoHidrocarburos",
+            x: 450,
+            y: 180,
+            nombre: "Sector Petróleo",
+            energia: "1220 PJ",
+            colorKey: "Petroleo",
+            imagen: "/wwwroot/img/refineria.png",
+            width: 70,
+            height: 70,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "bottom",
+          },
+          {
+            id: "nodoElectricidad",
+            x: 450,
+            y: 470,
+            nombre: "Sector Electricidad",
+            energia: "1220 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/electricidadi.png",
+            width: 70,
+            height: 70,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "bottom",
+          },
+          {
+            id: "nodoOfertaDisponible",
+            x: 780,
+            y: 300,
+            nombre: "Disponible Total",
+            energia: "122 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/s_disponible.png",
+            width: 100,
+            height: 100,
+            infoData: {
+              algo: "a",
+              Producción: "b",
+              "VSP/E": "q/E",
+            },
+            tooltipPos: "bottom",
+          },
+
+          {
+            id: "nodoNoRenovable",
+            x: 630,
+            y: 500,
+            nombre: "E. Convencional",
+            energia: "1220 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/s_fosil.png",
+            width: 70,
+            height: 30,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "bottom",
+          },
+          {
+            id: "nodoRenovable",
+            x: 630,
+            y: 400,
+            nombre: "E. Renovable",
+            energia: "1220 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/s_renovable.png",
+            width: 70,
+            height: 30,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "bottom",
+          },
+          {
+            id: "nodoHogar",
+            x: 1000,
+            y: 190,
+            nombre: "Hogar",
+            energia: "1220 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/hogar.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "right",
+          },
+          {
+            id: "nodoTransporte",
+            x: 1000,
+            y: 260,
+            nombre: "Transporte",
+            energia: "1220 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/camioni.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "right",
+          },
+          {
+            id: "nodoSPyC",
+            x: 1000,
+            y: 330,
+            nombre: "Serv. Púb. y Com.",
+            energia: "1220 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/servicio.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "right",
+          },
+          {
+            id: "nodoAgricultura",
+            x: 1000,
+            y: 400,
+            nombre: "Agricultura",
+            energia: "1220 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/agricultura.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "right",
+          },
+          {
+            id: "nodoIndustria",
+            x: 1000,
+            y: 470,
+            nombre: "Industria",
+            energia: "1220 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/industria.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "right",
+          },
+          {
+            id: "nodoEnergía",
+            x: 1000,
+            y: 540,
+            nombre: "S. Energía",
+            energia: "1220 PJ",
+            colorKey: "FondoNodo",
+            imagen: "/wwwroot/img/sectore.png",
+            width: 70,
+            height: 20,
+            infoData: {
+              IMP: "1000",
+              EXP: "2000",
+              "VSP/E": "85",
+            },
+            tooltipPos: "right",
+          },
+        ];
+        const transformedNodos = catalogoNodos.map((data) => {
+          const {
+            id,
+            x,
+            y,
+            nombre,
+            energia,
+            imagen,
+            width,
+            height,
+            infoData,
+            tooltipPos,
+          } = data;
+          const color = getColorFromNombre(nombre);
+          return new Nodo(
+            id,
+            x,
+            y,
+            nombre,
+            energia,
+            color,
+            imagen,
+            width,
+            height,
+            infoData,
+            tooltipPos
+          );
+        });
+        nodes = nodes.concat(transformedNodos);
+
+        const datosLinks = [
+          //Nodos Normales
+          {
+            source: "nodoCrudo",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "500",
+            curve: 0,
+            particleColorsKeys: ["Petroleo"],
+            // type: 'retroalimentacion'
+          },
+          {
+            source: "nodoBiomasa",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "900",
+            curve: 0,
+            particleColorsKeys: ["Biomasa"],
+          },
+          {
+            source: "nodoCarbon",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "900",
+            curve: 0,
+            particleColorsKeys: ["Carbon"],
+          },
+          {
+            source: "nodoGasN",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "900",
+            curve: 0,
+            particleColorsKeys: ["GasNatural"],
+          },
+          {
+            source: "nodoAgua",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "900",
+            curve: 0,
+            particleColorsKeys: ["EnergiaHidrica"],
+          },
+          {
+            source: "nodoSolar",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "900",
+            curve: 0,
+            particleColorsKeys: ["EnergiaSolar"],
+          },
+          {
+            source: "nodoEolica",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "900",
+            curve: 0,
+            particleColorsKeys: ["EnergiaEolica"],
+          },
+          {
+            source: "nodoGeo",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "900",
+            curve: 0,
+            particleColorsKeys: ["Geotermia"],
+          },
+          {
+            source: "nodoBiogas",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "900",
+            curve: 0,
+            particleColorsKeys: ["Biogas"],
+          },
+          {
+            source: "nodoUranio",
+            target: "nodoOfertaTotal",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "900",
+            curve: 0,
+            particleColorsKeys: ["Uranio"],
+          },
+          {
+            source: "nodoOfertaTotal",
+            target: "nodoOfertaDisponible",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: ["Biomasa", "Carbon", "GasNatural"],
+          },
+          {
+            source: "nodoOfertaTotal",
+            target: "nodoHidrocarburos",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: ["Petroleo"],
+          },
+          {
+            source: "nodoOfertaTotal",
+            target: "nodoElectricidad",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+            ],
+          },
+          {
+            source: "nodoElectricidad",
+            target: "nodoRenovable",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+            ],
+          },
+          {
+            source: "nodoElectricidad",
+            target: "nodoNoRenovable",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+            ],
+          },
+          {
+            source: "nodoNoRenovable",
+            target: "nodoOfertaDisponible",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+            ],
+          },
+          {
+            source: "nodoRenovable",
+            target: "nodoOfertaDisponible",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+            ],
+          },
+          {
+            source: "nodoHidrocarburos",
+            target: "nodoOfertaDisponible",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: ["Petroleo"],
+          },
+          {
+            source: "nodoOfertaDisponible",
+            target: "nodoHogar",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+              "Petroleo",
+            ],
+          },
+          {
+            source: "nodoOfertaDisponible",
+            target: "nodoTransporte",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+              "Petroleo",
+            ],
+          },
+          {
+            source: "nodoOfertaDisponible",
+            target: "nodoSPyC",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+              "Petroleo",
+            ],
+          },
+          {
+            source: "nodoOfertaDisponible",
+            target: "nodoAgricultura",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+              "Petroleo",
+            ],
+          },
+          {
+            source: "nodoOfertaDisponible",
+            target: "nodoIndustria",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+              "Petroleo",
+            ],
+          },
+          {
+            source: "nodoOfertaDisponible",
+            target: "nodoEnergía",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "190",
+            curve: 0,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+              "Petroleo",
+            ],
+          },
+          //Nodo Retroalimentación
+          {
+            source: "nodoUsosFinales",
+            target: "Transformación",
+            width: 5,
+            backgroundColorKey: "FondoNodo",
+            length: "5500",
+            curve: 18,
+            particleColorsKeys: [
+              "Biomasa",
+              "Carbon",
+              "GasNatural",
+              "EnergiaHidrica",
+              "EnergiaSolar",
+              "EnergiaEolica",
+              "Geotermia",
+              "Biogas",
+              "Uranio",
+              "Petroleo",
+            ],
+            type: "retroalimentacion",
+          },
+
+          //... otros links
+        ];
+        const links = datosLinks.map((data) => {
+          const sourceNode = nodes.find((nodo) => nodo.id === data.source);
+          const targetNode = nodes.find((nodo) => nodo.id === data.target);
+          const backgroundColor = coloresEnergia[data.backgroundColorKey];
+          const particleColors = data.particleColorsKeys.map(
+            (key) => coloresEnergia[key]
+          );
+
+          return new Link(
+            sourceNode,
+            targetNode,
+            data.width,
+            backgroundColor,
+            data.length,
+            data.curve,
+            particleColors,
+            data.type
+          );
+        });
+        enlaces = enlaces.concat(links);
+        ///Funciones
+        function getColorFromNombre(nombre) {
+          switch (nombre) {
+            case "Petróleo Crudo":
+              return coloresEnergia.Petroleo;
+            case "Biomasa":
+              return coloresEnergia.Biomasa;
+            case "Carbón":
+              return coloresEnergia.Carbon;
+            case "Gas Natural":
+              return coloresEnergia.GasNatural;
+            case "Energía Hídrica":
+              return coloresEnergia.EnergiaHidrica;
+            case "Energía Solar":
+              return coloresEnergia.EnergiaSolar;
+            case "Energía Eólica":
+              return coloresEnergia.EnergiaEolica;
+            case "Geotermia":
+              return coloresEnergia.Geotermia;
+            case "Biogas":
+              return coloresEnergia.Biogas;
+            case "Uranio":
+              return coloresEnergia.Uranio;
+            // ... Agrega cualquier otro nodo específico aquí
+            default:
+              return coloresEnergia.FondoNodo; // Color por defecto
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
