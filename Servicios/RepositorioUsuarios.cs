@@ -2,6 +2,7 @@ using Microsoft.Data.SqlClient;
 using NSIE.Models;
 using Dapper;
 using System.Data;
+using System.Data.SqlTypes;
 
 namespace NSIE.Servicios
 {
@@ -54,6 +55,64 @@ namespace NSIE.Servicios
         private readonly string connectionString;
         private readonly ILogger<RepositorioUsuarios> _logger;
 
+        private const string SelectUsuarioDetallado = @"
+            SELECT
+                u.[IdUsuario],
+                u.[Correo],
+                u.[ClaveHash] AS [Clave],
+                u.[Nombre],
+                u.[UnidadAdscripcion] AS [Unidad_de_Adscripcion],
+                u.[Cargo],
+                CAST(CASE WHEN ISNULL(s.[Activa], 0) = 1 THEN 1 ELSE 0 END AS bit) AS [SesionActiva],
+                ISNULL(s.[UltimaActividad], u.[FechaActualizacion]) AS [UltimaActualizacion],
+                u.[RFC],
+                u.[Vigente],
+                u.[ClaveEmpleado],
+                ISNULL(s.[FechaInicio], u.[FechaAlta]) AS [HoraInicioSesion],
+                ISNULL(ur.[RolId], 0) AS [Rol],
+                ISNULL(ur.[MercadoId], 0) AS [Mercado_ID],
+                CAST(ISNULL(ur.[Vigente], 0) AS bit) AS [RolUsuario_Vigente],
+                CAST(ISNULL(ur.[QuienRegistro], 0) AS nvarchar(50)) AS [RolUsuario_QuienRegistro],
+                ISNULL(ur.[FechaModificacion], u.[FechaActualizacion]) AS [RolUsuario_FechaMod],
+                ur.[Comentarios] AS [RolUsuario_Comentarios],
+                ISNULL(r.[RolId], 0) AS [Rol_ID],
+                r.[RolNombre] AS [Rol_Nombre],
+                r.[RolClave] AS [Rol_Clave],
+                CAST(ISNULL(r.[RolVigente], 0) AS bit) AS [Rol_Vigente],
+                ISNULL(r.[RolFechaMod], u.[FechaActualizacion]) AS [Rol_FechaMod],
+                r.[RolComentario] AS [Rol_Comentario],
+                ISNULL(m.[MercadoId], 0) AS [Mercado_ID_M],
+                m.[MercadoNombre] AS [Mercado_Nombre],
+                CAST(ISNULL(m.[MercadoVigente], 0) AS bit) AS [Mercado_Vigente],
+                ISNULL(m.[MercadoFechaMod], u.[FechaActualizacion]) AS [Mercado_FechaMod],
+                m.[MercadoComentario] AS [Mercado_Comentario]
+            FROM [dgmesnie].[Usuario] u
+            OUTER APPLY
+            (
+                SELECT TOP (1)
+                    ur0.[RolId],
+                    ur0.[MercadoId],
+                    ur0.[Vigente],
+                    ur0.[QuienRegistro],
+                    ur0.[FechaModificacion],
+                    ur0.[Comentarios]
+                FROM [dgmesnie].[UsuarioRol] ur0
+                WHERE ur0.[IdUsuario] = u.[IdUsuario]
+                ORDER BY ur0.[Vigente] DESC, ur0.[FechaModificacion] DESC, ur0.[UsuarioRolId] DESC
+            ) ur
+            LEFT JOIN [dgmesnie].[Rol] r ON r.[RolId] = ur.[RolId]
+            LEFT JOIN [dgmesnie].[Mercado] m ON m.[MercadoId] = ur.[MercadoId]
+            OUTER APPLY
+            (
+                SELECT TOP (1)
+                    s0.[Activa],
+                    s0.[UltimaActividad],
+                    s0.[FechaInicio]
+                FROM [dgmesnie].[Sesion] s0
+                WHERE s0.[IdUsuario] = u.[IdUsuario]
+                ORDER BY s0.[Activa] DESC, s0.[UltimaActividad] DESC
+            ) s";
+
         public RepositorioUsuarios(IConfiguration configuration, ILogger<RepositorioUsuarios> logger)
         {
             connectionString = configuration.GetConnectionString("DefaultConnection");
@@ -72,7 +131,7 @@ namespace NSIE.Servicios
                 using (var connection = new SqlConnection(connectionString))
                 {
                     await connection.OpenAsync();
-                    var query = "EXEC [dbo].[spObtener_ListaUsuarios]";
+                    var query = SelectUsuarioDetallado + " ORDER BY u.[IdUsuario] DESC";
                     var usuarios = await connection.QueryAsync<UserViewModel>(query);
                     return usuarios;
                 }
@@ -91,9 +150,8 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 var user = await connection.QuerySingleOrDefaultAsync<UserViewModel>(
-                    "sp_ObtenerUsuarioSession",
-                    new { IdUsuario = id },
-                    commandType: CommandType.StoredProcedure
+                    SelectUsuarioDetallado + " WHERE u.[IdUsuario] = @IdUsuario",
+                    new { IdUsuario = id }
                 );
                 return user;
             }
@@ -102,10 +160,16 @@ namespace NSIE.Servicios
         // Actualiza los datos de un usuario
         public async Task<bool> ActualizarUsuario(UserViewModel usuario)
         {
-            var sql = @"UPDATE USUARIO 
-                        SET Nombre = @Nombre, Correo = @Correo, RFC = @RFC, Cargo = @Cargo, Unidad_de_Adscripcion = @Unidad_de_Adscripcion, 
-                            ClaveEmpleado = @ClaveEmpleado, SesionActiva = @SesionActiva, Vigente = @Vigente  
-                        WHERE IdUsuario = @IdUsuario;";
+            var sql = @"UPDATE [dgmesnie].[Usuario]
+                        SET [Nombre] = @Nombre,
+                            [Correo] = @Correo,
+                            [RFC] = @RFC,
+                            [Cargo] = @Cargo,
+                            [UnidadAdscripcion] = @Unidad_de_Adscripcion,
+                            [ClaveEmpleado] = @ClaveEmpleado,
+                            [Vigente] = @Vigente,
+                            [FechaActualizacion] = SYSUTCDATETIME()
+                        WHERE [IdUsuario] = @IdUsuario;";
             using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync();
@@ -117,8 +181,9 @@ namespace NSIE.Servicios
         // Registra un nuevo usuario y retorna su ID
         public async Task<int> RegistraUsuario(UserViewModel nuevoUsuario)
         {
-            var sql = @"INSERT INTO USUARIO (Nombre, Correo, RFC, Cargo, Unidad_de_Adscripcion, ClaveEmpleado, SesionActiva, Vigente, Clave) 
-                        VALUES (@Nombre, @Correo, @RFC, @Cargo, @Unidad_de_Adscripcion, @ClaveEmpleado, @SesionActiva, @Vigente, @Clave);
+            var sql = @"INSERT INTO [dgmesnie].[Usuario]
+                        ([Nombre], [Correo], [RFC], [Cargo], [UnidadAdscripcion], [ClaveEmpleado], [Vigente], [ClaveHash], [FechaAlta], [FechaActualizacion])
+                        VALUES (@Nombre, @Correo, @RFC, @Cargo, @Unidad_de_Adscripcion, @ClaveEmpleado, @Vigente, @Clave, SYSUTCDATETIME(), SYSUTCDATETIME());
                         SELECT CAST(SCOPE_IDENTITY() as int);";
             using (var connection = new SqlConnection(connectionString))
             {
@@ -139,23 +204,27 @@ namespace NSIE.Servicios
                     try
                     {
                         // Elimina roles asociados
-                        var sqlRolesUsuario = "DELETE FROM [Roles_Usuarios] WHERE IdUsuario = @IdUsuario;";
+                        var sqlRolesUsuario = "DELETE FROM [dgmesnie].[UsuarioRol] WHERE [IdUsuario] = @IdUsuario;";
                         await connection.ExecuteAsync(sqlRolesUsuario, new { IdUsuario = usuarioId }, transaction);
 
-                        // Elimina del Log de evaluaciones
-                        var sqlLogEvaluaciones = "DELETE FROM [LogEvaluaciones] WHERE IdUsuario = @IdUsuario;";
-                        await connection.ExecuteAsync(sqlLogEvaluaciones, new { IdUsuario = usuarioId }, transaction);
-
                         // Elimina recuperación de contraseña
-                        var sqlRecuperarContraseña = "DELETE FROM [Recuperar_contrasena] WHERE IdUsuario = @IdUsuario;";
+                        var sqlRecuperarContraseña = "DELETE FROM [dgmesnie].[RecuperacionContrasena] WHERE [IdUsuario] = @IdUsuario;";
                         await connection.ExecuteAsync(sqlRecuperarContraseña, new { IdUsuario = usuarioId }, transaction);
 
-                        // Elimina comentarios de proyectos estratégicos
-                        var sqlComentariosPE = "DELETE FROM [ComentariosProyectosEstrategicos] WHERE IdUsuario = @IdUsuario;";
-                        await connection.ExecuteAsync(sqlComentariosPE, new { IdUsuario = usuarioId }, transaction);
+                        var sqlNotificaciones = "DELETE FROM [dgmesnie].[Notificacion] WHERE [IdUsuario] = @IdUsuario;";
+                        await connection.ExecuteAsync(sqlNotificaciones, new { IdUsuario = usuarioId }, transaction);
+
+                        var sqlActividad = "DELETE FROM [dgmesnie].[ActividadLog] WHERE [IdUsuario] = @IdUsuario;";
+                        await connection.ExecuteAsync(sqlActividad, new { IdUsuario = usuarioId }, transaction);
+
+                        var sqlAccesos = "DELETE FROM [dgmesnie].[Acceso] WHERE [IdUsuario] = @IdUsuario;";
+                        await connection.ExecuteAsync(sqlAccesos, new { IdUsuario = usuarioId }, transaction);
+
+                        var sqlSesiones = "DELETE FROM [dgmesnie].[Sesion] WHERE [IdUsuario] = @IdUsuario;";
+                        await connection.ExecuteAsync(sqlSesiones, new { IdUsuario = usuarioId }, transaction);
 
                         // Elimina al usuario
-                        var sqlUsuario = "DELETE FROM [USUARIO] WHERE IdUsuario = @IdUsuario;";
+                        var sqlUsuario = "DELETE FROM [dgmesnie].[Usuario] WHERE [IdUsuario] = @IdUsuario;";
                         await connection.ExecuteAsync(sqlUsuario, new { IdUsuario = usuarioId }, transaction);
 
                         transaction.Commit();
@@ -180,7 +249,7 @@ namespace NSIE.Servicios
             using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync();
-                var roles = await connection.QueryAsync<Rol>("SELECT * FROM Roles");
+                var roles = await connection.QueryAsync<Rol>("SELECT [RolId] AS [Rol_ID], [RolNombre] AS [Rol_Nombre] FROM [dgmesnie].[Rol] WHERE [RolVigente] = 1 ORDER BY [RolNombre]");
                 return roles;
             }
         }
@@ -191,7 +260,7 @@ namespace NSIE.Servicios
             using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync();
-                var mercados = await connection.QueryAsync<Mercado>("SELECT * FROM Mercados");
+                var mercados = await connection.QueryAsync<Mercado>("SELECT [MercadoId] AS [Mercado_ID], [MercadoNombre] AS [Mercado_Nombre] FROM [dgmesnie].[Mercado] WHERE [MercadoVigente] = 1 ORDER BY [MercadoNombre]");
                 return mercados;
             }
         }
@@ -199,13 +268,35 @@ namespace NSIE.Servicios
         // Actualiza el rol de un usuario
         public async Task<bool> ActualizarRolUsuario(RolesUsuarioViewModel rolUsuario)
         {
-            var sql = @"UPDATE Roles_Usuarios 
-                        SET Rol_ID = @Rol_ID, Mercado_ID = @Mercado_ID, RolUsuario_Comentarios = @RolUsuario_Comentarios 
-                        WHERE IdUsuario = @IdUsuario;";
+            var sql = @"
+                                                UPDATE [dgmesnie].[UsuarioRol]
+                                                SET [Vigente] = 0,
+                                                        [FechaModificacion] = SYSUTCDATETIME()
+                                                WHERE [IdUsuario] = @IdUsuario
+                                                    AND [Vigente] = 1;
+
+                                                INSERT INTO [dgmesnie].[UsuarioRol]
+                                                ([IdUsuario], [RolId], [MercadoId], [Vigente], [QuienRegistro], [FechaModificacion], [Comentarios])
+                                                VALUES (@IdUsuario, @Rol_ID, NULLIF(@Mercado_ID, 0), @RolUsuario_Vigente, NULLIF(@RolUsuario_QuienRegistro, 0),
+                                                                ISNULL(@RolUsuario_FechaMod, SYSUTCDATETIME()), @RolUsuario_Comentarios);";
+
+            var fechaRol = rolUsuario.RolUsuario_FechaMod >= (DateTime)SqlDateTime.MinValue
+                ? rolUsuario.RolUsuario_FechaMod
+                : (DateTime?)null;
+
             using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync();
-                var result = await connection.ExecuteAsync(sql, rolUsuario);
+                var result = await connection.ExecuteAsync(sql, new
+                {
+                    rolUsuario.IdUsuario,
+                    rolUsuario.Rol_ID,
+                    rolUsuario.Mercado_ID,
+                    RolUsuario_Vigente = rolUsuario.RolUsuario_Vigente == 0 ? 1 : rolUsuario.RolUsuario_Vigente,
+                    rolUsuario.RolUsuario_QuienRegistro,
+                    RolUsuario_FechaMod = fechaRol,
+                    rolUsuario.RolUsuario_Comentarios
+                });
                 return result > 0;
             }
         }
@@ -213,12 +304,26 @@ namespace NSIE.Servicios
         // Registra el rol de un usuario
         public async Task<bool> RegistraRolUsuario(RolesUsuarioViewModel rolUsuario)
         {
-            var sql = @"INSERT INTO Roles_Usuarios (IdUsuario, Rol_ID, Mercado_ID, RolUsuario_Vigente, RolUsuario_QuienRegistro, RolUsuario_FechaMod, RolUsuario_Comentarios) 
-                        VALUES (@IdUsuario, @Rol_ID, @Mercado_ID, @RolUsuario_Vigente, @RolUsuario_QuienRegistro, @RolUsuario_FechaMod, @RolUsuario_Comentarios);";
+            var sql = @"INSERT INTO [dgmesnie].[UsuarioRol] ([IdUsuario], [RolId], [MercadoId], [Vigente], [QuienRegistro], [FechaModificacion], [Comentarios]) 
+                        VALUES (@IdUsuario, @Rol_ID, NULLIF(@Mercado_ID, 0), @RolUsuario_Vigente, NULLIF(@RolUsuario_QuienRegistro, 0), ISNULL(@RolUsuario_FechaMod, SYSUTCDATETIME()), @RolUsuario_Comentarios);";
+
+            var fechaRol = rolUsuario.RolUsuario_FechaMod >= (DateTime)SqlDateTime.MinValue
+                ? rolUsuario.RolUsuario_FechaMod
+                : (DateTime?)null;
+
             using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync();
-                var affectedRows = await connection.ExecuteAsync(sql, rolUsuario);
+                var affectedRows = await connection.ExecuteAsync(sql, new
+                {
+                    rolUsuario.IdUsuario,
+                    rolUsuario.Rol_ID,
+                    rolUsuario.Mercado_ID,
+                    RolUsuario_Vigente = rolUsuario.RolUsuario_Vigente == 0 ? 1 : rolUsuario.RolUsuario_Vigente,
+                    rolUsuario.RolUsuario_QuienRegistro,
+                    RolUsuario_FechaMod = fechaRol,
+                    rolUsuario.RolUsuario_Comentarios
+                });
                 return affectedRows > 0;
             }
         }
@@ -236,15 +341,15 @@ namespace NSIE.Servicios
                 await connection.OpenAsync();
                 var query = @"
                     SELECT TOP 4
-                        ID,
-                        Titulo_Notificacion, 
-                        Mensaje, 
-                        Fecha_Notificacion, 
-                        Link,
-                        ID_Usuario
-                    FROM Notificaciones 
-                    WHERE ID_Usuario = @UserId AND Visto = 0
-                    ORDER BY Fecha_Notificacion DESC";
+                        [IdNotificacion] AS [ID],
+                        [Titulo] AS [Titulo_Notificacion], 
+                        [Mensaje], 
+                        [FechaNotificacion] AS [Fecha_Notificacion], 
+                        [Link],
+                        [IdUsuario] AS [ID_Usuario]
+                    FROM [dgmesnie].[Notificacion]
+                    WHERE [IdUsuario] = @UserId AND [Visto] = 0 AND [Activo] = 1
+                    ORDER BY [FechaNotificacion] DESC";
                 var command = new SqlCommand(query, connection);
                 command.Parameters.AddWithValue("@UserId", userId);
 
@@ -274,7 +379,7 @@ namespace NSIE.Servicios
             using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync();
-                var query = @"SELECT COUNT(*) FROM Notificaciones WHERE ID_Usuario = @UserId AND Visto = 0";
+                var query = @"SELECT COUNT(*) FROM [dgmesnie].[Notificacion] WHERE [IdUsuario] = @UserId AND [Visto] = 0 AND [Activo] = 1";
                 var command = new SqlCommand(query, connection);
                 command.Parameters.AddWithValue("@UserId", userId);
                 return (int)await command.ExecuteScalarAsync();
@@ -290,9 +395,9 @@ namespace NSIE.Servicios
                 {
                     await connection.OpenAsync();
                     var query = @"
-                        UPDATE Notificaciones
-                        SET Visto = 1, Fecha_Visto = @FechaVisto
-                        WHERE ID = @NotificationId";
+                        UPDATE [dgmesnie].[Notificacion]
+                        SET [Visto] = 1, [FechaVisto] = @FechaVisto
+                        WHERE [IdNotificacion] = @NotificationId";
                     var command = new SqlCommand(query, connection);
                     command.Parameters.AddWithValue("@FechaVisto", DateTime.Now);
                     command.Parameters.AddWithValue("@NotificationId", notificationId);
@@ -315,19 +420,19 @@ namespace NSIE.Servicios
                 await connection.OpenAsync();
                 var query = @"
                     SELECT 
-                        ID, 
-                        ID_Notificacion, 
-                        Titulo_Notificacion, 
+                        [IdNotificacion] AS [ID], 
+                        [GuidNotificacion] AS [ID_Notificacion], 
+                        [Titulo] AS [Titulo_Notificacion], 
                         Mensaje, 
-                        Fecha_Notificacion, 
+                        [FechaNotificacion] AS [Fecha_Notificacion], 
                         Link, 
-                        ID_Usuario, 
+                        [IdUsuario] AS [ID_Usuario], 
                         Visto, 
-                        Fecha_Visto,
+                        [FechaVisto] AS [Fecha_Visto],
                         Imagen
-                    FROM Notificaciones 
-                    WHERE ID_Usuario = @UserId
-                    ORDER BY Fecha_Notificacion DESC";
+                    FROM [dgmesnie].[Notificacion]
+                    WHERE [IdUsuario] = @UserId AND [Activo] = 1
+                    ORDER BY [FechaNotificacion] DESC";
                 var command = new SqlCommand(query, connection);
                 command.Parameters.AddWithValue("@UserId", userId);
 
@@ -370,22 +475,22 @@ namespace NSIE.Servicios
                 DECLARE @Fecha_Visto DATETIME = NULL;
                 DECLARE @Imagen NVARCHAR(255) = '/img/codigo.png';
                 DECLARE UserCursor CURSOR FOR
-                SELECT TOP 500 IdUsuario FROM [dbo].[USUARIO] WHERE Vigente = 1 ORDER BY IdUsuario;
+                SELECT TOP 500 [IdUsuario] FROM [dgmesnie].[Usuario] WHERE [Vigente] = 1 ORDER BY [IdUsuario];
                 OPEN UserCursor;
                 FETCH NEXT FROM UserCursor INTO @ID_Usuario;
                 WHILE @@FETCH_STATUS = 0
                 BEGIN
                     IF NOT EXISTS (
-                        SELECT 1 FROM [dbo].[Notificaciones]
-                        WHERE [ID_Usuario] = @ID_Usuario
-                        AND [Titulo_Notificacion] = @Titulo_Notificacion
+                        SELECT 1 FROM [dgmesnie].[Notificacion]
+                        WHERE [IdUsuario] = @ID_Usuario
+                        AND [Titulo] = @Titulo_Notificacion
                         AND [Mensaje] = @Mensaje
                     )
                     BEGIN
-                        INSERT INTO [dbo].[Notificaciones] 
-                            ([ID_Notificacion], [Titulo_Notificacion], [Mensaje], [Fecha_Notificacion], [Link], [ID_Usuario], [Visto], [Fecha_Visto], [Imagen])
+                        INSERT INTO [dgmesnie].[Notificacion]
+                            ([GuidNotificacion], [Titulo], [Mensaje], [FechaNotificacion], [Link], [IdUsuario], [Visto], [FechaVisto], [Imagen], [Activo])
                         VALUES 
-                            (NEWID(), @Titulo_Notificacion, @Mensaje, @Fecha_Notificacion, @Link, @ID_Usuario, @Visto, @Fecha_Visto, @Imagen);
+                            (NEWID(), @Titulo_Notificacion, @Mensaje, @Fecha_Notificacion, @Link, @ID_Usuario, @Visto, @Fecha_Visto, @Imagen, 1);
                     END
                     FETCH NEXT FROM UserCursor INTO @ID_Usuario;
                 END
@@ -413,17 +518,16 @@ namespace NSIE.Servicios
                     if (model.Destino == "Rol" && !string.IsNullOrEmpty(model.Rol))
                     {
                         filtro = @"
-                            INNER JOIN [dbo].[Roles_Usuarios] ru ON u.IdUsuario = ru.IdUsuario
-                            INNER JOIN [dbo].[Roles] r ON ru.Rol_ID = r.Rol_ID
-                            WHERE r.Rol_ID = @Rol AND u.Vigente = 1";
+                            INNER JOIN [dgmesnie].[UsuarioRol] ru ON u.[IdUsuario] = ru.[IdUsuario] AND ru.[Vigente] = 1
+                            WHERE ru.[RolId] = @Rol AND u.[Vigente] = 1";
                     }
                     else if (model.Destino == "Usuarios" && model.UsuariosSeleccionados != null && model.UsuariosSeleccionados.Any())
                     {
-                        filtro = "WHERE u.IdUsuario IN (SELECT value FROM STRING_SPLIT(@UsuariosSeleccionados, ','))";
+                        filtro = "WHERE u.[IdUsuario] IN (SELECT TRY_CAST(value AS int) FROM STRING_SPLIT(@UsuariosSeleccionados, ',')) AND u.[Vigente] = 1";
                     }
                     else
                     {
-                        filtro = "WHERE u.Vigente = 1"; // Todos
+                        filtro = "WHERE u.[Vigente] = 1"; // Todos
                     }
 
                     var script = $@"
@@ -431,10 +535,10 @@ namespace NSIE.Servicios
                         DECLARE @Visto BIT = 0;
                         DECLARE @Fecha_Visto DATETIME = NULL;
 
-                        INSERT INTO [dbo].[Notificaciones] 
-                            ([ID_Notificacion], [Titulo_Notificacion], [Mensaje], [Fecha_Notificacion], [Link], [ID_Usuario], [Visto], [Fecha_Visto], [Imagen])
-                        SELECT NEWID(), @Titulo, @Mensaje, @Fecha_Notificacion, @Link, u.IdUsuario, @Visto, @Fecha_Visto, @Imagen
-                        FROM [dbo].[USUARIO] u
+                        INSERT INTO [dgmesnie].[Notificacion]
+                            ([GuidNotificacion], [Titulo], [Mensaje], [FechaNotificacion], [Link], [IdUsuario], [Visto], [FechaVisto], [Imagen], [Activo])
+                        SELECT NEWID(), @Titulo, @Mensaje, @Fecha_Notificacion, @Link, u.[IdUsuario], @Visto, @Fecha_Visto, @Imagen, 1
+                        FROM [dgmesnie].[Usuario] u
                         {filtro};
                     ";
 
@@ -456,7 +560,7 @@ namespace NSIE.Servicios
 
                 return true; // vuelve al listado de usuarios
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return false;
             }
@@ -472,7 +576,7 @@ namespace NSIE.Servicios
 
                     Console.WriteLine("Notification: " + notificationId);
 
-                    var query = "DELETE FROM [dbo].[Notificaciones] WHERE ID = @Id";
+                    var query = "DELETE FROM [dgmesnie].[Notificacion] WHERE [IdNotificacion] = @Id";
                     using (var command = new SqlCommand(query, connection))
                     {
                         command.Parameters.AddWithValue("@Id", notificationId);
@@ -494,16 +598,18 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 var query = @"SELECT 
-                    ID_Notificacion, 
-                    Titulo_Notificacion, 
-                    Mensaje, 
-                    Fecha_Notificacion, 
-                    Link, 
-                    ID_Usuario, 
-                    Visto, 
-                    Fecha_Visto 
-                FROM Notificaciones 
-                WHERE ID_Notificacion = @Id";
+                    [IdNotificacion] AS [ID],
+                    [GuidNotificacion] AS [ID_Notificacion], 
+                    [Titulo] AS [Titulo_Notificacion], 
+                    [Mensaje], 
+                    [FechaNotificacion] AS [Fecha_Notificacion], 
+                    [Link], 
+                    [IdUsuario] AS [ID_Usuario], 
+                    [Visto], 
+                    [FechaVisto] AS [Fecha_Visto],
+                    [Imagen]
+                FROM [dgmesnie].[Notificacion]
+                WHERE [IdNotificacion] = @Id";
                 return await connection.QuerySingleOrDefaultAsync<Notificacion>(query, new { Id = id });
             }
         }
@@ -566,10 +672,18 @@ namespace NSIE.Servicios
         {
             using var connection = new SqlConnection(connectionString);
             var id = await connection.QuerySingleAsync<int>(@"
-                INSERT INTO [dbo].[UsuariosPrueba]
-                   ([Usuario], [Email], [EmailNormalizado], [PasswordHash])
-                VALUES (@Usuario, @Email, @EmailNormalizado, @PasswordHash)
-            ", usuario);
+                INSERT INTO [dgmesnie].[Usuario]
+                   ([Correo], [ClaveHash], [Nombre], [Vigente], [FechaAlta], [FechaActualizacion])
+                OUTPUT INSERTED.[IdUsuario]
+                VALUES (@Email, @PasswordHash, @Nombre, 1, SYSUTCDATETIME(), SYSUTCDATETIME())
+            ", new
+            {
+                usuario.Email,
+                usuario.PasswordHash,
+                Nombre = string.IsNullOrWhiteSpace(usuario.Usuario) ? usuario.Email : usuario.Usuario
+            });
+
+            usuario.Id = id;
             return id;
         }
 
@@ -578,8 +692,16 @@ namespace NSIE.Servicios
         {
             using var connection = new SqlConnection(connectionString);
             return await connection.QuerySingleOrDefaultAsync<UsuarioApp>(
-                "SELECT * FROM UsuariosPrueba Where EmailNormalizado=@emailNormalizado",
-                new { emailNomarlizado }
+                @"SELECT TOP (1)
+                        [IdUsuario] AS [Id],
+                        [Nombre] AS [Usuario],
+                        [Correo] AS [Email],
+                        UPPER([Correo]) AS [EmailNormalizado],
+                        [ClaveHash] AS [PasswordHash]
+                  FROM [dgmesnie].[Usuario]
+                  WHERE [Vigente] = 1
+                    AND UPPER([Correo]) = @emailNomarlizado",
+                new { emailNomarlizado = emailNomarlizado?.ToUpperInvariant() }
             );
         }
 
@@ -587,7 +709,7 @@ namespace NSIE.Servicios
         {
             using var connection = new SqlConnection(connectionString);
             return await connection.QuerySingleOrDefaultAsync<UserViewModel>(
-                "SELECT * FROM USUARIO Where Correo=@email",
+                SelectUsuarioDetallado + " WHERE u.[Correo] = @email",
                 new { email }
             );
         }

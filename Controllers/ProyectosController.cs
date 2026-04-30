@@ -97,7 +97,6 @@ namespace NSIE.Controllers
                     var enviadoComite = System.IO.File.Exists(Path.Combine(carpeta, "EnviadoComite.txt"));
                     var susceptiblePresupuesto = System.IO.File.Exists(Path.Combine(carpeta, "SusceptiblePresupuesto.txt"));
                     var rutaEvaluacionAbierta = Path.Combine(carpeta, "Viable.txt");
-                    var esViableAbierta = false;
                     if (System.IO.File.Exists(rutaEvaluacionAbierta))
                     {
                         var contenido = System.IO.File.ReadAllText(rutaEvaluacionAbierta);
@@ -155,8 +154,6 @@ namespace NSIE.Controllers
                     var formato = System.IO.File.Exists(Path.Combine(carpeta, "Formato_Evaluacion.pdf"));
                     var rutaEvaluacion = Path.Combine(carpeta, "Evaluacion.txt");
                     string estadoEvaluacion = null;
-                    bool esViable = false;
-
                     var tieneEvaluacionSustentabilidad = System.IO.File.Exists(Path.Combine(carpeta, "Formato_Evaluacion_Sustentabilidad.pdf"));
 
                     string estadoEvaluacionAbierta = null;

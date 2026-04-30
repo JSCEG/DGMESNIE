@@ -1874,7 +1874,7 @@ FROM [dbo].[vElectricidad_autorizado_mapa];
 
                         return solicitudes.Count;
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
                         // Manejar la excepción como lo consideres necesario
                         throw;
@@ -2197,18 +2197,19 @@ FROM [dbo].[vElectricidad_autorizado_mapa];
         public async Task Crear(Indicador2_Clase indicador2_Clase)
         {
             using var connection = new SqlConnection(connectionString);
-            var id = await connection.QueryAsync(
-               $@"
-            INSERT INTO [dbo].[Usuarios]
-                    ([Usuario]
-                    ,[Email]
-                    ,[EmailNormalizado]
-                    ,[PasswordHash])
+            await connection.ExecuteAsync(
+               @"
+            INSERT INTO [dgmesnie].[Usuario]
+                ([Correo]
+                ,[ClaveHash]
+                ,[Nombre]
+                ,[Vigente]
+                ,[FechaAlta]
+                ,[FechaActualizacion])
             VALUES
-                    (@Usuario, @Email, @EmailNormalizado, @PasswordHash);
+                (@Email, @PasswordHash, @Usuario, 1, SYSUTCDATETIME(), SYSUTCDATETIME());
 
-                    ", indicador2_Clase);
-            // indicador2_Clase.id = id;
+                ", indicador2_Clase);
         }
         //Método para verificar registros duplicados
         #region  Método de Usuarios Duplicados
@@ -2217,8 +2218,8 @@ FROM [dbo].[vElectricidad_autorizado_mapa];
             using var connection = new SqlConnection(connectionString);
             var existe = await connection.QueryFirstOrDefaultAsync<int>($@"
                                                                                   Select 1
-                                                                                  From [dbo].[Usuarios]
-                                                                                  where Usuario = @Usuario and Email=@Email",
+                                                                                  From [dgmesnie].[Usuario]
+                                                                                  where [Nombre] = @Usuario and [Correo] = @Email and [Vigente] = 1",
 
                                                                           new { usuario, email });
             return existe == 1;

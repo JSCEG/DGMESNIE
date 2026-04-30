@@ -92,7 +92,7 @@ namespace NSIE.Controllers
                 var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
 
                 if (string.IsNullOrWhiteSpace(perfilJson))
-                return Unauthorized();
+                    return Unauthorized();
 
                 var perfilUsuario = string.IsNullOrWhiteSpace(perfilJson)
                     ? null
@@ -139,7 +139,7 @@ namespace NSIE.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> Barrenacion()
+        public IActionResult Barrenacion()
         {
             var model = new BarrenacionViewModel();
             return View(model);
@@ -492,7 +492,7 @@ namespace NSIE.Controllers
             {
                 ModelState.AddModelError("FamiliaRoca", "Debe seleccionar la familia de roca.");
             }
-            
+
             if (modelo.Fuente == "Arcilla" &&
                 modelo.Origen == "Barrenación")
             {

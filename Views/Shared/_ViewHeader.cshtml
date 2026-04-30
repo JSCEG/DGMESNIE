@@ -8,26 +8,29 @@
 <div class="header-fijo cp-section py-3 px-4 pb-4">
     <!-- Línea superior: ícono, título y botón de ayuda -->
     <div class="header-fijo__row mb-2 position-relative">
-        <div class="header-fijo__icon-shell">
-            <img src="@Cdn.Url/img_snier/vistas/@Model.IconPath" alt="@Model.Title" class="iconomenu" />
-        </div>
+        <div class="header-fijo__main">
+            <div class="header-fijo__icon-shell">
+                <img src="@Cdn.Url/img_snier/vistas/@Model.IconPath" alt="@Model.Title" class="iconomenu" />
+            </div>
 
-        <div class="header-fijo__content">
-            <h2 class="m-0 module-header-title">
-                @Model.Title
-            </h2>
+            <div class="header-fijo__content">
+                <h2 class="m-0 module-header-title">
+                    @Model.Title
+                </h2>
 
-            @if (!string.IsNullOrWhiteSpace(Model.Description))
-            {
-                <p class="header-fijo__description mb-0">@Model.Description</p>
-            }
-        </div>
+                @if (!string.IsNullOrWhiteSpace(Model.Description))
+                {
+                    <p class="header-fijo__description mb-0">@Model.Description</p>
+                }
+            </div>
 
-        <div class="header-fijo__aside">
-            <button class="btn p-0 border-0 bg-transparent help-trigger"
-                    title="Haz clic para conocer la funcionalidad del módulo" onclick='mostrarAyudaModulo(@moduleInfoJson)'>
-                <i class="fas fa-circle-question fa-lg animated-help-icon"></i>
-            </button>
+            <div class="header-fijo__aside">
+                <button class="btn p-0 border-0 bg-transparent help-trigger"
+                        title="Haz clic para conocer la funcionalidad del módulo"
+                        onclick='mostrarAyudaModulo(@moduleInfoJson)'>
+                    <i class="fas fa-circle-question fa-lg animated-help-icon"></i>
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -36,45 +39,61 @@
 <script>
     window.mostrarAyudaModulo = function (info) {
         try {
+            const renderMetaPill = (icon, label, value) => {
+                if (!value) return '';
+                return `
+                    <div class="module-help-meta__pill">
+                        <i class="fas fa-${icon}"></i>
+                        <div>
+                            <span class="module-help-meta__label">${label}</span>
+                            <strong class="module-help-meta__value">${value}</strong>
+                        </div>
+                    </div>`;
+            };
+
             const html = `
                 <div class="module-help-content text-start">
+                    ${info.description ? `<p class="module-help-lead">${info.description}</p>` : ''}
+
+                    ${(info.stage || info.order) ? `
+                        <div class="module-help-meta">
+                            ${renderMetaPill('layer-group', 'Etapa', info.stage)}
+                            ${renderMetaPill('route', 'Ubicación', info.order ? `${info.order.step}. ${info.order.description}` : '')}
+                        </div>` : ''}
+
                     ${info.functionality ? `
                         <section class="module-help-section">
-                            <h6 class="module-help-section__title"><i class="fas fa-info-circle"></i> ¿Qué hace este módulo?</h6>
+                            <h6 class="module-help-section__title"><i class="fas fa-bolt"></i> ¿Qué puedes hacer aquí?</h6>
                             <p class="module-help-section__text">${info.functionality}</p>
                         </section>` : ''}
 
-                    ${info.stage ? `
+                    ${info.highlights?.length ? `
                         <section class="module-help-section">
-                            <h6 class="module-help-section__title"><i class="fas fa-layer-group"></i> Etapa</h6>
-                            <p class="module-help-section__text">${info.stage}</p>
-                        </section>` : ''}
-
-                    ${info.description ? `
-                        <section class="module-help-section">
-                            <h6 class="module-help-section__title"><i class="fas fa-info"></i> Descripción</h6>
-                            <p class="module-help-section__text">${info.description}</p>
+                            <h6 class="module-help-section__title"><i class="fas fa-list-check"></i> Accesos y tareas clave</h6>
+                            <ul class="module-help-list list-unstyled">
+                                ${info.highlights.map(item => `<li class="module-help-list__item"><i class="fas fa-check"></i><span>${item}</span></li>`).join('')}
+                            </ul>
                         </section>` : ''}
 
                     ${info.roles?.length ? `
                         <section class="module-help-section">
-                            <h6 class="module-help-section__title"><i class="fas fa-users-cog"></i> Roles involucrados</h6>
+                            <h6 class="module-help-section__title"><i class="fas fa-users-cog"></i> ¿Para quién está pensado?</h6>
                             <ul class="module-help-list list-unstyled">
                                 ${info.roles.map(r => `<li class="module-help-list__item"><i class="fas fa-${r.icon || 'user'}"></i><span>${r.text}</span></li>`).join('')}
                             </ul>
                         </section>` : ''}
 
-                    ${info.order ? `
+                    ${info.context ? `
                         <section class="module-help-section">
-                            <h6 class="module-help-section__title"><i class="fas fa-sort-amount-up"></i> Paso</h6>
-                            <p class="module-help-section__text">${info.order.step} - ${info.order.description}</p>
+                            <h6 class="module-help-section__title"><i class="fas fa-circle-info"></i> Recomendación rápida</h6>
+                            <p class="module-help-section__text">${info.context}</p>
                         </section>` : ''}
                 </div>`;
 
             Swal.fire({
                 title: info.title || 'Información del módulo',
                 html: html,
-                width: '460px',
+                width: '560px',
                 customClass: {
                     container: 'text-start',
                     popup: 'swal-responsive module-help-modal',
@@ -87,7 +106,7 @@
                 buttonsStyling: false,
                 showCloseButton: true,
                 showDenyButton: info.manualUrl ? true : false,
-                denyButtonText: 'Saber más',
+                denyButtonText: 'Abrir guía',
                 confirmButtonText: 'Cerrar',
                 confirmButtonColor: '#6c757d',
                 denyButtonColor: '#294a95',

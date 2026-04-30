@@ -347,22 +347,22 @@ namespace NSIE.Controllers
         }
 
         //NUEVO SANKEY
-        public async Task<IActionResult> BalanceNacionalEnergia()
+        public IActionResult BalanceNacionalEnergia()
         {
             return View();
         }
 
-        public async Task<IActionResult> BNE()
+        public IActionResult BNE()
         {
             return View();
         }
 
-        public async Task<IActionResult> GraficosBNE()
+        public IActionResult GraficosBNE()
         {
             return View();
         }
 
-        public async Task<IActionResult> FlujoEnergia()
+        public IActionResult FlujoEnergia()
         {
             return View();
         }

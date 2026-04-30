@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SENER — Seguimiento de Proyectos</title>
+
+    <!-- Leaflet CSS — Ref: map-toolkit.md -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+
+    <!-- Google Fonts — Ref: design-system.md -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Merriweather:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap Icons — Ref: MEMORY.md (stack técnico) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- CSS Institucional base — Ref: css/base-theme.css -->
+    <link rel="stylesheet" href="css/base-theme.css">
+
+    <style>
+        /* ─────────────────────────────────────────────
+           Variables institucionales SENER
+           Ref: css/base-theme.css · css/main.css
+        ───────────────────────────────────────────── */
+        :root {
+            --gobmx-guinda:      #9B2247;
+            --gobmx-guinda-dark: #7a1b38;
+            --gobmx-verde:       #1E5B4F;
+            --gobmx-dorado:      #A57F2C;
+            --gobmx-gris:        #98989A;
+            --color-text-primary:   #1F2937;
+            --color-text-secondary: #6B7280;
+            --color-bg-light:    #F8F9FA;
+            --color-border:      #E5E7EB;
+            --font-sans:    'Noto Sans', system-ui, sans-serif;
+            --font-heading: 'Merriweather', serif;
+            --shadow-card:  0 2px 6px rgba(0,0,0,0.08);
+            --shadow-hover: 0 6px 16px rgba(0,0,0,0.12);
+            --radius-md: 0.75rem;
+            --gradient-header: linear-gradient(120deg, #9B2247 0%, #7a1b38 55%, #5a1429 100%);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: var(--font-sans); background: #F3F4F6; color: var(--color-text-primary); min-height: 100vh; }
+
+        /* ─── HEADER — Ref: css/shared-header.css ─── */
+        .site-header {
+            background: var(--gradient-header);
+            color: white;
+            padding: 0 1.5rem;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+            position: sticky; top: 0; z-index: 1000;
+        }
+        .site-header__left  { display: flex; align-items: center; gap: 0.875rem; }
+        .site-header__logos { display: flex; align-items: center; gap: 0.875rem; }
+        .site-header__logos img { height: 32px; filter: brightness(0) invert(1); }
+        .site-header__div   { width: 1px; height: 32px; background: rgba(255,255,255,0.25); }
+        .site-header__title { font-family: var(--font-heading); font-size: 0.95rem; font-weight: 700; line-height: 1.2; }
+        .site-header__sub   { font-size: 0.7rem; opacity: 0.75; }
+        .site-header__right { display: flex; align-items: center; gap: 0.75rem; font-size: 0.8rem; opacity: 0.9; }
+
+        /* ─── BREADCRUMB — Ref: css/shared-breadcrumbs.css ─── */
+        .breadcrumb {
+            background: white;
+            border-bottom: 1px solid var(--color-border);
+            padding: 0.5rem 1.5rem;
+        }
+        .breadcrumb ol { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; list-style: none; }
+        .breadcrumb a  { color: var(--gobmx-guinda); font-weight: 600; text-decoration: none; }
+        .breadcrumb .sep   { color: #9CA3AF; }
+        .breadcrumb .current { color: var(--color-text-primary); font-weight: 600; }
+
+        /* ─── LAYOUT ─── */
+        .main  { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+        .page-title { margin-bottom: 1.25rem; }
+        .page-title h1 {
+            font-family: var(--font-heading);
+            font-size: 1.4rem; font-weight: 800;
+            color: var(--gobmx-guinda);
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .page-title p { color: var(--color-text-secondary); font-size: 0.85rem; margin-top: 0.25rem; }
+
+        /* ─── KPI CARDS — Ref: css/dashboard-styles.css ─── */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .kpi-card {
+            background: white;
+            border-radius: var(--radius-md);
+            padding: 1.2rem 1.4rem;
+            display: flex; align-items: center; gap: 1rem;
+            box-shadow: var(--shadow-card);
+            border-left: 4px solid var(--gobmx-guinda);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+        .kpi-card.verde  { border-left-color: var(--gobmx-verde); }
+        .kpi-card.dorado { border-left-color: var(--gobmx-dorado); }
+        .kpi-card.azul   { border-left-color: #3B82F6; }
+        .kpi-icon {
+            width: 46px; height: 46px; border-radius: 0.625rem;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; flex-shrink: 0;
+        }
+        .kpi-icon.c-guinda { background: rgba(155,34,71,0.1);  color: #9B2247; }
+        .kpi-icon.c-verde  { background: rgba(30,91,79,0.1);   color: #1E5B4F; }
+        .kpi-icon.c-dorado { background: rgba(165,127,44,0.1); color: #A57F2C; }
+        .kpi-icon.c-azul   { background: rgba(59,130,246,0.1); color: #3B82F6; }
+        .kpi-num  { font-size: 1.65rem; font-weight: 800; color: var(--color-text-primary); line-height: 1; }
+        .kpi-lbl  { font-size: 0.78rem; color: var(--color-text-secondary); margin-top: 2px; }
+        .kpi-tend { font-size: 0.72rem; font-weight: 600; margin-top: 4px; color: #10B981; }
+
+        /* ─── GRID PRINCIPAL ─── */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 370px;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+        }
+
+        /* ─── CARD GENÉRICA — Ref: css/base-theme.css ─── */
+        .card {
+            background: white;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+        }
+        .card-hdr {
+            padding: 0.875rem 1.25rem;
+            border-bottom: 1px solid #F3F4F6;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .card-hdr h3 { font-size: 0.9rem; font-weight: 700; color: var(--color-text-primary); display: flex; align-items: center; gap: 0.4rem; }
+        .card-hdr .sub { font-size: 0.72rem; color: var(--color-text-secondary); margin-top: 1px; }
+        .card-body { padding: 1.25rem; }
+
+        /* ─── MAPA — Ref: js/map-config.js · map-toolkit.md ─── */
+        #map { height: 420px; width: 100%; }
+        .map-legend {
+            display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem;
+            padding: 0.75rem 1.25rem;
+            background: #F9FAFB;
+            border-top: 1px solid var(--color-border);
+        }
+        .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: #374151; }
+        .legend-dot  { width: 11px; height: 11px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+        /* ─── PANEL LATERAL ─── */
+        .side-col { display: flex; flex-direction: column; gap: 1rem; }
+
+        /* ─── GRÁFICA ─── */
+        .chart-wrap { position: relative; height: 200px; }
+
+        /* ─── SEMÁFOROS — Ref: components.md ─── */
+        .semaforo-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .semaforo-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.55rem 0.875rem;
+            border-radius: 0.5rem;
+            background: #F9FAFB;
+            border: 1px solid var(--color-border);
+        }
+        .sem-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+        .sem-lbl { font-size: 0.8rem; font-weight: 600; color: var(--color-text-primary); }
+        .sem-nota { font-size: 0.68rem; color: var(--color-text-secondary); }
+        .sem-val  { font-size: 1rem; font-weight: 800; }
+
+        /* ─── TABLA — Ref: components.md ─── */
+        .filters-bar { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .f-input {
+            padding: 0.45rem 0.875rem;
+            border: 1.5px solid var(--color-border);
+            border-radius: 0.5rem;
+            font-size: 0.82rem;
+            font-family: var(--font-sans);
+            color: var(--color-text-primary);
+            background: white; outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .f-input:focus { border-color: var(--gobmx-guinda); box-shadow: 0 0 0 3px rgba(155,34,71,0.1); }
+        .table-wrap { overflow-x: auto; }
+        .proj-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .proj-table th {
+            padding: 0.7rem 1rem; text-align: left;
+            font-weight: 600; color: #374151;
+            background: #F9FAFB;
+            border-bottom: 2px solid var(--color-border);
+            white-space: nowrap;
+        }
+        .proj-table td { padding: 0.7rem 1rem; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }
+        .proj-table tr:hover td { background: #FAFAFA; }
+
+        /* ─── BADGES — Ref: css/base-theme.css ─── */
+        .badge {
+            display: inline-flex; align-items: center;
+            padding: 3px 9px; border-radius: 9999px;
+            font-size: 0.68rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .b-success { background: #D1FAE5; color: #065F46; }
+        .b-warning { background: #FEF3C7; color: #92400E; }
+        .b-danger  { background: #FEE2E2; color: #991B1B; }
+        .b-info    { background: #DBEAFE; color: #1E40AF; }
+        .b-gray    { background: #F3F4F6; color: #374151; }
+
+        /* ─── BOTONES ─── */
+        .btn-xs {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 0.35rem 0.75rem; font-size: 0.75rem; font-weight: 600;
+            border-radius: 0.5rem; cursor: pointer; border: none;
+            font-family: var(--font-sans); transition: all 0.2s;
+        }
+        .btn-xs.guinda  { background: var(--gobmx-guinda); color: white; }
+        .btn-xs.guinda:hover { background: var(--gobmx-guinda-dark); }
+        .btn-xs.outline { background: white; color: var(--gobmx-guinda); border: 1.5px solid var(--gobmx-guinda); }
+        .btn-xs.outline:hover { background: var(--gobmx-guinda); color: white; }
+        .btn-xs.gris    { background: #F3F4F6; color: #374151; border: 1.5px solid var(--color-border); }
+        .btn-xs.gris:hover { border-color: var(--gobmx-guinda); color: var(--gobmx-guinda); }
+
+        /* ─── BARRA DE PROGRESO ─── */
+        .progress-wrap { display: flex; align-items: center; gap: 0.5rem; }
+        .progress-bar  { flex: 1; background: #E5E7EB; border-radius: 9999px; height: 5px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 9999px; }
+        .progress-pct  { font-size: 0.72rem; font-weight: 700; color: #374151; min-width: 30px; }
+
+        /* ─── RESPONSIVE ─── */
+        @media (max-width: 1100px) { .content-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 768px)  { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 480px)  { .kpi-grid { grid-template-columns: 1fr; } .site-header__right { display: none; } }
+    </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════
+     HEADER — Ref: css/shared-header.css · index.html
+════════════════════════════════════════════════════ -->
+<header class="site-header">
+    <div class="site-header__left">
+        <div class="site-header__logos">
+            <img src="img/logo_gob.png" alt="Gobierno de México">
+            <div class="site-header__div"></div>
+            <img src="img/logo_sener.png" alt="SENER">
+        </div>
+        <div class="site-header__div"></div>
+        <div>
+            <div class="site-header__title">Seguimiento de Proyectos Energéticos</div>
+            <div class="site-header__sub">Secretaría de Energía · Sistema de Monitoreo</div>
+        </div>
+    </div>
+    <div class="site-header__right">
+        <i class="bi bi-person-circle" style="font-size:1.2rem;"></i>
+        <span>Usuario SENER</span>
+        <span style="opacity:0.4;">|</span>
+        <span id="fechaHora" style="opacity:0.75;"></span>
+    </div>
+</header>
+
+<!-- ════════════════════════════════════════════════════
+     BREADCRUMB — Ref: css/shared-breadcrumbs.css
+════════════════════════════════════════════════════ -->
+<nav class="breadcrumb" aria-label="Ruta de navegación">
+    <ol>
+        <li><a href="#"><i class="bi bi-house-fill"></i> Inicio</a></li>
+        <li class="sep"><i class="bi bi-chevron-right"></i></li>
+        <li><a href="#">Proyectos</a></li>
+        <li class="sep"><i class="bi bi-chevron-right"></i></li>
+        <li class="current">Tablero de Seguimiento</li>
+    </ol>
+</nav>
+
+<!-- ════════════════════════════════════════════════════
+     CONTENIDO PRINCIPAL
+════════════════════════════════════════════════════ -->
+<main class="main">
+
+    <!-- Título de página -->
+    <div class="page-title">
+        <h1>
+            <i class="bi bi-kanban-fill"></i>
+            Tablero de Seguimiento de Proyectos
+        </h1>
+        <p>Vista general de proyectos energéticos en territorio nacional &nbsp;·&nbsp; Actualización: <strong>marzo 2025</strong></p>
+    </div>
+
+    <!-- ── KPI CARDS — Ref: css/dashboard-styles.css · dashboard-analitico.js ── -->
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-icon c-guinda"><i class="bi bi-folder2-open"></i></div>
+            <div>
+                <div class="kpi-num" data-target="47">0</div>
+                <div class="kpi-lbl">Proyectos activos</div>
+                <div class="kpi-tend"><i class="bi bi-arrow-up-short"></i>+6 este trimestre</div>
+            </div>
+        </div>
+        <div class="kpi-card verde">
+            <div class="kpi-icon c-verde"><i class="bi bi-check2-circle"></i></div>
+            <div>
+                <div class="kpi-num" data-target="28">0</div>
+                <div class="kpi-lbl">En operación</div>
+                <div class="kpi-tend"><i class="bi bi-arrow-up-short"></i>+3 este mes</div>
+            </div>
+        </div>
+        <div class="kpi-card dorado">
+            <div class="kpi-icon c-dorado"><i class="bi bi-lightning-charge-fill"></i></div>
+            <div>
+                <div class="kpi-num" data-target="12450">0</div>
+                <div class="kpi-lbl">MW instalados</div>
+                <div class="kpi-tend"><i class="bi bi-arrow-up-short"></i>+4.2% vs 2024</div>
+            </div>
+        </div>
+        <div class="kpi-card azul">
+            <div class="kpi-icon c-azul"><i class="bi bi-geo-alt-fill"></i></div>
+            <div>
+                <div class="kpi-num" data-target="24">0</div>
+                <div class="kpi-lbl">Estados con proyectos</div>
+                <div class="kpi-tend"><i class="bi bi-arrow-up-short"></i>+2 nuevos estados</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── GRID PRINCIPAL: Mapa + Panel lateral ── -->
+    <div class="content-grid">
+
+        <!-- MAPA — Ref: js/map-config.js · map-toolkit.md -->
+        <div class="card">
+            <div class="card-hdr">
+                <div>
+                    <h3>
+                        <i class="bi bi-map-fill" style="color:var(--gobmx-guinda);"></i>
+                        Distribución Geográfica
+                    </h3>
+                    <div class="sub">Proyectos energéticos · República Mexicana</div>
+                </div>
+                <div style="display:flex;gap:0.5rem;align-items:center;">
+                    <select id="filterMapEstatus" class="f-input" style="font-size:0.75rem;padding:0.35rem 0.75rem;" onchange="filterMapMarkers()">
+                        <option value="">Todos los estatus</option>
+                        <option value="operacion">En operación</option>
+                        <option value="construccion">En construcción</option>
+                        <option value="planeacion">En planeación</option>
+                        <option value="suspendido">Suspendido</option>
+                    </select>
+                    <button class="btn-xs gris" onclick="fitMexicoBounds()">
+                        <i class="bi bi-arrows-fullscreen"></i> México
+                    </button>
+                </div>
+            </div>
+            <div id="map"></div>
+            <div class="map-legend">
+                <div class="legend-item"><div class="legend-dot" style="background:#10B981;"></div>En operación</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#F59E0B;"></div>En construcción</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#3B82F6;"></div>En planeación</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#EF4444;"></div>Suspendido</div>
+            </div>
+        </div>
+
+        <!-- PANEL LATERAL -->
+        <div class="side-col">
+
+            <!-- Gráfica donut — Ref: dashboard-analitico.js · dashboard-toolkit.md -->
+            <div class="card">
+                <div class="card-hdr">
+                    <div>
+                        <h3><i class="bi bi-pie-chart-fill" style="color:var(--gobmx-dorado);"></i> Por Tecnología</h3>
+                        <div class="sub">Capacidad instalada (MW)</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-wrap">
+                        <canvas id="chartTecno"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Semáforos — Ref: components.md · SEMAFORO pattern -->
+            <div class="card">
+                <div class="card-hdr">
+                    <div>
+                        <h3><i class="bi bi-traffic-light-fill" style="color:var(--gobmx-guinda);"></i> Indicadores Clave</h3>
+                        <div class="sub">Actualización hoy</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="semaforo-list" id="semaforos"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── TABLA DE PROYECTOS — Ref: components.md ── -->
+    <div class="card">
+        <div class="card-hdr">
+            <div>
+                <h3><i class="bi bi-table" style="color:var(--gobmx-guinda);"></i> Listado de Proyectos</h3>
+                <div class="sub" id="tableCount">Cargando...</div>
+            </div>
+            <div style="display:flex;gap:0.5rem;">
+                <button class="btn-xs guinda">
+                    <i class="bi bi-download"></i> Exportar
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- Filtros -->
+            <div class="filters-bar">
+                <input type="text" id="searchProj" class="f-input" placeholder="🔍 Buscar proyecto o estado..."
+                       oninput="filterTable()" style="min-width:230px;">
+                <select id="fEstatus" class="f-input" onchange="filterTable()">
+                    <option value="">Todos los estatus</option>
+                    <option value="operacion">En operación</option>
+                    <option value="construccion">En construcción</option>
+                    <option value="planeacion">En planeación</option>
+                    <option value="suspendido">Suspendido</option>
+                </select>
+                <select id="fTipo" class="f-input" onchange="filterTable()">
+                    <option value="">Todos los tipos</option>
+                    <option value="Solar">Solar</option>
+                    <option value="Eólica">Eólica</option>
+                    <option value="Hidroeléctrica">Hidroeléctrica</option>
+                    <option value="Geotérmica">Geotérmica</option>
+                    <option value="Ciclo combinado">Ciclo combinado</option>
+                </select>
+                <button class="btn-xs gris" onclick="clearFilters()">
+                    <i class="bi bi-x-circle"></i> Limpiar
+                </button>
+            </div>
+            <!-- Tabla -->
+            <div class="table-wrap">
+                <table class="proj-table">
+                    <thead>
+                        <tr>
+                            <th>Proyecto</th>
+                            <th>Tecnología</th>
+                            <th>Estado</th>
+                            <th style="text-align:right;">Capacidad (MW)</th>
+                            <th>Avance</th>
+                            <th>Estatus</th>
+                            <th style="text-align:center;">Ubicar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</main>
+
+<!-- ════════════════════════════════════════════════════
+     SCRIPTS
+════════════════════════════════════════════════════ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────
+// DATOS DE PROYECTOS (demo)
+// En producción: reemplazar con loadFromGoogleSheets()
+// Ref: data-patterns.md · pladese-maps.js
+// ─────────────────────────────────────────────────────────
+const PROYECTOS = [
+    { id:1,  nombre:'Parque Solar Sonora I',          tipo:'Solar',           estado:'Sonora',              cap:500,  avance:100, estatus:'operacion',    lat:29.10, lng:-110.90 },
+    { id:2,  nombre:'Parque Eólico La Ventosa',       tipo:'Eólica',          estado:'Oaxaca',              cap:320,  avance:100, estatus:'operacion',    lat:16.40, lng:-94.90  },
+    { id:3,  nombre:'Central Hidroeléctrica Chiapas', tipo:'Hidroeléctrica',  estado:'Chiapas',             cap:750,  avance:78,  estatus:'construccion', lat:16.70, lng:-93.10  },
+    { id:4,  nombre:'Planta Geotérmica Cerro Prieto', tipo:'Geotérmica',      estado:'Baja California',     cap:220,  avance:100, estatus:'operacion',    lat:32.40, lng:-115.30 },
+    { id:5,  nombre:'CC El Sauz II',                  tipo:'Ciclo combinado', estado:'Querétaro',           cap:800,  avance:100, estatus:'operacion',    lat:20.60, lng:-100.40 },
+    { id:6,  nombre:'Solar Aguascalientes Norte',     tipo:'Solar',           estado:'Aguascalientes',      cap:180,  avance:45,  estatus:'construccion', lat:21.90, lng:-102.30 },
+    { id:7,  nombre:'Eólico Istmo Norte',             tipo:'Eólica',          estado:'Oaxaca',              cap:250,  avance:100, estatus:'operacion',    lat:17.10, lng:-95.00  },
+    { id:8,  nombre:'Solar Baja Sur I',               tipo:'Solar',           estado:'Baja California Sur', cap:150,  avance:20,  estatus:'planeacion',   lat:24.10, lng:-110.30 },
+    { id:9,  nombre:'CC Topolobampo III',             tipo:'Ciclo combinado', estado:'Sinaloa',             cap:900,  avance:60,  estatus:'construccion', lat:25.60, lng:-109.00 },
+    { id:10, nombre:'Eólico Tamaulipas Costa',        tipo:'Eólica',          estado:'Tamaulipas',          cap:420,  avance:100, estatus:'operacion',    lat:23.90, lng:-97.90  },
+    { id:11, nombre:'Solar Durango Norte',            tipo:'Solar',           estado:'Durango',             cap:200,  avance:5,   estatus:'planeacion',   lat:24.00, lng:-104.60 },
+    { id:12, nombre:'CC Altamira IV',                 tipo:'Ciclo combinado', estado:'Tamaulipas',          cap:1100, avance:0,   estatus:'suspendido',   lat:22.40, lng:-97.90  },
+    { id:13, nombre:'Solar San Luis Potosí I',        tipo:'Solar',           estado:'San Luis Potosí',     cap:260,  avance:88,  estatus:'construccion', lat:22.15, lng:-100.98 },
+    { id:14, nombre:'Eólico Coahuila Serranías',      tipo:'Eólica',          estado:'Coahuila',            cap:370,  avance:100, estatus:'operacion',    lat:27.10, lng:-102.00 },
+    { id:15, nombre:'Solar Yucatán I',                tipo:'Solar',           estado:'Yucatán',             cap:130,  avance:15,  estatus:'planeacion',   lat:20.80, lng:-89.20  },
+];
+
+// ─────────────────────────────────────────────────────────
+// SEMÁFOROS — Ref: components.md · SEMAFORO pattern
+// ─────────────────────────────────────────────────────────
+const SEMAFOROS = [
+    { label:'Meta capacidad 2025',    valor:'72%',    color:'#10B981', glow:'rgba(16,185,129,0.2)',  nota:'En avance esperado' },
+    { label:'Proyectos con retraso',  valor:'4',      color:'#F59E0B', glow:'rgba(245,158,11,0.2)',  nota:'Requieren atención' },
+    { label:'Proyectos suspendidos',  valor:'1',      color:'#EF4444', glow:'rgba(239,68,68,0.2)',   nota:'En revisión técnica' },
+    { label:'Avance promedio global', valor:'68%',    color:'#3B82F6', glow:'rgba(59,130,246,0.2)',  nota:'Todos los proyectos' },
+    { label:'Inversión comprometida', valor:'$14.2B', color:'#A57F2C', glow:'rgba(165,127,44,0.2)', nota:'MXN · Ejercicio 2025' },
+];
+
+// ─────────────────────────────────────────────────────────
+// CONFIG DE ESTATUS — Ref: dashboard-analitico.js
+// ─────────────────────────────────────────────────────────
+const STATUS_CFG = {
+    operacion:    { color:'#10B981', label:'En operación',    badge:'b-success' },
+    construccion: { color:'#F59E0B', label:'En construcción', badge:'b-warning' },
+    planeacion:   { color:'#3B82F6', label:'En planeación',   badge:'b-info'    },
+    suspendido:   { color:'#EF4444', label:'Suspendido',      badge:'b-danger'  },
+};
+
+// ─────────────────────────────────────────────────────────
+// FECHA Y HORA en header
+// ─────────────────────────────────────────────────────────
+(function updateClock() {
+    const el = document.getElementById('fechaHora');
+    const fmt = d => d.toLocaleString('es-MX', { dateStyle:'medium', timeStyle:'short' });
+    if (el) { el.textContent = fmt(new Date()); setInterval(() => el.textContent = fmt(new Date()), 60000); }
+})();
+
+// ─────────────────────────────────────────────────────────
+// MAPA LEAFLET
+// Ref: js/map-config.js · map-toolkit.md
+// ─────────────────────────────────────────────────────────
+const MEXICO_BOUNDS = L.latLngBounds([14.0, -118.0], [33.5, -86.0]);
+
+const map = L.map('map', {
+    center: [23.6345, -102.5528],
+    zoom: 5,
+    minZoom: 4,
+    maxZoom: 18,
+    zoomControl: true
+});
+
+// Capa base CartoDB Positron — sin API key, limpia y moderna
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org">OpenStreetMap</a> · © <a href="https://carto.com">CartoDB</a>',
+    maxZoom: 19
+}).addTo(map);
+
+map.fitBounds(MEXICO_BOUNDS.pad(-0.08));
+
+// MarkerCluster con estilo institucional — Ref: map-toolkit.md
+const cluster = L.markerClusterGroup({
+    maxClusterRadius: 55,
+    iconCreateFunction: c => L.divIcon({
+        html: `<div style="background:var(--gobmx-guinda);color:white;width:34px;height:34px;
+                           border-radius:50%;display:flex;align-items:center;justify-content:center;
+                           font-weight:800;font-size:12px;border:3px solid white;
+                           box-shadow:0 2px 8px rgba(155,34,71,0.45);">${c.getChildCount()}</div>`,
+        className:'', iconSize:[34,34], iconAnchor:[17,17]
+    })
+});
+
+// Crear marcadores desde datos — Ref: map-toolkit.md (sheetsRowsToMarkers pattern)
+const allMarkers = [];
+
+PROYECTOS.forEach(p => {
+    const s = STATUS_CFG[p.estatus] || { color:'#98989A', label:'Sin datos', badge:'b-gray' };
+    const barColor = p.avance >= 100 ? '#10B981' : p.avance >= 50 ? '#F59E0B' : '#3B82F6';
+
+    const icon = L.divIcon({
+        className: '',
+        html: `<div style="width:15px;height:15px;border-radius:50%;background:${s.color};
+                           border:3px solid white;box-shadow:0 1px 5px rgba(0,0,0,0.35);
+                           cursor:pointer;"></div>`,
+        iconSize:[15,15], iconAnchor:[7,7]
+    });
+
+    const marker = L.marker([p.lat, p.lng], { icon });
+
+    // Popup estándar — Ref: map-toolkit.md (createStandardPopup pattern)
+    marker.bindPopup(`
+        <div style="font-family:'Noto Sans',sans-serif;min-width:230px;line-height:1.5;">
+            <div style="font-size:13px;font-weight:800;color:#9B2247;
+                        padding-bottom:7px;border-bottom:1px solid #F3F4F6;margin-bottom:8px;">
+                <i class="bi bi-lightning-charge-fill" style="margin-right:4px;"></i>${p.nombre}
+            </div>
+            <div style="font-size:11px;color:#6B7280;margin-bottom:10px;">
+                <i class="bi bi-geo-alt"></i> ${p.estado} &nbsp;·&nbsp;
+                <i class="bi bi-grid"></i> ${p.tipo}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:12px;">
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="color:#6B7280;">Capacidad</span>
+                    <strong>${p.cap.toLocaleString('es-MX')} MW</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="color:#6B7280;">Estatus</span>
+                    <span style="background:${s.color}1A;color:${s.color};padding:2px 9px;
+                                 border-radius:9999px;font-size:10px;font-weight:700;">${s.label}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="color:#6B7280;">Avance</span>
+                    <strong>${p.avance}%</strong>
+                </div>
+            </div>
+            <div style="margin-top:8px;background:#E5E7EB;border-radius:9999px;height:5px;overflow:hidden;">
+                <div style="width:${p.avance}%;height:100%;background:${barColor};border-radius:9999px;"></div>
+            </div>
+        </div>`, { maxWidth:270 }
+    );
+
+    marker._estatus = p.estatus;
+    cluster.addLayer(marker);
+    allMarkers.push({ marker, estatus: p.estatus });
+});
+
+map.addLayer(cluster);
+
+// Cargar contorno de México desde CDN — Ref: data-patterns.md (fetchGeoJSON)
+(async function loadBorder() {
+    try {
+        const res = await fetch('https://cdn.sassoapps.com/Mapas/mexico.geojson');
+        if (!res.ok) return;
+        const data = await res.json();
+        L.geoJSON(data, {
+            style: {
+                color: '#9B2247', weight: 2,
+                fillOpacity: 0.03, fillColor: '#9B2247',
+                dashArray: '5,5'
+            }
+        }).addTo(map);
+    } catch(e) {
+        console.warn('Contorno México no disponible:', e.message);
+    }
+})();
+
+function fitMexicoBounds() { map.fitBounds(MEXICO_BOUNDS.pad(-0.08)); }
+
+function filterMapMarkers() {
+    const val = document.getElementById('filterMapEstatus').value;
+    cluster.clearLayers();
+    allMarkers.forEach(({ marker, estatus }) => {
+        if (!val || estatus === val) cluster.addLayer(marker);
+    });
+}
+
+// ─────────────────────────────────────────────────────────
+// GRÁFICA DONUT — Ref: dashboard-analitico.js · dashboard-toolkit.md
+// Config global Chart.js con paleta institucional (brandColors)
+// ─────────────────────────────────────────────────────────
+Chart.defaults.font.family = "'Noto Sans', sans-serif";
+Chart.defaults.color = '#6B7280';
+Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(30,91,79,0.92)';
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.cornerRadius = 8;
+
+// Agrupar capacidad por tecnología
+const tiposMW = {};
+PROYECTOS.forEach(p => { tiposMW[p.tipo] = (tiposMW[p.tipo] || 0) + p.cap; });
+
+const BRAND_COLORS = {   // Ref: dashboard-toolkit.md · brandColors
+    'Solar':           '#9B2247',
+    'Eólica':          '#A57F2C',
+    'Ciclo combinado': '#1E5B4F',
+    'Hidroeléctrica':  '#3B82F6',
+    'Geotérmica':      '#7C3AED',
+};
+
+new Chart(document.getElementById('chartTecno').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+        labels: Object.keys(tiposMW),
+        datasets: [{
+            data: Object.values(tiposMW),
+            backgroundColor: Object.keys(tiposMW).map(t => BRAND_COLORS[t] || '#98989A'),
+            borderColor: '#ffffff',
+            borderWidth: 3,
+            hoverOffset: 6
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { boxWidth: 11, padding: 8, font: { size: 11 } }
+            },
+            tooltip: {
+                callbacks: {
+                    label: ctx => ` ${ctx.label}: ${ctx.raw.toLocaleString('es-MX')} MW`
+                }
+            }
+        }
+    }
+});
+
+// ─────────────────────────────────────────────────────────
+// SEMÁFOROS — Ref: components.md · SEMAFORO pattern
+// ─────────────────────────────────────────────────────────
+const semContainer = document.getElementById('semaforos');
+SEMAFOROS.forEach(s => {
+    semContainer.innerHTML += `
+        <div class="semaforo-item">
+            <div style="display:flex;align-items:center;gap:0.6rem;">
+                <div class="sem-dot" style="background:${s.color};box-shadow:0 0 0 3px ${s.glow};"></div>
+                <div>
+                    <div class="sem-lbl">${s.label}</div>
+                    <div class="sem-nota">${s.nota}</div>
+                </div>
+            </div>
+            <div class="sem-val" style="color:${s.color};">${s.valor}</div>
+        </div>`;
+});
+
+// ─────────────────────────────────────────────────────────
+// TABLA CON FILTROS — Ref: components.md
+// ─────────────────────────────────────────────────────────
+function renderTable(data) {
+    const tbody = document.getElementById('tableBody');
+
+    if (!data.length) {
+        tbody.innerHTML = `
+            <tr><td colspan="7" style="text-align:center;padding:2rem;color:#6B7280;">
+                <i class="bi bi-search" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"></i>
+                Sin proyectos que coincidan con los filtros aplicados.
+            </td></tr>`;
+        document.getElementById('tableCount').textContent = 'Sin resultados';
+        return;
+    }
+
+    tbody.innerHTML = data.map(p => {
+        const s = STATUS_CFG[p.estatus] || { color:'#98989A', label:'Sin datos', badge:'b-gray' };
+        const barColor = p.avance >= 100 ? '#10B981' : p.avance >= 50 ? '#F59E0B' : '#3B82F6';
+        return `
+            <tr>
+                <td>
+                    <div style="font-weight:600;color:#1F2937;font-size:0.85rem;">${p.nombre}</div>
+                </td>
+                <td>
+                    <span style="background:#F3F4F6;padding:2px 8px;border-radius:4px;
+                                 font-size:0.75rem;color:#374151;">${p.tipo}</span>
+                </td>
+                <td style="font-size:0.82rem;color:#374151;">${p.estado}</td>
+                <td style="text-align:right;font-weight:700;font-size:0.85rem;">
+                    ${p.cap.toLocaleString('es-MX')}
+                </td>
+                <td style="min-width:120px;">
+                    <div class="progress-wrap">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width:${p.avance}%;background:${barColor};"></div>
+                        </div>
+                        <span class="progress-pct">${p.avance}%</span>
+                    </div>
+                </td>
+                <td><span class="badge ${s.badge}">${s.label}</span></td>
+                <td style="text-align:center;">
+                    <button class="btn-xs outline" onclick="zoomTo(${p.lat},${p.lng})"
+                            title="Ver en mapa">
+                        <i class="bi bi-geo-alt"></i>
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+
+    document.getElementById('tableCount').textContent =
+        `Mostrando ${data.length} de ${PROYECTOS.length} proyectos`;
+}
+
+function filterTable() {
+    const search  = document.getElementById('searchProj').value.toLowerCase().trim();
+    const estatus = document.getElementById('fEstatus').value;
+    const tipo    = document.getElementById('fTipo').value;
+
+    const filtered = PROYECTOS.filter(p =>
+        (!search  || p.nombre.toLowerCase().includes(search) || p.estado.toLowerCase().includes(search)) &&
+        (!estatus || p.estatus === estatus) &&
+        (!tipo    || p.tipo === tipo)
+    );
+
+    renderTable(filtered);
+}
+
+function clearFilters() {
+    ['searchProj','fEstatus','fTipo'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    renderTable(PROYECTOS);
+}
+
+function zoomTo(lat, lng) {
+    map.setView([lat, lng], 9, { animate: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Render inicial de tabla
+renderTable(PROYECTOS);
+
+// ─────────────────────────────────────────────────────────
+// ANIMACIÓN KPI (countUp) — Ref: dashboard-toolkit.md
+// ─────────────────────────────────────────────────────────
+document.querySelectorAll('[data-target]').forEach(el => {
+    const target = parseInt(el.dataset.target, 10);
+    const start  = performance.now();
+    const dur    = 1200;
+    const tick   = now => {
+        const p = Math.min((now - start) / dur, 1);
+        const eased = 1 - Math.pow(1 - p, 3);  // easeOutCubic
+        el.textContent = Math.round(eased * target).toLocaleString('es-MX');
+        if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+});
+</script>
+
+</body>
+</html>

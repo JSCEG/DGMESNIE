@@ -1,0 +1,384 @@
+@model NSIE.Models.PODECOBISAgendaViewModel
+
+@{
+    ViewData["Title"] = "Agenda PODECOBIS";
+    var totalRegistros = Model.Registros.Count;
+    var registrosConCorreo = Model.Registros.Count(x => !string.IsNullOrWhiteSpace(x.Correo));
+    var registrosSinCorreo = totalRegistros - registrosConCorreo;
+    var registrosConTelefono = Model.Registros.Count(x => !string.IsNullOrWhiteSpace(x.NumeroTelefonico));
+    var registrosSinContacto = Model.Registros.Count(x => string.IsNullOrWhiteSpace(x.NombreContacto));
+    var coberturaCorreo = totalRegistros == 0 ? 0 : Math.Round((decimal)registrosConCorreo * 100 / totalRegistros, 1);
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid px-4 py-3">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    }
+
+    <div class="mb-4">
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+            <div>
+                <h4 class="mb-1">Agenda de contactos</h4>
+                <p class="text-muted mb-0">Consulta, busca y administra la información principal de cada polo.</p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a asp-action="Crear" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>Nuevo registro
+                </a>
+                <a asp-action="ExportarAgendaPdf" class="btn btn-outline-danger">
+                    <i class="fas fa-file-pdf me-2"></i>Descargar PDF
+                </a>
+            </div>
+        </div>
+
+        <div class="row g-3 align-items-end mb-0">
+            <div class="col-md-8 col-lg-6">
+                <label for="busquedaAgenda" class="form-label fw-semibold">Buscar en la agenda</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    <input id="busquedaAgenda" type="search" class="form-control"
+                           placeholder="Polo, contacto, organismo, cargo, correo o teléfono" value="@Model.Busqueda" />
+                </div>
+            </div>
+            <div class="col-md-4 col-lg-3">
+                <div class="p-3 h-100">
+                    <span class="d-block text-muted small">Registros activos</span>
+                    <strong class="fs-4">@totalRegistros</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table id="tablaPodecobis" class="table table-hover table-bordered align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 60px;" class="text-center">Ver</th>
+                        <th style="width: 80px;">No.</th>
+                        <th>Polo</th>
+                        <th>Contacto</th>
+                        <th style="width: 140px;">Estatus</th>
+                        <th style="width: 120px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Registros)
+                    {
+                        var detalleId = $"detalle-podecobis-{item.AgendaId}";
+                        var tieneCorreo = !string.IsNullOrWhiteSpace(item.Correo);
+                        var tieneContacto = !string.IsNullOrWhiteSpace(item.NombreContacto);
+                        <tr>
+                            <td class="text-center align-top">
+                                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#@detalleId" aria-expanded="false" aria-controls="@detalleId"
+                                        title="Mostrar detalle">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </td>
+                            <td class="align-top">@item.Numero</td>
+                            <td class="align-top">
+                                <div class="fw-semibold">@item.Polo</div>
+                                <div class="small text-muted">@item.NombreOficialDeclaratoria</div>
+                                <div id="@detalleId" class="collapse mt-3 text-start">
+                                    <div class="border rounded-3 p-3 bg-white">
+                                        <div class="row g-3 small">
+                                            <div class="col-md-6">
+                                                <span class="text-muted d-block">Organismo de seguimiento</span>
+                                                <strong>@(string.IsNullOrWhiteSpace(item.OrganismoSeguimiento) ? "-" :
+                                                                                                                                                                                                            item.OrganismoSeguimiento)</strong>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <span class="text-muted d-block">Cargo</span>
+                                                    <strong>@(string.IsNullOrWhiteSpace(item.Cargo) ? "-" : item.Cargo)</strong>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <span class="text-muted d-block">Correo</span>
+                                                    @if (string.IsNullOrWhiteSpace(item.Correo))
+                                                    {
+                                                        <strong>-</strong>
+                                                    }
+                                                    else
+                                                    {
+                                                        <a href="mailto:@item.Correo">@item.Correo</a>
+                                                    }
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <span class="text-muted d-block">Teléfono</span>
+                                                    <strong>@(string.IsNullOrWhiteSpace(item.NumeroTelefonico) ? "-" :
+                                                                                                                                                                                                                        item.NumeroTelefonico)</strong>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="align-top">@(string.IsNullOrWhiteSpace(item.NombreContacto) ? "-" :
+                                                                                                                                                    item.NombreContacto)</td>
+                                        <td class="align-top">
+                                            @if (tieneContacto && tieneCorreo)
+                                            {
+                                                <span class="badge text-bg-success">Completo</span>
+                                            }
+                                            else if (tieneContacto || tieneCorreo)
+                                            {
+                                                <span class="badge text-bg-warning">Parcial</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge text-bg-danger">Pendiente</span>
+                                            }
+                                        </td>
+                                        <td class="align-top">
+                                            <div class="shell-table-actions justify-content-start">
+                                                <a asp-action="Editar" asp-route-id="@item.AgendaId" class="is-edit"
+                                                       title="Editar registro" aria-label="Editar registro">
+                                                    <i class="fas fa-pen-to-square"></i>
+                                                </a>
+                                                <form asp-action="Eliminar" asp-route-id="@item.AgendaId" method="post"
+                                                      onsubmit="return confirm('¿Deseas eliminar este registro de la agenda?');">
+                                                    @Html.AntiForgeryToken()
+                                                    <button type="submit" class="is-delete border-0 bg-transparent p-0"
+                                                            title="Eliminar registro" aria-label="Eliminar registro">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-4 podecobis-agenda-info-grid">
+                    <div class="col-xl-4">
+                        <div class="podecobis-agenda-card p-3 h-100 bg-white">
+                            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                                <div>
+                                    <span class="badge text-bg-primary mb-2">Fuente oficial</span>
+                                    <h5 class="mb-1">Portal PODECOBI</h5>
+                                    <p class="text-muted small mb-0">Consulta la oferta y vocación de cada polo.</p>
+                                </div>
+                                <i class="fas fa-up-right-from-square text-primary"></i>
+                            </div>
+                            <p class="small text-muted mb-3">
+                                El portal oficial presenta cada polo con enfoque de macrolocalización, conectividad logística,
+                                infraestructura estratégica, talento disponible, sectores prioritarios, incentivos y materiales
+                                descargables.
+                            </p>
+                            <div class="small text-muted mb-3">
+                                <strong class="d-block text-dark mb-1">Qué te sirve aquí:</strong>
+                                <span class="d-block">Resumen ejecutivo del polo</span>
+                                <span class="d-block">Ventajas competitivas y sectores estratégicos</span>
+                                <span class="d-block">Trípticos y one pagers oficiales</span>
+                            </div>
+                            <a href="https://www.podecobi.com/polos-de-desarrollo#xicohtencatl-ii" target="_blank"
+                                   rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">
+                                Abrir portal oficial
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-xl-4">
+                        <div class="podecobis-agenda-card p-3 h-100 bg-white">
+                            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                                <div>
+                                    <span class="badge text-bg-danger mb-2">DOF</span>
+                                    <h5 class="mb-1">Decreto de estímulos fiscales</h5>
+                                    <p class="text-muted small mb-0">Publicado en el Diario Oficial de la Federación.</p>
+                                </div>
+                                <i class="fas fa-scale-balanced text-danger"></i>
+                            </div>
+                            <p class="small text-muted mb-3">
+                                El decreto vincula los polos con la estrategia de industrialización y bienestar, y establece el
+                                marco de
+                                incentivos, selección, evaluación y control para su operación y promoción.
+                            </p>
+                            <div class="small text-muted mb-3">
+                                <strong class="d-block text-dark mb-1">Puntos clave:</strong>
+                                <span class="d-block">Deducción inmediata del 100% en activo fijo nuevo</span>
+                                <span class="d-block">Deducción adicional del 25% en capacitación e innovación</span>
+                                <span class="d-block">Participación de Secretaría de Economía y Comité Intersecretarial</span>
+                            </div>
+                            <a href="https://www.dof.gob.mx/nota_detalle.php?codigo=5758077&fecha=22%2F05%2F2025#gsc.tab=0"
+                                   target="_blank" rel="noopener noreferrer" class="btn btn-outline-danger btn-sm">
+                                Abrir decreto DOF
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-xl-4">
+                        <div class="podecobis-agenda-card p-3 h-100 bg-white">
+                            <span class="badge text-bg-secondary mb-2">Resumen</span>
+                            <h5 class="mb-2">¿Qué son estos proyectos?</h5>
+                            <p class="small text-muted mb-3">
+                                Los PODECOBI son polos orientados a detonar inversión productiva regional con base en vocaciones
+                                locales,
+                                infraestructura, talento e incentivos públicos para atraer manufactura, logística, innovación y
+                                empleo.
+                            </p>
+                            <div class="small text-muted d-flex flex-column gap-2 podecobis-agenda-card__list">
+                                <span><i class="fas fa-location-dot me-2 text-primary"></i>Se diseñan según ventajas territoriales y
+                                    logísticas.</span>
+                                    <span><i class="fas fa-industry me-2 text-primary"></i>Buscan encadenamientos productivos y
+                                        relocalización.</span>
+                                        <span><i class="fas fa-users me-2 text-primary"></i>Conectan gobierno, desarrolladores y
+                                            responsables estatales.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-6 col-xl-3">
+                                    <div class="podecobis-agenda-metric p-3 h-100 bg-white">
+                                        <span class="text-muted small d-block">Cobertura de correo</span>
+                                        <strong class="fs-3 d-block">@coberturaCorreo%</strong>
+                                        <span class="small text-muted">@registrosConCorreo de @totalRegistros polos con correo registrado</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-xl-3">
+                                    <div class="podecobis-agenda-metric p-3 h-100 bg-white">
+                                        <span class="text-muted small d-block">Con correo</span>
+                                        <strong class="fs-3 d-block text-success">@registrosConCorreo</strong>
+                                        <span class="small text-muted">Registros listos para contacto por email</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-xl-3">
+                                    <div class="podecobis-agenda-metric p-3 h-100 bg-white">
+                                        <span class="text-muted small d-block">Sin correo</span>
+                                        <strong class="fs-3 d-block text-warning">@registrosSinCorreo</strong>
+                                        <span class="small text-muted">Pendientes de completar para seguimiento formal</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-xl-3">
+                                    <div class="podecobis-agenda-metric p-3 h-100 bg-white">
+                                        <span class="text-muted small d-block">Sin contacto asignado</span>
+                                        <strong class="fs-3 d-block text-danger">@registrosSinContacto</strong>
+                                        <span class="small text-muted">Polos que requieren responsable identificado</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mb-4">
+                                <div class="col-lg-7">
+                                    <div class="p-3 h-100 bg-white">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div>
+                                                <h5 class="mb-1">Estado de completitud de la agenda</h5>
+                                                <p class="text-muted mb-0 small">Resumen rápido para ver qué tan accionable está el directorio.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div id="graficoEstadoAgenda" style="min-height: 320px; background: #ffffff;"></div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-5">
+                                    <div class="p-3 h-100 bg-white">
+                                        <h5 class="mb-3">Lectura operativa</h5>
+                                        <div class="d-flex flex-column gap-3">
+                                            <div>
+                                                <span class="badge bg-success-subtle text-success-emphasis border">Correo</span>
+                                                <p class="mb-0 mt-2 small text-muted">Mide la facilidad de contacto institucional formal para
+                                                    convocatorias, seguimiento y acuerdos.</p>
+                                                </div>
+                                                <div>
+                                                    <span class="badge bg-primary-subtle text-primary-emphasis border">Teléfono</span>
+                                                    <p class="mb-0 mt-2 small text-muted">Permite identificar si la agenda sirve también para
+                                                        gestión inmediata y coordinación directa.</p>
+                                                    </div>
+                                                    <div>
+                                                        <span class="badge bg-danger-subtle text-danger-emphasis border">Contacto faltante</span>
+                                                        <p class="mb-0 mt-2 small text-muted">Este es el dato de mayor prioridad para depurar, porque
+                                                            bloquea el uso práctico del directorio.</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+
+                                    </div>
+
+                                    @section scripts {
+                                        <script src="https://code.highcharts.com/highcharts.js"></script>
+                                        <script>
+                                            $(document).ready(function () {
+                                            var table = $('#tablaPodecobis').DataTable({
+                                            lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "Todos"]],
+                                            dom: 'Blrtip',
+                                            buttons: [
+                                            {
+                                            extend: 'copyHtml5',
+                                            title: 'Agenda PODECOBIS'
+                                            },
+                                            {
+                                            extend: 'excelHtml5',
+                                            title: 'Agenda PODECOBIS'
+                                            },
+                                            {
+                                            extend: 'csvHtml5',
+                                            title: 'Agenda PODECOBIS'
+                                            }
+                                            ],
+                                            order: [[0, 'asc']],
+                                            language: {
+                                            url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
+                                            }
+                                            });
+
+                                            $('#busquedaAgenda').on('keyup change', function () {
+                                            table.search(this.value).draw();
+                                            });
+
+                                            if ($('#busquedaAgenda').val()) {
+                                            table.search($('#busquedaAgenda').val()).draw();
+                                            }
+
+                                            Highcharts.chart('graficoEstadoAgenda', {
+                                            chart: {
+                                            type: 'column',
+                                            backgroundColor: '#ffffff',
+                                            plotBackgroundColor: '#ffffff'
+                                            },
+                                            title: {
+                                            text: null
+                                            },
+                                            credits: {
+                                            enabled: false
+                                            },
+                                            xAxis: {
+                                            categories: ['Correo', 'Sin correo', 'Teléfono', 'Sin contacto'],
+                                            crosshair: true
+                                            },
+                                            yAxis: {
+                                            min: 0,
+                                            title: {
+                                            text: 'Número de registros'
+                                            },
+                                            allowDecimals: false
+                                            },
+                                            legend: {
+                                            enabled: false
+                                            },
+                                            tooltip: {
+                                            pointFormat: '<b>{point.y}</b> registros'
+                                            },
+                                            series: [{
+                                            name: 'Agenda',
+                                            colorByPoint: true,
+                                            data: [
+                                            { y: @registrosConCorreo, color: '#198754' },
+                                            { y: @registrosSinCorreo, color: '#f0ad4e' },
+                                            { y: @registrosConTelefono, color: '#0d6efd' },
+                                            { y: @registrosSinContacto, color: '#dc3545' }
+                                            ],
+                                            borderRadius: 6
+                                            }]
+                                            });
+                                            });
+                                        </script>
+                                    }

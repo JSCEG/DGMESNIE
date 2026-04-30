@@ -17,6 +17,15 @@ namespace NSIE.Controllers
     [ServiceFilter(typeof(ValidacionInputFiltro))]
     public class AccesoController : Controller
     {
+        private const string SpValidarUsuario = "dgmesnie.sp_ValidarUsuario";
+        private const string SpObtenerPerfilSesion = "dgmesnie.sp_ObtenerPerfilSesion";
+        private const string SpObtenerMenuUsuario = "dgmesnie.sp_ObtenerSeccionesYModulosPorUsuario";
+        private const string SpRegistrarSesion = "dgmesnie.sp_RegistrarSesion";
+        private const string SpCerrarSesion = "dgmesnie.sp_CerrarSesion";
+        private const string SpActualizarActividadSesion = "dgmesnie.sp_ActualizarActividadSesion";
+        private const int MinutosInactividadSesion = 10;
+        private const int MinutosDuracionSesion = 30;
+
         private readonly IServicioEmailSMTP _servicioEmailSMTP;
         //private readonly IServicioEmail _servicioEmail;
         private readonly IRepositorioAcceso _repositorioAcceso;
@@ -271,119 +280,16 @@ namespace NSIE.Controllers
             oUsuario.Clave = ConvertirSha256(oUsuario.Clave);
 
             Console.WriteLine("Clave: " + oUsuario.Clave);
+            oUsuario.IdUsuario = ValidarUsuario(oUsuario.Correo, oUsuario.Clave);
 
-            using (SqlConnection cn = new SqlConnection(_connectionString))
-            {
-                // Validar usuario por correo o RFC
-                SqlCommand cmd = new SqlCommand("sp_ValidarUsuarioRFCEmail", cn);
-                cmd.Parameters.AddWithValue("CorreoRFC", oUsuario.Correo);
-                cmd.Parameters.AddWithValue("Clave", oUsuario.Clave);
-                cmd.CommandType = CommandType.StoredProcedure;
-
-                cn.Open();
-                oUsuario.IdUsuario = Convert.ToInt32(cmd.ExecuteScalar());
-            }
-
-            if (oUsuario.IdUsuario != 0)
-            {
-                using (SqlConnection cn = new SqlConnection(_connectionString))
-                {
-                    // Verificar si el usuario está vigente
-                    bool esVigente = cn.QuerySingleOrDefault<bool>(
-                        "SELECT Vigente FROM USUARIO WHERE IdUsuario = @IdUsuario",
-                        new { IdUsuario = oUsuario.IdUsuario }
-                    );
-
-                    if (!esVigente)
-                    {
-                        ViewData["MostrarModal"] = false;
-                        ViewData["Mensaje"] = "Lo sentimos, su usuario no tiene acceso a la plataforma";
-                        return View("Login");
-                    }
-
-                    // Activar sesión
-                    cn.Execute(
-                        "UPDATE USUARIO SET SesionActiva = 1, UltimaActualizacion = GETDATE(), HoraInicioSesion = GETDATE() WHERE IdUsuario = @IdUsuario",
-                        new { IdUsuario = oUsuario.IdUsuario }
-                    );
-
-                    // Obtener perfil del usuario
-                    PerfilUsuario perfilUsuario = cn.QuerySingleOrDefault<PerfilUsuario>(
-                        "sp_ObtenerUsuarioSession",
-                        new { IdUsuario = oUsuario.IdUsuario },
-                        commandType: CommandType.StoredProcedure
-                    );
-
-                    if (perfilUsuario != null)
-                    {
-                        var perfilUsuarioJson = JsonConvert.SerializeObject(perfilUsuario);
-                        HttpContext.Session.SetString("PerfilUsuario", perfilUsuarioJson);
-
-                        // Obtener secciones y módulos permitidos agrupados correctamente
-                        var seccionesDict = new Dictionary<int, SeccionSNIER>();
-
-                        cn.Query<SeccionSNIER, ModuloSNIER, VistaSNIER, int>(
-                            "sp_ObtenerSeccionesYModulosPorUsuario",
-                            (seccion, modulo, vista) =>
-                            {
-                                if (!seccionesDict.TryGetValue(seccion.Id, out var seccionExistente))
-                                {
-                                    seccionExistente = seccion;
-                                    seccionExistente.Modulos = new List<ModuloSNIER>();
-                                    seccionesDict[seccion.Id] = seccionExistente;
-                                }
-
-                                var modExistente = seccionExistente.Modulos.FirstOrDefault(m => m.ModuloId == modulo.ModuloId);
-                                if (modExistente == null)
-                                {
-                                    modExistente = modulo;
-                                    modExistente.Vistas = new List<VistaSNIER>();
-
-                                    // Si es externo
-                                    if (modulo.Controller == "EXTERNA")
-                                        modExistente.EsExterno = true;
-
-                                    seccionExistente.Modulos.Add(modExistente);
-                                }
-
-                                if (vista != null && vista.VistaId != 0)
-                                {
-                                    modExistente.Vistas.Add(vista);
-                                }
-
-                                return seccionExistente.Id;
-                            },
-                            new { IdUsuario = oUsuario.IdUsuario },
-                            splitOn: "ModuloId,VistaId",
-                            commandType: CommandType.StoredProcedure
-                        );
-
-                        var seccionesAgrupadas = seccionesDict.Values.ToList();
-                        var seccionesUsuarioJson = JsonConvert.SerializeObject(seccionesAgrupadas);
-                        HttpContext.Session.SetString("SeccionesUsuario", seccionesUsuarioJson);
-
-                        // Redireccionar si hay al menos un módulo externo (solo el primero)
-                        var primerModuloExterno = seccionesAgrupadas
-                            .SelectMany(s => s.Modulos)
-                            .FirstOrDefault(m => m.EsExterno && !string.IsNullOrWhiteSpace(m.Action));
-
-                        if (primerModuloExterno != null)
-                        {
-                            return Redirect(primerModuloExterno.Action);
-                        }
-
-                        return RedirectToAction("Index", "Home");
-                    }
-                }
-            }
-            else
+            if (oUsuario.IdUsuario == 0)
             {
                 ViewData["MostrarModal"] = false;
                 ViewData["Mensaje"] = "Usuario no encontrado o contraseña incorrecta";
                 return View("Login");
             }
 
-            return View("Login");
+            return CompletarInicioSesion(oUsuario.IdUsuario, false, null);
         }
         #endregion
 
@@ -400,20 +306,20 @@ namespace NSIE.Controllers
                     Correo = "invitado@cre.gob.mx",
                     Clave = "consulta_publica"
                 };
-                
+
                 // Registrar acceso
                 RegistrarAcceso(usuarioInvitado.Correo, "Acceso como Consulta Pública");
-                
+
                 // Procesar login como invitado (sin recursión)
                 return ProcesarLoginInvitado(usuarioInvitado);
             }
 
             if (tipoAcceso == "social")
             {
-                
+
                 // Registrar acceso
                 RegistrarAcceso(oUsuario.Correo, "Acceso como Consulta Pública");
-                
+
                 // Procesar login como invitado (sin recursión)
                 return ProcesarLoginInvitado(oUsuario);
             }
@@ -428,127 +334,16 @@ namespace NSIE.Controllers
 
             oUsuario.Clave = ConvertirSha256(oUsuario.Clave);
 
-            using (SqlConnection cn = new SqlConnection(_connectionString))
-            {
-                // Validar usuario por correo o RFC
-                SqlCommand cmd = new SqlCommand("sp_ValidarUsuarioRFCEmail", cn);
-                cmd.Parameters.AddWithValue("CorreoRFC", oUsuario.Correo);
-                cmd.Parameters.AddWithValue("Clave", oUsuario.Clave);
-                cmd.CommandType = CommandType.StoredProcedure;
+            oUsuario.IdUsuario = ValidarUsuario(oUsuario.Correo, oUsuario.Clave);
 
-                cn.Open();
-                oUsuario.IdUsuario = Convert.ToInt32(cmd.ExecuteScalar());
-            }
-
-            if (oUsuario.IdUsuario != 0)
-            {
-                using (SqlConnection cn = new SqlConnection(_connectionString))
-                {
-                    // Verificar si el usuario está vigente
-                    bool esVigente = cn.QuerySingleOrDefault<bool>(
-                        "SELECT Vigente FROM USUARIO WHERE IdUsuario = @IdUsuario",
-                        new { IdUsuario = oUsuario.IdUsuario }
-                    );
-
-                    if (!esVigente)
-                    {
-                        ViewData["MostrarModal"] = false;
-                        ViewData["Mensaje"] = "Lo sentimos, su usuario no tiene acceso a la plataforma";
-                        return View("Login");
-                    }
-
-                    if (registrarAcceso)
-                    {
-                        var correoUsuario = cn.QuerySingleOrDefault<string>(
-                            "SELECT Correo FROM USUARIO WHERE IdUsuario = @IdUsuario",
-                            new { IdUsuario = oUsuario.IdUsuario }
-                        );
-                        RegistrarAcceso(correoUsuario, "Inicio de sesión funcionario CRE");
-                    }
-
-                    // Activar sesión
-                    cn.Execute(
-                        "UPDATE USUARIO SET SesionActiva = 1, UltimaActualizacion = GETDATE(), HoraInicioSesion = GETDATE() WHERE IdUsuario = @IdUsuario",
-                        new { IdUsuario = oUsuario.IdUsuario }
-                    );
-
-                    // Obtener perfil del usuario
-                    PerfilUsuario perfilUsuario = cn.QuerySingleOrDefault<PerfilUsuario>(
-                        "sp_ObtenerUsuarioSession",
-                        new { IdUsuario = oUsuario.IdUsuario },
-                        commandType: CommandType.StoredProcedure
-                    );
-
-                    if (perfilUsuario != null)
-                    {
-                        var perfilUsuarioJson = JsonConvert.SerializeObject(perfilUsuario);
-                        HttpContext.Session.SetString("PerfilUsuario", perfilUsuarioJson);
-
-                        // Obtener secciones y módulos permitidos agrupados correctamente
-                        var seccionesDict = new Dictionary<int, SeccionSNIER>();
-
-                        cn.Query<SeccionSNIER, ModuloSNIER, VistaSNIER, int>(
-                            "sp_ObtenerSeccionesYModulosPorUsuario",
-                            (seccion, modulo, vista) =>
-                            {
-                                if (!seccionesDict.TryGetValue(seccion.Id, out var seccionExistente))
-                                {
-                                    seccionExistente = seccion;
-                                    seccionExistente.Modulos = new List<ModuloSNIER>();
-                                    seccionesDict[seccion.Id] = seccionExistente;
-                                }
-
-                                var modExistente = seccionExistente.Modulos.FirstOrDefault(m => m.ModuloId == modulo.ModuloId);
-                                if (modExistente == null)
-                                {
-                                    modExistente = modulo;
-                                    modExistente.Vistas = new List<VistaSNIER>();
-
-                                    // Si es externo
-                                    if (modulo.Controller == "EXTERNA")
-                                        modExistente.EsExterno = true;
-
-                                    seccionExistente.Modulos.Add(modExistente);
-                                }
-
-                                if (vista != null && vista.VistaId != 0)
-                                {
-                                    modExistente.Vistas.Add(vista);
-                                }
-
-                                return seccionExistente.Id;
-                            },
-                            new { IdUsuario = oUsuario.IdUsuario },
-                            splitOn: "ModuloId,VistaId",
-                            commandType: CommandType.StoredProcedure
-                        );
-
-                        var seccionesAgrupadas = seccionesDict.Values.ToList();
-                        var seccionesUsuarioJson = JsonConvert.SerializeObject(seccionesAgrupadas);
-                        HttpContext.Session.SetString("SeccionesUsuario", seccionesUsuarioJson);
-
-                        // Redireccionar si hay al menos un módulo externo (solo el primero)
-                        var primerModuloExterno = seccionesAgrupadas
-                            .SelectMany(s => s.Modulos)
-                            .FirstOrDefault(m => m.EsExterno && !string.IsNullOrWhiteSpace(m.Action));
-
-                        if (primerModuloExterno != null)
-                        {
-                            return Redirect(primerModuloExterno.Action);
-                        }
-
-                        return RedirectToAction("Index", "Home");
-                    }
-                }
-            }
-            else
+            if (oUsuario.IdUsuario == 0)
             {
                 ViewData["MostrarModal"] = false;
                 ViewData["Mensaje"] = "Usuario no encontrado o contraseña incorrecta";
                 return View("Login");
             }
 
-            return View();
+            return CompletarInicioSesion(oUsuario.IdUsuario, registrarAcceso, "Inicio de sesión funcionario CRE");
         }
         #endregion
 
@@ -559,18 +354,21 @@ namespace NSIE.Controllers
                 cn.Open();
 
                 var idUsuario = cn.QuerySingleOrDefault<int?>(
-                    "SELECT IdUsuario FROM USUARIO WHERE Correo = @Correo",
+                    "SELECT [IdUsuario] FROM [dgmesnie].[Usuario] WHERE [Correo] = @Correo AND [Vigente] = 1",
                     new { Correo = correoUsuario }
                 );
 
                 if (idUsuario.HasValue)
                 {
-                    string sql = "INSERT INTO Accesos (IdUsuario, FechaHora, TipoAcceso, IP) VALUES (@IdUsuario, GETDATE(), @TipoAcceso, @IP)";
+                    string sql = @"INSERT INTO [dgmesnie].[Acceso]
+                                   ([IdUsuario], [Correo], [TipoAcceso], [FechaAcceso], [Ip], [Exitoso])
+                                   VALUES (@IdUsuario, @Correo, @TipoAcceso, SYSUTCDATETIME(), @IP, 1)";
                     cn.Execute(sql, new
                     {
                         IdUsuario = idUsuario.Value,
+                        Correo = correoUsuario,
                         TipoAcceso = tipoAcceso,
-                        IP = HttpContext.Connection.RemoteIpAddress.ToString()
+                        IP = HttpContext.Connection.RemoteIpAddress?.ToString()
                     });
                 }
             }
@@ -593,12 +391,7 @@ namespace NSIE.Controllers
         {
             var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
             var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-            var idUsuario = perfilUsuario.IdUsuario;
-
-            using (SqlConnection cn = new SqlConnection(_connectionString))
-            {
-                cn.Execute("UPDATE USUARIO SET SesionActiva = 0 WHERE IdUsuario = @IdUsuario", new { IdUsuario = idUsuario });
-            }
+            CerrarSesionActiva();
 
             HttpContext.Session.Clear();
 
@@ -612,12 +405,7 @@ namespace NSIE.Controllers
         {
             var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
             var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-            var idUsuario = perfilUsuario.IdUsuario;
-
-            using (SqlConnection cn = new SqlConnection(_connectionString))
-            {
-                cn.Execute("UPDATE USUARIO SET SesionActiva = 0 WHERE IdUsuario = @IdUsuario", new { IdUsuario = idUsuario });
-            }
+            CerrarSesionActiva();
 
             HttpContext.Session.Clear();
 
@@ -653,35 +441,50 @@ namespace NSIE.Controllers
                     servidorTime = cn.QueryFirst<DateTime>("SELECT SYSDATETIME()");
                     _logger.LogInformation($"Hora actual del servidor: {servidorTime}");
 
-                    // Obtener información del usuario
-                    var usuario = cn.QueryFirst("SELECT UltimaActualizacion, HoraInicioSesion FROM USUARIO WHERE IdUsuario = @IdUsuario", new { IdUsuario = idUsuario });
-                    ultimaActualizacion = usuario.UltimaActualizacion;
-                    horaInicioSesion = usuario.HoraInicioSesion;
+                    var sesion = cn.QueryFirstOrDefault(
+                        @"SELECT TOP (1) [UltimaActividad], [FechaInicio]
+                          FROM [dgmesnie].[Sesion]
+                          WHERE [SessionKey] = @SessionKey AND [Activa] = 1
+                          ORDER BY [UltimaActividad] DESC",
+                        new { SessionKey = HttpContext.Session.Id });
+
+                    if (sesion == null)
+                    {
+                        _logger.LogWarning("No se encontró sesión activa en dgmesnie.");
+                        return Unauthorized();
+                    }
+
+                    ultimaActualizacion = sesion.UltimaActividad;
+                    horaInicioSesion = sesion.FechaInicio;
 
                     _logger.LogInformation($"Hora de última actualización: {ultimaActualizacion}");
                     _logger.LogInformation($"Hora de inicio de sesión: {horaInicioSesion}");
 
                     // Actualizar la última actividad del usuario
-                    cn.Execute("UPDATE USUARIO SET UltimaActualizacion = GETDATE() WHERE IdUsuario = @IdUsuario", new { IdUsuario = idUsuario });
+                    cn.Execute(
+                        SpActualizarActividadSesion,
+                        new { SessionKey = HttpContext.Session.Id },
+                        commandType: CommandType.StoredProcedure
+                    );
                     _logger.LogInformation("Última actualización del usuario registrada.");
                 }
 
                 // Verificar si la sesión ha expirado por inactividad
-                if (servidorTime > ultimaActualizacion.AddMinutes(10))
+                if (servidorTime > ultimaActualizacion.AddMinutes(MinutosInactividadSesion))
                 {
                     _logger.LogWarning("Sesión ha expirado (más de 10 minutos sin actividad).");
                     return Unauthorized(); // La sesión ha expirado
                 }
 
                 // Verificar si la sesión ha alcanzado el límite de tiempo total
-                if (servidorTime > horaInicioSesion.AddMinutes(30))
+                if (servidorTime > horaInicioSesion.AddMinutes(MinutosDuracionSesion))
                 {
                     _logger.LogInformation("Sesión ha alcanzado el límite de tiempo (30 minutos).");
                     return Unauthorized(); // La sesión ha alcanzado el límite de tiempo
                 }
 
                 // Advertir si faltan 5 minutos para la expiración
-                if (servidorTime > horaInicioSesion.AddMinutes(25))
+                if (servidorTime > horaInicioSesion.AddMinutes(MinutosDuracionSesion - 5))
                 {
                     _logger.LogInformation("Advertencia: la sesión está a punto de expirar.");
                     return Ok(new { ExpiracionCercana = true });
@@ -714,13 +517,7 @@ namespace NSIE.Controllers
                 }
 
                 var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-                var idUsuario = perfilUsuario.IdUsuario;
-
-                using (SqlConnection cn = new SqlConnection(_connectionString))
-                {
-                    // Actualizar la hora de inicio de sesión a la hora actual del servidor
-                    cn.Execute("UPDATE USUARIO SET HoraInicioSesion = GETDATE() WHERE IdUsuario = @IdUsuario", new { IdUsuario = idUsuario });
-                }
+                RegistrarSesionActiva(int.Parse(perfilUsuario.IdUsuario));
 
                 // Retornar una respuesta exitosa
                 return Ok(); // Actualización exitosa
@@ -730,6 +527,161 @@ namespace NSIE.Controllers
                 Console.WriteLine("Error al actualizar la hora de inicio de sesión: " + ex.Message);
                 return StatusCode(500, "Error interno del servidor");
             }
+        }
+
+        private int ValidarUsuario(string correoRFC, string claveHash)
+        {
+            using var cn = new SqlConnection(_connectionString);
+            cn.Open();
+
+            return cn.QuerySingleOrDefault<int>(
+                SpValidarUsuario,
+                new { CorreoRFC = correoRFC, Clave = claveHash },
+                commandType: CommandType.StoredProcedure
+            );
+        }
+
+        private IActionResult CompletarInicioSesion(int idUsuario, bool registrarAcceso, string tipoAcceso)
+        {
+            using var cn = new SqlConnection(_connectionString);
+            cn.Open();
+
+            bool esVigente = cn.QuerySingleOrDefault<bool>(
+                "SELECT [Vigente] FROM [dgmesnie].[Usuario] WHERE [IdUsuario] = @IdUsuario",
+                new { IdUsuario = idUsuario }
+            );
+
+            if (!esVigente)
+            {
+                ViewData["MostrarModal"] = false;
+                ViewData["Mensaje"] = "Lo sentimos, su usuario no tiene acceso a la plataforma";
+                return View("Login");
+            }
+
+            if (registrarAcceso && !string.IsNullOrWhiteSpace(tipoAcceso))
+            {
+                var correoUsuario = cn.QuerySingleOrDefault<string>(
+                    "SELECT [Correo] FROM [dgmesnie].[Usuario] WHERE [IdUsuario] = @IdUsuario",
+                    new { IdUsuario = idUsuario }
+                );
+
+                if (!string.IsNullOrWhiteSpace(correoUsuario))
+                {
+                    RegistrarAcceso(correoUsuario, tipoAcceso);
+                }
+            }
+
+            RegistrarSesionActiva(idUsuario);
+
+            PerfilUsuario perfilUsuario = cn.QuerySingleOrDefault<PerfilUsuario>(
+                SpObtenerPerfilSesion,
+                new { IdUsuario = idUsuario },
+                commandType: CommandType.StoredProcedure
+            );
+
+            if (perfilUsuario == null)
+            {
+                ViewData["MostrarModal"] = false;
+                ViewData["Mensaje"] = "No fue posible cargar el perfil de sesión";
+                return View("Login");
+            }
+
+            var perfilUsuarioJson = JsonConvert.SerializeObject(perfilUsuario);
+            HttpContext.Session.SetString("PerfilUsuario", perfilUsuarioJson);
+
+            var seccionesAgrupadas = ObtenerSeccionesUsuario(cn, idUsuario);
+            var seccionesUsuarioJson = JsonConvert.SerializeObject(seccionesAgrupadas);
+            HttpContext.Session.SetString("SeccionesUsuario", seccionesUsuarioJson);
+
+            var primerModuloExterno = seccionesAgrupadas
+                .SelectMany(s => s.Modulos)
+                .FirstOrDefault(m => m.EsExterno && !string.IsNullOrWhiteSpace(m.Action));
+
+            if (primerModuloExterno != null)
+            {
+                return Redirect(primerModuloExterno.Action);
+            }
+
+            return RedirectToAction("Index", "Home");
+        }
+
+        private List<SeccionSNIER> ObtenerSeccionesUsuario(SqlConnection cn, int idUsuario)
+        {
+            var seccionesDict = new Dictionary<int, SeccionSNIER>();
+
+            cn.Query<SeccionSNIER, ModuloSNIER, VistaSNIER, int>(
+                SpObtenerMenuUsuario,
+                (seccion, modulo, vista) =>
+                {
+                    if (!seccionesDict.TryGetValue(seccion.Id, out var seccionExistente))
+                    {
+                        seccionExistente = seccion;
+                        seccionExistente.Modulos = new List<ModuloSNIER>();
+                        seccionesDict[seccion.Id] = seccionExistente;
+                    }
+
+                    if (modulo != null && modulo.ModuloId != 0)
+                    {
+                        var modExistente = seccionExistente.Modulos.FirstOrDefault(m => m.ModuloId == modulo.ModuloId);
+                        if (modExistente == null)
+                        {
+                            modExistente = modulo;
+                            modExistente.Vistas = new List<VistaSNIER>();
+
+                            if (modulo.Controller == "EXTERNA")
+                            {
+                                modExistente.EsExterno = true;
+                            }
+
+                            seccionExistente.Modulos.Add(modExistente);
+                        }
+
+                        if (vista != null && vista.VistaId != 0 && !modExistente.Vistas.Any(v => v.VistaId == vista.VistaId))
+                        {
+                            modExistente.Vistas.Add(vista);
+                        }
+                    }
+
+                    return seccionExistente.Id;
+                },
+                new { IdUsuario = idUsuario },
+                splitOn: "ModuloId,VistaId",
+                commandType: CommandType.StoredProcedure
+            );
+
+            return seccionesDict.Values.ToList();
+        }
+
+        private void RegistrarSesionActiva(int idUsuario)
+        {
+            using var cn = new SqlConnection(_connectionString);
+            cn.Open();
+
+            cn.Execute(
+                SpRegistrarSesion,
+                new
+                {
+                    IdUsuario = idUsuario,
+                    SessionKey = HttpContext.Session.Id,
+                    FechaExpiracion = DateTime.UtcNow.AddMinutes(MinutosDuracionSesion),
+                    Ip = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    UserAgent = Request.Headers.UserAgent.ToString(),
+                    OrigenAcceso = "WEB"
+                },
+                commandType: CommandType.StoredProcedure
+            );
+        }
+
+        private void CerrarSesionActiva()
+        {
+            using var cn = new SqlConnection(_connectionString);
+            cn.Open();
+
+            cn.Execute(
+                SpCerrarSesion,
+                new { SessionKey = HttpContext.Session.Id },
+                commandType: CommandType.StoredProcedure
+            );
         }
 
 
@@ -781,7 +733,7 @@ namespace NSIE.Controllers
 
         public static string ConvertirSha256(string texto)
         {
-            using (SHA256 hash = SHA256Managed.Create())
+            using (SHA256 hash = SHA256.Create())
             {
                 byte[] result = hash.ComputeHash(Encoding.UTF8.GetBytes(texto));
                 return string.Concat(result.Select(b => b.ToString("x2")));
@@ -819,7 +771,7 @@ namespace NSIE.Controllers
                 ViewData["Mensaje"] = "Se ha enviado un enlace de restablecimiento a su dirección de correo electrónico.";
                 return View();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 ViewData["EsExitoso"] = false;
                 ViewData["Mensaje"] = "Hubo un error al enviar el correo electrónico. Por favor, inténtelo de nuevo más tarde.";
@@ -944,7 +896,7 @@ namespace NSIE.Controllers
 
         private string GenerateToken()
         {
-            using (var rng = new RNGCryptoServiceProvider())
+            using (var rng = RandomNumberGenerator.Create())
             {
                 byte[] tokenData = new byte[32];
                 rng.GetBytes(tokenData);

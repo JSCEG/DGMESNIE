@@ -314,7 +314,7 @@ namespace NSIE.Controllers
 
         // ----------  Últimas acciones del usuario (TOP n) ----------
         [HttpGet]
-        public async Task<IActionResult> GetUltimasAcciones(int top = 5)
+        public async Task<IActionResult> GetUltimasAcciones(int top = 10)
         {
             // 1. Perfil desde sesión
             var perfilJson = HttpContext.Session.GetString("PerfilUsuario");

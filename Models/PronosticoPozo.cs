@@ -3,8 +3,6 @@ namespace NSIE.Models
     /// <summary>
     /// Clase PronosticoPozo
     /// 
-    /// TABLA SQL: [dbo].[Pronostico_Pozos]
-    /// 
     /// DESCRIPCIÓN:
     /// Modelo que representa los pronósticos de pozos cargados de forma masiva desde Excel.
     /// Esta tabla es el corazón de la Inteligencia (INSUMO 1.1) del SIIL.

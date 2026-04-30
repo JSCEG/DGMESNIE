@@ -12,6 +12,8 @@ namespace NSIE.Servicios
 {
     public class RepositorioSIIL : IRepositorioSIIL
     {
+        private const string SpObtenerPerfilSesion = "dgmesnie.sp_ObtenerPerfilSesion";
+
         private readonly string _connectionString;
         private readonly IWebHostEnvironment _env;
 
@@ -320,7 +322,9 @@ namespace NSIE.Servicios
         {
             using var connection = new SqlConnection(_connectionString);
             return await connection.QuerySingleOrDefaultAsync<UserViewModel>(
-                "SELECT * FROM USUARIO Where Correo=@email",
+                @"SELECT [IdUsuario], [Correo], [Nombre]
+                  FROM [dgmesnie].[Usuario]
+                  WHERE [Correo] = @email AND [Vigente] = 1",
                 new { email }
             );
         }
@@ -331,7 +335,7 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 var user = await connection.QuerySingleOrDefaultAsync<UserViewModel>(
-                    "sp_ObtenerUsuarioSession",
+                    SpObtenerPerfilSesion,
                     new { IdUsuario = id },
                     commandType: CommandType.StoredProcedure
                 );

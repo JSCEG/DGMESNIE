@@ -6,8 +6,7 @@ namespace NSIE.Models
 {
     public class Consulta_GIE
     {
-
-        //Como estan en la vista de la BD -"[dbo].[vRazones_sociales]"
+        // Propiedades alineadas con la proyeccion usada por los reportes GIE.
         public string Razon_social { get; set; }
         public int Autorizados { get; set; }
         public int Solicitados { get; set; }

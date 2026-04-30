@@ -13,7 +13,7 @@ namespace NSIE.Componentes
             _repositorioAcceso = repositorioAcceso;
         }
 
-        public async Task<IViewComponentResult> InvokeAsync()
+        public IViewComponentResult Invoke()
         {
             var totalVisitas = _repositorioAcceso.ObtenerTotalVisitas();
             return View(totalVisitas);

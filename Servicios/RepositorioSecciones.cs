@@ -88,6 +88,55 @@ namespace NSIE.Servicios
     {
         private readonly string _connectionString;
 
+        private const string SelectSeccionCompat = @"
+            SELECT
+                [SeccionId] AS [Id],
+                [Titulo],
+                [Articulos],
+                [FundamentoLegal],
+                [Descripcion],
+                [Ayuda],
+                [Objetivo],
+                [ResponsableNormativo],
+                [PublicoObjetivo],
+                [Activa] AS [Activo],
+                [Orden]
+            FROM [dgmesnie].[Seccion]";
+
+        private const string SelectModuloCompat = @"
+            SELECT
+                m.[ModuloId] AS [Id],
+                m.[SeccionId],
+                m.[Title],
+                m.[FundamentoLegalModulo],
+                (
+                    SELECT STRING_AGG(CAST(rm.[RolId] AS NVARCHAR(20)), ',')
+                    FROM [dgmesnie].[RolModulo] rm
+                    WHERE rm.[ModuloId] = m.[ModuloId]
+                        AND rm.[Activa] = 1
+                ) AS [Roles],
+                (
+                    SELECT STRING_AGG(r.[RolNombre], ', ')
+                    FROM [dgmesnie].[RolModulo] rm
+                    INNER JOIN [dgmesnie].[Rol] r ON r.[RolId] = rm.[RolId]
+                    WHERE rm.[ModuloId] = m.[ModuloId]
+                        AND rm.[Activa] = 1
+                ) AS [NombresRoles],
+                m.[Perfiles],
+                m.[Etapa],
+                m.[JustificacionOrden],
+                m.[AyudaContextual],
+                m.[Controller],
+                m.[Action],
+                m.[Descripcion] AS [Desc],
+                m.[Imagen] AS [Img],
+                m.[BotonTexto] AS [Btn],
+                m.[ElementosUI],
+                m.[AyudaVista],
+                m.[Orden],
+                m.[Activo]
+            FROM [dgmesnie].[Modulo] m";
+
         public RepositorioSecciones(IConfiguration configuration)
         {
             _connectionString = configuration.GetConnectionString("DefaultConnection");
@@ -97,11 +146,11 @@ namespace NSIE.Servicios
         {
             using var connection = new SqlConnection(_connectionString);
 
-            var secciones = await connection.QueryAsync<SeccionConModulos>("SELECT * FROM Secciones ORDER BY Orden");
+            var secciones = await connection.QueryAsync<SeccionConModulos>(SelectSeccionCompat + " ORDER BY [Orden]");
             foreach (var seccion in secciones)
             {
                 var modulos = await connection.QueryAsync<Modulo>(
-                    "SELECT * FROM Modulos WHERE SeccionId = @SeccionId ORDER BY Orden",
+                    SelectModuloCompat + " WHERE [SeccionId] = @SeccionId ORDER BY [Orden]",
                     new { SeccionId = seccion.Id });
                 seccion.Modulos = modulos.ToList();
             }
@@ -114,13 +163,13 @@ namespace NSIE.Servicios
             using var connection = new SqlConnection(_connectionString);
 
             var seccion = await connection.QueryFirstOrDefaultAsync<SeccionConModulos>(
-                "SELECT * FROM Secciones WHERE Id = @Id",
+                SelectSeccionCompat + " WHERE [SeccionId] = @Id",
                 new { Id = id });
 
             if (seccion != null)
             {
                 var modulos = await connection.QueryAsync<Modulo>(
-                    "SELECT * FROM Modulos WHERE SeccionId = @SeccionId ORDER BY Orden",
+                    SelectModuloCompat + " WHERE [SeccionId] = @SeccionId ORDER BY [Orden]",
                     new { SeccionId = seccion.Id });
                 seccion.Modulos = modulos.ToList();
             }
@@ -132,8 +181,9 @@ namespace NSIE.Servicios
         {
             using var connection = new SqlConnection(_connectionString);
 
-            var sql = @"INSERT INTO Secciones (Titulo, Articulos, FundamentoLegal, Descripcion, Ayuda, Objetivo, ResponsableNormativo, PublicoObjetivo, Activo, Orden)
-                    VALUES (@Titulo, @Articulos, @FundamentoLegal, @Descripcion, @Ayuda, @Objetivo, @ResponsableNormativo, @PublicoObjetivo, @Activo, @Orden)";
+            var sql = @"INSERT INTO [dgmesnie].[Seccion]
+                        ([Titulo], [Articulos], [FundamentoLegal], [Descripcion], [Ayuda], [Objetivo], [ResponsableNormativo], [PublicoObjetivo], [Activa], [Orden])
+                        VALUES (@Titulo, @Articulos, @FundamentoLegal, @Descripcion, @Ayuda, @Objetivo, @ResponsableNormativo, @PublicoObjetivo, @Activo, @Orden)";
 
             await connection.ExecuteAsync(sql, seccion);
         }
@@ -142,18 +192,18 @@ namespace NSIE.Servicios
         {
             using var connection = new SqlConnection(_connectionString);
 
-            var sql = @"UPDATE Secciones SET 
-                    Titulo = @Titulo,
-                    Articulos = @Articulos,
-                    FundamentoLegal = @FundamentoLegal,
-                    Descripcion = @Descripcion,
-                    Ayuda = @Ayuda,
-                    Objetivo = @Objetivo,
-                    ResponsableNormativo = @ResponsableNormativo,
-                    PublicoObjetivo = @PublicoObjetivo,
-                    Activo = @Activo,
-                    Orden = @Orden
-                    WHERE Id = @Id";
+            var sql = @"UPDATE [dgmesnie].[Seccion] SET 
+                        [Titulo] = @Titulo,
+                        [Articulos] = @Articulos,
+                        [FundamentoLegal] = @FundamentoLegal,
+                        [Descripcion] = @Descripcion,
+                        [Ayuda] = @Ayuda,
+                        [Objetivo] = @Objetivo,
+                        [ResponsableNormativo] = @ResponsableNormativo,
+                        [PublicoObjetivo] = @PublicoObjetivo,
+                        [Activa] = @Activo,
+                        [Orden] = @Orden
+                        WHERE [SeccionId] = @Id";
 
             await connection.ExecuteAsync(sql, seccion);
         }
@@ -166,9 +216,29 @@ namespace NSIE.Servicios
             {
                 using var connection = new SqlConnection(_connectionString);
                 var sql = @"
-                    SELECT * FROM Modulos 
-                    WHERE SeccionId = @SeccionId 
-                    ORDER BY Orden";
+                    SELECT
+                        [ModuloId] AS [ModuloId],
+                        [SeccionId] AS [SeccionId],
+                        [Title] AS [Title],
+                        [FundamentoLegalModulo] AS [FundamentoLegalModulo],
+                        CAST(NULL AS NVARCHAR(MAX)) AS [Roles],
+                        [Perfiles] AS [Perfiles],
+                        [Etapa] AS [Etapa],
+                        [JustificacionOrden] AS [JustificacionOrden],
+                        [AyudaContextual] AS [AyudaContextual],
+                        [Controller] AS [Controller],
+                        [Action] AS [Action],
+                        [Descripcion] AS [Desc],
+                        [Imagen] AS [Img],
+                        [BotonTexto] AS [Btn],
+                        [ElementosUI] AS [ElementosUI],
+                        [AyudaVista] AS [AyudaVista],
+                        [Orden] AS [Orden],
+                        [Activo] AS [Activo],
+                        [EsExterno] AS [EsExterno]
+                    FROM [dgmesnie].[Modulo]
+                    WHERE [SeccionId] = @SeccionId 
+                    ORDER BY [Orden]";
 
                 var modulos = await connection.QueryAsync<ModuloSNIER>(sql, new { SeccionId = seccionId });
 
@@ -195,13 +265,41 @@ namespace NSIE.Servicios
 
                 try
                 {
-                    // Primero eliminar todos los módulos de la sección
-                    var sqlModulos = "DELETE FROM Modulos WHERE SeccionId = @SeccionId";
+                    var sqlOverrides = @"
+                        DELETE uvo
+                        FROM [dgmesnie].[UsuarioVistaOverride] uvo
+                        INNER JOIN [dgmesnie].[Vista] v ON v.[VistaId] = uvo.[VistaId]
+                        INNER JOIN [dgmesnie].[Modulo] m ON m.[ModuloId] = v.[ModuloId]
+                        WHERE m.[SeccionId] = @SeccionId;";
+                    await connection.ExecuteAsync(sqlOverrides, new { SeccionId = seccionId }, transaction);
+
+                    var sqlRolVista = @"
+                        DELETE rv
+                        FROM [dgmesnie].[RolVista] rv
+                        INNER JOIN [dgmesnie].[Vista] v ON v.[VistaId] = rv.[VistaId]
+                        INNER JOIN [dgmesnie].[Modulo] m ON m.[ModuloId] = v.[ModuloId]
+                        WHERE m.[SeccionId] = @SeccionId;";
+                    await connection.ExecuteAsync(sqlRolVista, new { SeccionId = seccionId }, transaction);
+
+                    var sqlVistas = @"
+                        DELETE v
+                        FROM [dgmesnie].[Vista] v
+                        INNER JOIN [dgmesnie].[Modulo] m ON m.[ModuloId] = v.[ModuloId]
+                        WHERE m.[SeccionId] = @SeccionId;";
+                    await connection.ExecuteAsync(sqlVistas, new { SeccionId = seccionId }, transaction);
+
+                    var sqlRolModulo = "DELETE FROM [dgmesnie].[RolModulo] WHERE [ModuloId] IN (SELECT [ModuloId] FROM [dgmesnie].[Modulo] WHERE [SeccionId] = @SeccionId)";
+                    await connection.ExecuteAsync(sqlRolModulo, new { SeccionId = seccionId }, transaction);
+
+                    var sqlModulos = "DELETE FROM [dgmesnie].[Modulo] WHERE [SeccionId] = @SeccionId";
                     var modulosEliminados = await connection.ExecuteAsync(sqlModulos, new { SeccionId = seccionId }, transaction);
                     Console.WriteLine($">>> Módulos eliminados: {modulosEliminados}");
 
+                    var sqlRolSeccion = "DELETE FROM [dgmesnie].[RolSeccion] WHERE [SeccionId] = @SeccionId";
+                    await connection.ExecuteAsync(sqlRolSeccion, new { SeccionId = seccionId }, transaction);
+
                     // Luego eliminar la sección
-                    var sqlSeccion = "DELETE FROM Secciones WHERE Id = @Id";
+                    var sqlSeccion = "DELETE FROM [dgmesnie].[Seccion] WHERE [SeccionId] = @Id";
                     var seccionEliminada = await connection.ExecuteAsync(sqlSeccion, new { Id = seccionId }, transaction);
                     Console.WriteLine($">>> Sección eliminada: {seccionEliminada}");
 
@@ -231,19 +329,28 @@ namespace NSIE.Servicios
         {
             Console.WriteLine(">>> Insertando módulo con título: " + modulo.Title);
             using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var transaction = connection.BeginTransaction();
 
-            var sql = @"INSERT INTO Modulos (SeccionId, Title, FundamentoLegalModulo, Roles, NombresRoles, Perfiles, Etapa,
-                    JustificacionOrden, AyudaContextual, Controller, Action, [Desc], Img, Btn, ElementosUI, AyudaVista, Orden, Activo)
-                    VALUES (@SeccionId, @Title, @FundamentoLegalModulo, @Roles, @NombresRoles, @Perfiles, @Etapa,
-                    @JustificacionOrden, @AyudaContextual, @Controller, @Action, @Desc, @Img, @Btn, @ElementosUI, @AyudaVista, @Orden, @Activo)";
+            var sql = @"INSERT INTO [dgmesnie].[Modulo]
+                    (
+                        [SeccionId], [Title], [FundamentoLegalModulo], [Perfiles], [Etapa],
+                        [JustificacionOrden], [AyudaContextual], [Controller], [Action], [Descripcion],
+                        [Imagen], [BotonTexto], [ElementosUI], [AyudaVista], [Orden], [Activo]
+                    )
+                    OUTPUT INSERTED.[ModuloId]
+                    VALUES
+                    (
+                        @SeccionId, @Title, @FundamentoLegalModulo, @Perfiles, @Etapa,
+                        @JustificacionOrden, @AyudaContextual, @Controller, @Action, @Desc,
+                        @Img, @Btn, @ElementosUI, @AyudaVista, @Orden, @Activo
+                    )";
 
-            await connection.ExecuteAsync(sql, new
+            var moduloId = await connection.ExecuteScalarAsync<int>(sql, new
             {
                 modulo.SeccionId,
                 modulo.Title,
                 modulo.FundamentoLegalModulo,
-                modulo.Roles,
-                modulo.NombresRoles,
                 modulo.Perfiles,
                 modulo.Etapa,
                 modulo.JustificacionOrden,
@@ -257,48 +364,90 @@ namespace NSIE.Servicios
                 modulo.AyudaVista,
                 modulo.Orden,
                 modulo.Activo
-            });
+            }, transaction);
+
+            await SyncRolModuloAsync(connection, transaction, moduloId, modulo.Roles);
+            await transaction.CommitAsync();
 
         }
 
         public async Task ActualizarModuloAsync(Modulo modulo)
         {
             using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var transaction = connection.BeginTransaction();
 
-            var sql = @"UPDATE Modulos SET
-                    Title = @Title,
-                    FundamentoLegalModulo = @FundamentoLegalModulo,
-                    Roles = @Roles,
-                    NombresRoles = @NombresRoles,
-                    Perfiles = @Perfiles,
-                    Etapa = @Etapa,
-                    JustificacionOrden = @JustificacionOrden,
-                    AyudaContextual = @AyudaContextual,
-                    Controller = @Controller,
-                    Action = @Action,
-                   [Desc] = @Desc,
-                    Img = @Img,
-                    Btn = @Btn,
-                    ElementosUI = @ElementosUI,
-                    AyudaVista = @AyudaVista,
-                    Orden = @Orden,
-                    Activo = @Activo
-                    WHERE Id = @Id";
+            var sql = @"UPDATE [dgmesnie].[Modulo] SET
+                    [Title] = @Title,
+                    [FundamentoLegalModulo] = @FundamentoLegalModulo,
+                    [Perfiles] = @Perfiles,
+                    [Etapa] = @Etapa,
+                    [JustificacionOrden] = @JustificacionOrden,
+                    [AyudaContextual] = @AyudaContextual,
+                    [Controller] = @Controller,
+                    [Action] = @Action,
+                    [Descripcion] = @Desc,
+                    [Imagen] = @Img,
+                    [BotonTexto] = @Btn,
+                    [ElementosUI] = @ElementosUI,
+                    [AyudaVista] = @AyudaVista,
+                    [Orden] = @Orden,
+                    [Activo] = @Activo
+                    WHERE [ModuloId] = @Id";
 
-            await connection.ExecuteAsync(sql, modulo);
+            await connection.ExecuteAsync(sql, modulo, transaction);
+            await SyncRolModuloAsync(connection, transaction, modulo.Id, modulo.Roles);
+            await transaction.CommitAsync();
         }
 
         public async Task EliminarModuloAsync(int id)
         {
             using var connection = new SqlConnection(_connectionString);
-            await connection.ExecuteAsync("DELETE FROM Modulos WHERE Id = @Id", new { Id = id });
+            await connection.OpenAsync();
+            await using var transaction = await connection.BeginTransactionAsync();
+
+            try
+            {
+                await connection.ExecuteAsync(@"
+                    DELETE uvo
+                    FROM [dgmesnie].[UsuarioVistaOverride] uvo
+                    INNER JOIN [dgmesnie].[Vista] v ON v.[VistaId] = uvo.[VistaId]
+                    WHERE v.[ModuloId] = @Id;",
+                    new { Id = id }, transaction);
+
+                await connection.ExecuteAsync(@"
+                    DELETE rv
+                    FROM [dgmesnie].[RolVista] rv
+                    INNER JOIN [dgmesnie].[Vista] v ON v.[VistaId] = rv.[VistaId]
+                    WHERE v.[ModuloId] = @Id;",
+                    new { Id = id }, transaction);
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM [dgmesnie].[Vista] WHERE [ModuloId] = @Id;",
+                    new { Id = id }, transaction);
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM [dgmesnie].[RolModulo] WHERE [ModuloId] = @Id;",
+                    new { Id = id }, transaction);
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM [dgmesnie].[Modulo] WHERE [ModuloId] = @Id;",
+                    new { Id = id }, transaction);
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
 
         public async Task<Modulo> ObtenerModuloPorIdAsync(int id)
         {
             using var connection = new SqlConnection(_connectionString);
-            var sql = "SELECT * FROM Modulos WHERE Id = @Id";
+            var sql = SelectModuloCompat + " WHERE [ModuloId] = @Id";
             return await connection.QueryFirstOrDefaultAsync<Modulo>(sql, new { Id = id });
         }
 
@@ -307,23 +456,23 @@ namespace NSIE.Servicios
             using var connection = new SqlConnection(_connectionString);
             var sql = @"
                 SELECT 
-                    v.Id as VistaId,
+                    v.[VistaId] as VistaId,
                     v.ModuloId,
-                    v.Titulo,
-                    v.Controller,
-                    v.Action,
-                    v.Roles,
-                    v.Perfiles,
-                    v.Orden,
-                    v.Activo as Activa,
-                    v.EsExterno,
-                    m.Title as ModuloTitle,
-                    s.Titulo as SeccionTitle
-                FROM Vistas v 
-                INNER JOIN Modulos m ON v.ModuloId = m.Id 
-                INNER JOIN Secciones s ON m.SeccionId = s.Id
-                WHERE v.ModuloId = @ModuloId 
-                ORDER BY v.Orden";
+                    v.[Titulo],
+                    v.[Controller],
+                    v.[Action],
+                    CAST(NULL AS NVARCHAR(150)) as Roles,
+                    v.[Perfiles],
+                    v.[Orden],
+                    v.[Activa] as Activa,
+                    v.[EsExterno],
+                    m.[Title] as ModuloTitle,
+                    s.[Titulo] as SeccionTitle
+                FROM [dgmesnie].[Vista] v 
+                INNER JOIN [dgmesnie].[Modulo] m ON v.[ModuloId] = m.[ModuloId]
+                INNER JOIN [dgmesnie].[Seccion] s ON m.[SeccionId] = s.[SeccionId]
+                WHERE v.[ModuloId] = @ModuloId 
+                ORDER BY v.[Orden]";
 
             return (await connection.QueryAsync<ModulosVista>(sql, new { ModuloId = moduloId })).ToList();
         }
@@ -333,22 +482,22 @@ namespace NSIE.Servicios
             using var connection = new SqlConnection(_connectionString);
             var sql = @"
                 SELECT 
-                    v.Id as VistaId,
-                    v.ModuloId,
-                    v.Titulo,
-                    v.Controller,
-                    v.Action,
-                    v.Roles,
-                    v.Perfiles,
-                    v.Orden,
-                    v.Activo as Activa,
-                    v.EsExterno,
-                    m.Title as ModuloTitle,
-                    s.Titulo as SeccionTitle
-                FROM Vistas v 
-                INNER JOIN Modulos m ON v.ModuloId = m.Id 
-                INNER JOIN Secciones s ON m.SeccionId = s.Id
-                WHERE v.Id = @VistaId";
+                    v.[VistaId] as VistaId,
+                    v.[ModuloId],
+                    v.[Titulo],
+                    v.[Controller],
+                    v.[Action],
+                    CAST(NULL AS NVARCHAR(150)) as Roles,
+                    v.[Perfiles],
+                    v.[Orden],
+                    v.[Activa] as Activa,
+                    v.[EsExterno],
+                    m.[Title] as ModuloTitle,
+                    s.[Titulo] as SeccionTitle
+                FROM [dgmesnie].[Vista] v 
+                INNER JOIN [dgmesnie].[Modulo] m ON v.[ModuloId] = m.[ModuloId]
+                INNER JOIN [dgmesnie].[Seccion] s ON m.[SeccionId] = s.[SeccionId]
+                WHERE v.[VistaId] = @VistaId";
 
             return await connection.QueryFirstOrDefaultAsync<ModulosVista>(sql, new { VistaId = vistaId });
         }
@@ -357,8 +506,8 @@ namespace NSIE.Servicios
         {
             using var connection = new SqlConnection(_connectionString);
             var sql = @"
-                INSERT INTO Vistas (ModuloId, Titulo, Controller, Action, Roles, Perfiles, Orden, Activo, EsExterno)
-                VALUES (@ModuloId, @Titulo, @Controller, @Action, @Roles, @Perfiles, @Orden, @Activa, @EsExterno)";
+                INSERT INTO [dgmesnie].[Vista] ([ModuloId], [Titulo], [Controller], [Action], [Perfiles], [Orden], [Activa], [EsExterno])
+                VALUES (@ModuloId, @Titulo, @Controller, @Action, @Perfiles, @Orden, @Activa, @EsExterno)";
 
             await connection.ExecuteAsync(sql, vista);
         }
@@ -367,16 +516,15 @@ namespace NSIE.Servicios
         {
             using var connection = new SqlConnection(_connectionString);
             var sql = @"
-                UPDATE Vistas SET 
-                    Titulo = @Titulo,
-                    Controller = @Controller,
-                    Action = @Action,
-                    Roles = @Roles,
-                    Perfiles = @Perfiles,
-                    Orden = @Orden,
-                    Activo = @Activa,
-                    EsExterno = @EsExterno
-                WHERE Id = @VistaId";
+                UPDATE [dgmesnie].[Vista] SET 
+                    [Titulo] = @Titulo,
+                    [Controller] = @Controller,
+                    [Action] = @Action,
+                    [Perfiles] = @Perfiles,
+                    [Orden] = @Orden,
+                    [Activa] = @Activa,
+                    [EsExterno] = @EsExterno
+                WHERE [VistaId] = @VistaId";
 
             await connection.ExecuteAsync(sql, vista);
         }
@@ -384,7 +532,30 @@ namespace NSIE.Servicios
         public async Task EliminarModuloVistaAsync(int vistaId)
         {
             using var connection = new SqlConnection(_connectionString);
-            await connection.ExecuteAsync("DELETE FROM Vistas WHERE Id = @VistaId", new { VistaId = vistaId });
+            await connection.OpenAsync();
+            await using var transaction = await connection.BeginTransactionAsync();
+
+            try
+            {
+                await connection.ExecuteAsync(
+                    "DELETE FROM [dgmesnie].[UsuarioVistaOverride] WHERE [VistaId] = @VistaId;",
+                    new { VistaId = vistaId }, transaction);
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM [dgmesnie].[RolVista] WHERE [VistaId] = @VistaId;",
+                    new { VistaId = vistaId }, transaction);
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM [dgmesnie].[Vista] WHERE [VistaId] = @VistaId;",
+                    new { VistaId = vistaId }, transaction);
+
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         public async Task<int> ContarVistasPorModuloAsync(int moduloId)
@@ -396,7 +567,7 @@ namespace NSIE.Servicios
                 using var connection = new SqlConnection(_connectionString);
                 await connection.OpenAsync();
 
-                var sql = "SELECT COUNT(*) FROM Vistas WHERE ModuloId = @ModuloId";
+                var sql = "SELECT COUNT(*) FROM [dgmesnie].[Vista] WHERE [ModuloId] = @ModuloId";
                 Console.WriteLine($">>> SQL: {sql}");
 
                 var count = await connection.QuerySingleAsync<int>(sql, new { ModuloId = moduloId });
@@ -417,41 +588,52 @@ namespace NSIE.Servicios
             var sql = @"
                 SELECT 
                     -- SECCIÓN
-                    s.Id as SeccionId,
-                    s.Titulo as SeccionTitulo,
-                    s.Articulos,
-                    s.FundamentoLegal,
-                    s.Descripcion,
-                    s.Ayuda,
-                    s.Objetivo,
-                    s.ResponsableNormativo,
-                    s.PublicoObjetivo,
-                    s.Activo as SeccionActiva,
-                    ISNULL(s.Orden, 1) as SeccionOrden,
+                    s.[SeccionId] as SeccionId,
+                    s.[Titulo] as SeccionTitulo,
+                    s.[Articulos],
+                    s.[FundamentoLegal],
+                    s.[Descripcion],
+                    s.[Ayuda],
+                    s.[Objetivo],
+                    s.[ResponsableNormativo],
+                    s.[PublicoObjetivo],
+                    s.[Activa] as SeccionActiva,
+                    ISNULL(s.[Orden], 1) as SeccionOrden,
                     
                     -- MÓDULO
-                    m.Id as ModuloId,
-                    m.SeccionId as ModuloSeccionId,
-                    m.Title as ModuloTitle,
-                    m.FundamentoLegalModulo,
-                    m.Roles as ModuloRoles,
-                    m.NombresRoles,
-                    m.Perfiles as ModuloPerfiles,
-                    m.Etapa,
-                    m.JustificacionOrden,
-                    m.AyudaContextual,
-                    m.Controller as ModuloController,
-                    m.Action as ModuloAction,
-                    m.[Desc] as ModuloDesc,
-                    m.Img,
-                    m.Btn,
-                    m.ElementosUI,
-                    m.AyudaVista,
-                    ISNULL(m.Orden, 1) as ModuloOrden,
-                    m.Activo as ModuloActivo
-                FROM Secciones s
-                LEFT JOIN Modulos m ON s.Id = m.SeccionId
-                ORDER BY ISNULL(s.Orden, 1), ISNULL(m.Orden, 1)"; // ✅ QUITAMOS WHERE s.Activo = 1
+                    m.[ModuloId] as ModuloId,
+                    m.[SeccionId] as ModuloSeccionId,
+                    m.[Title] as ModuloTitle,
+                    m.[FundamentoLegalModulo],
+                    (
+                        SELECT STRING_AGG(CAST(rm.[RolId] AS NVARCHAR(20)), ',')
+                        FROM [dgmesnie].[RolModulo] rm
+                        WHERE rm.[ModuloId] = m.[ModuloId]
+                            AND rm.[Activa] = 1
+                    ) as ModuloRoles,
+                    (
+                        SELECT STRING_AGG(r.[RolNombre], ', ')
+                        FROM [dgmesnie].[RolModulo] rm
+                        INNER JOIN [dgmesnie].[Rol] r ON r.[RolId] = rm.[RolId]
+                        WHERE rm.[ModuloId] = m.[ModuloId]
+                            AND rm.[Activa] = 1
+                    ) as NombresRoles,
+                    m.[Perfiles] as ModuloPerfiles,
+                    m.[Etapa],
+                    m.[JustificacionOrden],
+                    m.[AyudaContextual],
+                    m.[Controller] as ModuloController,
+                    m.[Action] as ModuloAction,
+                    m.[Descripcion] as ModuloDesc,
+                    m.[Imagen] as Img,
+                    m.[BotonTexto] as Btn,
+                    m.[ElementosUI],
+                    m.[AyudaVista],
+                    ISNULL(m.[Orden], 1) as ModuloOrden,
+                    m.[Activo] as ModuloActivo
+                FROM [dgmesnie].[Seccion] s
+                LEFT JOIN [dgmesnie].[Modulo] m ON s.[SeccionId] = m.[SeccionId]
+                ORDER BY ISNULL(s.[Orden], 1), ISNULL(m.[Orden], 1)";
 
             var seccionesDict = new Dictionary<int, SeccionConModulos>();
 
@@ -523,6 +705,39 @@ namespace NSIE.Servicios
             return seccionesDict.Values.OrderBy(s => s.Orden).ToList();
         }
 
+        private static async Task SyncRolModuloAsync(SqlConnection connection, SqlTransaction transaction, int moduloId, string? roles)
+        {
+            await connection.ExecuteAsync(
+                "DELETE FROM [dgmesnie].[RolModulo] WHERE [ModuloId] = @ModuloId;",
+                new { ModuloId = moduloId },
+                transaction);
+
+            var roleIds = (roles ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(value => int.TryParse(value, out var roleId) ? roleId : (int?)null)
+                .Where(roleId => roleId.HasValue)
+                .Select(roleId => roleId!.Value)
+                .Distinct()
+                .ToList();
+
+            if (!roleIds.Any())
+            {
+                return;
+            }
+
+            const string insertRolesSql = @"
+                INSERT INTO [dgmesnie].[RolModulo] ([RolId], [ModuloId], [MercadoId], [Activa])
+                VALUES (@RolId, @ModuloId, NULL, 1);";
+
+            foreach (var roleId in roleIds)
+            {
+                await connection.ExecuteAsync(
+                    insertRolesSql,
+                    new { RolId = roleId, ModuloId = moduloId },
+                    transaction);
+            }
+        }
+
         // NUEVO: Método para contar módulos por sección
         public async Task<int> ContarModulosPorSeccionAsync(int seccionId)
         {
@@ -533,7 +748,7 @@ namespace NSIE.Servicios
                 using var connection = new SqlConnection(_connectionString);
                 await connection.OpenAsync();
 
-                var sql = "SELECT COUNT(*) FROM Modulos WHERE SeccionId = @SeccionId AND Activo = 1";
+                var sql = "SELECT COUNT(*) FROM [dgmesnie].[Modulo] WHERE [SeccionId] = @SeccionId AND [Activo] = 1";
                 Console.WriteLine($">>> SQL: {sql}");
 
                 var count = await connection.QuerySingleAsync<int>(sql, new { SeccionId = seccionId });
@@ -552,7 +767,7 @@ namespace NSIE.Servicios
         public async Task ActualizarOrdenSeccionAsync(int seccionId, int nuevoOrden)
         {
             using var connection = new SqlConnection(_connectionString);
-            var sql = "UPDATE Secciones SET Orden = @Orden WHERE Id = @Id";
+            var sql = "UPDATE [dgmesnie].[Seccion] SET [Orden] = @Orden WHERE [SeccionId] = @Id";
             await connection.ExecuteAsync(sql, new { Id = seccionId, Orden = nuevoOrden });
         }
     }

@@ -1,3 +1,5 @@
+#nullable enable annotations
+
 using System.ComponentModel.DataAnnotations;
 using Dapper.Contrib.Extensions;
 using Microsoft.AspNetCore.Http;
@@ -15,7 +17,7 @@ namespace NSIE.Models
 
         [Range(-10000, 10000, ErrorMessage = "La anomalía gravimétrica debe estar entre -10000 y 10000.")]
         public decimal? AnomaliaGravimetrica { get; set; }
-        
+
         [Required(ErrorMessage = "Debe registrar anomalía 1.")]
         public string Anomalia1 { get; set; }
 

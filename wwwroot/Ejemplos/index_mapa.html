@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Mapa de Yacimientos - SIIL | SENER</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="css/base-theme.css" />
+    <link rel="stylesheet" href="css/shared-header.css" />
+    <link rel="stylesheet" href="css/shared-breadcrumbs.css" />
+    <link rel="stylesheet" href="css/shared-bottom-nav.css" />
+    
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#9B2247",
+                        accent: "#A57F2C",
+                        "background-light": "#F8F9FA"
+                    },
+                    fontFamily: {
+                        display: ["Noto Sans", "sans-serif"]
+                    }
+                }
+            }
+        };
+    </script>
+
+    <style>
+        body {
+            font-family: "Noto Sans", sans-serif;
+            min-height: 100vh;
+            background-color: #F8F9FA;
+            padding-bottom: 6rem;
+        }
+
+        .map-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+        }
+
+        .page-header {
+            margin-bottom: 2rem;
+        }
+
+        .page-title {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #1F2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle {
+            color: #6B7280;
+            font-size: 1rem;
+        }
+
+        .map-controls {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            align-items: end;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .control-label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .control-input {
+            padding: 0.75rem 1rem;
+            border: 2px solid #E5E7EB;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            transition: border-color 0.2s;
+            font-family: "Noto Sans", sans-serif;
+        }
+
+        .control-input:focus {
+            outline: none;
+            border-color: #9B2247;
+        }
+
+        .btn-primary {
+            background: #9B2247;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary:hover {
+            background: #7f1c3a;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(155, 34, 71, 0.3);
+        }
+
+        .map-card {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .map-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid #E5E7EB;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .map-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: #1F2937;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .map-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 0.5rem;
+            border: 2px solid #E5E7EB;
+            background: white;
+            color: #6B7280;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-icon:hover {
+            border-color: #9B2247;
+            color: #9B2247;
+            background: #FEF2F2;
+        }
+
+        .map-view {
+            height: 600px;
+            background: linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%);
+            position: relative;
+        }
+
+        .map-placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #9CA3AF;
+        }
+
+        .map-placeholder i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .legend-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-top: 1.5rem;
+        }
+
+        .legend-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #1F2937;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .legend-marker {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .legend-label {
+            font-size: 0.875rem;
+            color: #374151;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .info-card {
+            background: white;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .info-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #9B2247 0%, #7f1c3a 100%);
+            border-radius: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .info-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #1F2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-text {
+            font-size: 0.875rem;
+            color: #6B7280;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+
+<body>
+    <site-header></site-header>
+    <site-breadcrumbs></site-breadcrumbs>
+
+    <main class="map-container">
+        <div class="page-header">
+            <h1 class="page-title">Mapa de Yacimientos de Litio</h1>
+            <p class="page-subtitle">Visualización geoespacial de recursos minerales en territorio nacional</p>
+        </div>
+
+        <!-- Map Controls -->
+        <div class="map-controls">
+            <div class="controls-grid">
+                <div class="control-group">
+                    <label class="control-label">Estado</label>
+                    <select class="control-input">
+                        <option value="">Todos los estados</option>
+                        <option value="sonora">Sonora</option>
+                        <option value="chihuahua">Chihuahua</option>
+                        <option value="zacatecas">Zacatecas</option>
+                        <option value="slp">San Luis Potosí</option>
+                        <option value="durango">Durango</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Tipo de Yacimiento</label>
+                    <select class="control-input">
+                        <option value="">Todos los tipos</option>
+                        <option value="salmuera">Salmuera</option>
+                        <option value="roca">Roca dura</option>
+                        <option value="arcilla">Arcilla</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">Concentración Mínima</label>
+                    <input type="number" class="control-input" placeholder="ppm" value="200">
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">&nbsp;</label>
+                    <button class="btn-primary">
+                        <i class="fa-solid fa-filter"></i>
+                        Aplicar Filtros
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Map Card -->
+        <div class="map-card">
+            <div class="map-header">
+                <h2 class="map-title">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                    Mapa Interactivo
+                </h2>
+                <div class="map-actions">
+                    <button class="btn-icon" title="Zoom In">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                    <button class="btn-icon" title="Zoom Out">
+                        <i class="fa-solid fa-minus"></i>
+                    </button>
+                    <button class="btn-icon" title="Centrar">
+                        <i class="fa-solid fa-location-crosshairs"></i>
+                    </button>
+                    <button class="btn-icon" title="Pantalla Completa">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                    <button class="btn-icon" title="Descargar">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="map" class="map-view">
+                <div class="map-placeholder">
+                    <i class="fa-solid fa-map"></i>
+                    <p class="text-lg font-semibold">Mapa Interactivo</p>
+                    <p class="text-sm">Integración con Leaflet pendiente</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend-card">
+            <h3 class="legend-title">
+                <i class="fa-solid fa-circle-info"></i>
+                Leyenda del Mapa
+            </h3>
+            <div class="legend-grid">
+                <div class="legend-item">
+                    <div class="legend-marker" style="background: #10B981;"></div>
+                    <span class="legend-label">Alta concentración (>400 ppm)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-marker" style="background: #F59E0B;"></div>
+                    <span class="legend-label">Media concentración (200-400 ppm)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-marker" style="background: #EF4444;"></div>
+                    <span class="legend-label">Baja concentración (<200 ppm)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-marker" style="background: #6B7280;"></div>
+                    <span class="legend-label">En exploración</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Cards -->
+        <div class="info-grid">
+            <div class="info-card">
+                <div class="info-icon">
+                    <i class="fa-solid fa-mountain"></i>
+                </div>
+                <h3 class="info-title">Yacimientos Identificados</h3>
+                <p class="info-text">
+                    Se han identificado 47 yacimientos potenciales de litio en 8 estados de la República Mexicana, 
+                    con diferentes niveles de concentración y tipos de depósito.
+                </p>
+            </div>
+
+            <div class="info-card">
+                <div class="info-icon">
+                    <i class="fa-solid fa-flask-vial"></i>
+                </div>
+                <h3 class="info-title">Análisis en Curso</h3>
+                <p class="info-text">
+                    Actualmente se están realizando estudios geológicos y análisis de laboratorio en 12 sitios 
+                    prioritarios para determinar la viabilidad de extracción.
+                </p>
+            </div>
+
+            <div class="info-card">
+                <div class="info-icon">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h3 class="info-title">Áreas Protegidas</h3>
+                <p class="info-text">
+                    El sistema considera la proximidad a áreas naturales protegidas y sitios Ramsar para 
+                    garantizar la sustentabilidad ambiental de las operaciones.
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <site-bottom-nav></site-bottom-nav>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/preloader.js"></script>
+    <script src="js/shared-layout.js"></script>
+    <script src="js/shared-breadcrumbs.js"></script>
+    <script src="js/auth.js"></script>
+
+    <script>
+        // Demo: Inicializar mapa básico cuando se integre Leaflet
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Mapa de yacimientos cargado - Demo mode');
+            // Aquí se inicializará el mapa real con Leaflet
+        });
+    </script>
+</body>
+
+</html>

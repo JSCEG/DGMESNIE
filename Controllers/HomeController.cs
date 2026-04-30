@@ -1,12 +1,9 @@
-using System.Data;
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
 using NSIE.Models;
 using NSIE.Servicios;
 using NSIE.Servicios.Interfaces;  // Actualizar este using
 using Newtonsoft.Json.Linq;
-using System.Net;
 using Newtonsoft.Json;
 
 namespace NSIE.Controllers
@@ -18,7 +15,6 @@ namespace NSIE.Controllers
         private readonly ILogger<HomeController> _logger;
         private readonly IRepositorioProyectos _repositorioProyectos; // Usar _ consistentemente
                                                                       //  private readonly IServicioEmail _servicioEmail;               // Usar _ consistentemente
-        private readonly string _connectionString;                    // Usar _ consistentemente
         private readonly HttpClient _client;
         private readonly IRepositorioHome _repositorioHome;
 
@@ -27,48 +23,14 @@ namespace NSIE.Controllers
         public HomeController(
             ILogger<HomeController> logger,
             IRepositorioProyectos repositorioProyectos,
-            IConfiguration configuration,
             // IServicioEmail servicioEmail,
             IRepositorioHome repositorioHome)
         {
             _logger = logger;
             _repositorioProyectos = repositorioProyectos;           // Sin this
                                                                     //   _servicioEmail = servicioEmail;                         // Sin this
-            _connectionString = configuration.GetConnectionString("DefaultConnection");
             _client = new HttpClient();
             _repositorioHome = repositorioHome;                     // Sin this
-        }
-
-
-
-        public IActionResult ListaUsuarios()
-        {
-            try
-            {
-
-                #region Obtener DataTable de SQL - Lista Usuarios
-
-                SqlConnection con = new SqlConnection(_connectionString);//cadenap
-                string consulta = "SELECT [id],[Usuario],[Email],[EmailNormalizado],[PasswordHash] FROM[cre-db-2].[dbo].[Usuarios]";
-                SqlDataAdapter da = new SqlDataAdapter(consulta, con);
-
-                DataTable dt = new DataTable();
-                da.Fill(dt);
-
-
-
-                #endregion
-
-                TempData["MSG"] = "Estos son todos los Usuarios";
-                return View("ListaUsuarios", dt);
-
-            }
-            catch (Exception)
-            {
-                TempData["ERROR"] = "";
-
-                return View();
-            }
         }
 
 
@@ -78,39 +40,12 @@ namespace NSIE.Controllers
         {
             var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
             var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-            var rolUsuario = perfilUsuario?.Rol?.ToString() ?? "";
+            var seccionesUsuarioJson = HttpContext.Session.GetString("SeccionesUsuario");
+            var seccionesFiltradas = string.IsNullOrWhiteSpace(seccionesUsuarioJson)
+                ? await _repositorioHome.ObtenerSeccionesConModulos()
+                : JsonConvert.DeserializeObject<List<SeccionSNIER>>(seccionesUsuarioJson) ?? new List<SeccionSNIER>();
 
-            // Log para depuración
-            Console.WriteLine($"Rol que se manda al filtro: '{rolUsuario}'");
-
-            // Trae todas las secciones y módulos activos (sin filtrar por rol)
-            var secciones = await _repositorioHome.ObtenerSeccionesConModulos();
-
-            // Filtra los módulos por el rol del usuario usando la columna Roles (IDs)
-            foreach (var seccion in secciones)
-            {
-                var modulosFiltrados = new List<ModuloSNIER>();
-                foreach (var m in seccion.Modulos)
-                {
-                    var rolesModulo = m.Roles ?? "";
-                    var rolesArray = rolesModulo.Split(',').Select(r => r.Trim()).ToList();
-                    Console.WriteLine($"Comparando módulo '{m.Title}' (Roles: '{rolesModulo}') con rol usuario '{rolUsuario}'");
-
-                    if (string.IsNullOrEmpty(rolesModulo) || rolesArray.Contains(rolUsuario))
-                    {
-                        Console.WriteLine($"--> El módulo '{m.Title}' SÍ es visible para el usuario.");
-                        modulosFiltrados.Add(m);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"--> El módulo '{m.Title}' NO es visible para el usuario.");
-                    }
-                }
-                seccion.Modulos = modulosFiltrados;
-            }
-
-            // Solo deja secciones con al menos un módulo visible
-            var seccionesFiltradas = secciones.Where(s => s.Modulos.Any()).ToList();
+            seccionesFiltradas = seccionesFiltradas.Where(s => s.Modulos != null && s.Modulos.Any()).ToList();
 
             var modelo = new HomeViewModel
             {
@@ -137,24 +72,21 @@ namespace NSIE.Controllers
                 return StatusCode(StatusCodes.Status503ServiceUnavailable, "Alpha Vantage API key is not configured.");
             }
 
-            var queryUrl = $"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={alphaVantageApiKey}";
+            var queryUrl = $"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={Uri.EscapeDataString(symbol ?? string.Empty)}&apikey={alphaVantageApiKey}";
 
             Uri queryUri = new Uri(queryUrl);
 
-            using (WebClient client = new WebClient())
+            string response = await _client.GetStringAsync(queryUri);
+            var data = JObject.Parse(response);
+
+            // Comprobamos si "Global Quote" está vacío
+            if (data["Global Quote"] == null || !data["Global Quote"].HasValues)
             {
-                string response = await client.DownloadStringTaskAsync(queryUri);
-                var data = JObject.Parse(response);
-
-                // Comprobamos si "Global Quote" está vacío
-                if (data["Global Quote"] == null || !data["Global Quote"].HasValues)
-                {
-                    return Json(new { error = "No quote data returned. Please check if the stock symbol is correct and try again later." });
-                }
-
-                // Devolvemos todos los datos de "Global Quote" en lugar de solo el precio
-                return Json(data["Global Quote"]);
+                return Json(new { error = "No quote data returned. Please check if the stock symbol is correct and try again later." });
             }
+
+            // Devolvemos todos los datos de "Global Quote" en lugar de solo el precio
+            return Json(data["Global Quote"]);
         }
 
 

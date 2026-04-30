@@ -8,8 +8,6 @@ namespace NSIE.Models
     /// <summary>
     /// Clase RegistroMuestra
     /// 
-    /// TABLA SQL: [dbo].[Registro_Muestras]
-    /// 
     /// DESCRIPCIÓN:
     /// Modelo que representa los registros de muestras operacionales del Formulario 1.
     /// Soporta dos tipos de fuentes: Arcilla (Barrenación) y Salmuera (Pozos).
@@ -45,7 +43,7 @@ namespace NSIE.Models
 
         /// <summary>Identificador del proyecto asociado</summary>
         /// [Required(ErrorMessage = "El ID del Proyecto es obligatorio.")]
-        [RegularExpression(@"^[A-Za-z0-9\-_\/]+$", 
+        [RegularExpression(@"^[A-Za-z0-9\-_\/]+$",
             ErrorMessage = "Formato inválido en Id Proyecto.")]
         [StringLength(50)]
         public string IdProyecto { get; set; }

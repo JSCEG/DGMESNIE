@@ -1,3 +1,5 @@
+#nullable enable annotations
+
 namespace NSIE.Models
 {
 	public class ModulosVista

@@ -57,7 +57,13 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 return await connection.QuerySingleOrDefaultAsync<Usuario>(
-                    "SELECT * FROM [dbo].[USUARIO] WHERE [Correo] = @Email",
+                    @"SELECT 
+                            [IdUsuario],
+                            [Correo],
+                            [ClaveHash] AS [Clave],
+                            [Nombre]
+                      FROM [dgmesnie].[Usuario]
+                      WHERE [Correo] = @Email AND [Vigente] = 1",
                     new { Email = email }
                 );
             }
@@ -69,7 +75,13 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 return await connection.QuerySingleOrDefaultAsync<Usuario>(
-                    "SELECT * FROM [dbo].[USUARIO] WHERE [IdUsuario] = @IdUsuario",
+                    @"SELECT 
+                            [IdUsuario],
+                            [Correo],
+                            [ClaveHash] AS [Clave],
+                            [Nombre]
+                      FROM [dgmesnie].[Usuario]
+                      WHERE [IdUsuario] = @IdUsuario AND [Vigente] = 1",
                     new { IdUsuario = userId }
                 );
             }
@@ -83,8 +95,16 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 await connection.ExecuteAsync(
-                    "INSERT INTO [dbo].[Recuperar_contrasena] ([IdUsuario], [Token], [Fecha]) VALUES (@IdUsuario, @Token, @Fecha)",
-                    new { IdUsuario = userId, Token = token, Fecha = creationTime }
+                    @"INSERT INTO [dgmesnie].[RecuperacionContrasena]
+                      ([IdUsuario], [Token], [FechaCreacion], [FechaExpiracion], [Usado])
+                      VALUES (@IdUsuario, @Token, @FechaCreacion, @FechaExpiracion, 0)",
+                    new
+                    {
+                        IdUsuario = userId,
+                        Token = token,
+                        FechaCreacion = creationTime,
+                        FechaExpiracion = creationTime.AddMinutes(30)
+                    }
                 );
             }
         }
@@ -95,7 +115,7 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 await connection.ExecuteAsync(
-                    "DELETE FROM [dbo].[Recuperar_contrasena] WHERE [IdUsuario] = @IdUsuario",
+                    "DELETE FROM [dgmesnie].[RecuperacionContrasena] WHERE [IdUsuario] = @IdUsuario",
                     new { IdUsuario = userId }
                 );
             }
@@ -103,7 +123,7 @@ namespace NSIE.Servicios
 
         public async Task UpdatePassword(int userId, string newPasswordHash)
         {
-            var sql = "UPDATE USUARIO SET Clave = @NewPassword WHERE IdUsuario = @UserId;";
+            var sql = "UPDATE [dgmesnie].[Usuario] SET [ClaveHash] = @NewPassword, [FechaActualizacion] = SYSUTCDATETIME() WHERE [IdUsuario] = @UserId;";
             using (var connection = new SqlConnection(connectionString))
             {
                 await connection.OpenAsync();
@@ -117,7 +137,13 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 return await connection.QuerySingleOrDefaultAsync<TokenResetPassword>(
-                    "SELECT TOP 1 * FROM [dbo].[Recuperar_contrasena] WHERE [Token] = @Token ORDER BY [Fecha] DESC",
+                    @"SELECT TOP 1 
+                            [IdUsuario],
+                            [Token],
+                            [FechaCreacion] AS [Fecha]
+                      FROM [dgmesnie].[RecuperacionContrasena]
+                      WHERE [Token] = @Token AND [Usado] = 0
+                      ORDER BY [FechaCreacion] DESC",
                     new { Token = token }
                 );
             }
@@ -144,7 +170,7 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 return await connection.ExecuteScalarAsync<int>(
-                    "SELECT COUNT(*) FROM [dbo].[Accesos]"
+                    "SELECT COUNT(*) FROM [dgmesnie].[Acceso]"
                 );
             }
         }
@@ -161,9 +187,9 @@ namespace NSIE.Servicios
                 A.TipoAcceso,
                 COUNT(*) AS Total
             FROM 
-                [dbo].[Accesos] A
+                [dgmesnie].[Acceso] A
             WHERE 
-                A.FechaHora BETWEEN @FechaInicio AND @FechaFin
+                A.FechaAcceso BETWEEN @FechaInicio AND @FechaFin
             GROUP BY 
                 A.TipoAcceso;";
 
@@ -198,21 +224,21 @@ namespace NSIE.Servicios
                 await connection.OpenAsync();
                 var query = @"
             SELECT 
-                A.Id AS AccesoId,
+                A.IdAcceso AS AccesoId,
                 U.Nombre,
                 A.TipoAcceso,
                 A.IP,
-                A.[FechaHoraLocal],
-                U.Unidad_de_Adscripcion,
+                A.[FechaAcceso] AS [FechaHoraLocal],
+                U.UnidadAdscripcion AS Unidad_de_Adscripcion,
                 U.Cargo
             FROM 
-                [dbo].[Accesos] A
+                [dgmesnie].[Acceso] A
             INNER JOIN 
-                [dbo].[USUARIO] U ON A.IdUsuario = U.IdUsuario
+                [dgmesnie].[Usuario] U ON A.IdUsuario = U.IdUsuario
             WHERE 
-                A.[FechaHoraLocal] BETWEEN @FechaInicio AND @FechaFin
+                A.[FechaAcceso] BETWEEN @FechaInicio AND @FechaFin
             ORDER BY 
-                A.[FechaHoraLocal] DESC;";
+                A.[FechaAcceso] DESC;";
 
                 var command = new SqlCommand(query, connection);
                 command.Parameters.AddWithValue("@FechaInicio", fechaInicio);
@@ -249,22 +275,22 @@ namespace NSIE.Servicios
                 await connection.OpenAsync();
                 var query = @"
                 SELECT 
-                    A.Id AS AccesoId,
+                    A.IdAcceso AS AccesoId,
                     U.Nombre,
                     A.TipoAcceso,
                     A.IP,
-                    A.[FechaHoraLocal],
-                    U.Unidad_de_Adscripcion,
+                    A.[FechaAcceso] AS [FechaHoraLocal],
+                    U.UnidadAdscripcion AS Unidad_de_Adscripcion,
                     U.Cargo
                 FROM 
-                    [dbo].[Accesos] A
+                    [dgmesnie].[Acceso] A
                 INNER JOIN 
-                    [dbo].[USUARIO] U ON A.IdUsuario = U.IdUsuario
+                    [dgmesnie].[Usuario] U ON A.IdUsuario = U.IdUsuario
                 WHERE 
-                    A.[FechaHoraLocal] BETWEEN @FechaInicio AND @FechaFin
+                    A.[FechaAcceso] BETWEEN @FechaInicio AND @FechaFin
                     AND U.Nombre = @NombreUsuario
                 ORDER BY 
-                    A.[FechaHoraLocal] DESC;";
+                    A.[FechaAcceso] DESC;";
 
                 var command = new SqlCommand(query, connection);
                 command.Parameters.AddWithValue("@FechaInicio", fechaInicio);
@@ -300,7 +326,7 @@ namespace NSIE.Servicios
             using (var connection = new SqlConnection(connectionString))
             {
                 return connection.QuerySingleOrDefault<int>(
-                    "SELECT COUNT(*) FROM Accesos");
+                    "SELECT COUNT(*) FROM [dgmesnie].[Acceso]");
             }
         }
 

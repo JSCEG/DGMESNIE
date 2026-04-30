@@ -47,7 +47,7 @@ namespace NSIE.Controllers
                 var contentType = response.Content.Headers.ContentType?.ToString() ?? "image/png";
                 var content = await response.Content.ReadAsByteArrayAsync();
 
-                Response.Headers.Add("Access-Control-Allow-Origin", "*");
+                Response.Headers["Access-Control-Allow-Origin"] = "*";
                 return File(content, contentType);
             }
             catch (Exception ex)
@@ -67,7 +67,7 @@ namespace NSIE.Controllers
             return View();
         }
 
-        
+
 
     }
 }

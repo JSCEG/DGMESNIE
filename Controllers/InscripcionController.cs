@@ -12,6 +12,8 @@ namespace NSIE.Controllers
 {
     public class InscripcionController : Controller
     {
+        private const string SpObtenerPerfilSesion = "dgmesnie.sp_ObtenerPerfilSesion";
+
         private readonly IRepositorioInscripcion _repositorioInscripcion;
         private readonly string _connectionString;
 
@@ -45,16 +47,19 @@ namespace NSIE.Controllers
             {
                 cn.Open();
                 var idUsuario = cn.QuerySingleOrDefault<int?>(
-                    "SELECT IdUsuario FROM USUARIO WHERE Correo = @Correo",
+                    "SELECT [IdUsuario] FROM [dgmesnie].[Usuario] WHERE [Correo] = @Correo AND [Vigente] = 1",
                     new { Correo = correoUsuario }
                 );
 
                 if (idUsuario.HasValue)
                 {
-                    string sql = "INSERT INTO Accesos (IdUsuario, FechaHora, TipoAcceso, IP) VALUES (@IdUsuario, GETDATE(), @TipoAcceso, @IP)";
+                    const string sql = @"INSERT INTO [dgmesnie].[Acceso]
+                                         ([IdUsuario], [Correo], [TipoAcceso], [FechaAcceso], [Ip], [Exitoso])
+                                         VALUES (@IdUsuario, @Correo, @TipoAcceso, SYSUTCDATETIME(), @IP, 1)";
                     cn.Execute(sql, new
                     {
                         IdUsuario = idUsuario.Value,
+                        Correo = correoUsuario,
                         TipoAcceso = tipoAcceso,
                         IP = HttpContext.Connection.RemoteIpAddress.ToString()
                     });
@@ -73,14 +78,14 @@ namespace NSIE.Controllers
 
                 // Obtener el IdUsuario de la tabla USUARIO
                 int idUsuario = cn.QuerySingleOrDefault<int>(
-                    "SELECT IdUsuario FROM USUARIO WHERE Correo = @Correo",
+                    "SELECT [IdUsuario] FROM [dgmesnie].[Usuario] WHERE [Correo] = @Correo AND [Vigente] = 1",
                     new { Correo = oUsuario.Correo }
                 );
 
                 // Obtener el perfil del usuario "Consulta Pública" utilizando el IdUsuario
                 PerfilUsuario perfilUsuario = cn.QuerySingleOrDefault<PerfilUsuario>(
-                    "sp_ObtenerUsuarioSession",
-                    new { IdUsuario = idUsuario },  // Ahora pasamos IdUsuario
+                    SpObtenerPerfilSesion,
+                    new { IdUsuario = idUsuario },
                     commandType: CommandType.StoredProcedure
                 );
 

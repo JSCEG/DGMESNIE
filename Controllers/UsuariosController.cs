@@ -56,7 +56,7 @@ namespace NSIE.Controllers
 
         // Procesa el registro de un nuevo usuario
         [HttpPost]
-        public async Task<IActionResult> NuevoUsuario(UserViewModel nuevoUsuario, int IDUsuario, int RolUsuario)
+        public async Task<IActionResult> NuevoUsuario(UserViewModel nuevoUsuario, int IDUsuario)
         {
             // Validación de contraseñas
             if (string.IsNullOrWhiteSpace(nuevoUsuario.Clave) || string.IsNullOrWhiteSpace(nuevoUsuario.ConfirmarClave))
@@ -88,7 +88,7 @@ namespace NSIE.Controllers
                         Rol_ID = nuevoUsuario.Rol_ID,
                         Mercado_ID = nuevoUsuario.Mercado_ID,
                         RolUsuario_Comentarios = nuevoUsuario.RolUsuario_Comentarios,
-                        RolUsuario_Vigente = RolUsuario,
+                        RolUsuario_Vigente = 1,
                         RolUsuario_QuienRegistro = IDUsuario,
                         RolUsuario_FechaMod = DateTime.Now
                     };
@@ -170,11 +170,8 @@ namespace NSIE.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Edit(EditUserViewModel model)
         {
-            if (!ModelState.IsValid)
+            if (ModelState.IsValid)
             {
-                //return View(model);
-
-
                 var user = new UserViewModel
                 {
                     IdUsuario = model.IdUsuario,
@@ -204,6 +201,23 @@ namespace NSIE.Controllers
                     return RedirectToAction("AdministrarUsuarios");
                 }
             }
+
+            var roles = await repositorioUsuarios.ObtenerTodosLosRoles();
+            ViewBag.Roles = roles.Select(r => new SelectListItem
+            {
+                Value = r.Rol_ID.ToString(),
+                Text = r.Rol_Nombre,
+                Selected = r.Rol_ID == model.Rol_ID
+            }).ToList();
+
+            var mercados = await repositorioUsuarios.ObtenerTodosLosMercados();
+            ViewBag.Mercados = mercados.Select(m => new SelectListItem
+            {
+                Value = m.Mercado_ID.ToString(),
+                Text = m.Mercado_Nombre,
+                Selected = m.Mercado_ID == model.Mercado_ID
+            }).ToList();
+
             ModelState.AddModelError(string.Empty, "Hubo un error al actualizar la información del usuario.");
             return View(model);
         }
@@ -540,7 +554,7 @@ namespace NSIE.Controllers
         public static string ConvertirSha256(string texto)
         {
             StringBuilder Sb = new StringBuilder();
-            using (SHA256 hash = SHA256Managed.Create())
+            using (SHA256 hash = SHA256.Create())
             {
                 Encoding enc = Encoding.UTF8;
                 byte[] result = hash.ComputeHash(enc.GetBytes(texto));

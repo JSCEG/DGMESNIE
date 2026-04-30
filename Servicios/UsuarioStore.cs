@@ -1,3 +1,4 @@
+#nullable enable
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Identity.Client;
 using NSIE.Models;
@@ -15,19 +16,39 @@ namespace NSIE.Servicios
 
         public async Task<IdentityResult> CreateAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
-            //user.id = await repositorioUsuarios.CrearUsuario(user);
-            //return IdentityResult.Success;
+            cancellationToken.ThrowIfCancellationRequested();
+
+            user.Id = await repositorioUsuarios.CrearUsuario(user);
+            return IdentityResult.Success;
         }
 
-        public Task<IdentityResult> DeleteAsync(UsuarioApp user, CancellationToken cancellationToken)
+        public async Task<IdentityResult> DeleteAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await repositorioUsuarios.EliminarUsuario(user.Id);
+            return IdentityResult.Success;
         }
 
         public void Dispose()
         {
-            throw new NotImplementedException();
+        }
+
+        private static UsuarioApp? MapearUsuario(UserViewModel? usuario)
+        {
+            if (usuario == null)
+            {
+                return (UsuarioApp?)null;
+            }
+
+            return new UsuarioApp
+            {
+                Id = usuario.IdUsuario,
+                Usuario = usuario.Nombre,
+                Email = usuario.Correo,
+                EmailNormalizado = usuario.Correo?.ToUpperInvariant(),
+                PasswordHash = usuario.Clave
+            };
         }
 
         public async Task<UsuarioApp?> FindByEmailAsync(string normalizedEmail, CancellationToken cancellationToken)
@@ -40,7 +61,14 @@ namespace NSIE.Servicios
 
         public Task<UsuarioApp?> FindByIdAsync(string userId, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!int.TryParse(userId, out var idUsuario))
+            {
+                return Task.FromResult<UsuarioApp?>(null);
+            }
+
+            return BuscarPorIdAsync(idUsuario);
         }
 
         public async Task<UsuarioApp?> FindByNameAsync(string normalizedUserName, CancellationToken cancellationToken)
@@ -52,56 +80,55 @@ namespace NSIE.Servicios
         public Task<string?> GetEmailAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
             // throw new NotImplementedException();
-            return Task.FromResult(user.Email);
+            return Task.FromResult((string?)user.Email);
         }
 
         public Task<bool> GetEmailConfirmedAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            return Task.FromResult(true);
         }
 
         public Task<string?> GetNormalizedEmailAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            return Task.FromResult<string?>(user.EmailNormalizado ?? user.Email?.ToUpperInvariant());
         }
 
         public Task<string?> GetNormalizedUserNameAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            return Task.FromResult<string?>(user.EmailNormalizado ?? user.Usuario?.ToUpperInvariant());
         }
 
         public Task<string?> GetPasswordHashAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
             // throw new NotImplementedException();
-            return Task.FromResult(user.PasswordHash);
+            return Task.FromResult((string?)user.PasswordHash);
 
         }
 
         public Task<string> GetUserIdAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
-
-            //return Task.FromResult(user.id.ToString());
+            return Task.FromResult(user.Id.ToString());
         }
 
         public Task<string?> GetUserNameAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            return Task.FromResult<string?>(user.Usuario);
         }
 
         public Task<bool> HasPasswordAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            return Task.FromResult(!string.IsNullOrWhiteSpace(user.PasswordHash));
         }
 
         public Task SetEmailAsync(UsuarioApp user, string? email, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            user.Email = email;
+            return Task.CompletedTask;
         }
 
         public Task SetEmailConfirmedAsync(UsuarioApp user, bool confirmed, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            return Task.CompletedTask;
         }
 
         public Task SetNormalizedEmailAsync(UsuarioApp user, string? normalizedEmail, CancellationToken cancellationToken)
@@ -125,12 +152,34 @@ namespace NSIE.Servicios
 
         public Task SetUserNameAsync(UsuarioApp user, string? userName, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            user.Usuario = userName;
+            return Task.CompletedTask;
         }
 
-        public Task<IdentityResult> UpdateAsync(UsuarioApp user, CancellationToken cancellationToken)
+        public async Task<IdentityResult> UpdateAsync(UsuarioApp user, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var existente = await repositorioUsuarios.ObtenerUsuarioPorId(user.Id);
+            if (existente == null)
+            {
+                return IdentityResult.Failed(new IdentityError { Description = "Usuario no encontrado." });
+            }
+
+            existente.Correo = user.Email;
+            existente.Clave = user.PasswordHash;
+            existente.Nombre = user.Usuario;
+
+            var actualizado = await repositorioUsuarios.ActualizarUsuario(existente);
+            return actualizado
+                ? IdentityResult.Success
+                : IdentityResult.Failed(new IdentityError { Description = "No fue posible actualizar el usuario." });
+        }
+
+        private async Task<UsuarioApp?> BuscarPorIdAsync(int idUsuario)
+        {
+            var usuario = await repositorioUsuarios.ObtenerUsuarioPorId(idUsuario);
+            return MapearUsuario(usuario);
         }
 
     }

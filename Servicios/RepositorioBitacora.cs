@@ -70,7 +70,15 @@ namespace NSIE.Servicios
         public async Task<IEnumerable<UltimaAccionDto>> ObtenerUltimasAccionesAsync(
                 int usuarioId, int top = 5)
         {
-            const string sql = "EXEC dbo.sp_ObtenerUltimasAccionesUsuario @IdUsuario, @Top";
+            const string sql = @"
+                SELECT TOP (@Top)
+                    [Controlador] AS [ControllerName],
+                    [Accion] AS [ActionName],
+                    [Pagina] AS [PageName],
+                    [Timestamp]
+                FROM [dgmesnie].[ActividadLog]
+                WHERE [IdUsuario] = @IdUsuario
+                ORDER BY [Timestamp] DESC";
             using var conn = new SqlConnection(connectionString);
             return await conn.QueryAsync<UltimaAccionDto>(sql,
                         new { IdUsuario = usuarioId, Top = top });
@@ -92,7 +100,7 @@ namespace NSIE.Servicios
 
                 using (var connection = new SqlConnection(connectionString))
                 {
-                    var query = "INSERT INTO UserActivityLog (UserId, UserName, ActionName, ControllerName, PageName, Tipo, Elemento, IdElemento, Valor, Timestamp, AdditionalData) " +
+                    var query = "INSERT INTO [dgmesnie].[ActividadLog] (IdUsuario, NombreUsuario, Accion, Controlador, Pagina, Tipo, Elemento, IdElemento, Valor, Timestamp, AdditionalData) " +
                                 "VALUES (@UserId, @UserName, @ActionName, @ControllerName, @PageName, @Tipo, @Elemento, @IdElemento, @Valor, @Timestamp, @AdditionalData)";
 
                     var parameters = new
@@ -129,7 +137,17 @@ namespace NSIE.Servicios
                 {
                     var query = @"SELECT [Id], [UserId], [UserName], [ActionName], [ControllerName], [PageName], 
                                          [Tipo], [Elemento], [IdElemento], [Valor], [Timestamp], [AdditionalData]
-                                  FROM [dbo].[UserActivityLog]
+                                  FROM (
+                                      SELECT 
+                                          [IdActividad] AS [Id],
+                                          CAST([IdUsuario] AS NVARCHAR(50)) AS [UserId],
+                                          [NombreUsuario] AS [UserName],
+                                          [Accion] AS [ActionName],
+                                          [Controlador] AS [ControllerName],
+                                          [Pagina] AS [PageName],
+                                          [Tipo], [Elemento], [IdElemento], [Valor], [Timestamp], [AdditionalData]
+                                      FROM [dgmesnie].[ActividadLog]
+                                  ) A
                                   WHERE [PageName] = @PageName";
 
                     var parameters = new Dictionary<string, object>
@@ -172,7 +190,14 @@ namespace NSIE.Servicios
                 using (var connection = new SqlConnection(connectionString))
                 {
                     var query = @"SELECT DISTINCT UserName, PageName, ActionName, Timestamp 
-                              FROM UserActivityLog 
+                              FROM (
+                                  SELECT 
+                                      [NombreUsuario] AS [UserName],
+                                      [Pagina] AS [PageName],
+                                      [Accion] AS [ActionName],
+                                      [Timestamp]
+                                  FROM [dgmesnie].[ActividadLog]
+                              ) A
                               WHERE Timestamp >= @TimeThreshold";
 
                     var usuariosActivos = await connection.QueryAsync<UserActivityModel>(query, new { TimeThreshold = timeThreshold });
@@ -194,7 +219,16 @@ namespace NSIE.Servicios
                 using (var connection = new SqlConnection(connectionString))
                 {
                     var query = @"SELECT UserId, UserName, ActionName, ControllerName, PageName, Tipo, Elemento, IdElemento, Valor, Timestamp, AdditionalData
-                              FROM UserActivityLog 
+                              FROM (
+                                  SELECT 
+                                      CAST([IdUsuario] AS NVARCHAR(50)) AS [UserId],
+                                      [NombreUsuario] AS [UserName],
+                                      [Accion] AS [ActionName],
+                                      [Controlador] AS [ControllerName],
+                                      [Pagina] AS [PageName],
+                                      [Tipo], [Elemento], [IdElemento], [Valor], [Timestamp], [AdditionalData]
+                                  FROM [dgmesnie].[ActividadLog]
+                              ) A
                               WHERE Timestamp >= @StartDate AND Timestamp <= @EndDate";
 
                     var actividadPorPeriodo = await connection.QueryAsync<UserActivityModel>(query, new { StartDate = startDate, EndDate = endDate });
@@ -221,7 +255,7 @@ namespace NSIE.Servicios
         {
             using (var connection = new SqlConnection(connectionString))
             {
-                var query = "SELECT [IdUsuario] , [Nombre] FROM [dbo].[USUARIO] WHERE [Vigente] = 1";
+                var query = "SELECT [IdUsuario], [Nombre] FROM [dgmesnie].[Usuario] WHERE [Vigente] = 1";
                 var usuarios = await connection.QueryAsync<Usuario>(query);
                 return usuarios.ToList();
             }
@@ -233,7 +267,17 @@ namespace NSIE.Servicios
                 var query = @"
             SELECT [Id], [UserId], [UserName], [ActionName], [ControllerName], [PageName], 
                    [Tipo], [Elemento], [IdElemento], [Valor], [Timestamp], [AdditionalData]
-            FROM [dbo].[UserActivityLog]
+            FROM (
+                SELECT 
+                    [IdActividad] AS [Id],
+                    CAST([IdUsuario] AS NVARCHAR(50)) AS [UserId],
+                    [NombreUsuario] AS [UserName],
+                    [Accion] AS [ActionName],
+                    [Controlador] AS [ControllerName],
+                    [Pagina] AS [PageName],
+                    [Tipo], [Elemento], [IdElemento], [Valor], [Timestamp], [AdditionalData]
+                FROM [dgmesnie].[ActividadLog]
+            ) A
             WHERE [UserId] = @UsuarioId AND [Timestamp] BETWEEN @StartDate AND @EndDate
             ORDER BY [Timestamp] DESC";
 
@@ -251,7 +295,7 @@ namespace NSIE.Servicios
             {
                 await connection.OpenAsync();
                 return await connection.ExecuteScalarAsync<int>(
-                    "SELECT COUNT(*) FROM [dbo].[Accesos]"
+                    "SELECT COUNT(*) FROM [dgmesnie].[Acceso]"
                 );
             }
 
@@ -267,21 +311,21 @@ namespace NSIE.Servicios
                 await connection.OpenAsync();
                 var query = @"
                 SELECT 
-                    A.Id AS AccesoId,
+                    A.IdAcceso AS AccesoId,
                     U.Nombre,
                     A.TipoAcceso,
                     A.IP,
-                    A.[FechaHoraLocal],
-                    U.Unidad_de_Adscripcion,
+                    A.[FechaAcceso] AS [FechaHoraLocal],
+                    U.UnidadAdscripcion AS [Unidad_de_Adscripcion],
                     U.Cargo
                 FROM 
-                    [dbo].[Accesos] A
+                    [dgmesnie].[Acceso] A
                 INNER JOIN 
-                    [dbo].[USUARIO] U ON A.IdUsuario = U.IdUsuario
+                    [dgmesnie].[Usuario] U ON A.IdUsuario = U.IdUsuario
                 WHERE 
-                    A.[FechaHoraLocal] BETWEEN @FechaInicio AND @FechaFin
+                    A.[FechaAcceso] BETWEEN @FechaInicio AND @FechaFin
                 ORDER BY 
-                    A.[FechaHoraLocal] DESC;";
+                    A.[FechaAcceso] DESC;";
 
                 var command = new SqlCommand(query, connection);
                 command.Parameters.AddWithValue("@FechaInicio", fechaInicio);
@@ -322,7 +366,7 @@ namespace NSIE.Servicios
             A.TipoAcceso,
             COUNT(*) AS Total
         FROM 
-            [dbo].[Accesos] A
+            [dgmesnie].[Acceso] A
         GROUP BY 
             A.TipoAcceso;";
 
@@ -355,14 +399,14 @@ namespace NSIE.Servicios
                 await connection.OpenAsync();
                 var query = @"
             SELECT 
-                CAST(FechaHoraLocal AS DATE) AS Fecha,
+                CAST(FechaAcceso AS DATE) AS Fecha,
                 COUNT(*) AS TotalAccesos
             FROM 
-                [dbo].[Accesos]
+                [dgmesnie].[Acceso]
             WHERE 
-                FechaHoraLocal BETWEEN @FechaInicio AND @FechaFin
+                FechaAcceso BETWEEN @FechaInicio AND @FechaFin
             GROUP BY 
-                CAST(FechaHoraLocal AS DATE)
+                CAST(FechaAcceso AS DATE)
             ORDER BY 
                 Fecha ASC;";
 
@@ -400,9 +444,9 @@ namespace NSIE.Servicios
                 U.Nombre AS Usuario,
                 COUNT(*) AS TotalAccesos
             FROM 
-                [dbo].[Accesos] A
+                [dgmesnie].[Acceso] A
             INNER JOIN 
-                [dbo].[USUARIO] U ON A.IdUsuario = U.IdUsuario
+                [dgmesnie].[Usuario] U ON A.IdUsuario = U.IdUsuario
             GROUP BY 
                 U.Nombre
             ORDER BY 
@@ -439,9 +483,9 @@ namespace NSIE.Servicios
                 U.Cargo AS Cargo,
                 COUNT(*) AS TotalAccesos
             FROM 
-                [dbo].[Accesos] A
+                [dgmesnie].[Acceso] A
             INNER JOIN 
-                [dbo].[USUARIO] U ON A.IdUsuario = U.IdUsuario
+                [dgmesnie].[Usuario] U ON A.IdUsuario = U.IdUsuario
             GROUP BY 
                 U.Cargo
             ORDER BY 
@@ -476,14 +520,14 @@ namespace NSIE.Servicios
                 await connection.OpenAsync();
                 var query = @"
             SELECT 
-                U.Unidad_de_Adscripcion AS UnidadDeAdscripcion,
+                U.UnidadAdscripcion AS UnidadDeAdscripcion,
                 COUNT(*) AS TotalAccesos
             FROM 
-                [dbo].[Accesos] A
+                [dgmesnie].[Acceso] A
             INNER JOIN 
-                [dbo].[USUARIO] U ON A.IdUsuario = U.IdUsuario
+                [dgmesnie].[Usuario] U ON A.IdUsuario = U.IdUsuario
             GROUP BY 
-                U.Unidad_de_Adscripcion
+                U.UnidadAdscripcion
             ORDER BY 
                 TotalAccesos DESC";
 
@@ -519,11 +563,11 @@ namespace NSIE.Servicios
                 U.Nombre AS Usuario,
                 COUNT(*) AS TotalAccesos
             FROM 
-                [dbo].[Accesos] A
+                [dgmesnie].[Acceso] A
             INNER JOIN 
-                [dbo].[USUARIO] U ON A.IdUsuario = U.IdUsuario
+                [dgmesnie].[Usuario] U ON A.IdUsuario = U.IdUsuario
             WHERE 
-                CAST(A.[FechaHoraLocal] AS DATE) = CAST(GETDATE() AS DATE)
+                CAST(A.[FechaAcceso] AS DATE) = CAST(GETDATE() AS DATE)
             GROUP BY 
                 U.Nombre
             ORDER BY 
@@ -559,12 +603,12 @@ namespace NSIE.Servicios
             SELECT 
                 U.Nombre, 
                 U.Cargo, 
-                U.[Unidad_de_Adscripcion] as Area, 
-                MAX(A.FechaHora) as UltimaActividad,
-                (CASE WHEN MAX(A.FechaHora) > DATEADD(MINUTE, -5, GETDATE()) THEN 1 ELSE 0 END) AS EsActivo
-            FROM [dbo].[USUARIO] U
-            INNER JOIN [dbo].[Accesos] A ON U.IdUsuario = A.IdUsuario
-            GROUP BY U.Nombre, U.Cargo, U.Unidad_de_Adscripcion";
+                U.[UnidadAdscripcion] as Area, 
+                MAX(A.FechaAcceso) as UltimaActividad,
+                (CASE WHEN MAX(A.FechaAcceso) > DATEADD(MINUTE, -5, GETDATE()) THEN 1 ELSE 0 END) AS EsActivo
+            FROM [dgmesnie].[Usuario] U
+            INNER JOIN [dgmesnie].[Acceso] A ON U.IdUsuario = A.IdUsuario
+            GROUP BY U.Nombre, U.Cargo, U.UnidadAdscripcion";
 
                 var command = new SqlCommand(query, connection);
                 using (var reader = await command.ExecuteReaderAsync())
