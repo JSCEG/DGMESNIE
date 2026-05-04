@@ -1,0 +1,305 @@
+@model NSIE.Models.InformePormenorizadoViewModel
+
+@{
+    ViewData["Title"] = "Informe Pormenorizado";
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 informe-pormenorizado-page">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    }
+
+    <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-4">
+        <div>
+            <h4 class="mb-1">Seguimiento de proyectos de modernización</h4>
+            <p class="text-muted mb-0">Base oficial, detalle por proyecto y mantenimiento operativo desde una sola vista.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <form asp-action="ImportarBaseOficial" method="post" onsubmit="return confirm('Esta acción reemplaza la base vigente con el contenido del Excel oficial. ¿Deseas continuar?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-primary">
+                    <i class="fas fa-file-import me-2"></i>Importar base oficial
+                </button>
+            </form>
+            <a asp-action="Crear" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Nuevo registro
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-muted small d-block">Total de proyectos</span>
+                    <strong class="fs-2 d-block">@Model.TotalRegistros</strong>
+                    <span class="small text-muted">Registros visibles con filtros aplicados</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-muted small d-block">Monto agregado</span>
+                    <strong class="fs-2 d-block">@Model.MontoTotalMdp.ToString("N2")</strong>
+                    <span class="small text-muted">MDP del universo filtrado</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-muted small d-block">Avance promedio</span>
+                    <strong class="fs-2 d-block">@Model.AvancePromedio.ToString("N1")%</strong>
+                    <span class="small text-muted">Promedio sobre registros con porcentaje informado</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <span class="text-muted small d-block">Universo presidencia</span>
+                    <strong class="fs-2 d-block">@Model.ProyectosPriorizados</strong>
+                    <span class="small text-muted">Proyectos marcados para presentación</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-xl-8">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Resumen por etapa</h5>
+                        <span class="badge text-bg-light">@Model.ProyectosOperacion en operación</span>
+                    </div>
+                    <div class="row g-3">
+                        @foreach (var item in Model.ResumenEtapas)
+                        {
+                            <div class="col-md-6 col-xxl-4">
+                                <div class="border rounded-3 p-3 h-100 bg-light-subtle">
+                                    <div class="small text-muted mb-1">@item.Etiqueta</div>
+                                    <div class="fw-semibold fs-4">@item.Total</div>
+                                    <div class="small text-muted">@item.Monto.ToString("N2") MDP</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="mb-3">Concentrado por financiamiento</h5>
+                    <div class="d-flex flex-column gap-3">
+                        @foreach (var item in Model.ResumenFinanciamiento)
+                        {
+                            <div>
+                                <div class="d-flex justify-content-between gap-3 small mb-1">
+                                    <span class="fw-semibold text-dark">@item.Etiqueta</span>
+                                    <span class="text-muted">@item.Total proyectos</span>
+                                </div>
+                                <div class="progress" role="progressbar" aria-label="Monto por financiamiento" aria-valuenow="@(Model.MontoTotalMdp == 0 ? 0 : Math.Round(item.Monto * 100 / Model.MontoTotalMdp, 0))" aria-valuemin="0" aria-valuemax="100">
+                                    <div class="progress-bar" style="width:@(Model.MontoTotalMdp == 0 ? 0 : Math.Round(item.Monto * 100 / Model.MontoTotalMdp, 1).ToString(System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                                </div>
+                                <div class="small text-muted mt-1">@item.Monto.ToString("N2") MDP</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-lg-4">
+                    <label for="busqueda" class="form-label fw-semibold">Buscar</label>
+                    <input id="busqueda" name="busqueda" value="@Model.Busqueda" class="form-control" placeholder="Proyecto, GRT, clave PEM o estado real" />
+                </div>
+                <div class="col-md-4 col-lg-2">
+                    <label for="etapa" class="form-label fw-semibold">Etapa</label>
+                    <select id="etapa" name="etapa" class="form-select">
+                        <option value="">Todas</option>
+                        @foreach (var item in Model.EtapasDisponibles)
+                        {
+                            <option value="@item" selected="@(item == Model.Etapa)">@item</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4 col-lg-2">
+                    <label for="tipoFinanciamiento" class="form-label fw-semibold">Financiamiento</label>
+                    <select id="tipoFinanciamiento" name="tipoFinanciamiento" class="form-select">
+                        <option value="">Todos</option>
+                        @foreach (var item in Model.TiposFinanciamientoDisponibles)
+                        {
+                            <option value="@item" selected="@(item == Model.TipoFinanciamiento)">@item</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4 col-lg-2">
+                    <label for="universo" class="form-label fw-semibold">Universo</label>
+                    <select id="universo" name="universo" class="form-select">
+                        <option value="">Todos</option>
+                        @foreach (var item in Model.UniversosDisponibles)
+                        {
+                            <option value="@item" selected="@(item == Model.Universo)">@item</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-lg-2 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+                    <a asp-action="Index" class="btn btn-outline-secondary">Limpiar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover table-bordered align-middle mb-0 bg-white">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:60px;" class="text-center">Ver</th>
+                    <th style="width:80px;">No.</th>
+                    <th>Proyecto</th>
+                    <th style="width:160px;">Etapa</th>
+                    <th style="width:130px;">Monto MDP</th>
+                    <th style="width:110px;">Avance</th>
+                    <th style="width:150px;">Universo</th>
+                    <th style="width:120px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Registros)
+                {
+                    var detalleId = $"detalle-informe-{item.ProyectoModernizacionId}";
+                    var badgeClass = (item.EtapaProyecto ?? string.Empty).Contains("Operación", StringComparison.OrdinalIgnoreCase)
+                        ? "text-bg-success"
+                        : (item.EtapaProyecto ?? string.Empty).Contains("concurs", StringComparison.OrdinalIgnoreCase)
+                            ? "text-bg-warning"
+                            : "text-bg-secondary";
+                    <tr>
+                        <td class="text-center align-top">
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#@detalleId" aria-expanded="false" aria-controls="@detalleId">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </td>
+                        <td class="align-top">@item.Numero</td>
+                        <td class="align-top">
+                            <div class="fw-semibold">@item.NombreProyecto</div>
+                            <div class="small text-muted">@(string.IsNullOrWhiteSpace(item.GRT) ? "Sin GRT" : item.GRT) · @(string.IsNullOrWhiteSpace(item.ClavePem) ? "Sin clave PEM" : item.ClavePem)</div>
+                            <div id="@detalleId" class="collapse mt-3 text-start">
+                                <div class="border rounded-3 p-3 bg-white">
+                                    <div class="row g-3 small">
+                                        <div class="col-md-6">
+                                            <span class="text-muted d-block">Tipo de financiamiento</span>
+                                            <strong>@(string.IsNullOrWhiteSpace(item.TipoFinanciamiento) ? "-" : item.TipoFinanciamiento)</strong>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <span class="text-muted d-block">Año de instrucción</span>
+                                            <strong>@(item.AnioInstruccion?.ToString() ?? "-")</strong>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <span class="text-muted d-block">Clasificación SENER</span>
+                                            <strong>@(string.IsNullOrWhiteSpace(item.ClasificacionSener) ? "-" : item.ClasificacionSener)</strong>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <span class="text-muted d-block">Programación / publicación</span>
+                                            <strong>@(string.IsNullOrWhiteSpace(item.FechaProgramacionTrimestre) ? "-" : item.FechaProgramacionTrimestre) / @(string.IsNullOrWhiteSpace(item.QuincenaPublicacion) ? "-" : item.QuincenaPublicacion)</strong>
+                                        </div>
+                                        <div class="col-12">
+                                            <span class="text-muted d-block">Estado real que guarda el proyecto</span>
+                                            <div class="small-detail-block">@(string.IsNullOrWhiteSpace(item.EstadoRealProyecto) ? "-" : item.EstadoRealProyecto)</div>
+                                        </div>
+                                        <div class="col-12">
+                                            <span class="text-muted d-block">Circunstancias de atraso</span>
+                                            <div class="small-detail-block">@(string.IsNullOrWhiteSpace(item.CircunstanciasAtrasos) ? "-" : item.CircunstanciasAtrasos)</div>
+                                        </div>
+                                        <div class="col-12">
+                                            <span class="text-muted d-block">Acciones de mitigación</span>
+                                            <div class="small-detail-block">@(string.IsNullOrWhiteSpace(item.AccionesMitigacionCorreccion) ? "-" : item.AccionesMitigacionCorreccion)</div>
+                                        </div>
+                                        <div class="col-12">
+                                            <span class="text-muted d-block">Elementos y equipos asociados</span>
+                                            <div class="small-detail-block">@(string.IsNullOrWhiteSpace(item.ElementosEquiposAsociados) ? "-" : item.ElementosEquiposAsociados)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="align-top"><span class="badge @badgeClass">@(string.IsNullOrWhiteSpace(item.EtapaProyecto) ? "Sin etapa" : item.EtapaProyecto)</span></td>
+                        <td class="align-top">@((item.MontoProyectoMdp ?? 0).ToString("N2"))</td>
+                        <td class="align-top">@((item.PorcentajeAvanceEjecucion ?? 0).ToString("N2"))%</td>
+                        <td class="align-top">
+                            @if (string.Equals(item.UniversoPresentacionPresidencia, "Sí", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge text-bg-primary">Sí</span>
+                            }
+                            else if (string.IsNullOrWhiteSpace(item.UniversoPresentacionPresidencia))
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-light">@item.UniversoPresentacionPresidencia</span>
+                            }
+                        </td>
+                        <td class="align-top">
+                            <div class="shell-table-actions justify-content-start">
+                                <a asp-action="Editar" asp-route-id="@item.ProyectoModernizacionId" class="is-edit" title="Editar registro" aria-label="Editar registro">
+                                    <i class="fas fa-pen-to-square"></i>
+                                </a>
+                                <form asp-action="Eliminar" asp-route-id="@item.ProyectoModernizacionId" method="post"
+                                      onsubmit="return confirm('¿Deseas eliminar este proyecto del informe?');">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="is-delete border-0 bg-transparent p-0" title="Eliminar registro" aria-label="Eliminar registro">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Registros.Any())
+                {
+                    <tr>
+                        <td colspan="8" class="text-center py-4 text-muted">No hay registros para los filtros seleccionados. Si la tabla está vacía, importa primero la base oficial.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+    .informe-pormenorizado-page .card {
+        border-radius: 1rem;
+    }
+
+    .small-detail-block {
+        max-height: 180px;
+        overflow: auto;
+        white-space: pre-line;
+        background: #f8f9fa;
+        border-radius: 0.75rem;
+        padding: 0.75rem;
+    }
+</style>

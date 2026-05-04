@@ -61,6 +61,7 @@ builder.Services.AddTransient<IRepositorioUsuarios, RepositorioUsuarios>();
 builder.Services.AddTransient<IRepositorioSecciones, RepositorioSecciones>();
 builder.Services.AddTransient<IRepositorioAcceso, RepositorioAcceso>();
 builder.Services.AddTransient<IRepositorioPODECOBIS, RepositorioPODECOBIS>();
+builder.Services.AddTransient<IRepositorioInformePormenorizado, RepositorioInformePormenorizado>();
 builder.Services.AddTransient<IRepositorioSNIER, RepositorioSNIER>();
 builder.Services.AddTransient<VisitasViewComponent>();
 builder.Services.AddTransient<IRepositorioHome, RepositorioHome>();
@@ -80,6 +81,7 @@ builder.Services.AddTransient<IRepositorioInscripcion, RepositorioInscripcion>()
 builder.Services.AddScoped<IRepositorioFinanzas, RepositorioFinanzas>();
 builder.Services.AddScoped<IRepositorioFuentesdeInformacion, RepositorioFuentesdeInformacion>();
 builder.Services.AddTransient<IRepositorioSIIL, RepositorioSIIL>();
+builder.Services.AddTransient<InformePormenorizadoImportService>();
 
 
 builder.Services.AddTransient<IUserStore<UsuarioApp>, UsuarioStore>();
