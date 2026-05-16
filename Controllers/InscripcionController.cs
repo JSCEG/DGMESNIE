@@ -61,7 +61,7 @@ namespace NSIE.Controllers
                         IdUsuario = idUsuario.Value,
                         Correo = correoUsuario,
                         TipoAcceso = tipoAcceso,
-                        IP = HttpContext.Connection.RemoteIpAddress.ToString()
+                        IP = ClienteIpHelper.ObtenerIpCliente(HttpContext)
                     });
                 }
             }

@@ -337,7 +337,7 @@ namespace NSIE.Servicios
                     {
                         var detalle = new AccesoDetalle
                         {
-                            AccesoId = reader.GetInt32(reader.GetOrdinal("AccesoId")),
+                            AccesoId = reader.GetInt64(reader.GetOrdinal("AccesoId")),
                             Nombre = reader.GetString(reader.GetOrdinal("Nombre")),
                             TipoAcceso = reader.GetString(reader.GetOrdinal("TipoAcceso")),
                             IP = reader.GetString(reader.GetOrdinal("IP")),

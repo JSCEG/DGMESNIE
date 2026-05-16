@@ -6,9 +6,7 @@
 
 @{
     ViewData["Title"] = "Todas las Notificaciones";
-}
 
-@{
     var header = new HeaderViewModel
     {
         Title = "Todas las notificaciones",
@@ -19,8 +17,8 @@
         {
             title = "Gestión de notificaciones",
             description = "Gestión de notificaciones para tu usuario",
-            functionality = "Gestión de notificaciones para revisar y/o eliminar los leídos.",
-            stage = "Inicialización",
+            functionality = "Gestión de notificaciones para revisar, atender y depurar publicaciones ya vistas.",
+            stage = "Operación",
             roles = new[] {
                 new { icon = "building", text = "Secretaría de Energía: Administración general" },
                 new { icon = "users-cog", text = "Unidad SNIEr: Gestión de notificaciones" },
@@ -38,106 +36,436 @@
     };
 }
 
-@await Html.PartialAsync("_ViewHeader", header);
+@section Styles {
+    <style>
+        .notifications-page {
+            padding: 1.5rem 0 2.5rem;
+        }
 
-<div class="container ps-5 pe-5">
-    <div id="notifications-container" class="row">
-        <!-- Aquí se mostrarán las notificaciones -->
+        .notifications-shell {
+            background: #fff;
+            border: 1px solid rgba(138, 0, 49, 0.08);
+            border-radius: 28px;
+            padding: 1.5rem;
+        }
+
+        .notifications-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .notifications-toolbar__copy h2 {
+            margin: 0;
+            color: #243444;
+            font-size: 1.65rem;
+            font-weight: 800;
+        }
+
+        .notifications-toolbar__copy p {
+            margin: 0.35rem 0 0;
+            color: #6c7a89;
+        }
+
+        .notifications-summary {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .notifications-summary__card {
+            border: 1px solid rgba(138, 0, 49, 0.08);
+            border-radius: 22px;
+            background: #fff;
+            padding: 1rem 1.1rem;
+        }
+
+        .notifications-summary__label {
+            display: block;
+            margin-bottom: 0.45rem;
+            color: #7b8797;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .notifications-summary__value {
+            color: #243444;
+            font-size: 2rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .notifications-summary__value--accent {
+            color: #8a0031;
+        }
+
+        .notifications-controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .notifications-search {
+            position: relative;
+            flex: 1 1 360px;
+            max-width: 480px;
+        }
+
+        .notifications-search i {
+            position: absolute;
+            top: 50%;
+            left: 1rem;
+            transform: translateY(-50%);
+            color: #8a0031;
+        }
+
+        .notifications-search input {
+            padding-left: 2.8rem;
+            border-radius: 14px;
+            border-color: rgba(138, 0, 49, 0.12);
+        }
+
+        .notifications-meta {
+            color: #6c7a89;
+            font-size: 0.92rem;
+        }
+
+        .notifications-grid {
+            min-height: 120px;
+        }
+
+        .notification-card {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            border: 1px solid rgba(138, 0, 49, 0.08);
+            border-radius: 24px;
+            overflow: hidden;
+            background: #fff;
+            box-shadow: 0 12px 32px rgba(36, 52, 68, 0.06);
+        }
+
+        .notification-card__media {
+            height: 210px;
+            background: #f7f8fa;
+            overflow: hidden;
+        }
+
+        .notification-card__media img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .notification-card__body {
+            display: flex;
+            flex-direction: column;
+            gap: 0.9rem;
+            flex: 1;
+            padding: 1.2rem;
+        }
+
+        .notification-card__status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            width: fit-content;
+            padding: 0.25rem 0.65rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .notification-card__status--new {
+            background: rgba(138, 0, 49, 0.12);
+            color: #8a0031;
+        }
+
+        .notification-card__status--seen {
+            background: rgba(30, 91, 79, 0.12);
+            color: #1e5b4f;
+        }
+
+        .notification-card__title {
+            margin: 0;
+            color: #243444;
+            font-size: 1.35rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .notification-card__message {
+            margin: 0;
+            padding: 0.9rem 1rem;
+            border: 1px solid #edf0f3;
+            border-radius: 16px;
+            background: #fbfcfd;
+            color: #4d5d6c;
+            line-height: 1.55;
+        }
+
+        .notification-card__meta {
+            display: grid;
+            gap: 0.65rem;
+            color: #6c7a89;
+            font-size: 0.92rem;
+        }
+
+        .notification-card__meta strong {
+            color: #243444;
+        }
+
+        .notification-card__actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-top: auto;
+        }
+
+        .notification-card__actions .btn {
+            min-width: 152px;
+            border-radius: 16px;
+            font-weight: 700;
+            padding: 0.85rem 1.15rem;
+        }
+
+        .notifications-empty {
+            border: 1px dashed rgba(138, 0, 49, 0.18);
+            border-radius: 24px;
+            background: #fff;
+            padding: 2.2rem 1.5rem;
+            text-align: center;
+            color: #6c7a89;
+        }
+
+        .notifications-pagination {
+            display: flex;
+            justify-content: center;
+            gap: 0.8rem;
+            margin-top: 1.5rem;
+        }
+
+        @@media (max-width: 991.98px) {
+            .notifications-summary {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container notifications-page">
+    <div class="notifications-shell">
+        <div class="notifications-toolbar">
+            <div class="notifications-toolbar__copy">
+                <h2>Buzón de notificaciones</h2>
+                <p>Revisa tus avisos recientes, confirma lectura y elimina publicaciones ya atendidas.</p>
+            </div>
+            <a href="@Url.Action("Index", "Home")" class="btn btn-outline-secondary">Volver</a>
+        </div>
+
+        <div class="notifications-summary">
+            <div class="notifications-summary__card">
+                <span class="notifications-summary__label">Total</span>
+                <span class="notifications-summary__value" id="notificationsTotalCount">0</span>
+            </div>
+            <div class="notifications-summary__card">
+                <span class="notifications-summary__label">No leídas</span>
+                <span class="notifications-summary__value notifications-summary__value--accent"
+                      id="notificationsUnreadCount">0</span>
+            </div>
+            <div class="notifications-summary__card">
+                <span class="notifications-summary__label">Leídas</span>
+                <span class="notifications-summary__value" id="notificationsReadCount">0</span>
+            </div>
+        </div>
+
+        <div class="notifications-controls">
+            <div class="notifications-search">
+                <i class="bi bi-search"></i>
+                <input id="notificationsSearchInput" type="search" class="form-control"
+                       placeholder="Buscar por título, mensaje o estado" />
+            </div>
+            <div class="notifications-meta" id="notificationsMeta"></div>
+        </div>
+
+        <div id="notifications-container" class="row g-4 notifications-grid"></div>
+
+        <div class="notifications-pagination">
+            <button id="prev-page" class="btn btn-outline-secondary">Página anterior</button>
+            <button id="next-page" class="btn btn-outline-secondary">Página siguiente</button>
+        </div>
     </div>
-    <div class="pagination-buttons mt-3 text-center">
-        <button id="prev-page" class="btn btn-secondary">Página anterior</button>
-        <button id="next-page" class="btn btn-secondary">Página siguiente</button>
-    </div>
-    <br>
-    <a href="@Url.Action("Index", "Home")" class="btn btn-primary">Volver</a>
 </div>
 
 @section Scripts {
     <script>
-        var notifications = @Json.Serialize(Model); // Convertir el modelo de notificaciones a JSON
+        let notifications = @Html.Raw(JsonConvert.SerializeObject(Model));
+        let currentPage = 1;
+        const notificationsPerPage = 9;
+        const searchInput = document.getElementById('notificationsSearchInput');
+        let filteredNotifications = notifications.slice();
 
-        var currentPage = 1;
-        var notificationsPerPage = 9; // Cambiado para ajustar a las tarjetas
+        function escapeHtml(value) {
+            return $('<div>').text(value || '').html();
+        }
 
-        // Función para limitar el tamaño del mensaje
         function truncateMessage(message, limit) {
+            if (!message) {
+                return '';
+            }
+
             if (message.length > limit) {
                 return message.substring(0, limit) + '...';
             }
             return message;
         }
 
-        // Función para mostrar las notificaciones en la página actual
+        function formatDate(value) {
+            if (!value) {
+                return '-';
+            }
+
+            const parsed = new Date(value);
+            if (Number.isNaN(parsed.getTime())) {
+                return value;
+            }
+
+            return parsed.toLocaleString('es-MX', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function syncSummary() {
+            const total = filteredNotifications.length;
+            const unread = filteredNotifications.filter(n => !n.visto).length;
+            const read = total - unread;
+
+            document.getElementById('notificationsTotalCount').textContent = total;
+            document.getElementById('notificationsUnreadCount').textContent = unread;
+            document.getElementById('notificationsReadCount').textContent = read;
+
+            const meta = document.getElementById('notificationsMeta');
+            meta.textContent = total === notifications.length
+                ? `${notifications.length} notificación(es) registradas`
+                : `${total} resultado(s) de ${notifications.length} notificación(es)`;
+        }
+
         function displayNotifications(page) {
-            var startIndex = (page - 1) * notificationsPerPage;
-            var endIndex = startIndex + notificationsPerPage;
-            var notificationsToShow = notifications.slice(startIndex, endIndex);
+            const startIndex = (page - 1) * notificationsPerPage;
+            const endIndex = startIndex + notificationsPerPage;
+            const notificationsToShow = filteredNotifications.slice(startIndex, endIndex);
+            const notificationsContainer = document.getElementById('notifications-container');
 
-            var notificationsContainer = document.getElementById('notifications-container');
-            notificationsContainer.innerHTML = ''; // Limpiar el contenedor
+            notificationsContainer.innerHTML = '';
 
-            notificationsToShow.forEach(function(notification) {
-                var buttonClass = notification.visto ? 'btn-secondary' : 'btn-primary';
-                var borderClass = notification.visto ? '' : 'border-primary';
-                var truncatedMessage = truncateMessage(notification.mensaje, 150); // Limitar el mensaje a 50 caracteres
-                var deleteButton = notification.visto 
-                    ? '<button onclick="deleteNotification(' + notification.id + ', this)" class="btn btn-danger ms-2">Eliminar</button>'
+            if (!notificationsToShow.length) {
+                notificationsContainer.innerHTML = '<div class="col-12"><div class="notifications-empty"><h3 class="h5 mb-2">No hay notificaciones para mostrar</h3><p class="mb-0">Ajusta la búsqueda o publica una nueva notificación.</p></div></div>';
+                updatePaginationButtons();
+                syncSummary();
+                return;
+            }
+
+            notificationsToShow.forEach(function (notification) {
+                const statusClass = notification.visto ? 'notification-card__status--seen' : 'notification-card__status--new';
+                const statusText = notification.visto ? 'Leída' : 'Nueva';
+                const buttonClass = notification.visto ? 'btn-outline-secondary' : 'btn-primary';
+                const imageUrl = notification.imagen || '/img/notificacion.png';
+                const deleteButton = notification.visto
+                    ? `<button type="button" onclick="deleteNotification(${notification.id}, this)" class="btn btn-outline-danger">Eliminar</button>`
                     : '';
+                const detailsUrl = '@Url.Action("NotificationDetails", "Usuarios")'
+                    + '?titulo=' + encodeURIComponent(notification.titulo_Notificacion || '')
+                    + '&mensaje=' + encodeURIComponent(notification.mensaje || '')
+                    + '&fecha=' + encodeURIComponent(notification.fecha_Notificacion || '')
+                    + '&link=' + encodeURIComponent(notification.link || '')
+                    + '&imagen=' + encodeURIComponent(notification.imagen || '');
 
-                var notificationItem = '<div class="col-md-4 mb-3">' +
-                    '<div class="card card-custom ' + borderClass + '">' +
-                    '<img src="' + notification.imagen + '" class="card-img-top" alt="Imagen de notificación">' +
-                    '<div class="card-body">' +
-                    '<h5 class="subtitulo">' + notification.titulo_Notificacion + '</h5>' +
-                    '<div class="alert alert-light fade show" role="alert">' +
-                    '<p class="card-text text-justify">' + truncatedMessage + '</p>' +
-                    '</div>' +
-                    '<p class="card-text"><small class="text-muted">Fecha: ' + notification.fecha_Notificacion + '</small></p>' +
-                    '<p class="card-text"><small class="text-muted">Visto: ' + (notification.visto ? 'Sí' : 'No') + '</small></p>' +
-                    '<a href="@Url.Action("NotificationDetails", "Usuarios")?titulo=' + encodeURIComponent(notification.titulo_Notificacion) +
-                    '&mensaje=' + encodeURIComponent(notification.mensaje) +
-                    '&fecha=' + encodeURIComponent(notification.fecha_Notificacion) +
-                    '&link=' + encodeURIComponent(notification.link) +
-                    '&imagen=' + encodeURIComponent(notification.imagen) +
-                    '" onclick="markAsRead(' + notification.id + ', this); return false;" class="btn ' + buttonClass + '">Ver Detalles</a>' +
-                    deleteButton + // 🔹 Solo aparece si ya fue leída
-                    '</div>' +
-                    '</div>' +
-                    '</div>';
+                const notificationItem = `
+                        <div class="col-12 col-md-6 col-xl-4">
+                            <article class="notification-card">
+                                <div class="notification-card__media">
+                                    <img src="${escapeHtml(imageUrl)}" alt="Imagen de notificación" />
+                                </div>
+                                <div class="notification-card__body">
+                                    <span class="notification-card__status ${statusClass}">
+                                        <i class="bi ${notification.visto ? 'bi-check2-circle' : 'bi-bell'}"></i>
+                                        ${statusText}
+                                    </span>
+                                    <h3 class="notification-card__title">${escapeHtml(notification.titulo_Notificacion)}</h3>
+                                    <p class="notification-card__message">${escapeHtml(truncateMessage(notification.mensaje, 160))}</p>
+                                    <div class="notification-card__meta">
+                                        <div><strong>Fecha:</strong> ${escapeHtml(formatDate(notification.fecha_Notificacion))}</div>
+                                        <div><strong>Estado:</strong> ${notification.visto ? 'Atendida' : 'Pendiente de lectura'}</div>
+                                    </div>
+                                    <div class="notification-card__actions">
+                                        <a href="${detailsUrl}" onclick="markAsRead(${notification.id}, this); return false;" class="btn ${buttonClass}">Ver detalles</a>
+                                        ${deleteButton}
+                                    </div>
+                                </div>
+                            </article>
+                        </div>`;
+
                 notificationsContainer.innerHTML += notificationItem;
-
-                console.log("Notificacion: ", notification);
             });
 
             updatePaginationButtons();
+            syncSummary();
         }
 
-        // Función para actualizar la visibilidad de los botones de paginación
         function updatePaginationButtons() {
-            var totalPages = Math.ceil(notifications.length / notificationsPerPage);
+            const totalPages = Math.max(1, Math.ceil(filteredNotifications.length / notificationsPerPage));
             document.getElementById('prev-page').style.display = currentPage === 1 ? 'none' : 'inline-block';
             document.getElementById('next-page').style.display = currentPage === totalPages ? 'none' : 'inline-block';
         }
 
-        // Mostrar las notificaciones en la página 1 al cargar la página
-        displayNotifications(currentPage);
+        function applySearch() {
+            const query = (searchInput.value || '').trim().toLowerCase();
+            filteredNotifications = notifications.filter(notification => {
+                const haystack = [
+                    notification.titulo_Notificacion,
+                    notification.mensaje,
+                    notification.visto ? 'leida vista atendida' : 'nueva pendiente no leida'
+                ].join(' ').toLowerCase();
 
-        // Manejar el evento de hacer clic en el botón "Página anterior"
-        document.getElementById('prev-page').addEventListener('click', function() {
+                return !query || haystack.includes(query);
+            });
+
+            currentPage = 1;
+            displayNotifications(currentPage);
+        }
+
+        displayNotifications(currentPage);
+        searchInput.addEventListener('input', applySearch);
+
+        document.getElementById('prev-page').addEventListener('click', function () {
             if (currentPage > 1) {
                 currentPage--;
                 displayNotifications(currentPage);
-                window.scrollTo(0, 0); // Desplazar hacia la parte superior de la página
+                window.scrollTo(0, 0);
             }
         });
 
-        // Manejar el evento de hacer clic en el botón "Página siguiente"
-        document.getElementById('next-page').addEventListener('click', function() {
-            var totalPages = Math.ceil(notifications.length / notificationsPerPage);
+        document.getElementById('next-page').addEventListener('click', function () {
+            const totalPages = Math.ceil(filteredNotifications.length / notificationsPerPage);
             if (currentPage < totalPages) {
                 currentPage++;
                 displayNotifications(currentPage);
-                window.scrollTo(0, 0); // Desplazar hacia la parte superior de la página
+                window.scrollTo(0, 0);
             }
         });
 
@@ -148,37 +476,32 @@
                 data: { notificationId: notificationId },
                 success: function (response) {
                     if (response.success) {
-                        var notificationItem = $(linkElement).closest('.card');
-                        notificationItem.removeClass('border-primary');
+                        notifications = notifications.map(notification => {
+                            if (notification.id === notificationId) {
+                                notification.visto = true;
+                            }
 
-                        // Cambiar el estilo del botón a gris claro
-                        $(linkElement).removeClass('btn-primary').addClass('btn-secondary');
+                            return notification;
+                        });
 
-                        var notificationBadge = $('#notification-count');
-                        var currentCount = parseInt(notificationBadge.text());
-                        var newCount = currentCount - 1;
+                        const url = $(linkElement).attr('href');
+                        applySearch();
 
-                        if (newCount > 0) {
-                            notificationBadge.text(newCount);
-                        } else {
-                            notificationBadge.addClass('hidden');
+                        if (url) {
+                            window.location.href = url;
                         }
-
-                        // Redirigir a la nueva página después de marcar como leída
-                        var url = $(linkElement).attr('href');
-                        window.open(url, '_blank');
                     } else {
-                        console.error("Error al marcar la notificación como leída.");
+                        console.error('Error al marcar la notificación como leída.');
                     }
                 },
                 error: function (xhr, status, error) {
-                    console.error("Error al marcar la notificación como leída:", error);
+                    console.error('Error al marcar la notificación como leída:', error);
                 }
             });
         }
 
         function deleteNotification(notificationId, buttonElement) {
-            if (!confirm("¿Seguro que deseas eliminar esta notificación?")) return;
+            if (!confirm('¿Seguro que deseas eliminar esta notificación?')) return;
 
             $.ajax({
                 url: '@Url.Action("DeleteNotification", "Usuarios")',
@@ -186,22 +509,19 @@
                 data: { notificationId: notificationId },
                 success: function (response) {
                     if (response.success) {
-                        // Remover la tarjeta de la notificación
-                        $(buttonElement).closest('.col-md-4').remove();
-
-                        // Ajustar el arreglo local
                         notifications = notifications.filter(n => n.id !== notificationId);
+                        filteredNotifications = filteredNotifications.filter(n => n.id !== notificationId);
+                        if ((currentPage - 1) * notificationsPerPage >= filteredNotifications.length && currentPage > 1) {
+                            currentPage--;
+                        }
 
-                        // Refrescar la paginación
-                        updatePaginationButtons();
-
-                        alert("✅ Notificación eliminada correctamente.");
+                        displayNotifications(currentPage);
                     } else {
-                        alert("❌ Error al eliminar la notificación: " + (response.message || ""));
+                        alert('Error al eliminar la notificación: ' + (response.message || ''));
                     }
                 },
                 error: function (xhr, status, error) {
-                    alert("⚠️ Error al intentar eliminar: " + error);
+                    alert('Error al intentar eliminar: ' + error);
                 }
             });
         }

@@ -18,8 +18,25 @@ using Microsoft.AspNetCore.Authentication.Facebook;  // opcional
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-Console.WriteLine("Cadena de conexión en Program.cs: " + builder.Configuration.GetConnectionString("DefaultConnection"));
+var defaultConnection = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? builder.Configuration["SQLCONNSTR_DefaultConnection"]
+    ?? builder.Configuration["CUSTOMCONNSTR_DefaultConnection"];
+
+if (!string.IsNullOrWhiteSpace(defaultConnection))
+{
+    builder.Configuration["ConnectionStrings:DefaultConnection"] = defaultConnection;
+}
+
+var mimConnection = builder.Configuration.GetConnectionString("MIMConnection")
+    ?? builder.Configuration["SQLCONNSTR_MIMConnection"]
+    ?? builder.Configuration["CUSTOMCONNSTR_MIMConnection"];
+
+if (!string.IsNullOrWhiteSpace(mimConnection))
+{
+    builder.Configuration["ConnectionStrings:MIMConnection"] = mimConnection;
+}
+
+Console.WriteLine($"DefaultConnection configurada: {!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("DefaultConnection"))}");
 
 // Configurar servicios
 builder.Services.AddCors(options =>
@@ -62,6 +79,9 @@ builder.Services.AddTransient<IRepositorioSecciones, RepositorioSecciones>();
 builder.Services.AddTransient<IRepositorioAcceso, RepositorioAcceso>();
 builder.Services.AddTransient<IRepositorioPODECOBIS, RepositorioPODECOBIS>();
 builder.Services.AddTransient<IRepositorioInformePormenorizado, RepositorioInformePormenorizado>();
+builder.Services.AddTransient<IRepositorioInversionDesarrolloEnergetico, RepositorioInversionDesarrolloEnergetico>();
+builder.Services.AddTransient<PvirseImportService>();
+builder.Services.AddTransient<IRepositorioReuniones, RepositorioReuniones>();
 builder.Services.AddTransient<IRepositorioSNIER, RepositorioSNIER>();
 builder.Services.AddTransient<VisitasViewComponent>();
 builder.Services.AddTransient<IRepositorioHome, RepositorioHome>();
@@ -81,6 +101,7 @@ builder.Services.AddTransient<IRepositorioInscripcion, RepositorioInscripcion>()
 builder.Services.AddScoped<IRepositorioFinanzas, RepositorioFinanzas>();
 builder.Services.AddScoped<IRepositorioFuentesdeInformacion, RepositorioFuentesdeInformacion>();
 builder.Services.AddTransient<IRepositorioSIIL, RepositorioSIIL>();
+builder.Services.AddTransient<ManualSharePointImportService>();
 builder.Services.AddTransient<InformePormenorizadoImportService>();
 
 
@@ -122,6 +143,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders =
         ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
 });
 
 // IA
@@ -200,6 +223,7 @@ else
     app.UseDeveloperExceptionPage();
 }
 
+app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseSession();

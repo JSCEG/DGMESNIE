@@ -257,531 +257,533 @@
 
 
 
-</div>
+        </div>
 
-@section Scripts {
-    <script>
-        // Función para cargar usuarios activos
-        function cargarUsuariosActivos() {
-            $.get('@Url.Action("GetUsuariosActivos", "Bitacora")', function (data) {
-                $('#usuarios-activos').html(data);
+        @section Scripts {
+            <script>
+                // Función para cargar usuarios activos
+                function cargarUsuariosActivos() {
+                    $.get('@Url.Action("GetUsuariosActivos", "Bitacora")', function (data) {
+                        $('#usuarios-activos').html(data);
 
-                // Verificar y destruir la instancia anterior de DataTable si existe
-                if ($.fn.DataTable.isDataTable('#UsuariosActivos')) {
-                    $('#UsuariosActivos').DataTable().clear().destroy();
-                }
-
-                // Inicializar DataTables después de que el contenido se haya cargado
-                $('#UsuariosActivos').DataTable({
-                    lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
-                    dom: 'Blfrtip',
-                    buttons: [
-                        {
-                            extend: 'copyHtml5',
-                            title: 'Actividad de Usuarios'
-                        },
-                        {
-                            extend: 'excelHtml5',
-                            title: 'Actividad de Usuarios',
-                        },
-                        {
-                            extend: 'csvHtml5',
-                            title: 'Actividad de Usuarios',
-                        },
-                        {
-                            extend: 'pdfHtml5',
-                            title: 'Actividad de Usuarios',
-                            customize: function (doc) {
-                                doc.styles.tableHeader.color = '#9fa1a4';
-                                doc.defaultStyle.alignment = 'center';
-                                doc.styles.tableHeader.fillColor = '#4c1922';
-                            }
+                        // Verificar y destruir la instancia anterior de DataTable si existe
+                        if ($.fn.DataTable.isDataTable('#UsuariosActivos')) {
+                            $('#UsuariosActivos').DataTable().clear().destroy();
                         }
-                    ],
-                    paging: true,
-                    searching: true,
-                    order: [[3, 'desc']] // Ordenar por la columna de la Hora
-                });
-            });
-        }
 
-        // Función para cargar la gráfica y la tabla de actividad por periodo
-        function cargarGraficaActividad(periodo) {
-            $.get('@Url.Action("GetActividadPorPeriodo", "Bitacora")', { periodo: periodo }, function (data) {
-                console.log(data);  // Esto mostrará la estructura de los datos en la consola
-
-                // Verificar si los datos de la gráfica son válidos
-                if (data && data.categorias && data.series) {
-                    Highcharts.chart('grafica-actividad', {
-                        chart: {
-                            type: 'column',
-                            backgroundColor: '#ffffff'
-                        },
-                        title: {
-                            text: 'Actividad por ' + periodo
-                        },
-                        xAxis: {
-                            categories: data.categorias
-                        },
-                        yAxis: {
-                            title: {
-                                text: 'Cantidad de acciones'
-                            }
-                        },
-                        series: [{
-                            name: 'Acciones',
-                            data: data.series
-                        }]
+                        // Inicializar DataTables después de que el contenido se haya cargado
+                        $('#UsuariosActivos').DataTable({
+                            lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                            dom: 'Blfrtip',
+                            buttons: [
+                                {
+                                    extend: 'copyHtml5',
+                                    title: 'Actividad de Usuarios'
+                                },
+                                {
+                                    extend: 'excelHtml5',
+                                    title: 'Actividad de Usuarios',
+                                },
+                                {
+                                    extend: 'csvHtml5',
+                                    title: 'Actividad de Usuarios',
+                                },
+                                {
+                                    extend: 'pdfHtml5',
+                                    title: 'Actividad de Usuarios',
+                                    customize: function (doc) {
+                                        doc.styles.tableHeader.color = '#9fa1a4';
+                                        doc.defaultStyle.alignment = 'center';
+                                        doc.styles.tableHeader.fillColor = '#4c1922';
+                                    }
+                                }
+                            ],
+                            paging: true,
+                            searching: true,
+                            order: [[3, 'desc']] // Ordenar por la columna de la Hora
+                        });
                     });
-                } else {
-                    console.error("Datos de la gráfica no válidos.");
                 }
 
-                // Limpiar la tabla antes de llenarla con nuevos datos
-                var tbody = $('#tabla-actividad tbody');
-                tbody.empty(); // Limpiar el contenido anterior
+                // Función para cargar la gráfica y la tabla de actividad por periodo
+                function cargarGraficaActividad(periodo) {
+                    $.get('@Url.Action("GetActividadPorPeriodo", "Bitacora")', { periodo: periodo }, function (data) {
+                        console.log(data);  // Esto mostrará la estructura de los datos en la consola
 
-                // Destruir la instancia anterior de DataTable si existe
-                if ($.fn.DataTable.isDataTable('#tabla-actividad')) {
-                    $('#tabla-actividad').DataTable().clear().destroy();
-                }
-
-                // Agregar nuevas filas a la tabla
-                $.each(data.actividad, function (index, item) {
-                    // Verificación para asegurarse de que fechaHora no sea undefined
-                    var fecha = item.fechaHora ? item.fechaHora.split(' ')[0] : "Sin fecha";
-                    var hora = item.fechaHora ? item.fechaHora.split(' ')[1] : "Sin hora";
-
-                    var row = '<tr>' +
-                        '<td>' + item.userName + '</td>' +   // Columna de Usuario
-                        '<td>' + item.pageName + '</td>' +   // Columna de Página
-                        '<td>' + item.actionName + '</td>' + // Columna de Acción
-                        '<td>' + fecha + '</td>' +           // Columna de Fecha
-                        '<td>' + hora + '</td>' +            // Columna de Hora
-                        '<td>' + item.tipo + '</td>' +       // Columna de Tipo
-                        '<td>' + item.elemento + '</td>' +   // Columna de Elemento
-                        '<td>' + item.idElemento + '</td>' + // Columna de ID Elemento
-                        '<td>' + item.valor + '</td>' +      // Columna de Valor
-                        '</tr>';
-                    tbody.append(row);
-                });
-
-                // Inicializar DataTables en la tabla recién cargada
-                $('#tabla-actividad').DataTable({
-                    lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
-                    dom: 'Blfrtip',
-                    buttons: [
-                        {
-                            extend: 'copyHtml5',
-                            title: 'Actividad por Periodo'
-                        },
-                        {
-                            extend: 'excelHtml5',
-                            title: 'Actividad por Periodo',
-                        },
-                        {
-                            extend: 'csvHtml5',
-                            title: 'Actividad por Periodo',
-                        },
-                        {
-                            extend: 'pdfHtml5',
-                            title: 'Actividad por Periodo',
-                            customize: function (doc) {
-                                doc.styles.tableHeader.color = '#9fa1a4';
-                                doc.defaultStyle.alignment = 'center';
-                                doc.styles.tableHeader.fillColor = '#4c1922';
-                            }
+                        // Verificar si los datos de la gráfica son válidos
+                        if (data && data.categorias && data.series) {
+                            Highcharts.chart('grafica-actividad', {
+                                chart: {
+                                    type: 'column',
+                                    backgroundColor: '#ffffff'
+                                },
+                                title: {
+                                    text: 'Actividad por ' + periodo
+                                },
+                                xAxis: {
+                                    categories: data.categorias
+                                },
+                                yAxis: {
+                                    title: {
+                                        text: 'Cantidad de acciones'
+                                    }
+                                },
+                                series: [{
+                                    name: 'Acciones',
+                                    data: data.series
+                                }]
+                            });
+                        } else {
+                            console.error("Datos de la gráfica no válidos.");
                         }
-                    ],
-                    paging: true,
-                    searching: true,
-                    order: [[3, 'desc']] // Ordenar por la columna de la Fecha
-                });
-            }).fail(function (jqXHR, textStatus, errorThrown) {
-                console.error("Error al cargar la gráfica:", textStatus, errorThrown);
-            });
-        }
 
-        $(document).ready(function () {
-            // Cargar usuarios activos al inicio y cada 15 segundos
-            cargarUsuariosActivos();
-            setInterval(cargarUsuariosActivos, 15000);
+                        // Limpiar la tabla antes de llenarla con nuevos datos
+                        var tbody = $('#tabla-actividad tbody');
+                        tbody.empty(); // Limpiar el contenido anterior
 
-            // Cargar gráfica y tabla de actividad al inicio y al cambiar el filtro
-            cargarGraficaActividad($('#filtro-periodo').val());
-            $('#filtro-periodo').change(function () {
-                cargarGraficaActividad($(this).val());
-            });
+                        // Destruir la instancia anterior de DataTable si existe
+                        if ($.fn.DataTable.isDataTable('#tabla-actividad')) {
+                            $('#tabla-actividad').DataTable().clear().destroy();
+                        }
 
-            // Evento para generar y enviar el reporte diario
-            $('#generar-reporte').click(function () {
-                $.post('@Url.Action("GenerarReporteDiario", "Bitacora")', function (data) {
-                    alert('Reporte enviado con éxito');
-                });
-            });
-        });
+                        // Agregar nuevas filas a la tabla
+                        $.each(data.actividad, function (index, item) {
+                            // Verificación para asegurarse de que fechaHora no sea undefined
+                            var fecha = item.fechaHora ? item.fechaHora.split(' ')[0] : "Sin fecha";
+                            var hora = item.fechaHora ? item.fechaHora.split(' ')[1] : "Sin hora";
 
-    </script>
+                            var row = '<tr>' +
+                                '<td>' + item.userName + '</td>' +   // Columna de Usuario
+                                '<td>' + item.pageName + '</td>' +   // Columna de Página
+                                '<td>' + item.actionName + '</td>' + // Columna de Acción
+                                '<td>' + fecha + '</td>' +           // Columna de Fecha
+                                '<td>' + hora + '</td>' +            // Columna de Hora
+                                '<td>' + item.tipo + '</td>' +       // Columna de Tipo
+                                '<td>' + item.elemento + '</td>' +   // Columna de Elemento
+                                '<td>' + item.idElemento + '</td>' + // Columna de ID Elemento
+                                '<td>' + item.valor + '</td>' +      // Columna de Valor
+                                '</tr>';
+                            tbody.append(row);
+                        });
 
-
-    <script>
-        $(document).ready(function () {
-            // Cargar la lista de usuarios al inicio
-            cargarUsuarios();
-
-            // Cargar la actividad del usuario seleccionado al cambiar el filtro de usuario o de periodo
-            $('#filtro-usuario, #filtro-periodo-usuario').change(function () {
-                var usuarioId = $('#filtro-usuario').val();
-                var periodo = $('#filtro-periodo-usuario').val();
-
-                console.log("Usuario seleccionado:", usuarioId);
-                console.log("Periodo seleccionado:", periodo);
-
-                if (usuarioId && periodo) {
-                    cargarActividadPorUsuario(usuarioId, periodo);
-                }
-            });
-        });
-
-        function cargarUsuarios() {
-            $.get('@Url.Action("GetUsuarios", "Bitacora")', function (data) {
-                var select = $('#filtro-usuario');
-                select.empty();
-                select.append('<option value="">Seleccione un usuario</option>');
-                $.each(data, function (index, usuario) {
-                    select.append('<option value="' + usuario.userId + '">' + usuario.userName + '</option>');
-                });
-            });
-        }
-
-        function cargarActividadPorUsuario(usuarioId, periodo) {
-            $.get('@Url.Action("GetActividadPorUsuario", "Bitacora")', { usuarioId: usuarioId, periodo: periodo }, function (data) {
-                console.log("Datos recibidos:", data);  // Verifica que los datos se reciben correctamente
-
-                // Verificar si los datos de la gráfica son válidos
-                if (data && data.categorias && data.series) {
-                    Highcharts.chart('grafica-actividad-usuario', {
-                        chart: {
-                            type: 'column',
-                            backgroundColor: '#ffffff'
-                        },
-                        title: {
-                            text: 'Actividad de ' + data.userName + ' por ' + periodo
-                        },
-                        xAxis: {
-                            categories: data.categorias
-                        },
-                        yAxis: {
-                            title: {
-                                text: 'Cantidad de acciones'
-                            }
-                        },
-                        series: [{
-                            name: 'Acciones',
-                            data: data.series
-                        }]
+                        // Inicializar DataTables en la tabla recién cargada
+                        $('#tabla-actividad').DataTable({
+                            lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                            dom: 'Blfrtip',
+                            buttons: [
+                                {
+                                    extend: 'copyHtml5',
+                                    title: 'Actividad por Periodo'
+                                },
+                                {
+                                    extend: 'excelHtml5',
+                                    title: 'Actividad por Periodo',
+                                },
+                                {
+                                    extend: 'csvHtml5',
+                                    title: 'Actividad por Periodo',
+                                },
+                                {
+                                    extend: 'pdfHtml5',
+                                    title: 'Actividad por Periodo',
+                                    customize: function (doc) {
+                                        doc.styles.tableHeader.color = '#9fa1a4';
+                                        doc.defaultStyle.alignment = 'center';
+                                        doc.styles.tableHeader.fillColor = '#4c1922';
+                                    }
+                                }
+                            ],
+                            paging: true,
+                            searching: true,
+                            order: [[3, 'desc']] // Ordenar por la columna de la Fecha
+                        });
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        console.error("Error al cargar la gráfica:", textStatus, errorThrown);
                     });
-                } else {
-                    console.error("Datos de la gráfica no válidos.");
                 }
 
-                // Limpiar la tabla antes de llenarla con nuevos datos
-                var tbody = $('#tabla-actividad-usuario tbody');
-                tbody.empty(); // Limpiar el contenido anterior
+                $(document).ready(function () {
+                    // Cargar usuarios activos al inicio y cada 15 segundos
+                    cargarUsuariosActivos();
+                    setInterval(cargarUsuariosActivos, 15000);
 
-                // Destruir la instancia anterior de DataTable si existe
-                if ($.fn.DataTable.isDataTable('#tabla-actividad-usuario')) {
-                    $('#tabla-actividad-usuario').DataTable().clear().destroy();
-                }
-
-                // Agregar nuevas filas a la tabla
-                $.each(data.actividad, function (index, item) {
-                    // Verificación para asegurarse de que fechaHora no sea undefined
-                    var fecha = item.fechaHora ? item.fechaHora.split(' ')[0] : "Sin fecha";
-                    var hora = item.fechaHora ? item.fechaHora.split(' ')[1] : "Sin hora";
-
-                    var row = '<tr>' +
-                        '<td>' + item.pageName + '</td>' +
-                        '<td>' + item.actionName + '</td>' +
-                        '<td>' + fecha + '</td>' +  // Fecha
-                        '<td>' + hora + '</td>' +   // Hora
-                        '<td>' + item.tipo + '</td>' +
-                        '<td>' + item.elemento + '</td>' +
-                        '<td>' + item.idElemento + '</td>' +
-                        '<td>' + item.valor + '</td>' +
-                        '</tr>';
-                    tbody.append(row);
-                });
-
-                // Inicializar DataTables en la tabla recién cargada con paginado y botones de descarga
-                $('#tabla-actividad-usuario').DataTable({
-                    lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
-                    dom: 'Blfrtip',
-                    buttons: [
-                        {
-                            extend: 'copyHtml5',
-                            title: 'Actividad de ' + data.userName + ' por ' + periodo
-                        },
-                        {
-                            extend: 'excelHtml5',
-                            title: 'Actividad de ' + data.userName + ' por ' + periodo
-                        },
-                        {
-                            extend: 'csvHtml5',
-                            title: 'Actividad de ' + data.userName + ' por ' + periodo
-                        },
-                        {
-                            extend: 'pdfHtml5',
-                            title: 'Actividad de ' + data.userName + ' por ' + periodo,
-                            customize: function (doc) {
-                                doc.styles.tableHeader.color = '#9fa1a4';
-                                doc.defaultStyle.alignment = 'center';
-                                doc.styles.tableHeader.fillColor = '#4c1922';
-                            }
-                        }
-                    ],
-                    paging: true, // Habilitar paginado
-                    searching: true, // Habilitar búsqueda
-                    order: [[2, 'desc']] // Ordenar por la columna de la Fecha
-                });
-            }).fail(function (jqXHR, textStatus, errorThrown) {
-                console.error("Error al cargar la actividad por usuario:", textStatus, errorThrown);
-            });
-        }
-
-    </script>
-    @* Monitoreo *@
-    <script type="text/javascript">
-        $(document).ready(function () {
-            // Obtener el total de accesos
-            $.get('@Url.Action("ObtenerTotalAccesos", "Bitacora")', function (data) {
-                $('#total-accesos').text(data.totalAccesos.toLocaleString());
-            });
-
-            // Obtener los accesos por tipo
-            $.get('@Url.Action("ObtenerTotalesPorTipo", "Bitacora")', function (data) {
-                // Filtrar el resultado para cada tipo específico
-                const consultaPublica = data.find(item => item.tipoAcceso === 'Acceso como Consulta Pública');
-                const sesionCRE = data.find(item => item.tipoAcceso === 'Inicio de sesión funcionario CRE');
-
-                $('#acceso-consulta-publica').text(consultaPublica ? consultaPublica.total.toLocaleString() : 'No data');
-                $('#inicio-sesion-cre').text(sesionCRE ? sesionCRE.total.toLocaleString() : 'No data');
-            });
-        });
-
-
-
-    </script>
-
-    //Accesos por fecha
-    <script>
-        function obtenerAccesosPorFecha() {
-            $.ajax({
-                url: '@Url.Action("ObtenerAccesosPorFecha", "Bitacora")',
-                type: 'GET',
-                success: function (data) {
-                    console.log("Datos recibidos:", data);
-
-                    // Formatear los datos para Highcharts
-                    var fechas = data.map(item => item.fecha);
-                    var accesos = data.map(item => item.totalAccesos);
-
-                    // Inicializar el gráfico de Highcharts
-                    Highcharts.chart('grafico-accesos-por-fecha', {
-                        chart: {
-                            type: 'line',
-                            backgroundColor: '#ffffff'
-                        },
-                        title: {
-                            text: 'Accesos por Fecha'
-                        },
-                        xAxis: {
-                            categories: fechas,
-                            title: {
-                                text: 'Fecha'
-                            }
-                        },
-                        yAxis: {
-                            title: {
-                                text: 'Número de Accesos'
-                            }
-                        },
-                        series: [{
-                            name: 'Accesos',
-                            data: accesos
-                        }]
+                    // Cargar gráfica y tabla de actividad al inicio y al cambiar el filtro
+                    cargarGraficaActividad($('#filtro-periodo').val());
+                    $('#filtro-periodo').change(function () {
+                        cargarGraficaActividad($(this).val());
                     });
-                },
-                error: function (xhr, status, error) {
-                    console.error("Error al obtener los datos:", error);
-                }
-            });
-        }
 
-        $(document).ready(function () {
-            obtenerAccesosPorFecha();
-        });
-
-
-    </script>
-
-    @* //Accesos *@
-    <script>
-        $(document).ready(function () {
-            // Accesos por Usuario
-            $.get('@Url.Action("ObtenerAccesosPorUsuario", "Bitacora")', function (data) {
-                Highcharts.chart('grafico-accesos-usuario', {
-                    chart: {
-                        type: 'column',
-                        backgroundColor: '#ffffff'
-                    },
-                    title: {
-                        text: 'Accesos por Usuario'
-                    },
-                    xAxis: {
-                        categories: data.map(x => x.usuario),
-                        title: {
-                            text: 'Usuario'
-                        }
-                    },
-                    yAxis: {
-                        title: {
-                            text: 'Número de Accesos'
-                        }
-                    },
-                    series: [{
-                        name: 'Accesos',
-                        data: data.map(x => x.totalAccesos)
-                    }]
-                });
-            });
-
-            // Accesos por Cargo
-            $.get('@Url.Action("ObtenerAccesosPorCargo", "Bitacora")', function (data) {
-                Highcharts.chart('grafico-accesos-cargo', {
-                    chart: {
-                        type: 'pie',
-                        backgroundColor: '#ffffff'
-                    },
-                    title: {
-                        text: 'Accesos por Cargo'
-                    },
-                    series: [{
-                        name: 'Accesos',
-                        colorByPoint: true,
-                        data: data.map(x => ({ name: x.cargo, y: x.totalAccesos }))
-                    }]
-
-                });
-            });
-
-            // Accesos por Unidad de Adscripción
-            $.get('@Url.Action("ObtenerAccesosPorUnidad", "Bitacora")', function (data) {
-                Highcharts.chart('grafico-accesos-unidad', {
-                    chart: {
-                        type: 'area',
-                        backgroundColor: '#ffffff'
-                    },
-                    plotOptions: {
-                        area: {
-                            stacking: 'normal',
-                            lineColor: '#666666',
-                            lineWidth: 1,
-                            marker: {
-                                lineWidth: 1,
-                                lineColor: '#666666'
-                            }
-                        }
-                    },
-                    title: {
-                        text: 'Accesos por Unidad de Adscripción'
-                    },
-                    xAxis: {
-                        categories: data.map(x => x.unidadDeAdscripcion),
-                        title: {
-                            text: 'Unidad de Adscripción'
-                        }
-                    },
-                    yAxis: {
-                        title: {
-                            text: 'Número de Accesos'
-                        }
-                    },
-                    series: [{
-                        name: 'Accesos',
-                        data: data.map(x => x.totalAccesos)
-                    }]
-                });
-            });
-
-            // Accesos del Día de Hoy por Usuario
-            $.get('@Url.Action("ObtenerAccesosHoyPorUsuario", "Bitacora")', function (data) {
-                Highcharts.chart('grafico-accesos-hoy', {
-                    chart: {
-                        type: 'column',
-                        backgroundColor: '#ffffff'
-                    },
-                    title: {
-                        text: 'Accesos por Usuario Hoy'
-                    },
-                    xAxis: {
-                        categories: data.map(x => x.usuario),
-                        title: {
-                            text: 'Usuario'
-                        }
-                    },
-                    yAxis: {
-                        title: {
-                            text: 'Número de Accesos'
-                        }
-                    },
-                    series: [{
-                        name: 'Accesos',
-                        data: data.map(x => x.totalAccesos)
-                    }]
-                });
-            });
-
-        });
-    </script>
-    @* Usuarios Activos *@
-    <script>
-        $(document).ready(function () {
-            function cargarUsuariosActivos() {
-                $.get('@Url.Action("ObtenerUsuariosActivos", "Bitacora")', function (data) {
-                    var container = $('#usuarios-activos-container');
-                    container.empty(); // Limpiar el contenedor antes de agregar nuevas tarjetas
-
-                    data.forEach(function (usuario) {
-                        var estadoClase = usuario.estado === 'activo' ? 'usuario-activo-encendido' : 'usuario-activo-apagado';
-                        var card = `
-            <div class="col-12 col-md-4 col-lg-3">
-                <div class="usuario-activo-card">
-                    <i class="fas fa-user usuario-activo-icono"></i>
-                    <div class="usuario-activo-info">
-                        <div class="usuario-activo-nombre">${usuario.nombre}</div>
-                        <div class="usuario-activo-cargo">${usuario.cargo}</div>
-                        <div class="usuario-activo-area">${usuario.area}</div>
-                        <div class="usuario-activo-hora-conexion">Conectado el: ${usuario.horaConexion}</div>
-                    </div>
-                    <div class="usuario-activo-estado ${estadoClase}"></div>
-                </div>
-            </div>
-        `;
-
-
-
-                        container.append(card);
+                    // Evento para generar y enviar el reporte diario
+                    $('#generar-reporte').click(function () {
+                        $.post('@Url.Action("GenerarReporteDiario", "Bitacora")', function (data) {
+                            alert('Reporte enviado con éxito');
+                        });
                     });
                 });
-            }
 
-            // Cargar los usuarios activos inicialmente
-            cargarUsuariosActivos();
+            </script>
 
-            // Refrescar cada 10 segundos
-            setInterval(cargarUsuariosActivos, 10000);
-        });
-    </script>
 
-}
+            <script>
+                $(document).ready(function () {
+                    // Cargar la lista de usuarios al inicio
+                    cargarUsuarios();
+
+                    // Cargar la actividad del usuario seleccionado al cambiar el filtro de usuario o de periodo
+                    $('#filtro-usuario, #filtro-periodo-usuario').change(function () {
+                        var usuarioId = $('#filtro-usuario').val();
+                        var periodo = $('#filtro-periodo-usuario').val();
+
+                        console.log("Usuario seleccionado:", usuarioId);
+                        console.log("Periodo seleccionado:", periodo);
+
+                        if (usuarioId && periodo) {
+                            cargarActividadPorUsuario(usuarioId, periodo);
+                        }
+                    });
+                });
+
+                function cargarUsuarios() {
+                    $.get('@Url.Action("GetUsuarios", "Bitacora")', function (data) {
+                        var select = $('#filtro-usuario');
+                        select.empty();
+                        select.append('<option value="">Seleccione un usuario</option>');
+                        $.each(data, function (index, usuario) {
+                            select.append('<option value="' + usuario.userId + '">' + usuario.userName + '</option>');
+                        });
+                    });
+                }
+
+                function cargarActividadPorUsuario(usuarioId, periodo) {
+                    $.get('@Url.Action("GetActividadPorUsuario", "Bitacora")', { usuarioId: usuarioId, periodo: periodo }, function (data) {
+                        console.log("Datos recibidos:", data);  // Verifica que los datos se reciben correctamente
+
+                        // Verificar si los datos de la gráfica son válidos
+                        if (data && data.categorias && data.series) {
+                            Highcharts.chart('grafica-actividad-usuario', {
+                                chart: {
+                                    type: 'column',
+                                    backgroundColor: '#ffffff'
+                                },
+                                title: {
+                                    text: 'Actividad de ' + data.userName + ' por ' + periodo
+                                },
+                                xAxis: {
+                                    categories: data.categorias
+                                },
+                                yAxis: {
+                                    title: {
+                                        text: 'Cantidad de acciones'
+                                    }
+                                },
+                                series: [{
+                                    name: 'Acciones',
+                                    data: data.series
+                                }]
+                            });
+                        } else {
+                            console.error("Datos de la gráfica no válidos.");
+                        }
+
+                        // Limpiar la tabla antes de llenarla con nuevos datos
+                        var tbody = $('#tabla-actividad-usuario tbody');
+                        tbody.empty(); // Limpiar el contenido anterior
+
+                        // Destruir la instancia anterior de DataTable si existe
+                        if ($.fn.DataTable.isDataTable('#tabla-actividad-usuario')) {
+                            $('#tabla-actividad-usuario').DataTable().clear().destroy();
+                        }
+
+                        // Agregar nuevas filas a la tabla
+                        $.each(data.actividad, function (index, item) {
+                            // Verificación para asegurarse de que fechaHora no sea undefined
+                            var fecha = item.fechaHora ? item.fechaHora.split(' ')[0] : "Sin fecha";
+                            var hora = item.fechaHora ? item.fechaHora.split(' ')[1] : "Sin hora";
+
+                            var row = '<tr>' +
+                                '<td>' + item.pageName + '</td>' +
+                                '<td>' + item.actionName + '</td>' +
+                                '<td>' + fecha + '</td>' +  // Fecha
+                                '<td>' + hora + '</td>' +   // Hora
+                                '<td>' + item.tipo + '</td>' +
+                                '<td>' + item.elemento + '</td>' +
+                                '<td>' + item.idElemento + '</td>' +
+                                '<td>' + item.valor + '</td>' +
+                                '</tr>';
+                            tbody.append(row);
+                        });
+
+                        // Inicializar DataTables en la tabla recién cargada con paginado y botones de descarga
+                        $('#tabla-actividad-usuario').DataTable({
+                            lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                            dom: 'Blfrtip',
+                            buttons: [
+                                {
+                                    extend: 'copyHtml5',
+                                    title: 'Actividad de ' + data.userName + ' por ' + periodo
+                                },
+                                {
+                                    extend: 'excelHtml5',
+                                    title: 'Actividad de ' + data.userName + ' por ' + periodo
+                                },
+                                {
+                                    extend: 'csvHtml5',
+                                    title: 'Actividad de ' + data.userName + ' por ' + periodo
+                                },
+                                {
+                                    extend: 'pdfHtml5',
+                                    title: 'Actividad de ' + data.userName + ' por ' + periodo,
+                                    customize: function (doc) {
+                                        doc.styles.tableHeader.color = '#9fa1a4';
+                                        doc.defaultStyle.alignment = 'center';
+                                        doc.styles.tableHeader.fillColor = '#4c1922';
+                                    }
+                                }
+                            ],
+                            paging: true, // Habilitar paginado
+                            searching: true, // Habilitar búsqueda
+                            order: [[2, 'desc']] // Ordenar por la columna de la Fecha
+                        });
+                    }).fail(function (jqXHR, textStatus, errorThrown) {
+                        console.error("Error al cargar la actividad por usuario:", textStatus, errorThrown);
+                    });
+                }
+
+            </script>
+            @* Monitoreo *@
+            <script type="text/javascript">
+                $(document).ready(function () {
+                    // Obtener el total de accesos
+                    $.get('@Url.Action("ObtenerTotalAccesos", "Bitacora")', function (data) {
+                        $('#total-accesos').text(data.totalAccesos.toLocaleString());
+                    });
+
+                    // Obtener los accesos por tipo
+                    $.get('@Url.Action("ObtenerTotalesPorTipo", "Bitacora")', function (data) {
+                        // Filtrar el resultado para cada tipo específico
+                        const consultaPublica = data.find(item => item.tipoAcceso === 'Acceso como Consulta Pública');
+                        const totalSesionSener = data
+                            .filter(item => item.tipoAcceso === 'Inicio de sesión funcionario SENER' || item.tipoAcceso === 'Inicio de sesión funcionario CRE')
+                            .reduce((total, item) => total + item.total, 0);
+
+                        $('#acceso-consulta-publica').text(consultaPublica ? consultaPublica.total.toLocaleString() : 'No data');
+                        $('#inicio-sesion-cre').text(totalSesionSener ? totalSesionSener.toLocaleString() : 'No data');
+                    });
+                });
+
+
+
+            </script>
+
+            //Accesos por fecha
+            <script>
+                function obtenerAccesosPorFecha() {
+                    $.ajax({
+                        url: '@Url.Action("ObtenerAccesosPorFecha", "Bitacora")',
+                        type: 'GET',
+                        success: function (data) {
+                            console.log("Datos recibidos:", data);
+
+                            // Formatear los datos para Highcharts
+                            var fechas = data.map(item => item.fecha);
+                            var accesos = data.map(item => item.totalAccesos);
+
+                            // Inicializar el gráfico de Highcharts
+                            Highcharts.chart('grafico-accesos-por-fecha', {
+                                chart: {
+                                    type: 'line',
+                                    backgroundColor: '#ffffff'
+                                },
+                                title: {
+                                    text: 'Accesos por Fecha'
+                                },
+                                xAxis: {
+                                    categories: fechas,
+                                    title: {
+                                        text: 'Fecha'
+                                    }
+                                },
+                                yAxis: {
+                                    title: {
+                                        text: 'Número de Accesos'
+                                    }
+                                },
+                                series: [{
+                                    name: 'Accesos',
+                                    data: accesos
+                                }]
+                            });
+                        },
+                        error: function (xhr, status, error) {
+                            console.error("Error al obtener los datos:", error);
+                        }
+                    });
+                }
+
+                $(document).ready(function () {
+                    obtenerAccesosPorFecha();
+                });
+
+
+            </script>
+
+            @* //Accesos *@
+            <script>
+                $(document).ready(function () {
+                    // Accesos por Usuario
+                    $.get('@Url.Action("ObtenerAccesosPorUsuario", "Bitacora")', function (data) {
+                        Highcharts.chart('grafico-accesos-usuario', {
+                            chart: {
+                                type: 'column',
+                                backgroundColor: '#ffffff'
+                            },
+                            title: {
+                                text: 'Accesos por Usuario'
+                            },
+                            xAxis: {
+                                categories: data.map(x => x.usuario),
+                                title: {
+                                    text: 'Usuario'
+                                }
+                            },
+                            yAxis: {
+                                title: {
+                                    text: 'Número de Accesos'
+                                }
+                            },
+                            series: [{
+                                name: 'Accesos',
+                                data: data.map(x => x.totalAccesos)
+                            }]
+                        });
+                    });
+
+                    // Accesos por Cargo
+                    $.get('@Url.Action("ObtenerAccesosPorCargo", "Bitacora")', function (data) {
+                        Highcharts.chart('grafico-accesos-cargo', {
+                            chart: {
+                                type: 'pie',
+                                backgroundColor: '#ffffff'
+                            },
+                            title: {
+                                text: 'Accesos por Cargo'
+                            },
+                            series: [{
+                                name: 'Accesos',
+                                colorByPoint: true,
+                                data: data.map(x => ({ name: x.cargo, y: x.totalAccesos }))
+                            }]
+
+                        });
+                    });
+
+                    // Accesos por Unidad de Adscripción
+                    $.get('@Url.Action("ObtenerAccesosPorUnidad", "Bitacora")', function (data) {
+                        Highcharts.chart('grafico-accesos-unidad', {
+                            chart: {
+                                type: 'area',
+                                backgroundColor: '#ffffff'
+                            },
+                            plotOptions: {
+                                area: {
+                                    stacking: 'normal',
+                                    lineColor: '#666666',
+                                    lineWidth: 1,
+                                    marker: {
+                                        lineWidth: 1,
+                                        lineColor: '#666666'
+                                    }
+                                }
+                            },
+                            title: {
+                                text: 'Accesos por Unidad de Adscripción'
+                            },
+                            xAxis: {
+                                categories: data.map(x => x.unidadDeAdscripcion),
+                                title: {
+                                    text: 'Unidad de Adscripción'
+                                }
+                            },
+                            yAxis: {
+                                title: {
+                                    text: 'Número de Accesos'
+                                }
+                            },
+                            series: [{
+                                name: 'Accesos',
+                                data: data.map(x => x.totalAccesos)
+                            }]
+                        });
+                    });
+
+                    // Accesos del Día de Hoy por Usuario
+                    $.get('@Url.Action("ObtenerAccesosHoyPorUsuario", "Bitacora")', function (data) {
+                        Highcharts.chart('grafico-accesos-hoy', {
+                            chart: {
+                                type: 'column',
+                                backgroundColor: '#ffffff'
+                            },
+                            title: {
+                                text: 'Accesos por Usuario Hoy'
+                            },
+                            xAxis: {
+                                categories: data.map(x => x.usuario),
+                                title: {
+                                    text: 'Usuario'
+                                }
+                            },
+                            yAxis: {
+                                title: {
+                                    text: 'Número de Accesos'
+                                }
+                            },
+                            series: [{
+                                name: 'Accesos',
+                                data: data.map(x => x.totalAccesos)
+                            }]
+                        });
+                    });
+
+                });
+            </script>
+            @* Usuarios Activos *@
+            <script>
+                $(document).ready(function () {
+                    function cargarUsuariosActivos() {
+                        $.get('@Url.Action("ObtenerUsuariosActivos", "Bitacora")', function (data) {
+                            var container = $('#usuarios-activos-container');
+                            container.empty(); // Limpiar el contenedor antes de agregar nuevas tarjetas
+
+                            data.forEach(function (usuario) {
+                                var estadoClase = usuario.estado === 'activo' ? 'usuario-activo-encendido' : 'usuario-activo-apagado';
+                                var card = `
+                        <div class="col-12 col-md-4 col-lg-3">
+                            <div class="usuario-activo-card">
+                                <i class="fas fa-user usuario-activo-icono"></i>
+                                <div class="usuario-activo-info">
+                                    <div class="usuario-activo-nombre">${usuario.nombre}</div>
+                                    <div class="usuario-activo-cargo">${usuario.cargo}</div>
+                                    <div class="usuario-activo-area">${usuario.area}</div>
+                                    <div class="usuario-activo-hora-conexion">Conectado el: ${usuario.horaConexion}</div>
+                                </div>
+                                <div class="usuario-activo-estado ${estadoClase}"></div>
+                            </div>
+                        </div>
+                    `;
+
+
+
+                                container.append(card);
+                            });
+                        });
+                    }
+
+                    // Cargar los usuarios activos inicialmente
+                    cargarUsuariosActivos();
+
+                    // Refrescar cada 10 segundos
+                    setInterval(cargarUsuariosActivos, 10000);
+                });
+            </script>
+
+        }

@@ -12,7 +12,7 @@ namespace NSIE.Servicios
 
         //Monitore y Uso de 
         Task<List<AccesoDetalle>> GetDetallesAccesoAsync(DateTime fechaInicio, DateTime fechaFin);
-        Task<List<AccesoDetalle>> GetDetallesAccesoPorUsuarioAsync(string nombreUsuario, DateTime fechaInicio, DateTime fechaFin);
+        Task<List<AccesoDetalle>> GetDetallesAccesoPorUsuarioAsync(int userId, string? correoUsuario, DateTime fechaInicio, DateTime fechaFin);
 
         //Cuenta los Accesos ala plataforma
         Task<int> GetTotalAccessCountAsync();
@@ -250,13 +250,13 @@ namespace NSIE.Servicios
                     {
                         var detalle = new AccesoDetalle
                         {
-                            AccesoId = reader.GetInt32(reader.GetOrdinal("AccesoId")),
-                            Nombre = reader.GetString(reader.GetOrdinal("Nombre")),
-                            TipoAcceso = reader.GetString(reader.GetOrdinal("TipoAcceso")),
-                            IP = reader.GetString(reader.GetOrdinal("IP")),
+                            AccesoId = reader.GetInt64(reader.GetOrdinal("AccesoId")),
+                            Nombre = reader.IsDBNull(reader.GetOrdinal("Nombre")) ? string.Empty : reader.GetString(reader.GetOrdinal("Nombre")),
+                            TipoAcceso = reader.IsDBNull(reader.GetOrdinal("TipoAcceso")) ? string.Empty : reader.GetString(reader.GetOrdinal("TipoAcceso")),
+                            IP = reader.IsDBNull(reader.GetOrdinal("IP")) ? string.Empty : reader.GetString(reader.GetOrdinal("IP")),
                             FechaHoraLocal = reader.GetDateTime(reader.GetOrdinal("FechaHoraLocal")),
-                            UnidadDeAdscripcion = reader.GetString(reader.GetOrdinal("Unidad_de_Adscripcion")),
-                            Cargo = reader.GetString(reader.GetOrdinal("Cargo"))
+                            UnidadDeAdscripcion = reader.IsDBNull(reader.GetOrdinal("Unidad_de_Adscripcion")) ? string.Empty : reader.GetString(reader.GetOrdinal("Unidad_de_Adscripcion")),
+                            Cargo = reader.IsDBNull(reader.GetOrdinal("Cargo")) ? string.Empty : reader.GetString(reader.GetOrdinal("Cargo"))
                         };
                         detallesAcceso.Add(detalle);
                     }
@@ -266,7 +266,7 @@ namespace NSIE.Servicios
             return detallesAcceso;
         }
 
-        public async Task<List<AccesoDetalle>> GetDetallesAccesoPorUsuarioAsync(string nombreUsuario, DateTime fechaInicio, DateTime fechaFin)
+        public async Task<List<AccesoDetalle>> GetDetallesAccesoPorUsuarioAsync(int userId, string? correoUsuario, DateTime fechaInicio, DateTime fechaFin)
         {
             var detallesAcceso = new List<AccesoDetalle>();
 
@@ -276,26 +276,32 @@ namespace NSIE.Servicios
                 var query = @"
                 SELECT 
                     A.IdAcceso AS AccesoId,
-                    U.Nombre,
+                    COALESCE(UPorId.Nombre, UPorCorreo.Nombre, '') AS Nombre,
                     A.TipoAcceso,
                     A.IP,
                     A.[FechaAcceso] AS [FechaHoraLocal],
-                    U.UnidadAdscripcion AS Unidad_de_Adscripcion,
-                    U.Cargo
+                    COALESCE(UPorId.UnidadAdscripcion, UPorCorreo.UnidadAdscripcion, '') AS Unidad_de_Adscripcion,
+                    COALESCE(UPorId.Cargo, UPorCorreo.Cargo, '') AS Cargo
                 FROM 
                     [dgmesnie].[Acceso] A
-                INNER JOIN 
-                    [dgmesnie].[Usuario] U ON A.IdUsuario = U.IdUsuario
+                LEFT JOIN 
+                    [dgmesnie].[Usuario] UPorId ON A.IdUsuario = UPorId.IdUsuario
+                LEFT JOIN 
+                    [dgmesnie].[Usuario] UPorCorreo ON A.IdUsuario IS NULL AND UPorCorreo.Correo = A.Correo
                 WHERE 
                     A.[FechaAcceso] BETWEEN @FechaInicio AND @FechaFin
-                    AND U.Nombre = @NombreUsuario
+                    AND (
+                        A.IdUsuario = @UserId
+                        OR (A.IdUsuario IS NULL AND A.Correo = @CorreoUsuario)
+                    )
                 ORDER BY 
                     A.[FechaAcceso] DESC;";
 
                 var command = new SqlCommand(query, connection);
                 command.Parameters.AddWithValue("@FechaInicio", fechaInicio);
                 command.Parameters.AddWithValue("@FechaFin", fechaFin);
-                command.Parameters.AddWithValue("@NombreUsuario", nombreUsuario);
+                command.Parameters.AddWithValue("@UserId", userId);
+                command.Parameters.AddWithValue("@CorreoUsuario", (object?)correoUsuario ?? DBNull.Value);
 
                 using (var reader = await command.ExecuteReaderAsync())
                 {
@@ -303,13 +309,13 @@ namespace NSIE.Servicios
                     {
                         var detalle = new AccesoDetalle
                         {
-                            AccesoId = reader.GetInt32(reader.GetOrdinal("AccesoId")),
-                            Nombre = reader.GetString(reader.GetOrdinal("Nombre")),
-                            TipoAcceso = reader.GetString(reader.GetOrdinal("TipoAcceso")),
-                            IP = reader.GetString(reader.GetOrdinal("IP")),
+                            AccesoId = reader.GetInt64(reader.GetOrdinal("AccesoId")),
+                            Nombre = reader.IsDBNull(reader.GetOrdinal("Nombre")) ? string.Empty : reader.GetString(reader.GetOrdinal("Nombre")),
+                            TipoAcceso = reader.IsDBNull(reader.GetOrdinal("TipoAcceso")) ? string.Empty : reader.GetString(reader.GetOrdinal("TipoAcceso")),
+                            IP = reader.IsDBNull(reader.GetOrdinal("IP")) ? string.Empty : reader.GetString(reader.GetOrdinal("IP")),
                             FechaHoraLocal = reader.GetDateTime(reader.GetOrdinal("FechaHoraLocal")),
-                            UnidadDeAdscripcion = reader.GetString(reader.GetOrdinal("Unidad_de_Adscripcion")),
-                            Cargo = reader.GetString(reader.GetOrdinal("Cargo"))
+                            UnidadDeAdscripcion = reader.IsDBNull(reader.GetOrdinal("Unidad_de_Adscripcion")) ? string.Empty : reader.GetString(reader.GetOrdinal("Unidad_de_Adscripcion")),
+                            Cargo = reader.IsDBNull(reader.GetOrdinal("Cargo")) ? string.Empty : reader.GetString(reader.GetOrdinal("Cargo"))
                         };
                         detallesAcceso.Add(detalle);
                     }

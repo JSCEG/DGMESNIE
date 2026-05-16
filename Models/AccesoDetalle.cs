@@ -2,7 +2,7 @@ namespace NSIE.Models
 {
 	public class AccesoDetalle
 	{
-		public int AccesoId { get; set; }
+		public long AccesoId { get; set; }
 		public string Nombre { get; set; }
 		public string TipoAcceso { get; set; }
 		public string IP { get; set; }

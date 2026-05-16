@@ -277,10 +277,20 @@ namespace NSIE.Controllers
 
         private IActionResult ProcesarLoginInvitado(Usuario oUsuario)
         {
-            oUsuario.Clave = ConvertirSha256(oUsuario.Clave);
+            try
+            {
+                oUsuario.Clave = ConvertirSha256(oUsuario.Clave);
 
-            Console.WriteLine("Clave: " + oUsuario.Clave);
-            oUsuario.IdUsuario = ValidarUsuario(oUsuario.Correo, oUsuario.Clave);
+                Console.WriteLine("Clave: " + oUsuario.Clave);
+                oUsuario.IdUsuario = ValidarUsuario(oUsuario.Correo, oUsuario.Clave);
+            }
+            catch (SqlException ex)
+            {
+                _logger.LogError(ex, "Error de conexión SQL durante el acceso como invitado.");
+                ViewData["MostrarModal"] = false;
+                ViewData["Mensaje"] = "No fue posible conectar con la base de datos. Verifica la configuración de acceso e inténtalo nuevamente.";
+                return View("Login");
+            }
 
             if (oUsuario.IdUsuario == 0)
             {
@@ -332,9 +342,18 @@ namespace NSIE.Controllers
                 return View("Login");
             }
 
-            oUsuario.Clave = ConvertirSha256(oUsuario.Clave);
-
-            oUsuario.IdUsuario = ValidarUsuario(oUsuario.Correo, oUsuario.Clave);
+            try
+            {
+                oUsuario.Clave = ConvertirSha256(oUsuario.Clave);
+                oUsuario.IdUsuario = ValidarUsuario(oUsuario.Correo, oUsuario.Clave);
+            }
+            catch (SqlException ex)
+            {
+                _logger.LogError(ex, "Error de conexión SQL durante el inicio de sesión para {Correo}.", oUsuario.Correo);
+                ViewData["MostrarModal"] = false;
+                ViewData["Mensaje"] = "No fue posible conectar con la base de datos. Verifica la configuración de acceso e inténtalo nuevamente.";
+                return View("Login");
+            }
 
             if (oUsuario.IdUsuario == 0)
             {
@@ -343,7 +362,7 @@ namespace NSIE.Controllers
                 return View("Login");
             }
 
-            return CompletarInicioSesion(oUsuario.IdUsuario, registrarAcceso, "Inicio de sesión funcionario CRE");
+            return CompletarInicioSesion(oUsuario.IdUsuario, registrarAcceso, "Inicio de sesión funcionario SENER");
         }
         #endregion
 
@@ -368,7 +387,7 @@ namespace NSIE.Controllers
                         IdUsuario = idUsuario.Value,
                         Correo = correoUsuario,
                         TipoAcceso = tipoAcceso,
-                        IP = HttpContext.Connection.RemoteIpAddress?.ToString()
+                        IP = ClienteIpHelper.ObtenerIpCliente(HttpContext)
                     });
                 }
             }
@@ -664,7 +683,7 @@ namespace NSIE.Controllers
                     IdUsuario = idUsuario,
                     SessionKey = HttpContext.Session.Id,
                     FechaExpiracion = DateTime.UtcNow.AddMinutes(MinutosDuracionSesion),
-                    Ip = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    Ip = ClienteIpHelper.ObtenerIpCliente(HttpContext),
                     UserAgent = Request.Headers.UserAgent.ToString(),
                     OrigenAcceso = "WEB"
                 },

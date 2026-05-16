@@ -44,7 +44,9 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
     var idUsuario = Convert.ToInt32(ViewData["IDUsuario"]);
     var rolUsuario = perfilUsuario?.Rol;
     var nombreUsuario = perfilUsuario?.Nombre?.ToString();
-    var esConsultaPublica = (rolUsuario == "10" || nombreUsuario.Contains("consult"));
+    var esConsultaPublica = rolUsuario == "10"
+        || (nombreUsuario?.Contains("consult", StringComparison.OrdinalIgnoreCase) == true);
+    var nombreUsuarioTexto = string.IsNullOrWhiteSpace(nombreUsuario) ? "Usuario" : nombreUsuario;
     var documentosSharePoint = new[]
     {
         new
@@ -97,6 +99,63 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
             Url = "https://senermx.sharepoint.com/:f:/s/DGMESNIE/IgDNruFj9jG9RZD71x8VHdGfAUpM9NdHdBoOVjO2SS2LoFI?e=UNjcAS"
         }
     };
+    var gruposSharePoint = documentosSharePoint
+        .GroupBy(x => x.Grupo)
+        .ToList();
+
+    var modulosDisponibles = Model.Secciones
+        .Where(s => s.Modulos != null)
+        .SelectMany(s => s.Modulos.Select(m => new { Seccion = s, Modulo = m }))
+        .Where(x => x.Modulo != null && !string.IsNullOrWhiteSpace(x.Modulo.Controller) &&
+!string.IsNullOrWhiteSpace(x.Modulo.Action))
+        .GroupBy(x => $"{x.Modulo.Controller}|{x.Modulo.Action}")
+        .Select(g => g.First())
+        .ToList();
+
+    var herramientasDestacadas = new[]
+    {
+        new
+        {
+            Categoria = "Jurídico",
+            Titulo = "Buscador jurídico de leyes",
+            Descripcion = "Consulta rápida de leyes, ordenamientos y referencias normativas desde el portal externo especializado.",
+            Url = "https://buscador-leyes.pages.dev/",
+            Icono = "bi-bank2",
+            Etiqueta = "Normatividad"
+        },
+        new
+        {
+            Categoria = "Mapa dinámico",
+            Titulo = "Mapa de almacenamiento",
+            Descripcion = "Visualiza la capa dinámica de almacenamiento y su consulta territorial en una vista geoespacial directa.",
+            Url = "https://mapassniendinamicos.pages.dev/saee-gcr",
+            Icono = "bi-map",
+            Etiqueta = "Geoespacial"
+        },
+        new
+        {
+            Categoria = "Presentaciones",
+            Titulo = "PVIRCE y Proyectos Mixtos",
+            Descripcion = "Entra al servicio de presentaciones y materiales de trabajo para PVIRCE y proyectos mixtos.",
+            Url = "https://pvirce.javiereg3.workers.dev/",
+            Icono = "bi-easel2",
+            Etiqueta = "Presentaciones"
+        }
+    };
+    var totalSecciones = Model.Secciones.Count;
+    var totalModulos = modulosDisponibles.Count;
+    var totalDocumentos = documentosSharePoint.Length;
+    var totalAccesosRapidos = herramientasDestacadas.Length;
+    var fondosBienvenida = new[]
+    {
+        new
+        {
+            Url = "https://cdn.sassoapps.com/dgmesnie/marian_rom.jpg",
+            Tema = "Editorial",
+            Posicion = "88% center"
+        }
+    };
+
 }
 
 @section Styles {
@@ -108,11 +167,33 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
         @await Html.PartialAsync("_ViewHeader", header)
     </div>
 
-    <section id="hero-home" aria-label="Resumen de inicio">
+    <section id="hero-home" aria-label="Inicio principal">
+        <div class="hero-home__background" aria-hidden="true">
+            <div class="hero-home__media">
+                <iframe id="heroBackgroundVideo"
+                        src="https://www.youtube-nocookie.com/embed/3Os0pbDTubQ?autoplay=1&mute=1&controls=0&loop=1&playlist=3Os0pbDTubQ&playsinline=1&rel=0&modestbranding=1&enablejsapi=1"
+                        title="Video institucional de fondo" tabindex="-1"
+                        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                        referrerpolicy="strict-origin-when-cross-origin">
+                </iframe>
+            </div>
+            <div class="hero-home__brand-strip">
+                <img src="~/Ejemplos/img/logo_gob.png" alt="Gobierno de México"
+                     class="hero-home__brand-logo hero-home__brand-logo--gob" />
+                <span class="hero-home__brand-divider"></span>
+                <img src="~/Ejemplos/img/logo_sener.png" alt="Secretaría de Energía"
+                     class="hero-home__brand-logo hero-home__brand-logo--sener" />
+            </div>
+            <div class="hero-home__pattern hero-home__pattern--chip"></div>
+            <div class="hero-home__pattern hero-home__pattern--rings"></div>
+            <div class="hero-home__pattern hero-home__pattern--bars"></div>
+            <div class="hero-home__pattern hero-home__pattern--grid"></div>
+            <div class="hero-home__pattern hero-home__pattern--lines"></div>
+        </div>
         <div class="container">
-            <div class="hero-home__content">
+            <div class="hero-home__content hero-home__content--portal">
                 <span class="hero-home__eyebrow">Portal principal</span>
-                <div class="hero-home__copy">
+                <div class="hero-home__copy" id="heroWelcomePanel">
                     <h1 class="hero-home__title">
                         @if (esConsultaPublica)
                         {
@@ -120,26 +201,51 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
                         }
                         else
                         {
-                            <text>Bienvenido, @nombreUsuario</text>
+                            <text>Bienvenido, @nombreUsuarioTexto</text>
                         }
                     </h1>
-                    <p class="hero-home__lead">Accede a módulos, indicadores y reportes del Sistema Nacional de
-                        Información de Energía desde un solo lugar.</p>
+                    <p class="hero-home__lead">Accede a módulos, indicadores y reportes de la Dirección General de
+                        Metodologías y Estadísticas desde un solo lugar.</p>
                     </div>
-                    <div class="hero-home__meta">
-                        <span class="hero-home__meta-pill"><i class="bi bi-compass"></i> Acceso central al ecosistema
-                            energético</span>
-                            <span class="hero-home__meta-text">El SNIEr concentra la consulta oficial del sector energético en
-                                México.</span>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+                </div>
+            </div>
+        </section>
 
-                <!-- NUEVO DASHBOARD GRID -->
-                <div class="dashboard-container">
-                    <div class="container">
-                        <div class="dashboard-grid dashboard-grid--secondary">
+        <div class="dashboard-container">
+            <div class="container">
+                <div class="dashboard-grid dashboard-grid--landing">
+                    <div class="dashboard-main-stack">
+                        <section class="home-panel home-panel--quick" aria-label="Accesos rápidos">
+                            <div class="card-header card-header--split">
+                                <div class="card-header__title-wrap">
+                                    <div class="card-icon"><i class="bi bi-lightning-charge"></i></div>
+                                    <div>
+                                        <h3 class="card-title mb-1">Accesos rápidos</h3>
+                                        <p class="text-muted small mb-0">Entradas directas a módulos prioritarios para
+                                            continuar trabajando.</p>
+                                        </div>
+                                    </div>
+                                    <span class="home-quick-counter">@totalAccesosRapidos disponibles</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="home-quick-grid">
+                                        @foreach (var herramienta in herramientasDestacadas)
+                                        {
+                                            <a class="home-quick-card" href="@herramienta.Url" target="_blank"
+                                               rel="noopener noreferrer"
+                                               data-search="@($"{herramienta.Titulo} {herramienta.Categoria} {herramienta.Etiqueta}".ToLowerInvariant())">
+                                                <span class="home-quick-card__icon"><i class="bi @herramienta.Icono"></i></span>
+                                                <div class="home-quick-card__copy">
+                                                    <small class="home-quick-card__section">@herramienta.Categoria</small>
+                                                    <strong>@herramienta.Titulo</strong>
+                                                    <span>@herramienta.Descripcion</span>
+                                                </div>
+                                                <span class="home-quick-card__arrow"><i class="bi bi-box-arrow-up-right"></i></span>
+                                            </a>
+                                        }
+                                    </div>
+                                </div>
+                            </section>
 
                             <section class="home-panel home-panel--plain home-panel--documents full-width"
                                      aria-label="Documentos SharePoint">
@@ -147,78 +253,46 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
                                     <div class="card-header__title-wrap">
                                         <div class="card-icon"><i class="bi bi-folder2-open"></i></div>
                                         <div>
-                                            <h3 class="card-title mb-1">Documentos SharePoint</h3>
+                                            <h3 class="card-title mb-1">Accesos de SharePoint</h3>
                                             <p class="text-muted small mb-0">Accesos directos a carpetas institucionales
                                                 priorizadas.</p>
                                             </div>
                                         </div>
                                     </div>
                                     <div class="card-body">
-                                        <div class="sharepoint-link-grid">
-                                            @foreach (var documento in documentosSharePoint)
+                                        <div class="home-document-groups">
+                                            @foreach (var grupo in gruposSharePoint)
                                             {
-                                                <a class="sharepoint-link-card" href="@documento.Url" target="_blank"
-                                                       rel="noopener noreferrer">
-                                                    <span class="sharepoint-link-card__group">@documento.Grupo</span>
-                                                    <strong class="sharepoint-link-card__title">@documento.Titulo</strong>
-                                                    <span class="sharepoint-link-card__description">@documento.Descripcion</span>
-                                                    <span class="sharepoint-link-card__cta">Abrir carpeta <i
-                                                        class="bi bi-box-arrow-up-right"></i></span>
-                                                    </a>
+                                                <article class="home-document-group">
+                                                    <header class="home-document-group__header">
+                                                        <span class="home-document-group__eyebrow">@grupo.Key</span>
+                                                    </header>
+                                                    <div class="home-document-group__list">
+                                                        @foreach (var documento in grupo)
+                                                        {
+                                                            <a class="home-document-link" href="@documento.Url" target="_blank"
+                                                               rel="noopener noreferrer">
+                                                                <span class="home-document-link__icon"><i class="bi bi-folder"></i></span>
+                                                                <span class="home-document-link__copy">
+                                                                    <strong>@documento.Titulo</strong>
+                                                                    <small>@documento.Descripcion</small>
+                                                                </span>
+                                                                <span class="home-document-link__arrow"><i
+                                                                    class="bi bi-chevron-right"></i></span>
+                                                                </a>
+                                                            }
+                                                        </div>
+                                                    </article>
                                                 }
                                             </div>
                                         </div>
                                     </section>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-                                    <!-- Card: Actividad Reciente / Lo Más Consultado (Full Width) -->
-                                    <section class="home-panel home-panel--activity full-width" id="continuar">
-                                        @if (esConsultaPublica)
-                                        {
-                                            <div class="continuar-header">
-                                                <div class="continuar-header__content">
-                                                    <div class="continuar-header__icon"><i class="bi bi-star-fill"></i></div>
-                                                    <div>
-                                                        <h3 class="card-title mb-1">Lo Más Consultado</h3>
-                                                        <p class="text-muted small mb-0">Explora los módulos y secciones más populares de la
-                                                            plataforma.</p>
-                                                        </div>
-                                                    </div>
-                                                    <a href="@Url.Action("Dashboard", "Bitacora")" class="continuar-link">Ver todo <i
-                                                        class="bi bi-chevron-right"></i></a>
-                                                    </div>
-                                                    <div class="card-body">
-                                                        <div id="tarjetas-acciones"></div>
-                                                    </div>
-                                                }
-                                        else
-                                                {
-                                                    <div class="continuar-header">
-                                                        <div class="continuar-header__content">
-                                                            <div class="continuar-header__icon"><i class="bi bi-clock-history"></i></div>
-                                                            <div>
-                                                                <h3 class="card-title mb-1">Continuar viendo</h3>
-                                                                <p class="text-muted small mb-0">Retoma donde te quedaste en tus últimas consultas.
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <a href="@Url.Action("Dashboard", "Bitacora")" class="continuar-link">Ver todo <i
-                                                            class="bi bi-chevron-right"></i></a>
-                                                        </div>
-                                                        <div class="card-body">
-                                                            <div id="tarjetas-acciones"></div>
-                                                        </div>
-                                                    }
-                                                    <div class="continuar-footer-note">
-                                                        <i class="bi bi-shield-lock"></i>
-                                                        <span>Tu progreso se guarda automáticamente para que puedas continuar después.</span>
-                                                    </div>
-                                                </section>
-
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    @*
+                    @*
 <div class="container my-4">
                                 <section class="home-panel full-width" data-aos="fade-up">
         <div class="card-header">
@@ -234,206 +308,38 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
 </div>
 *@
 
-                                    @section Scripts {
-                                        <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
-                                        <script>
-                                            // --- SCRIPT DE PARTICLES.JS ---
-                                            document.addEventListener('DOMContentLoaded', function () {
-                                            const particlesDiv = document.getElementById('particles-js-home');
-                                            if (typeof particlesJS !== 'undefined' && particlesDiv) {
-                                            particlesJS("particles-js-home", {
-                                            "particles": {
-                                            "number": { "value": 42, "density": { "enable": true, "value_area": 920 } },
-                                            "color": { "value": "#f6dca0" },
-                                            "shape": { "type": "circle" },
-                                            "opacity": { "value": 0.55, "random": true },
-                                            "size": { "value": 2.4, "random": true },
-                                            "line_linked": { "enable": true, "distance": 160, "color": "#f3d58c", "opacity": 0.28, "width": 1 },
-                                            "move": { "enable": true, "speed": 2.6, "direction": "none", "random": true, "straight": false, "out_mode": "out" }
-                                            },
-                                            "interactivity": {
-                                            "detect_on": "canvas",
-                                            "events": { "onhover": { "enable": true, "mode": "grab" }, "onclick": { "enable": false } },
-                                            "modes": { "grab": { "distance": 140, "line_linked": { "opacity": 0.5 } } }
-                                            },
-                                            "retina_detect": true
-                                            });
-                                            }
-                                            });
+                    @section Scripts {
+                        <script>
+                                $(function () {
+                                    const fondosBienvenida = @Html.Raw(JsonConvert.SerializeObject(fondosBienvenida));
+                                    const $heroWelcomePanel = $('#heroWelcomePanel');
+                                    const heroVideoFrame = document.getElementById('heroBackgroundVideo');
 
-                                            // --- SCRIPT PARA FUNCIONALIDAD "CONTINUAR VIENDO" (SIN CAMBIOS) ---
-                                            function irA(elemento) {
-                                            const controller = elemento.getAttribute('data-controller');
-                                            const action = elemento.getAttribute('data-action');
-                                            if (controller && action) {
-                                            window.location.href = `/${controller}/${action}`;
-                                            }
-                                            }
-
-                                            function mostrarAyudaModulo(infoJson) {
-                                            try {
-                                            const info = typeof infoJson === 'string' ? JSON.parse(infoJson) : infoJson;
-                                            const html = `
-                                            <div class="text-start">
-                                            ${info.description ? `<p><strong>${info.description}</strong></p>` : ''}
-                                            ${info.functionality ? `<p><i class='fas fa-cogs me-2'></i> ${info.functionality}</p>` : ''}
-                                            ${info.stage ? `<p><i class='fas fa-layer-group me-2'></i> Etapa: ${info.stage}</p>` : ''}
-                                            ${info.roles?.length ? `
-                                            <ul>
-                                            ${info.roles.map(r => `<li><i class="fas fa-${r.icon} me-2 text-primary"></i> ${r.text}</li>`).join('')}
-                                            </ul>` : ''}
-                                            ${info.order ? `<p><i class='fas fa-sort-amount-up'></i> Paso ${info.order.step}: ${info.order.description}</p>` : ''}
-                                            </div>`;
-
-                                            Swal.fire({
-                                            title: info.title || 'Ayuda del módulo',
-                                            html: html,
-                                            confirmButtonText: 'Cerrar',
-                                            confirmButtonColor: '#6c757d',
-                                            backdrop: true
-                                            });
-                                            } catch (e) {
-                                            console.error("Error al parsear o mostrar la ayuda del módulo:", e);
-                                            Swal.fire('Error', 'No se pudo mostrar la información de ayuda.', 'error');
-                                            }
-                                            }
-
-                                            $(function () {
-                                            const $seccion = $('#continuar');
-                                            const $contenedor = $('#tarjetas-acciones');
-                                            const $loader = $('<div id="loader-continua" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary" role="status"><span class="visually-hidden">Cargando...</span></div></div>');
-
-                                            $contenedor.html($loader);
-
-                                            $.ajax({
-                                            url: '@Url.Action("GetUltimasAcciones", "Bitacora")',
-                                            data: { top: 10 },
-                                            dataType: 'json',
-                                            success: acciones => {
-                                            if (!acciones || !acciones.length) {
-                                            $contenedor.html('<p class="text-muted text-center">Sin actividad reciente.</p>');
+                                    function aplicarFondoBienvenida(item) {
+                                        if (!item || !$heroWelcomePanel.length) {
                                             return;
-                                            }
-                                            const badgeMap = {
-                                            Home: { label: 'PORTAL', icon: 'bi-house-fill' },
-                                            Atlas: { label: 'AZEL', icon: 'bi-lightning-charge-fill' },
-                                            Indicadores: { label: 'SNIER', icon: 'bi-bar-chart-fill' },
-                                            SNIE: { label: 'SNIE', icon: 'bi-grid-1x2-fill' },
-                                            SIIL: { label: 'SIIL', icon: 'bi-building-fill' },
-                                            Proyectos: { label: 'SENER', icon: 'bi-flower1' },
-                                            SankeySener: { label: 'BNE', icon: 'bi-diagram-3-fill' }
-                                            };
-                                            const filaId = 'fila-acciones';
-                                            const filaHtml = `
-                                            <div class="position-relative netflix-carousel">
-                                            <button class="nf-nav-btn nf-prev" type="button" aria-label="Anterior" data-target="#${filaId}">❮</button>
-                                            <button class="nf-nav-btn nf-next" type="button" aria-label="Siguiente" data-target="#${filaId}">❯</button>
-                                            <div id="${filaId}" class="netflix-card-container" role="list" aria-label="Continuar viendo">
-                                            ${acciones.map((a, index) => {
-                                            const badge = badgeMap[a.controller] || { label: (a.controller || 'SENER').toUpperCase(), icon: 'bi-lightning-charge-fill' };
-                                            const portadaTitulo = a.pagina || 'Consulta reciente';
-                                            const portadaFecha = a.fecha || '';
-                                            const avance = Math.max(30, 65 - (index * 10));
-                                            return `
-                                            <article class="netflix-card" role="listitem" tabindex="0" onclick="irA(this)" data-controller="${a.controller}" data-action="${a.action}">
-                                            <div class="card-img activity-card-cover" aria-hidden="true">
-                                            <div class="activity-card-cover__badge">
-                                            <span class="activity-card-cover__brand">Energía</span>
-                                            </div>
-                                            <div class="activity-card-cover__seal"><i class="bi ${badge.icon}"></i></div>
-                                            </div>
-                                            <div class="card-overlay">
-                                            <div class="activity-card-meta-pill">${badge.label}</div>
-                                            <h6 title="${portadaTitulo}">${portadaTitulo}</h6>
-                                            <p class="text-muted small"><i class="bi bi-calendar3 me-1"></i>${portadaFecha}</p>
-                                            <div class="activity-progress">
-                                            <div class="activity-progress__bar"><span style="width:${avance}%"></span></div>
-                                            <span class="activity-progress__value">${avance}%</span>
-                                            </div>
-                                            <button class="btn btn-primary btn-sm" type="button"><i class="bi bi-arrow-repeat me-1"></i>Reanudar</button>
-                                            </div>
-                                            </article>`;
-                                            }).join('')}
-                                            </div>
-                                            <div class="activity-dots" aria-label="Paginación del carrusel"></div>
-                                            </div>`;
-                                            $contenedor.html(filaHtml);
+                                        }
 
-                                            const $fila = $('#' + filaId);
-                                            const $prev = $seccion.find('.nf-prev');
-                                            const $next = $seccion.find('.nf-next');
-                                            const $dots = $seccion.find('.activity-dots');
-
-                                            function getPageMetrics() {
-                                            const el = $fila[0];
-                                            if (!el) {
-                                            return { pageWidth: 0, pageCount: 0, currentPage: 0, maxScroll: 0 };
-                                            }
-
-                                            const pageWidth = Math.max(el.clientWidth * 0.88, 1);
-                                            const maxScroll = Math.max(el.scrollWidth - el.clientWidth, 0);
-                                            const pageCount = Math.max(1, Math.ceil((maxScroll + pageWidth) / pageWidth));
-                                            const currentPage = Math.min(pageCount - 1, Math.round(el.scrollLeft / pageWidth));
-
-                                            return { pageWidth, pageCount, currentPage, maxScroll };
-                                            }
-
-                                            function renderDots() {
-                                            const { pageCount, currentPage } = getPageMetrics();
-                                            const dotsHtml = Array.from({ length: pageCount }, (_, index) => `
-                                            <button type="button" class="activity-dot ${index === currentPage ? 'is-active' : ''}" aria-label="Ir a la página ${index + 1}" data-page="${index}"></button>
-                                            `).join('');
-
-                                            $dots.html(dotsHtml);
-                                            }
-
-                                            function updateNavButtons() {
-                                            const el = $fila[0];
-                                            if (!el) return;
-                                            const { currentPage, pageCount, maxScroll } = getPageMetrics();
-                                            $prev.prop('disabled', el.scrollLeft <= 1);
-                                            $next.prop('disabled', el.scrollLeft >= maxScroll - 1);
-                                            $dots.find('.activity-dot').each(function () {
-                                            const page = Number(this.getAttribute('data-page'));
-                                            this.classList.toggle('is-active', page === currentPage);
-                                            });
-                                            $dots.toggle(pageCount > 1);
-                                            }
-
-                                            function scrollByPage(dir) {
-                                            const el = $fila[0];
-                                            if (!el) return;
-                                            const { pageWidth, currentPage, pageCount } = getPageMetrics();
-                                            const targetPage = Math.max(0, Math.min(pageCount - 1, currentPage + dir));
-                                            el.scrollTo({ left: targetPage * pageWidth, behavior: 'smooth' });
-                                            setTimeout(updateNavButtons, 400);
-                                            }
-
-                                            $prev.on('click', () => scrollByPage(-1));
-                                            $next.on('click', () => scrollByPage(1));
-                                            $dots.on('click', '.activity-dot', function () {
-                                            const el = $fila[0];
-                                            if (!el) return;
-                                            const { pageWidth } = getPageMetrics();
-                                            const targetPage = Number(this.getAttribute('data-page')) || 0;
-                                            el.scrollTo({ left: targetPage * pageWidth, behavior: 'smooth' });
-                                            setTimeout(updateNavButtons, 400);
-                                            });
-                                            $fila.on('scroll', updateNavButtons);
-                                            $(window).on('resize.homeContinuar', () => {
-                                            renderDots();
-                                            updateNavButtons();
-                                            });
-                                            requestAnimationFrame(() => {
-                                            renderDots();
-                                            updateNavButtons();
-                                            });
-                                            },
-                                            error: (xhr, status, err) => {
-                                            console.error('Error al cargar últimas acciones:', err);
-                                            $contenedor.html('<p class="text-danger text-center">No fue posible cargar la actividad.</p>');
-                                            }
-                                            });
-                                            });
-                                        </script>
+                                        $heroWelcomePanel[0].style.setProperty('--hero-welcome-bg', `url("${item.Url}")`);
+                                        $heroWelcomePanel[0].style.setProperty('--hero-welcome-position', item.Posicion || 'center center');
                                     }
+
+                                    if (fondosBienvenida.length && $heroWelcomePanel.length) {
+                                        aplicarFondoBienvenida(fondosBienvenida[0]);
+                                    }
+
+                                    if (heroVideoFrame) {
+                                        heroVideoFrame.addEventListener('load', function () {
+                                            const playerWindow = heroVideoFrame.contentWindow;
+
+                                            if (!playerWindow) {
+                                                return;
+                                            }
+
+                                            playerWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
+                                            playerWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
+                                        });
+                                    }
+                                });
+                        </script>
+                    }

@@ -328,11 +328,14 @@ namespace NSIE.Controllers
         // ============================
 
         // Devuelve datos de monitoreo de usuario en JSON
-        public async Task<IActionResult> MonitoreoUsuario(int id, string nombre)
+        public async Task<IActionResult> MonitoreoUsuario(int id, string? nombre = null)
         {
             var userViewModel = await repositorioUsuarios.ObtenerUsuarioPorId(id);
+            if (userViewModel == null)
+                return NotFound();
+
             var usuario = ConvertToUsuario(userViewModel);
-            var modeloCompuesto = await ObtenerModeloCompuesto(usuario, nombre);
+            var modeloCompuesto = await ObtenerModeloCompuesto(usuario);
             return Json(modeloCompuesto);
         }
 
@@ -348,12 +351,12 @@ namespace NSIE.Controllers
         }
 
         // Obtiene el modelo compuesto de monitoreo
-        private async Task<ModeloCuentaCompuesto> ObtenerModeloCompuesto(Usuario usuario, string nombre)
+        private async Task<ModeloCuentaCompuesto> ObtenerModeloCompuesto(Usuario usuario)
         {
-            var totalAccesos = await repositorioAcceso.GetTotalAccessCountAsync();
             var fechaInicio = new DateTime(2023, 1, 1);
             var fechaFin = new DateTime(2030, 12, 31);
-            var detallesAcceso = await repositorioAcceso.GetDetallesAccesoPorUsuarioAsync(nombre, fechaInicio, fechaFin);
+            var detallesAcceso = await repositorioAcceso.GetDetallesAccesoPorUsuarioAsync(usuario.IdUsuario, usuario.Correo, fechaInicio, fechaFin);
+            var totalAccesos = detallesAcceso.Count;
             var totalAccesosPorTipo = await repositorioAcceso.GetTotalAccessCountByTypeAsync(fechaInicio, fechaFin);
             var ultimoAccesoPorUsuario = detallesAcceso
                 .GroupBy(da => da.Nombre)
