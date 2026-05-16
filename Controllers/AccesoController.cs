@@ -913,6 +913,43 @@ namespace NSIE.Controllers
                 </html>";
         }
 
+        private string EmailPasswordChangedFromAccount(string logo, string nombre)
+        {
+            return $@"
+                <html lang='es'>
+                <head>
+                    <meta charset='UTF-8'>
+                    <meta http-equiv='X-UA-Compatible' content='IE=edge' />
+                    <title>Cambio de Contraseña Exitoso</title>
+                    <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
+                    <style>
+                        .ReadMsgBody {{width: 100%; background-color: #ffffff;}}
+                        .ExternalClass {{width: 100%; background-color: #ffffff;}}
+                        @-ms-viewport {{width: device-width;}}
+                    </style>
+                </head>
+                <body style='background: #ffffff; width: 100%; height: 100%; margin: 0; padding: 0; font-family: Montserrat, sans-serif;'>
+                    <center class='wrapper' style='padding-top: 5%; width: 100%; max-width: 960px;'>
+                        <div class='webkit'>
+                            <table cellpadding='0' cellspacing='0' border='0' bgcolor='#ffffff' style='width: 100%; max-width: 960px;'>
+                                <tbody>
+                                    <tr>
+                                        <td align='center'>
+                                            <img src='{logo}' alt='Logo' width='120px' height='100px'>
+                                            <h1>¡Hola, {nombre}!</h1>
+                                            <p>Le informamos que la contraseña de su cuenta fue actualizada correctamente desde el panel de usuario.</p>
+                                            <p>*Este correo se genera automáticamente y no requiere respuesta.</p>
+                                            <p>Sin otro particular, reciba un cordial saludo.</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </center>
+                </body>
+                </html>";
+        }
+
         private string GenerateToken()
         {
             using (var rng = RandomNumberGenerator.Create())
@@ -1021,10 +1058,18 @@ namespace NSIE.Controllers
             }
 
             var correoUsuarioFinal = usuarioFinal.Correo;
-            var nuevoMensajeFinal = EmailConfirmed(logo, usuarioFinal.Nombre);
-            await _servicioEmailSMTP.EnviarCorreo(correoUsuarioFinal, "Restablecimiento de contraseña exitoso", nuevoMensajeFinal);
+            var nuevoMensajeFinal = EmailPasswordChangedFromAccount(logo, usuarioFinal.Nombre);
 
-            return Ok("La contraseña se ha restablecido correctamente.");
+            try
+            {
+                await _servicioEmailSMTP.EnviarCorreo(correoUsuarioFinal, "Cambio de contraseña exitoso", nuevoMensajeFinal);
+                return Ok("La contraseña se actualizó correctamente.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "La contraseña del usuario {IdUsuario} se actualizó, pero no fue posible enviar el correo de confirmación.", IdUsuario);
+                return Ok("La contraseña se actualizó correctamente, pero no fue posible enviar el correo de confirmación.");
+            }
         }
 
         public async Task<IActionResult> Monitoreo()
