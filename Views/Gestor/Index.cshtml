@@ -1,0 +1,232 @@
+@using NSIE.Models
+@using Microsoft.AspNetCore.Antiforgery
+@inject IAntiforgery AntiforgeryService
+@{
+    ViewData["Title"] = "Gestor de Actividades";
+    var header = ViewData["HeaderViewModel"] as HeaderViewModel;
+    var csrfToken = AntiforgeryService.GetAndStoreTokens(Context).RequestToken;
+}
+
+@section Head {
+    <meta name="csrf-token" content="@csrfToken">
+    <link rel="stylesheet" href="~/gestor/css/gestor.css" asp-append-version="true">
+}
+
+@Html.AntiForgeryToken()
+
+<div id="tracking-preloader" class="tracking-preloader" role="status" aria-live="polite">
+    <div class="tracking-preloader__card">
+        <div class="tracking-preloader__brand">
+            <img src="~/img/logo_gob.png" alt="Gobierno de México">
+            <span aria-hidden="true"></span>
+            <img src="~/img/logo_sener.png" alt="Secretaría de Energía">
+        </div>
+        <div class="tracking-preloader__spinner" aria-hidden="true"></div>
+        <p class="tracking-preloader__title" id="tracking-preloader-title">Cargando seguimiento de actividades</p>
+        <p class="tracking-preloader__sub" id="tracking-preloader-sub">Conectando con la base de datos…</p>
+    </div>
+</div>
+
+<nav class="gestor-nav">
+    <div class="internal-shell gestor-nav__inner" role="tablist">
+        <button class="gestor-tab active" data-view="dashboard">Dashboard</button>
+        <button class="gestor-tab" data-view="temas">Temas</button>
+        <button class="gestor-tab" data-view="kanban">Kanban</button>
+        <button class="gestor-tab" data-view="tabla">Tabla maestra</button>
+        <button class="gestor-tab" data-view="gantt">Gantt</button>
+        <button class="gestor-tab" data-view="calendario">Calendario</button>
+        <button class="gestor-tab" data-view="responsables">Responsables</button>
+        <button class="gestor-tab" data-view="alertas">Alertas <span class="badge" id="badge-alertas">0</span></button>
+        <button class="gestor-tab" data-view="reportes">Reportes</button>
+    </div>
+</nav>
+
+<div id="source-label" class="gestor-source" style="display:none">Base de datos NSIE</div>
+
+<main class="internal-shell internal-main">
+
+    <section id="view-dashboard" class="gestor-view active">
+        <div class="internal-title">
+            <div>
+                <p>Panel ejecutivo</p>
+                <h1>Seguimiento de actividades</h1>
+                <span>Indicadores generales · temas · vencimientos</span>
+            </div>
+        </div>
+        <div class="kpi-strip">
+            <article><span>Temas activos</span><strong id="kpi-temas">0</strong><small>de la Dirección</small></article>
+            <article><span>Actividades</span><strong id="kpi-actividades">0</strong><small>registradas</small></article>
+            <article><span>Concluidas</span><strong id="kpi-concluidas">0</strong><small>cerradas</small></article>
+            <article><span>Por vencer (7d)</span><strong id="kpi-por-vencer">0</strong><small>próximas</small></article>
+        </div>
+        <div class="kpi-strip" style="grid-template-columns: repeat(2, 1fr); margin-top:-.25rem">
+            <article style="border-left-color: var(--riesgo)"><span>Vencidas</span><strong id="kpi-vencidas" style="color:var(--riesgo)">0</strong><small>requieren atención</small></article>
+            <article style="border-left-color: var(--dorado)"><span>Avance global</span><strong id="kpi-avance" style="color:var(--dorado)">0%</strong><small>promedio</small></article>
+        </div>
+        <div class="charts-grid">
+            <section class="panel"><header><h2>Estatus</h2><span>Distribución</span></header><div class="chart-box" id="chart-donut-estatus"></div></section>
+            <section class="panel"><header><h2>Avance global</h2><span>Promedio</span></header><div class="chart-box" id="chart-gauge-avance"></div></section>
+            <section class="panel"><header><h2>Prioridad</h2><span>Mezcla</span></header><div class="chart-box" id="chart-pie-prioridad"></div></section>
+        </div>
+        <div class="charts-grid charts-grid--2">
+            <section class="panel"><header><h2>Carga por responsable</h2><span>Activas</span></header><div class="chart-box" id="chart-barras-responsables"></div></section>
+            <section class="panel"><header><h2>Distribución por tema</h2><span>Estatus apilado</span></header><div class="chart-box" id="chart-stacked-temas"></div></section>
+        </div>
+        <section class="panel panel--table" style="margin-top:1rem">
+            <header><h2>Temas críticos</h2><span>Semáforo institucional</span></header>
+            <div class="table-wrap">
+                <table id="tbl-criticos">
+                    <thead><tr><th>Tema</th><th>Responsable</th><th>Avance</th><th>Compromiso</th><th>Estado</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+    </section>
+
+    <section id="view-temas" class="gestor-view">
+        <div class="internal-title">
+            <div><p>Catálogo</p><h1>Temas</h1></div>
+            <div class="internal-actions">
+                <input type="search" id="filtro-temas" class="gestor-search" placeholder="Buscar tema, responsable…">
+                <button class="internal-button internal-button--primary" id="btn-nuevo-tema">+ Nuevo tema</button>
+            </div>
+        </div>
+        <div class="cards-grid" id="cards-temas"></div>
+    </section>
+
+    <section id="view-kanban" class="gestor-view">
+        <div class="internal-title">
+            <div><p>Flujo</p><h1>Kanban de actividades</h1></div>
+            <div class="internal-actions">
+                <select id="filtro-kanban-tema" class="gestor-search"><option value="">Todos los temas</option></select>
+            </div>
+        </div>
+        <div class="kanban-board" id="kanban-board"></div>
+    </section>
+
+    <section id="view-tabla" class="gestor-view">
+        <div class="internal-title">
+            <div><p>Detalle</p><h1>Tabla maestra</h1></div>
+            <div class="internal-actions">
+                <input type="search" id="filtro-tabla" class="gestor-search" placeholder="Filtrar…">
+                <button class="internal-button" id="btn-export-excel">Exportar CSV</button>
+                <button class="internal-button internal-button--primary" id="btn-nueva-actividad">+ Nueva actividad</button>
+            </div>
+        </div>
+        <section class="panel panel--table">
+            <div class="table-wrap">
+                <table id="tbl-actividades">
+                    <thead>
+                        <tr>
+                            <th>Tema</th><th>Actividad</th><th>Responsable</th>
+                            <th>Inicio</th><th>Compromiso</th><th>Estatus</th>
+                            <th>Avance</th><th>Prioridad</th><th>Estado</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+    </section>
+
+    <section id="view-gantt" class="gestor-view">
+        <div class="internal-title"><div><p>Cronograma</p><h1>Gantt</h1></div></div>
+        <section class="panel"><div class="gantt-wrap" id="gantt-wrap"></div></section>
+    </section>
+
+    <section id="view-calendario" class="gestor-view">
+        <div class="internal-title">
+            <div><p>Vencimientos</p><h1>Calendario</h1></div>
+            <div class="internal-actions cal-nav">
+                <button class="internal-button" id="cal-prev">‹</button>
+                <span id="cal-label" class="page-info"></span>
+                <button class="internal-button" id="cal-next">›</button>
+            </div>
+        </div>
+        <section class="panel"><div class="calendar" id="calendar"></div></section>
+    </section>
+
+    <section id="view-responsables" class="gestor-view">
+        <div class="internal-title"><div><p>Personas</p><h1>Vista por responsable</h1></div></div>
+        <div class="responsables-grid" id="responsables-grid"></div>
+    </section>
+
+    <section id="view-alertas" class="gestor-view">
+        <div class="internal-title"><div><p>Atención</p><h1>Alertas</h1></div></div>
+        <div class="alertas-list" id="alertas-list"></div>
+    </section>
+
+    <section id="view-reportes" class="gestor-view">
+        <div class="internal-title">
+            <div><p>Salidas institucionales</p><h1>Reportes</h1><span>Vista previa estilo presentación · descarga PDF / PPT / Excel</span></div>
+            <div class="internal-actions">
+                <button type="button" class="internal-button" id="rep-refresh">Actualizar</button>
+                <button type="button" class="internal-button" id="rep-pdf">PDF</button>
+                <button type="button" class="internal-button internal-button--primary" id="rep-ppt">PPT</button>
+                <button type="button" class="internal-button" id="rep-excel">Excel</button>
+            </div>
+        </div>
+        <section class="filter-panel" aria-label="Filtros del reporte">
+            <label><span>Tema</span><select id="rep-filtro-tema"><option value="">Todos</option></select></label>
+            <label><span>Responsable</span><select id="rep-filtro-resp"><option value="">Todos</option></select></label>
+            <label><span>Estatus</span>
+                <select id="rep-filtro-estatus">
+                    <option value="">Todos</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="En proceso">En proceso</option>
+                    <option value="Vencida">Vencida</option>
+                    <option value="Concluida">Concluida</option>
+                </select>
+            </label>
+            <label><span>Prioridad</span>
+                <select id="rep-filtro-prioridad">
+                    <option value="">Todas</option><option>Alta</option><option>Media</option><option>Baja</option>
+                </select>
+            </label>
+            <label><span>Periodo</span>
+                <select id="rep-filtro-periodo">
+                    <option value="">Todo</option>
+                    <option value="7">Próximos 7 días</option>
+                    <option value="30">Próximos 30 días</option>
+                    <option value="vencidas">Solo vencidas</option>
+                </select>
+            </label>
+            <label class="filter-panel__search"><span>Búsqueda</span><input id="rep-filtro-busqueda" type="search" placeholder="Actividad, tema, comentario"></label>
+        </section>
+        <div id="rep-status" class="status-message" hidden></div>
+        <section class="panel panel--preview">
+            <header><h2>Vista previa del reporte</h2><span id="rep-summary">—</span></header>
+            <div id="internal-report-deck" class="internal-report-deck"></div>
+        </section>
+    </section>
+</main>
+
+<div id="modal-root" class="modal-root" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card" role="dialog" aria-modal="true">
+        <header><h3 id="modal-title">Formulario</h3><button class="modal-close" id="modal-close">×</button></header>
+        <div id="modal-body"></div>
+    </div>
+</div>
+<div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+@section Scripts {
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@@v3.12.0/dist/pptxgen.bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@@4.4.0/dist/exceljs.min.js"></script>
+    <script type="module" src="~/gestor/js/data-service.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/utils.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/charts.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/dashboard.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/temas.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/actividades.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/kanban.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/gantt.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/calendario.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/responsables.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/alertas.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/reportes.js" asp-append-version="true"></script>
+    <script type="module" src="~/gestor/js/app.js" asp-append-version="true"></script>
+}

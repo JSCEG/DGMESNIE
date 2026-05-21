@@ -103,6 +103,7 @@ builder.Services.AddScoped<IRepositorioFuentesdeInformacion, RepositorioFuentesd
 builder.Services.AddTransient<IRepositorioSIIL, RepositorioSIIL>();
 builder.Services.AddTransient<ManualSharePointImportService>();
 builder.Services.AddTransient<InformePormenorizadoImportService>();
+builder.Services.AddTransient<IRepositorioGestor, RepositorioGestor>();
 
 
 builder.Services.AddTransient<IUserStore<UsuarioApp>, UsuarioStore>();
