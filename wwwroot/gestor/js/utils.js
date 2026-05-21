@@ -1,6 +1,12 @@
 // Utilidades comunes.
 
-export const TODAY = new Date('2026-05-20');
+function todayAtMidnight() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+export const TODAY = todayAtMidnight();
 
 export function parseDate(s) {
     if (!s) return null;

@@ -9,6 +9,7 @@ import { renderCalendario, calPrev, calNext } from './calendario.js';
 import { renderResponsables } from './responsables.js';
 import { renderAlertas } from './alertas.js';
 import { setReportesData, wireReportes, renderDeck } from './reportes.js';
+import { wireChartFullscreenButtons } from './charts.js';
 
 const state = { temas: [], actividades: [], view: 'dashboard' };
 
@@ -62,7 +63,12 @@ function renderCurrent() {
 function switchView(view) {
     state.view = view;
     document.querySelectorAll('.gestor-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
-    document.querySelectorAll('.gestor-view').forEach(v => v.classList.toggle('active', v.id === `view-${view}`));
+    document.querySelectorAll('.gestor-view').forEach(v => {
+        const isActive = v.id === `view-${view}`;
+        v.classList.toggle('active', isActive);
+        v.hidden = !isActive;
+        v.setAttribute('aria-hidden', String(!isActive));
+    });
     renderCurrent();
 }
 
@@ -70,6 +76,8 @@ function wireEvents() {
     document.querySelectorAll('.gestor-tab').forEach(t => {
         t.onclick = () => switchView(t.dataset.view);
     });
+
+    wireChartFullscreenButtons();
 
     document.getElementById('filtro-temas').oninput = () => renderTemas(state.temas, state.actividades, document.getElementById('filtro-temas').value);
     document.getElementById('btn-nuevo-tema').onclick = () => openTemaModal(null);

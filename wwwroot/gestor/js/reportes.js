@@ -37,7 +37,7 @@ function readFilters() {
 
 function applyFilters(acts, f) {
     return acts.filter(a => {
-        if (f.tema && a.temaId !== f.tema) return false;
+        if (f.tema && String(a.temaId) !== String(f.tema)) return false;
         if (f.resp && a.responsable !== f.resp) return false;
         if (f.estatus && a.estatus !== f.estatus) return false;
         if (f.prioridad && a.prioridad !== f.prioridad) return false;
@@ -78,8 +78,8 @@ function renderSlideHeader(title) {
     return `
         <div class="internal-slide__top">
             <div class="internal-slide__brand">
-                <img src="../Estilos Institucionales/img/logo_gob.png" alt="Gobierno de México">
-                <img src="../Estilos Institucionales/img/logo_sener.png" alt="Secretaría de Energía">
+                <img src="/Ejemplos/img/logo_gob.png" alt="Gobierno de México">
+                <img src="/Ejemplos/img/logo_sener.png" alt="Secretaría de Energía">
             </div>
             <div class="internal-slide__title">${escape(title)}</div>
             <div class="internal-slide__unit">DGMESNIE · Subsecretaría de Planeación y Transición Energética</div>
@@ -120,7 +120,7 @@ function renderDonut(percent) {
 function renderStatusStackedBar(c, p, i, pen) {
     const total = c + p + i + pen;
     if (!total) return '';
-    const seg = (n, color, label) => n ? `<span class="slide-stack__seg" style="width:${(n/total*100)}%;background:${color}" title="${label}: ${n}"></span>` : '';
+    const seg = (n, color, label) => n ? `<span class="slide-stack__seg" style="width:${(n / total * 100)}%;background:${color}" title="${label}: ${n}"></span>` : '';
     return `
         <div class="slide-stack">
             <div class="slide-stack__bar">
@@ -184,7 +184,6 @@ export function renderDeck() {
 function slideCover(s, reportDate) {
     return `
         <section class="internal-slide internal-slide--cover">
-            <img class="internal-cover-bg" src="../Estilos Institucionales/img/portada_ppt.png" alt="">
             ${renderSlideHeader('DGMESNIE · Seguimiento')}
             <div class="internal-cover-body">
                 <p class="eyebrow">Reporte ejecutivo</p>
@@ -216,19 +215,19 @@ function slideResumen(s, topTemas) {
                     <div>
                         <h3>Temas con menor avance</h3>
                         ${topTemas.length
-                            ? topTemas.map(x => renderSlideBar(x.t.tema, x.av, `${x.av}% · ${x.completos}/${x.total}`, percentTone(x.av))).join('')
-                            : '<p class="muted">Sin datos.</p>'}
+            ? topTemas.map(x => renderSlideBar(x.t.tema, x.av, `${x.av}% · ${x.completos}/${x.total}`, percentTone(x.av))).join('')
+            : '<p class="muted">Sin datos.</p>'}
                     </div>
                     <div>
                         <h3>Distribución por estatus</h3>
                         ${[
-                            ['Concluidas', s.complete, s.total, 'complete'],
-                            ['En proceso', s.progress, s.total, 'progress'],
-                            ['Vencidas', s.issue, s.total, 'issue'],
-                            ['Pendientes', s.pending, s.total, 'pending']
-                        ].map(([label, value, total, tone]) =>
-                            renderSlideBar(label, total ? Math.round(value/total*100) : 0, value, tone)
-                        ).join('')}
+            ['Concluidas', s.complete, s.total, 'complete'],
+            ['En proceso', s.progress, s.total, 'progress'],
+            ['Vencidas', s.issue, s.total, 'issue'],
+            ['Pendientes', s.pending, s.total, 'pending']
+        ].map(([label, value, total, tone]) =>
+            renderSlideBar(label, total ? Math.round(value / total * 100) : 0, value, tone)
+        ).join('')}
                     </div>
                 </div>
             </div>
@@ -246,8 +245,8 @@ function slideAtencion(rows) {
                     <thead><tr><th>Tema</th><th>Actividad</th><th>Responsable</th><th>Compromiso</th><th>Estatus</th></tr></thead>
                     <tbody>
                         ${rows.length ? rows.slice(0, 18).map(a => {
-                            const tema = _state.temas.find(t => t.id === a.temaId);
-                            return `
+        const tema = _state.temas.find(t => t.id === a.temaId);
+        return `
                                 <tr>
                                     <td>${escape(tema?.tema || '')}</td>
                                     <td><strong>${escape(a.actividad)}</strong></td>
@@ -255,7 +254,7 @@ function slideAtencion(rows) {
                                     <td>${fmtDate(a.fechaCompromiso)}</td>
                                     <td><span class="status-pill status-pill--${statusMode(a.estatus)}">${escape(a.estatus)}</span></td>
                                 </tr>`;
-                        }).join('') : '<tr><td colspan="5" class="muted" style="text-align:center">Sin actividades en atención</td></tr>'}
+    }).join('') : '<tr><td colspan="5" class="muted" style="text-align:center">Sin actividades en atención</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -266,8 +265,9 @@ function slideAtencion(rows) {
 function slideResponsables(acts) {
     const map = new Map();
     acts.forEach(a => {
-        if (!map.has(a.responsable)) map.set(a.responsable, []);
-        map.get(a.responsable).push(a);
+        const responsable = a.responsable || 'Sin responsable';
+        if (!map.has(responsable)) map.set(responsable, []);
+        map.get(responsable).push(a);
     });
     const rows = [...map.entries()].map(([p, list]) => {
         const total = list.length;
@@ -361,7 +361,7 @@ export async function descargarPdf() {
         if (idx > 0) pdf.addPage([1280, 720], 'landscape');
         pdf.addImage(img, 'JPEG', 0, 0, 1280, 720);
     }
-    pdf.save(`reporte-actividades-${new Date().toISOString().slice(0,10)}.pdf`);
+    pdf.save(`reporte-actividades-${new Date().toISOString().slice(0, 10)}.pdf`);
     toast('PDF descargado', 'ok');
 }
 
@@ -379,7 +379,7 @@ export async function descargarPpt() {
         const slide = pptx.addSlide();
         slide.addImage({ data, x: 0, y: 0, w: 13.333, h: 7.5 });
     }
-    await pptx.writeFile({ fileName: `reporte-actividades-${new Date().toISOString().slice(0,10)}.pptx` });
+    await pptx.writeFile({ fileName: `reporte-actividades-${new Date().toISOString().slice(0, 10)}.pptx` });
     toast('PPT descargado', 'ok');
 }
 
@@ -445,7 +445,7 @@ export async function descargarExcel() {
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `reporte-actividades-${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.href = url; a.download = `reporte-actividades-${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.click(); URL.revokeObjectURL(url);
     toast('Excel descargado', 'ok');
 }

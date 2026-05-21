@@ -1,49 +1,132 @@
 ﻿// Gráficos con Highcharts — cargado globalmente en _Layout.cshtml
 
 const C = {
-    guinda:    '#9b2247',
-    verde:     '#1e5b4f',
-    dorado:    '#a57f2c',
-    ok:        '#027a48',
-    proceso:   '#b54708',
-    riesgo:    '#b42318',
-    pendiente: '#667085'
+    guinda: '#8a0031',
+    verde: '#1e5b4f',
+    dorado: '#a57f2c',
+    ok: '#027a48',
+    proceso: '#b54708',
+    riesgo: '#b42318',
+    pendiente: '#667085',
+    texto: '#243444',
+    textoSuave: '#6c7a89',
+    linea: '#d9e0e7',
+    grid: '#edf0f3',
+    fondo: '#ffffff'
 };
-const ESTATUS_COLOR   = { Pendiente: C.pendiente, 'En proceso': C.proceso, Vencida: C.riesgo, Concluida: C.ok };
+const ESTATUS_COLOR = { Pendiente: C.pendiente, 'En proceso': C.proceso, Vencida: C.riesgo, Concluida: C.ok };
 const PRIORIDAD_COLOR = { Alta: C.riesgo, Media: C.proceso, Baja: C.ok };
 
-const BASE_CHART = { style: { fontFamily: 'inherit' }, backgroundColor: 'transparent', animation: { duration: 600 } };
+const BASE_CHART = {
+    style: { fontFamily: 'Montserrat, sans-serif' },
+    backgroundColor: C.fondo,
+    animation: { duration: 600 },
+    spacingTop: 12,
+    spacingRight: 12,
+    spacingBottom: 12,
+    spacingLeft: 12
+};
+
+let themeApplied = false;
+let fullscreenWired = false;
+
+function applyInstitutionalTheme() {
+    if (themeApplied || !window.Highcharts) return;
+    Highcharts.setOptions({
+        chart: {
+            backgroundColor: C.fondo,
+            style: {
+                fontFamily: 'Montserrat, sans-serif'
+            }
+        },
+        title: {
+            style: {
+                color: C.texto,
+                fontWeight: '700'
+            }
+        },
+        xAxis: {
+            lineColor: C.linea,
+            tickColor: C.linea,
+            labels: {
+                style: {
+                    color: C.texto,
+                    fontWeight: '600'
+                }
+            }
+        },
+        yAxis: {
+            lineColor: C.linea,
+            tickColor: C.linea,
+            gridLineColor: C.grid,
+            labels: {
+                style: {
+                    color: C.texto
+                }
+            },
+            title: {
+                style: {
+                    color: C.textoSuave
+                }
+            }
+        },
+        legend: {
+            itemStyle: {
+                color: C.texto,
+                fontWeight: '600'
+            },
+            itemHoverStyle: {
+                color: C.guinda
+            }
+        },
+        tooltip: {
+            backgroundColor: '#ffffff',
+            borderColor: C.linea,
+            style: {
+                color: C.texto
+            }
+        },
+        credits: {
+            enabled: false
+        }
+    });
+    themeApplied = true;
+}
 
 // ============ DONUT — Estatus actividades ============
 export function donutEstatus(actividades) {
+    applyInstitutionalTheme();
     const cont = document.getElementById('chart-donut-estatus');
     if (!cont) return;
     const counts = actividades.reduce((m, a) => { m[a.estatus] = (m[a.estatus] || 0) + 1; return m; }, {});
-    const data   = Object.entries(counts).map(([name, y]) => ({ name, y, color: ESTATUS_COLOR[name] || C.guinda }));
-    const total  = actividades.length;
+    const data = Object.entries(counts).map(([name, y]) => ({ name, y, color: ESTATUS_COLOR[name] || C.guinda }));
+    const total = actividades.length;
 
     const hc = Highcharts.chart(cont, {
         chart: { ...BASE_CHART, type: 'pie', height: 260 },
         credits: { enabled: false }, title: { text: '' }, exporting: { enabled: false },
         tooltip: { pointFormat: '<b>{point.y}</b> ({point.percentage:.0f}%)' },
         plotOptions: { pie: { innerSize: '58%', dataLabels: { enabled: false }, showInLegend: true } },
-        legend: { enabled: true, align: 'center', verticalAlign: 'bottom',
-            itemStyle: { fontWeight: '600', fontSize: '12px' } },
+        legend: {
+            enabled: true, align: 'center', verticalAlign: 'bottom',
+            itemStyle: { fontWeight: '600', fontSize: '12px' }
+        },
         series: [{ name: 'Actividades', data }]
     });
     // Texto central con renderer
     const cx = hc.plotLeft + hc.plotSizeX / 2;
-    const cy = hc.plotTop  + hc.plotSizeY / 2 + 10;
+    const cy = hc.plotTop + hc.plotSizeY / 2 + 10;
     hc.renderer.text(String(total), cx, cy - 8)
-        .css({ fontSize: '2rem', fontWeight: '700', color: C.guinda, fontFamily: 'inherit' })
+        .css({ fontSize: '2rem', fontWeight: '700', color: C.guinda, fontFamily: 'Montserrat, sans-serif' })
         .attr({ align: 'center', zIndex: 5 }).add();
     hc.renderer.text('ACTIVIDADES', cx, cy + 14)
-        .css({ fontSize: '.7rem', fontWeight: '700', color: '#53617a', letterSpacing: '.08em' })
+        .css({ fontSize: '.7rem', fontWeight: '700', color: C.textoSuave, letterSpacing: '.08em' })
         .attr({ align: 'center', zIndex: 5 }).add();
 }
 
 // ============ GAUGE — Avance global ============
 export function gaugeAvance(actividades) {
+    applyInstitutionalTheme();
     const cont = document.getElementById('chart-gauge-avance');
     if (!cont) return;
     const avance = actividades.length
@@ -59,7 +142,7 @@ export function gaugeAvance(actividades) {
         },
         yAxis: {
             min: 0, max: 100, lineWidth: 0, tickWidth: 0, minorTickInterval: null,
-            labels: { y: 18, style: { fontSize: '.7rem', color: '#53617a' } }
+            labels: { y: 18, style: { fontSize: '.7rem', color: C.textoSuave } }
         },
         tooltip: { enabled: false },
         plotOptions: {
@@ -68,7 +151,7 @@ export function gaugeAvance(actividades) {
                     y: 5, borderWidth: 0, useHTML: true,
                     format: `<div style="text-align:center">
                         <span style="font-size:2.5rem;font-weight:700;color:${color}">{y}%</span><br>
-                        <span style="font-size:.7rem;letter-spacing:.08em;color:#53617a">AVANCE</span>
+                        <span style="font-size:.7rem;letter-spacing:.08em;color:${C.textoSuave}">AVANCE</span>
                     </div>`
                 }
             }
@@ -79,10 +162,11 @@ export function gaugeAvance(actividades) {
 
 // ============ PIE — Prioridad ============
 export function piePrioridad(actividades) {
+    applyInstitutionalTheme();
     const cont = document.getElementById('chart-pie-prioridad');
     if (!cont) return;
     const counts = actividades.reduce((m, a) => { m[a.prioridad || 'Baja'] = (m[a.prioridad || 'Baja'] || 0) + 1; return m; }, {});
-    const data   = Object.entries(counts).map(([name, y]) => ({ name, y, color: PRIORIDAD_COLOR[name] || C.guinda }));
+    const data = Object.entries(counts).map(([name, y]) => ({ name, y, color: PRIORIDAD_COLOR[name] || C.guinda }));
 
     Highcharts.chart(cont, {
         chart: { ...BASE_CHART, type: 'pie', height: 260 },
@@ -90,8 +174,10 @@ export function piePrioridad(actividades) {
         tooltip: { pointFormat: '<b>{point.y}</b> ({point.percentage:.0f}%)' },
         plotOptions: {
             pie: {
-                dataLabels: { enabled: true, format: '<b>{point.name}</b>: {point.y}',
-                    style: { fontWeight: '600', fontSize: '12px' } },
+                dataLabels: {
+                    enabled: true, format: '<b>{point.name}</b>: {point.y}',
+                    style: { fontWeight: '600', fontSize: '12px', color: C.texto, textOutline: 'none' }
+                },
                 showInLegend: false
             }
         },
@@ -101,11 +187,12 @@ export function piePrioridad(actividades) {
 
 // ============ BARRAS HORIZONTALES — Carga por responsable ============
 export function barrasResponsables(actividades) {
+    applyInstitutionalTheme();
     const cont = document.getElementById('chart-barras-responsables');
     if (!cont) return;
     const counts = actividades.filter(a => a.estatus !== 'Concluida')
         .reduce((m, a) => { if (a.responsable) m[a.responsable] = (m[a.responsable] || 0) + 1; return m; }, {});
-    const sorted  = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const palette = [C.guinda, C.verde, C.dorado, C.proceso, C.pendiente, C.ok, C.riesgo];
 
     Highcharts.chart(cont, {
@@ -118,17 +205,19 @@ export function barrasResponsables(actividades) {
         series: [{
             name: 'Pendientes',
             data: sorted.map(([, v], i) => ({ y: v, color: palette[i % palette.length] })),
-            dataLabels: { enabled: true, format: '{y}', style: { fontWeight: '700' } }
+            borderRadius: 8,
+            dataLabels: { enabled: true, format: '{y}', style: { fontWeight: '700', color: C.texto } }
         }]
     });
 }
 
 // ============ BARRAS APILADAS — Por tema ============
 export function barrasApiladasTemas(temas, actividades) {
+    applyInstitutionalTheme();
     const cont = document.getElementById('chart-stacked-temas');
     if (!cont) return;
     const claves = ['Concluida', 'En proceso', 'Pendiente', 'Vencida'];
-    const cats   = temas.map(t => t.tema.length > 30 ? t.tema.slice(0, 28) + '\u2026' : t.tema);
+    const cats = temas.map(t => t.tema.length > 30 ? t.tema.slice(0, 28) + '\u2026' : t.tema);
     const series = claves.map(k => ({
         name: k, color: ESTATUS_COLOR[k],
         data: temas.map(t => actividades.filter(a => a.temaId === t.id && a.estatus === k).length)
@@ -139,12 +228,83 @@ export function barrasApiladasTemas(temas, actividades) {
         credits: { enabled: false }, title: { text: '' }, exporting: { enabled: false },
         xAxis: { categories: cats, labels: { style: { fontWeight: '600', fontSize: '11px' } } },
         yAxis: { title: { text: '' }, allowDecimals: false },
-        plotOptions: { bar: { stacking: 'normal', dataLabels: { enabled: false } } },
+        plotOptions: { bar: { stacking: 'normal', borderRadius: 8, dataLabels: { enabled: false } } },
         tooltip: { shared: false, valueSuffix: ' actividades' },
-        legend: { enabled: true, align: 'center', verticalAlign: 'bottom',
-            itemStyle: { fontWeight: '600', fontSize: '12px' } },
+        legend: {
+            enabled: true, align: 'center', verticalAlign: 'bottom',
+            itemStyle: { fontWeight: '600', fontSize: '12px' }
+        },
         series
     });
+}
+
+function getFullscreenPanel(button) {
+    const chartId = button?.dataset?.chartFullscreen;
+    if (!chartId) {
+        return null;
+    }
+
+    const chartBox = document.getElementById(chartId);
+    return chartBox ? chartBox.closest('.dashboard-panel') : null;
+}
+
+function syncFullscreenButtons() {
+    const buttons = document.querySelectorAll('[data-chart-fullscreen]');
+    buttons.forEach((button) => {
+        const panel = getFullscreenPanel(button);
+        const isFull = !!panel && document.fullscreenElement === panel;
+
+        button.classList.toggle('is-active', isFull);
+        button.textContent = isFull ? 'Salir de vista completa' : 'Vista completa';
+        if (panel) {
+            panel.classList.toggle('is-fullscreen', isFull);
+        }
+    });
+}
+
+export function wireChartFullscreenButtons() {
+    if (fullscreenWired || typeof document === 'undefined') {
+        return;
+    }
+
+    const buttons = Array.from(document.querySelectorAll('[data-chart-fullscreen]'));
+    if (!buttons.length) {
+        return;
+    }
+
+    const toggleFullscreen = async (panel) => {
+        if (!panel) {
+            return;
+        }
+
+        if (document.fullscreenElement === panel) {
+            await document.exitFullscreen();
+        } else if (panel.requestFullscreen) {
+            await panel.requestFullscreen();
+        } else if (panel.webkitRequestFullscreen) {
+            panel.webkitRequestFullscreen();
+        } else if (panel.msRequestFullscreen) {
+            panel.msRequestFullscreen();
+        }
+
+        window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    };
+
+    buttons.forEach((button) => {
+        button.addEventListener('click', () => toggleFullscreen(getFullscreenPanel(button)));
+    });
+
+    const handleFullscreenChange = () => {
+        syncFullscreenButtons();
+        window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+    syncFullscreenButtons();
+    fullscreenWired = true;
 }
 
 export function renderAllCharts(temas, actividades) {
