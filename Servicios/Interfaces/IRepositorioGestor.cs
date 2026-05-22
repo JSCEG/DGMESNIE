@@ -20,5 +20,6 @@ namespace NSIE.Servicios.Interfaces
 
         // ── Usuarios (para selects de responsable) ────────────
         Task<List<GestorUsuarioDto>> ObtenerUsuariosVigentesAsync();
+        Task<GestorUsuarioDto?> ObtenerUsuarioVigentePorIdAsync(int idUsuario);
     }
 }

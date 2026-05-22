@@ -55,6 +55,31 @@ namespace NSIE.Servicios
             return result;
         }
 
+        public async Task<GestorUsuarioDto?> ObtenerUsuarioVigentePorIdAsync(int idUsuario)
+        {
+            const string sql = @"
+                SELECT IdUsuario, Nombre, Correo, Cargo
+                FROM [dgmesnie].[Usuario]
+                WHERE IdUsuario = @idUsuario AND Vigente = 1";
+
+            await using var cn = new SqlConnection(_conn);
+            await cn.OpenAsync();
+            await using var cmd = new SqlCommand(sql, cn);
+            cmd.Parameters.AddWithValue("@idUsuario", idUsuario);
+            await using var rd = await cmd.ExecuteReaderAsync();
+
+            if (!await rd.ReadAsync())
+                return null;
+
+            return new GestorUsuarioDto
+            {
+                IdUsuario = rd.GetInt32(0),
+                Nombre = rd.GetString(1),
+                Correo = rd.IsDBNull(2) ? null : rd.GetString(2),
+                Cargo = rd.IsDBNull(3) ? null : rd.GetString(3)
+            };
+        }
+
         // ── Corresponsables (helpers privados) ───────────────────────────────
         private async Task<List<GestorUsuarioDto>> CargarCorresponsablesAsync(SqlConnection cn, int? temaId, int? actividadId)
         {

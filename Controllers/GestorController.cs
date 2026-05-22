@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using NSIE.Models;
 using NSIE.Models.Gestor;
+using NSIE.Servicios;
 using NSIE.Servicios.Interfaces;
 using Newtonsoft.Json;
 using System.Security.Claims;
@@ -12,11 +13,13 @@ namespace NSIE.Controllers
     public class GestorController : Controller
     {
         private readonly IRepositorioGestor _repo;
+        private readonly IServicioEmailSMTP _servicioEmailSMTP;
         private readonly ILogger<GestorController> _logger;
 
-        public GestorController(IRepositorioGestor repo, ILogger<GestorController> logger)
+        public GestorController(IRepositorioGestor repo, IServicioEmailSMTP servicioEmailSMTP, ILogger<GestorController> logger)
         {
             _repo = repo;
+            _servicioEmailSMTP = servicioEmailSMTP;
             _logger = logger;
         }
 
@@ -157,6 +160,8 @@ namespace NSIE.Controllers
             {
                 var id = await _repo.CrearActividadAsync(form, GetCurrentUserId());
                 var act = await _repo.ObtenerActividadPorIdAsync(id);
+                if (act != null)
+                    await NotificarAsignacionActividadAsync(act);
                 return CreatedAtAction(nameof(ApiActividad), new { id }, act);
             }
             catch (Exception ex)
@@ -175,8 +180,11 @@ namespace NSIE.Controllers
                 return BadRequest(ModelState);
             try
             {
+                var actividadAnterior = await _repo.ObtenerActividadPorIdAsync(id);
                 await _repo.ActualizarActividadAsync(form, GetCurrentUserId());
                 var act = await _repo.ObtenerActividadPorIdAsync(id);
+                if (act != null && actividadAnterior?.ResponsableId != act.ResponsableId)
+                    await NotificarAsignacionActividadAsync(act);
                 return Json(act);
             }
             catch (Exception ex)
@@ -207,6 +215,70 @@ namespace NSIE.Controllers
         {
             var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
             return int.TryParse(claim, out var id) ? id : null;
+        }
+
+        private async Task NotificarAsignacionActividadAsync(GestorActividad actividad)
+        {
+            if (!actividad.ResponsableId.HasValue)
+                return;
+
+            var responsable = await _repo.ObtenerUsuarioVigentePorIdAsync(actividad.ResponsableId.Value);
+            if (responsable == null || string.IsNullOrWhiteSpace(responsable.Correo))
+                return;
+
+            var asunto = $"Nueva asignacion de actividad: {actividad.Clave}";
+            var cuerpo = ConstruirCorreoAsignacionActividad(responsable.Nombre, actividad);
+
+            try
+            {
+                await _servicioEmailSMTP.EnviarCorreo(responsable.Correo, asunto, cuerpo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "La actividad {ActividadId} se guardo, pero no fue posible enviar correo al responsable {ResponsableId}.",
+                    actividad.ActividadId,
+                    actividad.ResponsableId);
+            }
+        }
+
+        private static string ConstruirCorreoAsignacionActividad(string nombreResponsable, GestorActividad actividad)
+        {
+            var fechaCompromiso = actividad.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+            var fechaInicio = actividad.FechaInicio?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+            var descripcion = string.IsNullOrWhiteSpace(actividad.Descripcion)
+                ? "Sin descripcion registrada."
+                : actividad.Descripcion;
+
+            return $@"
+                <html lang='es'>
+                <head>
+                    <meta charset='UTF-8'>
+                    <title>Asignacion de actividad</title>
+                </head>
+                <body style='font-family:Segoe UI, Arial, sans-serif; color:#1f2937; background:#f5f5f5; margin:0; padding:24px;'>
+                    <div style='max-width:680px; margin:0 auto; background:#ffffff; border:1px solid #d6d6d6; border-radius:8px; overflow:hidden;'>
+                        <div style='background:#13322b; color:#ffffff; padding:20px 24px;'>
+                            <h1 style='margin:0; font-size:20px;'>Nueva actividad asignada</h1>
+                        </div>
+                        <div style='padding:24px;'>
+                            <p style='margin-top:0;'>Hola {nombreResponsable},</p>
+                            <p>Se te ha asignado una actividad dentro del Gestor de Actividades DGMESNIE.</p>
+                            <table style='width:100%; border-collapse:collapse; margin:20px 0;'>
+                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Clave</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{actividad.Clave}</td></tr>
+                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Tema</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{actividad.TemaNombre ?? "Sin tema"}</td></tr>
+                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Actividad</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{actividad.Actividad}</td></tr>
+                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Descripcion</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{descripcion}</td></tr>
+                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Fecha de inicio</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{fechaInicio}</td></tr>
+                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Fecha compromiso</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{fechaCompromiso}</td></tr>
+                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Prioridad</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{actividad.Prioridad}</td></tr>
+                                <tr><td style='padding:8px; font-weight:600;'>Estatus</td><td style='padding:8px;'>{actividad.Estatus}</td></tr>
+                            </table>
+                            <p style='margin-bottom:0;'>Este aviso se envia automaticamente cuando una actividad se asigna o cambia de responsable.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>";
         }
 
         private HeaderViewModel BuildHeader() => new()
