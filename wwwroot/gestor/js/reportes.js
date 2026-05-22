@@ -4,6 +4,95 @@ import { escape, fmtDate, daysFromToday, semaforoTema, avancePromedio, toast } f
 
 let _state = { temas: [], actividades: [], filters: {} };
 
+const REPORT_BACKGROUND_ASSETS = [
+    '/gestor/img/fondoppt.png',
+    '/gestor/img/portada_ppt.png',
+    '/gestor/img/logo_gob.png',
+    '/gestor/img/logo_sener.png'
+];
+
+function setTrackingPreloader(visible, title, sub, isError = false) {
+    const pre = document.getElementById('tracking-preloader');
+    if (!pre) return;
+    pre.classList.toggle('is-hidden', !visible);
+    pre.classList.toggle('is-error', !!isError);
+    pre.style.display = visible ? 'flex' : '';
+    pre.style.visibility = visible ? 'visible' : '';
+    pre.style.opacity = visible ? '1' : '';
+    pre.style.pointerEvents = visible ? 'auto' : '';
+    const t = document.getElementById('tracking-preloader-title');
+    const s = document.getElementById('tracking-preloader-sub');
+    if (t && title) t.textContent = title;
+    if (s && sub) s.textContent = sub;
+}
+
+function setReporteButtonsDisabled(disabled) {
+    ['rep-refresh', 'rep-pdf', 'rep-ppt', 'rep-excel'].forEach((id) => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = disabled;
+    });
+}
+
+function extractBackgroundUrls(styleValue) {
+    if (!styleValue || styleValue === 'none') return [];
+    const urls = [];
+    const re = /url\((['"]?)(.*?)\1\)/g;
+    let m;
+    while ((m = re.exec(styleValue)) !== null) {
+        if (m[2]) urls.push(m[2]);
+    }
+    return urls;
+}
+
+function waitForImageLoad(url, timeoutMs = 12000) {
+    return new Promise((resolve) => {
+        if (!url) return resolve(false);
+        const img = new Image();
+        let done = false;
+        const finish = (ok) => {
+            if (done) return;
+            done = true;
+            resolve(ok);
+        };
+        const timer = setTimeout(() => finish(false), timeoutMs);
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            clearTimeout(timer);
+            finish(true);
+        };
+        img.onerror = () => {
+            clearTimeout(timer);
+            finish(false);
+        };
+        img.src = url;
+        if (img.complete && img.naturalWidth > 0) {
+            clearTimeout(timer);
+            finish(true);
+        }
+    });
+}
+
+async function waitForSlideAssets(slide) {
+    const urls = new Set(REPORT_BACKGROUND_ASSETS);
+
+    [slide, ...slide.querySelectorAll('*')].forEach((el) => {
+        if (el.tagName === 'IMG' && el.currentSrc) {
+            urls.add(el.currentSrc);
+        }
+        const bg = getComputedStyle(el).backgroundImage;
+        extractBackgroundUrls(bg).forEach((u) => urls.add(u));
+    });
+
+    const checks = await Promise.all([...urls].map((u) => waitForImageLoad(u)));
+    const okCount = checks.filter(Boolean).length;
+    if (okCount < checks.length) {
+        console.warn('[Reportes] Algunos assets no cargaron antes de exportar', {
+            esperados: checks.length,
+            cargados: okCount
+        });
+    }
+}
+
 export function setReportesData(temas, actividades) {
     _state.temas = temas;
     _state.actividades = actividades;
@@ -78,8 +167,8 @@ function renderSlideHeader(title) {
     return `
         <div class="internal-slide__top">
             <div class="internal-slide__brand">
-                <img src="/Ejemplos/img/logo_gob.png" alt="Gobierno de México">
-                <img src="/Ejemplos/img/logo_sener.png" alt="Secretaría de Energía">
+                <img src="/gestor/img/logo_gob.png" alt="Gobierno de México">
+                <img src="/gestor/img/logo_sener.png" alt="Secretaría de Energía">
             </div>
             <div class="internal-slide__title">${escape(title)}</div>
             <div class="internal-slide__unit">DGMESNIE · Subsecretaría de Planeación y Transición Energética</div>
@@ -353,16 +442,43 @@ export async function descargarPdf() {
     const slides = [...document.querySelectorAll('#internal-report-deck .internal-slide')];
     if (!slides.length) { toast('Sin slides para exportar', 'err'); return; }
     toast('Generando PDF…');
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1280, 720] });
-    for (let idx = 0; idx < slides.length; idx++) {
-        const canvas = await html2canvas(slides[idx], { scale: 1.4, useCORS: true, backgroundColor: '#ffffff' });
-        const img = canvas.toDataURL('image/jpeg', 0.92);
-        if (idx > 0) pdf.addPage([1280, 720], 'landscape');
-        pdf.addImage(img, 'JPEG', 0, 0, 1280, 720);
+    setReporteButtonsDisabled(true);
+    setTrackingPreloader(true, 'Generando PDF institucional', `Preparando ${slides.length} láminas…`);
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1280, 720] });
+
+        for (let idx = 0; idx < slides.length; idx++) {
+            setTrackingPreloader(
+                true,
+                'Generando PDF institucional',
+                `Procesando lámina ${idx + 1} de ${slides.length}…`
+            );
+            await waitForSlideAssets(slides[idx]);
+            const canvas = await html2canvas(slides[idx], {
+                scale: 1.6,
+                useCORS: true,
+                allowTaint: false,
+                imageTimeout: 15000,
+                backgroundColor: '#ffffff'
+            });
+            const img = canvas.toDataURL('image/jpeg', 0.94);
+            if (idx > 0) pdf.addPage([1280, 720], 'landscape');
+            pdf.addImage(img, 'JPEG', 0, 0, 1280, 720);
+        }
+
+        pdf.save(`reporte-actividades-${new Date().toISOString().slice(0, 10)}.pdf`);
+        toast('PDF descargado', 'ok');
+    } catch (err) {
+        console.error('[Reportes] Error generando PDF', err);
+        toast('No se pudo generar el PDF', 'err');
+        setTrackingPreloader(true, 'Error al generar PDF', 'Reintenta nuevamente. Si persiste, revisa conexión al CDN.', true);
+        setTimeout(() => setTrackingPreloader(false), 1600);
+    } finally {
+        setReporteButtonsDisabled(false);
+        setTrackingPreloader(false);
     }
-    pdf.save(`reporte-actividades-${new Date().toISOString().slice(0, 10)}.pdf`);
-    toast('PDF descargado', 'ok');
 }
 
 export async function descargarPpt() {

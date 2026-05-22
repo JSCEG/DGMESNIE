@@ -422,76 +422,76 @@ namespace NSIE.Servicios
         // ── Mappers ───────────────────────────────────────────────────────────
         private static GestorTema MapTema(SqlDataReader rd) => new()
         {
-            TemaId                   = rd.GetInt32(rd.GetOrdinal("TemaId")),
-            Clave                    = rd.GetString(rd.GetOrdinal("Clave")),
-            Tema                     = rd.GetString(rd.GetOrdinal("Tema")),
-            Descripcion              = rd.IsDBNull(rd.GetOrdinal("Descripcion"))   ? null : rd.GetString(rd.GetOrdinal("Descripcion")),
-            Categoria                = rd.IsDBNull(rd.GetOrdinal("Categoria"))     ? null : rd.GetString(rd.GetOrdinal("Categoria")),
-            Prioridad                = rd.GetString(rd.GetOrdinal("Prioridad")),
-            Estatus                  = rd.GetString(rd.GetOrdinal("Estatus")),
-            ResponsablePrincipalId   = rd.IsDBNull(rd.GetOrdinal("ResponsablePrincipalId")) ? null : rd.GetInt32(rd.GetOrdinal("ResponsablePrincipalId")),
-            ResponsableNombre        = rd.IsDBNull(rd.GetOrdinal("ResponsableNombre")) ? null : rd.GetString(rd.GetOrdinal("ResponsableNombre")),
-            FechaInicio              = rd.IsDBNull(rd.GetOrdinal("FechaInicio"))   ? null : rd.GetDateTime(rd.GetOrdinal("FechaInicio")),
-            FechaCompromiso          = rd.IsDBNull(rd.GetOrdinal("FechaCompromiso")) ? null : rd.GetDateTime(rd.GetOrdinal("FechaCompromiso")),
-            AvanceGeneral            = rd.GetInt32(rd.GetOrdinal("AvanceGeneral")),
-            LigaSharePoint           = rd.IsDBNull(rd.GetOrdinal("LigaSharePoint")) ? null : rd.GetString(rd.GetOrdinal("LigaSharePoint")),
-            ComentariosEjecutivos    = rd.IsDBNull(rd.GetOrdinal("ComentariosEjecutivos")) ? null : rd.GetString(rd.GetOrdinal("ComentariosEjecutivos")),
+            TemaId = rd.GetInt32(rd.GetOrdinal("TemaId")),
+            Clave = rd.GetString(rd.GetOrdinal("Clave")),
+            Tema = rd.GetString(rd.GetOrdinal("Tema")),
+            Descripcion = rd.IsDBNull(rd.GetOrdinal("Descripcion")) ? null : rd.GetString(rd.GetOrdinal("Descripcion")),
+            Categoria = rd.IsDBNull(rd.GetOrdinal("Categoria")) ? null : rd.GetString(rd.GetOrdinal("Categoria")),
+            Prioridad = rd.GetString(rd.GetOrdinal("Prioridad")),
+            Estatus = rd.GetString(rd.GetOrdinal("Estatus")),
+            ResponsablePrincipalId = rd.IsDBNull(rd.GetOrdinal("ResponsablePrincipalId")) ? null : rd.GetInt32(rd.GetOrdinal("ResponsablePrincipalId")),
+            ResponsableNombre = rd.IsDBNull(rd.GetOrdinal("ResponsableNombre")) ? null : rd.GetString(rd.GetOrdinal("ResponsableNombre")),
+            FechaInicio = rd.IsDBNull(rd.GetOrdinal("FechaInicio")) ? null : rd.GetDateTime(rd.GetOrdinal("FechaInicio")),
+            FechaCompromiso = rd.IsDBNull(rd.GetOrdinal("FechaCompromiso")) ? null : rd.GetDateTime(rd.GetOrdinal("FechaCompromiso")),
+            AvanceGeneral = rd.GetInt32(rd.GetOrdinal("AvanceGeneral")),
+            LigaSharePoint = rd.IsDBNull(rd.GetOrdinal("LigaSharePoint")) ? null : rd.GetString(rd.GetOrdinal("LigaSharePoint")),
+            ComentariosEjecutivos = rd.IsDBNull(rd.GetOrdinal("ComentariosEjecutivos")) ? null : rd.GetString(rd.GetOrdinal("ComentariosEjecutivos")),
             FechaUltimaActualizacion = rd.GetDateTime(rd.GetOrdinal("FechaUltimaActualizacion")),
-            FechaCreacion            = rd.GetDateTime(rd.GetOrdinal("FechaCreacion"))
+            FechaCreacion = rd.GetDateTime(rd.GetOrdinal("FechaCreacion"))
         };
 
         private static GestorActividad MapActividad(SqlDataReader rd) => new()
         {
-            ActividadId              = rd.GetInt32(rd.GetOrdinal("ActividadId")),
-            Clave                    = rd.GetString(rd.GetOrdinal("Clave")),
-            TemaId                   = rd.GetInt32(rd.GetOrdinal("TemaId")),
-            TemaNombre               = rd.IsDBNull(rd.GetOrdinal("TemaNombre")) ? null : rd.GetString(rd.GetOrdinal("TemaNombre")),
-            Actividad                = rd.GetString(rd.GetOrdinal("Actividad")),
-            Descripcion              = rd.IsDBNull(rd.GetOrdinal("Descripcion"))  ? null : rd.GetString(rd.GetOrdinal("Descripcion")),
-            ResponsableId            = rd.IsDBNull(rd.GetOrdinal("ResponsableId")) ? null : rd.GetInt32(rd.GetOrdinal("ResponsableId")),
-            ResponsableNombre        = rd.IsDBNull(rd.GetOrdinal("ResponsableNombre")) ? null : rd.GetString(rd.GetOrdinal("ResponsableNombre")),
-            FechaInicio              = rd.IsDBNull(rd.GetOrdinal("FechaInicio"))  ? null : rd.GetDateTime(rd.GetOrdinal("FechaInicio")),
-            FechaCompromiso          = rd.IsDBNull(rd.GetOrdinal("FechaCompromiso")) ? null : rd.GetDateTime(rd.GetOrdinal("FechaCompromiso")),
-            Estatus                  = rd.GetString(rd.GetOrdinal("Estatus")),
-            Prioridad                = rd.GetString(rd.GetOrdinal("Prioridad")),
-            Avance                   = rd.GetInt32(rd.GetOrdinal("Avance")),
-            Bloqueada                = rd.GetBoolean(rd.GetOrdinal("Bloqueada")),
-            MotivoBloqueo            = rd.IsDBNull(rd.GetOrdinal("MotivoBloqueO")) ? null : rd.GetString(rd.GetOrdinal("MotivoBloqueO")),
-            EvidenciaUrl             = rd.IsDBNull(rd.GetOrdinal("EvidenciaUrl")) ? null : rd.GetString(rd.GetOrdinal("EvidenciaUrl")),
-            Comentarios              = rd.IsDBNull(rd.GetOrdinal("Comentarios"))  ? null : rd.GetString(rd.GetOrdinal("Comentarios")),
+            ActividadId = rd.GetInt32(rd.GetOrdinal("ActividadId")),
+            Clave = rd.GetString(rd.GetOrdinal("Clave")),
+            TemaId = rd.GetInt32(rd.GetOrdinal("TemaId")),
+            TemaNombre = rd.IsDBNull(rd.GetOrdinal("TemaNombre")) ? null : rd.GetString(rd.GetOrdinal("TemaNombre")),
+            Actividad = rd.GetString(rd.GetOrdinal("Actividad")),
+            Descripcion = rd.IsDBNull(rd.GetOrdinal("Descripcion")) ? null : rd.GetString(rd.GetOrdinal("Descripcion")),
+            ResponsableId = rd.IsDBNull(rd.GetOrdinal("ResponsableId")) ? null : rd.GetInt32(rd.GetOrdinal("ResponsableId")),
+            ResponsableNombre = rd.IsDBNull(rd.GetOrdinal("ResponsableNombre")) ? null : rd.GetString(rd.GetOrdinal("ResponsableNombre")),
+            FechaInicio = rd.IsDBNull(rd.GetOrdinal("FechaInicio")) ? null : rd.GetDateTime(rd.GetOrdinal("FechaInicio")),
+            FechaCompromiso = rd.IsDBNull(rd.GetOrdinal("FechaCompromiso")) ? null : rd.GetDateTime(rd.GetOrdinal("FechaCompromiso")),
+            Estatus = rd.GetString(rd.GetOrdinal("Estatus")),
+            Prioridad = rd.GetString(rd.GetOrdinal("Prioridad")),
+            Avance = rd.GetInt32(rd.GetOrdinal("Avance")),
+            Bloqueada = rd.GetBoolean(rd.GetOrdinal("Bloqueada")),
+            MotivoBloqueo = rd.IsDBNull(rd.GetOrdinal("MotivoBloqueO")) ? null : rd.GetString(rd.GetOrdinal("MotivoBloqueO")),
+            EvidenciaUrl = rd.IsDBNull(rd.GetOrdinal("EvidenciaUrl")) ? null : rd.GetString(rd.GetOrdinal("EvidenciaUrl")),
+            Comentarios = rd.IsDBNull(rd.GetOrdinal("Comentarios")) ? null : rd.GetString(rd.GetOrdinal("Comentarios")),
             FechaUltimaActualizacion = rd.GetDateTime(rd.GetOrdinal("FechaUltimaActualizacion")),
-            FechaCreacion            = rd.GetDateTime(rd.GetOrdinal("FechaCreacion"))
+            FechaCreacion = rd.GetDateTime(rd.GetOrdinal("FechaCreacion"))
         };
 
         // ── Param helpers ─────────────────────────────────────────────────────
         private static void AddTemaParams(SqlCommand cmd, GestorTemaForm f)
         {
-            cmd.Parameters.AddWithValue("@tema",   f.Tema);
-            cmd.Parameters.AddWithValue("@desc",   (object?)f.Descripcion ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@cat",    (object?)f.Categoria ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@pri",    f.Prioridad);
-            cmd.Parameters.AddWithValue("@est",    f.Estatus);
-            cmd.Parameters.AddWithValue("@resp",   (object?)f.ResponsablePrincipalId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@tema", f.Tema);
+            cmd.Parameters.AddWithValue("@desc", (object?)f.Descripcion ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@cat", (object?)f.Categoria ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@pri", f.Prioridad);
+            cmd.Parameters.AddWithValue("@est", f.Estatus);
+            cmd.Parameters.AddWithValue("@resp", (object?)f.ResponsablePrincipalId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@inicio", (object?)f.FechaInicio ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@comp",   (object?)f.FechaCompromiso ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@liga",   (object?)f.LigaSharePoint ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@comp", (object?)f.FechaCompromiso ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@liga", (object?)f.LigaSharePoint ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@coment", (object?)f.ComentariosEjecutivos ?? DBNull.Value);
         }
 
         private static void AddActividadParams(SqlCommand cmd, GestorActividadForm f)
         {
             cmd.Parameters.AddWithValue("@temaId", f.TemaId);
-            cmd.Parameters.AddWithValue("@act",    f.Actividad);
-            cmd.Parameters.AddWithValue("@desc",   (object?)f.Descripcion ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@resp",   (object?)f.ResponsableId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@act", f.Actividad);
+            cmd.Parameters.AddWithValue("@desc", (object?)f.Descripcion ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@resp", (object?)f.ResponsableId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@inicio", (object?)f.FechaInicio ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@comp",   (object?)f.FechaCompromiso ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@est",    f.Estatus);
-            cmd.Parameters.AddWithValue("@pri",    f.Prioridad);
+            cmd.Parameters.AddWithValue("@comp", (object?)f.FechaCompromiso ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@est", f.Estatus);
+            cmd.Parameters.AddWithValue("@pri", f.Prioridad);
             cmd.Parameters.AddWithValue("@avance", f.Avance);
-            cmd.Parameters.AddWithValue("@bloq",   f.Bloqueada);
+            cmd.Parameters.AddWithValue("@bloq", f.Bloqueada);
             cmd.Parameters.AddWithValue("@motivo", (object?)f.MotivoBloqueo ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@evi",    (object?)f.EvidenciaUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@evi", (object?)f.EvidenciaUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@coment", (object?)f.Comentarios ?? DBNull.Value);
         }
     }

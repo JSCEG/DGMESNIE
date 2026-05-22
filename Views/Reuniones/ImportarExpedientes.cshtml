@@ -1,0 +1,142 @@
+@model NSIE.Models.ManualSharePointImportViewModel
+
+@{
+    ViewData["Title"] = "Carga manual de expedientes";
+}
+
+@if (Model.Header != null)
+{
+    @await Html.PartialAsync("_ViewHeader", Model.Header)
+}
+
+<div class="container-fluid shell-page-container py-3">
+    <div class="row g-4">
+        <div class="col-12 col-xl-4">
+            <div class="border rounded-3 bg-white p-4 shadow-sm h-100">
+                <h4 class="mb-2">Importar archivo SharePoint</h4>
+                <p class="text-muted mb-4">Sube el Excel o CSV exportado manualmente desde SharePoint. El sistema leerá columnas y mostrará una previsualización sin guardar nada en base de datos.</p>
+
+                <form asp-action="ImportarExpedientes" method="post" enctype="multipart/form-data" novalidate>
+                    @Html.AntiForgeryToken()
+
+                    <div class="mb-3">
+                        <label for="archivo" class="form-label">Archivo de expedientes</label>
+                        <input id="archivo" name="archivo" type="file" class="form-control" accept=".xlsx,.csv" required />
+                        <div class="form-text">Formatos admitidos: .xlsx y .csv</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Procesar archivo</button>
+                </form>
+
+                <hr class="my-4" />
+
+                <div class="small text-muted d-grid gap-2">
+                    <div><strong>Paso 1.</strong> Exporta manualmente la carpeta o tabla desde SharePoint.</div>
+                    <div><strong>Paso 2.</strong> Carga el archivo aquí para validar su estructura.</div>
+                    <div><strong>Paso 3.</strong> Usa esta previsualización para definir el cruce posterior con reuniones y estatus internos.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-8">
+            <div class="border rounded-3 bg-white p-4 shadow-sm h-100">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                        <h4 class="mb-1">Previsualización</h4>
+                        <p class="text-muted mb-0">Primer corte operativo del archivo manual para expedientes y reportes.</p>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(Model.FileName))
+                    {
+                        <span class="badge text-bg-light border">@Model.FileName</span>
+                    }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+                {
+                    <div class="alert @(Model.IsSuccess ? "alert-success" : "alert-danger")" role="alert">
+                        @Model.StatusMessage
+                    </div>
+                }
+
+                @if (Model.IsSuccess)
+                {
+                    <div class="row g-3 mb-4">
+                        <div class="col-sm-6 col-lg-3">
+                            <div class="border rounded-3 p-3 bg-light h-100">
+                                <div class="text-muted small">Origen</div>
+                                <div class="fw-semibold">@Model.SourceType</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-lg-3">
+                            <div class="border rounded-3 p-3 bg-light h-100">
+                                <div class="text-muted small">Hoja / origen</div>
+                                <div class="fw-semibold">@Model.WorksheetName</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-lg-3">
+                            <div class="border rounded-3 p-3 bg-light h-100">
+                                <div class="text-muted small">Registros detectados</div>
+                                <div class="fw-semibold">@Model.TotalRows</div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-lg-3">
+                            <div class="border rounded-3 p-3 bg-light h-100">
+                                <div class="text-muted small">Filas visibles</div>
+                                <div class="fw-semibold">@Model.PreviewRows</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (Model.Notes.Any())
+                    {
+                        <div class="alert alert-warning" role="alert">
+                            <ul class="mb-0 ps-3">
+                                @foreach (var note in Model.Notes)
+                                {
+                                    <li>@note</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+
+                    @if (Model.Columns.Any() && Model.Rows.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        @foreach (var column in Model.Columns)
+                                        {
+                                            <th>@column</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in Model.Rows)
+                                    {
+                                        <tr>
+                                            @foreach (var value in row)
+                                            {
+                                                <td>@value</td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-secondary mb-0">El archivo se procesó, pero no se detectaron filas con datos para mostrar.</div>
+                    }
+                }
+                else if (string.IsNullOrWhiteSpace(Model.StatusMessage))
+                {
+                    <div class="border rounded-3 bg-light p-4 text-muted">
+                        Cuando cargues el archivo manual, aquí aparecerán columnas, conteo de registros y una tabla de previsualización.
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

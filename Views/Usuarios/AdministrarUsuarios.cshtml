@@ -4,7 +4,7 @@
 @using Newtonsoft.Json
 
 @{
-    
+
     var httpContext = HttpContextAccessor.HttpContext;
     var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
     var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
@@ -46,6 +46,15 @@
 }
 
 @await Html.PartialAsync("_ViewHeader", header)
+
+@section Styles {
+    <style>
+        #confirmDeleteModal,
+        #userMessageModal {
+            z-index: 20060 !important;
+        }
+    </style>
+}
 
 <div class="container">
     <div class="shell-table-card">
@@ -100,18 +109,18 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var user in Model)
+                    @foreach (var user in Model.Where(u => u.Vigente))
                     {
                         <tr>
                             <td>
                                 <div class="shell-table-actions justify-content-start">
                                     <a class="is-edit" href="@Url.Action("Edit", "Usuarios", new { id = user.IdUsuario })"
-                                           title="Editar usuario" aria-label="Editar usuario @user.Nombre">
+                                       title="Editar usuario" aria-label="Editar usuario @user.Nombre">
                                         <i class="fas fa-pen-to-square"></i>
                                     </a>
                                     <a href="@Url.Action("Eliminar", "Usuarios", new { id = user.IdUsuario })"
-                                           class="is-delete delete-link" title="Eliminar usuario"
-                                           aria-label="Eliminar usuario @user.Nombre">
+                                       class="is-delete delete-link" title="Eliminar usuario"
+                                       aria-label="Eliminar usuario @user.Nombre">
                                         <i class="fas fa-trash"></i>
                                     </a>
                                 </div>
@@ -155,7 +164,7 @@
     <!-- Modal HTML -->
     <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteModalLabel"
          aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="confirmDeleteModalLabel">Confirmar Eliminación</h5>
@@ -176,16 +185,18 @@
     @{
         var userMessage = TempData["UserMessage"] as string;
         var isSuccess = TempData["IsSuccess"] as bool?;
+        var userErrorDetail = TempData["UserErrorDetail"] as string;
     }
 
     @if (!string.IsNullOrEmpty(userMessage))
     {
         <input type="hidden" id="userMessage" value="@userMessage" />
         <input type="hidden" id="isSuccess" value="@isSuccess" />
+        <input type="hidden" id="userErrorDetail" value="@userErrorDetail" />
 
         <!-- Modal HTML -->
         <div class="modal" tabindex="-1" id="userMessageModal">
-            <div class="modal-dialog">
+            <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title" id="modalTitle">Mensaje</h5>
@@ -218,10 +229,23 @@
                     e.preventDefault();
                     // Configurar el href del botón de confirmación con el href del enlace de eliminación.
                     confirmDeleteButton.href = link.href;
+                    console.info("[Usuarios] Solicitud de eliminación preparada", {
+                        href: link.href,
+                        idUsuario: link.href.split('/').pop()
+                    });
                     var confirmDeleteModal = new bootstrap.Modal(document.getElementById("confirmDeleteModal"));
                     confirmDeleteModal.show();
                 });
             });
+
+            if (confirmDeleteButton) {
+                confirmDeleteButton.addEventListener("click", function () {
+                    console.info("[Usuarios] Confirmación de eliminación", {
+                        href: confirmDeleteButton.href,
+                        idUsuario: confirmDeleteButton.href.split('/').pop()
+                    });
+                });
+            }
         });
 
     </script>
@@ -232,8 +256,16 @@
     <!-- Script para mostrar el modal con el mensaje del usuario -->
     <script>
         document.addEventListener("DOMContentLoaded", function () {
-            var userMessage = document.getElementById("userMessage").value;
-            var isSuccess = document.getElementById("isSuccess").value.toLowerCase() === "true";
+            var userMessageInput = document.getElementById("userMessage");
+            var isSuccessInput = document.getElementById("isSuccess");
+            if (!userMessageInput || !isSuccessInput) {
+                return;
+            }
+
+            var userMessage = userMessageInput.value;
+            var isSuccess = isSuccessInput.value.toLowerCase() === "true";
+            var userErrorDetailInput = document.getElementById("userErrorDetail");
+            var userErrorDetail = userErrorDetailInput ? userErrorDetailInput.value : "";
 
             // Puedes personalizar los colores de los mensajes según el éxito o el fracaso
             var messageColor = isSuccess ? "green" : "red";
@@ -243,6 +275,15 @@
 
             var userMessageModal = new bootstrap.Modal(document.getElementById("userMessageModal"));
             userMessageModal.show();
+
+            if (isSuccess) {
+                console.info("[Usuarios] Eliminación exitosa", { message: userMessage });
+            } else {
+                console.error("[Usuarios] Error al eliminar usuario", {
+                    message: userMessage,
+                    detail: userErrorDetail || "Sin detalle recibido desde backend"
+                });
+            }
         });
     </script>
 

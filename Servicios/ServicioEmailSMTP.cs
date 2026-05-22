@@ -65,11 +65,6 @@ namespace NSIE.Servicios
                 // Lista de configuraciones a probar en orden de prioridad
                 var configuracionesPrueba = new List<(string nombre, string host, int port, bool ssl)>();
 
-                if (!configuracionesPrueba.Any())
-                {
-                    Console.WriteLine("⚠️ No se encontró ninguna configuración de SMTP para el tipo de cuenta proporcionado.");
-                }
-
                 if (tipoCuenta == "Proton")
                 {
                     configuracionesPrueba.Add(("Proton",
@@ -91,10 +86,11 @@ namespace NSIE.Servicios
                         int.Parse(_configuration["EmailSettings:SmtpOffice365:Port"]),
                         bool.Parse(_configuration["EmailSettings:SmtpOffice365:EnableSsl"])));
 
-                    // Fallback a Exchange interno sin SSL
-                    configuracionesPrueba.Add(("Exchange-NoSSL",
+                    // Fallback a Exchange interno con los parámetros configurados
+                    configuracionesPrueba.Add(("Exchange",
                         _configuration["EmailSettings:SmtpExchange:Host"],
-                        25, false));
+                        int.Parse(_configuration["EmailSettings:SmtpExchange:Port"]),
+                        bool.Parse(_configuration["EmailSettings:SmtpExchange:EnableSsl"])));
                 }
                 else if (tipoCuenta == "Exchange")
                 {
@@ -109,6 +105,12 @@ namespace NSIE.Servicios
                         _configuration["EmailSettings:SmtpOutlook:Host"],
                         int.Parse(_configuration["EmailSettings:SmtpOutlook:Port"]),
                         bool.Parse(_configuration["EmailSettings:SmtpOutlook:EnableSsl"])));
+                }
+
+                if (!configuracionesPrueba.Any())
+                {
+                    Console.WriteLine($"⚠️ No se encontró configuración SMTP para tipo de cuenta: {tipoCuenta}");
+                    throw new InvalidOperationException($"No existe configuración SMTP para EmailSettings:TipoCuenta='{tipoCuenta}'");
                 }
 
                 Exception ultimoError = null;

@@ -1,0 +1,1314 @@
+@model NSIE.Models.ReunionesSeguimientoViewModel
+
+@{
+    ViewData["Title"] = "Seguimiento de asuntos";
+    var asuntoPayloadJson = Newtonsoft.Json.JsonConvert.SerializeObject(Model.Asuntos.ToDictionary(
+        asunto => asunto.AsuntoId,
+        asunto => new
+        {
+            asunto.AsuntoId,
+            asunto.TituloAsunto,
+            asunto.Estatus,
+            FechaCompromiso = asunto.FechaCompromiso?.ToString("yyyy-MM-dd"),
+            FechaAtencion = asunto.FechaAtencion?.ToString("yyyy-MM-dd"),
+            asunto.ObservacionesEnvioMonica
+        }));
+    var asuntosJson = Newtonsoft.Json.JsonConvert.SerializeObject(Model.Asuntos.Select(asunto => new
+    {
+        asunto.AsuntoId,
+        asunto.NumeroRegistro,
+        asunto.TituloAsunto,
+        asunto.Descripcion,
+        asunto.Expediente,
+        FechaSolicitud = asunto.FechaSolicitud?.ToString("dd/MM/yyyy"),
+        asunto.DiasTranscurridos,
+        asunto.Responsable,
+        asunto.Encargado,
+        asunto.Minuta,
+        asunto.FichaInformativaOficio,
+        asunto.AreaResponsable,
+        asunto.Estatus,
+        asunto.EstadoActual,
+        asunto.TipoAsunto,
+        asunto.Semaforo,
+        asunto.AlertaEnvioMonica,
+        FechaReunion = asunto.FechaReunion?.ToString("dd/MM/yyyy"),
+        FechaCompromiso = asunto.FechaCompromiso?.ToString("dd/MM/yyyy"),
+        FechaAtencion = asunto.FechaAtencion?.ToString("dd/MM/yyyy"),
+        FechaEnvioMonica = asunto.FechaEnvioMonica?.ToString("dd/MM/yyyy HH:mm"),
+        asunto.CarpetaSharePointUrl,
+        asunto.UbicacionCarpeta,
+        asunto.DatosContacto,
+        asunto.FechaTextoReunion,
+        asunto.ObservacionesEnvioMonica,
+        asunto.EnviadoAMonicaPorNombre,
+        asunto.DestinatarioJuridico,
+        asunto.TotalComentarios,
+        asunto.NombreUsuarioUltimaActualizacion
+    }));
+}
+
+@section Styles {
+    <style>
+        .reuniones-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .reuniones-toolbar__search {
+            min-width: min(100%, 420px);
+            position: relative;
+            flex: 1 1 420px;
+        }
+
+        .reuniones-toolbar__search .form-control {
+            padding-left: 2.7rem;
+            border-radius: 14px;
+        }
+
+        .reuniones-toolbar__search-icon {
+            position: absolute;
+            top: 50%;
+            left: 0.95rem;
+            transform: translateY(-50%);
+            color: #8a0031;
+        }
+
+        .reuniones-toolbar__meta {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #6c757d;
+            font-size: 0.92rem;
+        }
+
+        .reuniones-chart-card {
+            border: 1px solid rgba(138, 0, 49, 0.08);
+            border-radius: 22px;
+            background: #fff;
+            padding: 1rem;
+            box-shadow: none;
+        }
+
+        .reuniones-chart-card__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .reuniones-chart-card__title {
+            margin: 0;
+            color: #243444;
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        .reuniones-chart-card__action {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            border: 1px solid rgba(138, 0, 49, 0.15);
+            border-radius: 999px;
+            background: #fff;
+            color: #8a0031;
+            font-size: 0.82rem;
+            font-weight: 700;
+            padding: 0.4rem 0.75rem;
+        }
+
+        .reuniones-chart-card:fullscreen,
+        .reuniones-chart-card:-webkit-full-screen {
+            width: 100%;
+            height: 100%;
+            padding: 1.25rem;
+            background: #fff;
+            overflow: auto;
+        }
+
+        .reuniones-chart-card:fullscreen .reuniones-chart,
+        .reuniones-chart-card:-webkit-full-screen .reuniones-chart {
+            height: calc(100vh - 8rem) !important;
+        }
+
+        .reuniones-chart {
+            height: 280px;
+        }
+
+        .reuniones-chart,
+        .reuniones-chart .highcharts-container,
+        .reuniones-chart .highcharts-root,
+        .reuniones-chart .highcharts-background {
+            background: #fff;
+        }
+
+        .reuniones-chart:fullscreen,
+        .reuniones-chart:-webkit-full-screen,
+        .reuniones-chart .highcharts-container:fullscreen,
+        .reuniones-chart .highcharts-container:-webkit-full-screen {
+            background: #fff !important;
+        }
+
+        .reuniones-table thead th {
+            white-space: nowrap;
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .reuniones-table td {
+            vertical-align: top;
+        }
+
+        .reuniones-table__title {
+            min-width: 260px;
+        }
+
+        .reuniones-table__title strong {
+            display: block;
+            margin-bottom: 0.25rem;
+            color: #243444;
+        }
+
+        .reuniones-table__title small {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            color: #6b7280;
+        }
+
+        .reuniones-detail-row {
+            display: none;
+        }
+
+        .reuniones-detail-row.is-visible {
+            display: table-row;
+        }
+
+        .reuniones-detail-panel {
+            padding: 1rem 1.1rem;
+            background: #fff;
+            border-top: 1px solid rgba(138, 0, 49, 0.08);
+        }
+
+        .reuniones-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.9rem;
+        }
+
+        .reuniones-detail-card {
+            border: 1px solid rgba(138, 0, 49, 0.08);
+            border-radius: 16px;
+            padding: 0.85rem 0.95rem;
+            background: #fff;
+        }
+
+        .reuniones-table__title a {
+            color: #243444;
+            text-decoration: none;
+        }
+
+        .reuniones-table__folder-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: #8a0031;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .reuniones-table__folder-link:hover {
+            color: #6f0027;
+            text-decoration: underline;
+        }
+
+        .reuniones-table__title a:hover {
+            color: #8a0031;
+        }
+
+        .reuniones-table__meta {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-top: 0.45rem;
+        }
+
+        .reuniones-table__meta span {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.18rem 0.55rem;
+            border-radius: 999px;
+            border: 1px solid rgba(138, 0, 49, 0.12);
+            color: #8a0031;
+            font-size: 0.76rem;
+            font-weight: 700;
+        }
+
+        .reuniones-detail-card span {
+            display: block;
+            margin-bottom: 0.25rem;
+            color: #7b8797;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .reuniones-detail-card strong,
+        .reuniones-detail-card p {
+            margin: 0;
+            color: #243444;
+            font-size: 0.92rem;
+            line-height: 1.5;
+        }
+
+        .reuniones-detail-card a {
+            color: #8a0031;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .reuniones-detail-card a:hover {
+            text-decoration: underline;
+        }
+
+        .reuniones-detail-actions {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+        }
+
+        .reuniones-badge--critical {
+            background: rgba(138, 0, 49, 0.12);
+            color: #8a0031;
+            border: 1px solid rgba(138, 0, 49, 0.2);
+        }
+
+        .reuniones-stat--critical {
+            border-color: rgba(138, 0, 49, 0.18) !important;
+        }
+
+        .reuniones-stat--critical .display-6 {
+            color: #8a0031 !important;
+        }
+
+        .reuniones-pagination {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.9rem;
+            margin-top: 1rem;
+        }
+
+        .reuniones-pagination__pages {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .reuniones-pagination__pages .btn.active {
+            background: #8a0031;
+            border-color: #8a0031;
+            color: #fff;
+        }
+
+        .reuniones-modal {
+            z-index: 2000;
+        }
+
+        .reuniones-modal .modal-dialog {
+            margin: 1.75rem auto;
+        }
+
+        .reuniones-modal .modal-content {
+            border: 1px solid rgba(138, 0, 49, 0.12);
+            border-radius: 22px;
+            box-shadow: 0 28px 70px rgba(36, 52, 68, 0.18);
+        }
+
+        .reuniones-modal .modal-header,
+        .reuniones-modal .modal-footer {
+            border-color: rgba(138, 0, 49, 0.08);
+        }
+
+        .modal-backdrop.show {
+            z-index: 1990;
+        }
+
+        @@media (max-width: 991.98px) {
+            .reuniones-detail-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .reuniones-modal .modal-dialog {
+                margin: 1rem;
+            }
+        }
+    </style>
+}
+
+@if (Model.Header != null)
+{
+    @await Html.PartialAsync("_ViewHeader", Model.Header)
+}
+
+<div class="container-fluid shell-page-container py-3">
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="border rounded-3 bg-white p-4 shadow-sm h-100">
+                <div class="text-muted small mb-2">Total de asuntos</div>
+                <div class="display-6 fw-semibold text-dark">@Model.TotalAsuntos</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="border rounded-3 bg-white p-4 shadow-sm h-100 border-success-subtle">
+                <div class="text-muted small mb-2">Atendidos</div>
+                <div class="display-6 fw-semibold text-success">@Model.TotalAtendidos</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="border rounded-3 bg-white p-4 shadow-sm h-100 border-warning-subtle">
+                <div class="text-muted small mb-2">Pendientes</div>
+                <div class="display-6 fw-semibold text-warning-emphasis">@Model.TotalPendientes</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="border rounded-3 bg-white p-4 shadow-sm h-100 reuniones-stat--critical">
+                <div class="text-muted small mb-2">Pendientes con Mónica</div>
+                <div class="display-6 fw-semibold">@Model.TotalPendientesEnvioMonica</div>
+            </div>
+        </div>
+    </div>
+
+    @if (TempData["ReunionesSuccess"] is string successMessage)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @successMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    }
+
+    @if (TempData["ReunionesError"] is string errorMessage)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @errorMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    }
+
+    <div class="row g-4 mb-4">
+        <div class="col-12 col-lg-4">
+            <div class="reuniones-chart-card">
+                <div class="reuniones-chart-card__header">
+                    <h4 class="reuniones-chart-card__title">Estatus de atención</h4>
+                    <button type="button" class="reuniones-chart-card__action" data-chart-fullscreen>
+                        <i class="bi bi-arrows-fullscreen"></i>
+                        <span>Pantalla completa</span>
+                    </button>
+                </div>
+                <div id="reunionesChartEstatus" class="reuniones-chart"></div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-4">
+            <div class="reuniones-chart-card">
+                <div class="reuniones-chart-card__header">
+                    <h4 class="reuniones-chart-card__title">Semáforo de seguimiento</h4>
+                    <button type="button" class="reuniones-chart-card__action" data-chart-fullscreen>
+                        <i class="bi bi-arrows-fullscreen"></i>
+                        <span>Pantalla completa</span>
+                    </button>
+                </div>
+                <div id="reunionesChartSemaforo" class="reuniones-chart"></div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-4">
+            <div class="reuniones-chart-card">
+                <div class="reuniones-chart-card__header">
+                    <h4 class="reuniones-chart-card__title">Seguimiento con jurídico</h4>
+                    <button type="button" class="reuniones-chart-card__action" data-chart-fullscreen>
+                        <i class="bi bi-arrows-fullscreen"></i>
+                        <span>Pantalla completa</span>
+                    </button>
+                </div>
+                <div id="reunionesChartMonica" class="reuniones-chart"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="border rounded-3 bg-white p-4 shadow-sm">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+            <div>
+                <h4 class="mb-1">Tablero de seguimiento</h4>
+                <p class="text-muted mb-0">Consulta, filtra y despliega el detalle de cada asunto sin saturar la tabla
+                    principal.</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#reunionesCrearModal">Nuevo asunto</button>
+                </div>
+            </div>
+
+            <div class="reuniones-toolbar">
+                <div class="reuniones-toolbar__search">
+                    <i class="bi bi-search reuniones-toolbar__search-icon"></i>
+                    <input id="reunionesSearchInput" type="search" class="form-control"
+                           placeholder="Buscar por asunto, expediente, responsable o estatus..." />
+                </div>
+                <div class="reuniones-toolbar__meta">
+                    <span id="reunionesSearchSummary">@Model.TotalAsuntos asunto(s)</span>
+                </div>
+            </div>
+
+            @if (!Model.Asuntos.Any())
+            {
+                <div class="alert alert-secondary mb-0">No hay asuntos disponibles para mostrar en el dashboard.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle reuniones-table" id="reunionesTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th></th>
+                                <th>Semáforo</th>
+                                <th>Asunto</th>
+                                <th>Envío jurídico</th>
+                                <th>Ubicación carpeta</th>
+                                <th>Responsable</th>
+                                <th>Reunión</th>
+                                <th>Compromiso</th>
+                                <th>Estatus</th>
+                                <th>Liga</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reunionesTableBody">
+                            @foreach (var asunto in Model.Asuntos)
+                            {
+                                var carpetaTexto = asunto.UbicacionCarpeta ?? asunto.Expediente;
+                                var badgeClass = asunto.Semaforo switch
+                                {
+                                    "Verde" => "bg-success-subtle text-success border border-success-subtle",
+                                    "Amarillo" => "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
+                                    "Rojo" => "reuniones-badge--critical",
+                                    _ => "bg-secondary-subtle text-secondary border border-secondary-subtle"
+                                };
+
+                                var alertaClass = asunto.AlertaEnvioMonica switch
+                                {
+                                    "Pendiente de envío a Mónica" => "reuniones-badge--critical",
+                                    "Enviado a Mónica" => "bg-success-subtle text-success border border-success-subtle",
+                                    _ => "bg-secondary-subtle text-secondary border border-secondary-subtle"
+                                };
+
+                                <tr class="reuniones-main-row"
+                                    data-search="@($"{asunto.TituloAsunto} {asunto.Expediente} {asunto.UbicacionCarpeta} {asunto.Responsable} {asunto.Encargado} {asunto.Estatus} {asunto.EstadoActual} {asunto.TipoAsunto} {asunto.Semaforo} {asunto.AlertaEnvioMonica}".ToLowerInvariant())">
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary reuniones-toggle-detail"
+                                                aria-label="Mostrar detalle">
+                                            <i class="bi bi-plus-lg"></i>
+                                        </button>
+                                    </td>
+                                    <td><span class="badge rounded-pill @badgeClass">@asunto.Semaforo</span></td>
+                                    <td class="reuniones-table__title">
+                                        @if (!string.IsNullOrWhiteSpace(asunto.CarpetaSharePointUrl))
+                                        {
+                                            <strong><a href="@asunto.CarpetaSharePointUrl" target="_blank"
+                                                           rel="noopener noreferrer">@asunto.TituloAsunto</a></strong>
+                                            }
+                                    else
+                                            {
+                                                <strong>@asunto.TituloAsunto</strong>
+                                            }
+                                            <small>@(string.IsNullOrWhiteSpace(asunto.Descripcion) ? "Sin descripción operativa." :
+                                                                                asunto.Descripcion)</small>
+                                                <div class="reuniones-table__meta">
+                                                    @if (!string.IsNullOrWhiteSpace(asunto.TipoAsunto))
+                                                    {
+                                                        <span>@asunto.TipoAsunto</span>
+                                                    }
+                                                    @if (!string.IsNullOrWhiteSpace(carpetaTexto))
+                                                    {
+                                                        <span>@carpetaTexto</span>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td><span class="badge rounded-pill @alertaClass">@asunto.AlertaEnvioMonica</span></td>
+                                            <td>
+                                                @if (!string.IsNullOrWhiteSpace(asunto.CarpetaSharePointUrl) && !string.IsNullOrWhiteSpace(carpetaTexto))
+                                                {
+                                                    <a class="reuniones-table__folder-link" href="@asunto.CarpetaSharePointUrl" target="_blank" rel="noopener noreferrer" title="Abrir expediente en SharePoint">
+                                                        <i class="bi bi-folder-symlink"></i>
+                                                        <span>@carpetaTexto</span>
+                                                    </a>
+                                                }
+                                                else
+                                                {
+                                                    @(string.IsNullOrWhiteSpace(carpetaTexto) ? "-" : carpetaTexto)
+                                                }
+                                            </td>
+                                                <td>@(string.IsNullOrWhiteSpace(asunto.Encargado ?? asunto.Responsable) ? "-" : asunto.Encargado
+                                                                                ?? asunto.Responsable)</td>
+                                                    <td>@(asunto.FechaReunion?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                                    <td>@(asunto.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                                    <td>@(string.IsNullOrWhiteSpace(asunto.EstadoActual) ? asunto.Estatus : asunto.EstadoActual)
+                                                    </td>
+                                                    <td>
+                                                        @if (!string.IsNullOrWhiteSpace(asunto.CarpetaSharePointUrl))
+                                                        {
+                                                            <a class="btn btn-sm btn-outline-primary" href="@asunto.CarpetaSharePointUrl"
+                                                               target="_blank" rel="noopener noreferrer">Abrir carpeta</a>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge text-bg-light border">Sin carpeta</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                                <tr class="reuniones-detail-row">
+                                                    <td colspan="10" class="reuniones-detail-panel">
+                                                        <div class="reuniones-detail-grid">
+                                                            <div class="reuniones-detail-actions">
+                                                                <button type="button"
+                                                                        class="btn btn-outline-secondary btn-sm"
+                                                                        data-bs-toggle="modal"
+                                                                        data-bs-target="#reunionesEditarModal"
+                                                                        data-asunto-id="@asunto.AsuntoId">
+                                                                    <i class="bi bi-pencil-square"></i>
+                                                                    Editar seguimiento
+                                                                </button>
+                                                                <button type="button"
+                                                                        class="btn btn-outline-secondary btn-sm"
+                                                                        data-bs-toggle="modal"
+                                                                        data-bs-target="#reunionesComentarioModal"
+                                                                        data-asunto-id="@asunto.AsuntoId"
+                                                                        data-asunto-titulo="@asunto.TituloAsunto">
+                                                                    <i class="bi bi-chat-left-text"></i>
+                                                                    Agregar comentario
+                                                                </button>
+                                                                <button type="button"
+                                                                        class="btn btn-outline-secondary btn-sm"
+                                                                        data-bs-toggle="modal"
+                                                                        data-bs-target="#reunionesMonicaModal"
+                                                                        data-asunto-id="@asunto.AsuntoId"
+                                                                        data-asunto-titulo="@asunto.TituloAsunto">
+                                                                    <i class="bi bi-send-check"></i>
+                                                                    Marcar envío a Mónica
+                                                                </button>
+                                                                <button type="button"
+                                                                        class="btn btn-outline-danger btn-sm"
+                                                                        data-bs-toggle="modal"
+                                                                        data-bs-target="#reunionesDesactivarModal"
+                                                                        data-asunto-id="@asunto.AsuntoId"
+                                                                        data-asunto-titulo="@asunto.TituloAsunto">
+                                                                    <i class="bi bi-archive"></i>
+                                                                    Desactivar
+                                                                </button>
+                                                            </div>
+                                                            <div class="reuniones-detail-card">
+                                                                <span>Descripción</span>
+                                                                <p>@(string.IsNullOrWhiteSpace(asunto.Descripcion) ? "Sin descripción registrada." :
+                                                                                                            asunto.Descripcion)</p>
+                                                                </div>
+                                                                <div class="reuniones-detail-card">
+                                                                    <span>Seguimiento jurídico</span>
+                                                                    <p>@(string.IsNullOrWhiteSpace(asunto.ObservacionesEnvioMonica) ? "Sin observaciones registradas." : asunto.ObservacionesEnvioMonica)</p>
+                                                                </div>
+                                                                <div class="reuniones-detail-card">
+                                                                    <span>Expediente / carpeta</span>
+                                                                    @if (!string.IsNullOrWhiteSpace(carpetaTexto) && !string.IsNullOrWhiteSpace(asunto.CarpetaSharePointUrl))
+                                                                    {
+                                                                        <p><a href="@asunto.CarpetaSharePointUrl" target="_blank" rel="noopener noreferrer">Abrir @carpetaTexto</a></p>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <p>@(string.IsNullOrWhiteSpace(carpetaTexto) ? "Sin expediente registrado." : carpetaTexto)</p>
+                                                                    }
+                                                                </div>
+                                                                <div class="reuniones-detail-card">
+                                                                    <span>Área responsable</span>
+                                                                    <strong>@(string.IsNullOrWhiteSpace(asunto.AreaResponsable) ? "-" :
+                                                                                                                asunto.AreaResponsable)</strong>
+                                                                    </div>
+                                                                    <div class="reuniones-detail-card">
+                                                                        <span>Tipo de asunto</span>
+                                                                        <strong>@(string.IsNullOrWhiteSpace(asunto.TipoAsunto) ? "-" :
+                                                                                                                    asunto.TipoAsunto)</strong>
+                                                                        </div>
+                                                                        <div class="reuniones-detail-card">
+                                                                            <span>Fecha de solicitud</span>
+                                                                            <strong>@(asunto.FechaSolicitud?.ToString("dd/MM/yyyy") ?? "-")</strong>
+                                                                        </div>
+                                                                        <div class="reuniones-detail-card">
+                                                                            <span>Días transcurridos</span>
+                                                                            <strong>@(asunto.DiasTranscurridos?.ToString() ?? "-")</strong>
+                                                                        </div>
+                                                                        <div class="reuniones-detail-card">
+                                                                            <span>Encargado</span>
+                                                                            <strong>@(string.IsNullOrWhiteSpace(asunto.Encargado) ? "-" :
+                                                                                                                        asunto.Encargado)</strong>
+                                                                            </div>
+                                                                            <div class="reuniones-detail-card">
+                                                                                <span>Minuta</span>
+                                                                                <strong>@(string.IsNullOrWhiteSpace(asunto.Minuta) ? "-" : asunto.Minuta)</strong>
+                                                                            </div>
+                                                                            <div class="reuniones-detail-card">
+                                                                                <span>Ficha informativa / oficio</span>
+                                                                                <strong>@(string.IsNullOrWhiteSpace(asunto.FichaInformativaOficio) ? "-" :
+                                                                                                                            asunto.FichaInformativaOficio)</strong>
+                                                                                </div>
+                                                                                <div class="reuniones-detail-card">
+                                                                                    <span>Comentarios históricos</span>
+                                                                                    <strong>@asunto.TotalComentarios</strong>
+                                                                                </div>
+                                                                                <div class="reuniones-detail-card">
+                                                                                    <span>Enviado a Mónica por</span>
+                                                                                    <strong>@(string.IsNullOrWhiteSpace(asunto.EnviadoAMonicaPorNombre) ? "Pendiente / sin registro" : asunto.EnviadoAMonicaPorNombre)</strong>
+                                                                                </div>
+                                                                                <div class="reuniones-detail-card">
+                                                                                    <span>Fecha de envío</span>
+                                                                                    <strong>@(asunto.FechaEnvioMonica?.ToString("dd/MM/yyyy HH:mm") ?? "-")</strong>
+                                                                                </div>
+                                                                                <div class="reuniones-detail-card">
+                                                                                    <span>Fecha de atención</span>
+                                                                                    <strong>@(asunto.FechaAtencion?.ToString("dd/MM/yyyy") ?? "-")</strong>
+                                                                                </div>
+                                                                                <div class="reuniones-detail-card">
+                                                                                    <span>Datos de contacto</span>
+                                                                                    <p>@(string.IsNullOrWhiteSpace(asunto.DatosContacto) ? "Sin contacto registrado." :
+                                                                                                                                asunto.DatosContacto)</p>
+                                                                                    </div>
+                                                                                    <div class="reuniones-detail-card">
+                                                                                        <span>Texto de reunión</span>
+                                                                                        <p>@(string.IsNullOrWhiteSpace(asunto.FechaTextoReunion) ? "Sin agenda textual registrada." : asunto.FechaTextoReunion)</p>
+                                                                                    </div>
+                                                                                    <div class="reuniones-detail-card">
+                                                                                        <span>Estado actual</span>
+                                                                                        <p>@(string.IsNullOrWhiteSpace(asunto.EstadoActual) ? "Sin estado narrativo registrado." : asunto.EstadoActual)</p>
+                                                                                    </div>
+                                                                                    <div class="reuniones-detail-card">
+                                                                                        <span>Última actualización</span>
+                                                                                        <strong>@(string.IsNullOrWhiteSpace(asunto.NombreUsuarioUltimaActualizacion) ? "-" :
+                                                                                                                                    asunto.NombreUsuarioUltimaActualizacion)</strong>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        }
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+
+                                                            <div class="reuniones-pagination">
+                                                                <div class="text-muted small" id="reunionesPaginationSummary"></div>
+                                                                <div class="reuniones-pagination__pages" id="reunionesPaginationPages"></div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+
+<div class="modal fade reuniones-modal" id="reunionesCrearModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <form asp-action="CrearAsunto" asp-controller="Reuniones" method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title">Nuevo asunto</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Asunto</label>
+                            <input name="TituloAsunto" class="form-control" required maxlength="300" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Tipo</label>
+                            <input name="TipoAsunto" class="form-control" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Estatus</label>
+                            <select name="Estatus" class="form-select">
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="En proceso">En proceso</option>
+                                <option value="Atendido">Atendido</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Descripción</label>
+                            <textarea name="Descripcion" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Expediente</label>
+                            <input name="Expediente" class="form-control" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Ubicación de carpeta</label>
+                            <input name="UbicacionCarpeta" class="form-control" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Semáforo</label>
+                            <select name="SemaforoManual" class="form-select">
+                                <option value="">Automático</option>
+                                <option value="Verde">Verde</option>
+                                <option value="Amarillo">Amarillo</option>
+                                <option value="Rojo">Guinda</option>
+                                <option value="Pendiente">Pendiente</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Fecha de solicitud</label>
+                            <input name="FechaSolicitud" type="date" class="form-control" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Fecha de reunión</label>
+                            <input name="FechaReunion" type="date" class="form-control" />
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Fecha compromiso</label>
+                            <input name="FechaCompromiso" type="date" class="form-control" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Responsable</label>
+                            <input name="Responsable" class="form-control" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Encargado</label>
+                            <input name="Encargado" class="form-control" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Minuta</label>
+                            <input name="Minuta" class="form-control" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Ficha informativa / oficio</label>
+                            <input name="FichaInformativaOficio" class="form-control" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Datos de contacto</label>
+                            <textarea name="DatosContacto" class="form-control" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar asunto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade reuniones-modal" id="reunionesEditarModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="ActualizarEstatus" asp-controller="Reuniones" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="AsuntoId" id="editarAsuntoId" />
+                <div class="modal-header">
+                    <h5 class="modal-title">Actualizar seguimiento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Estatus</label>
+                        <select name="Estatus" id="editarAsuntoEstatus" class="form-select" required>
+                            <option value="Pendiente">Pendiente</option>
+                            <option value="En proceso">En proceso</option>
+                            <option value="Atendido">Atendido</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Fecha compromiso</label>
+                        <input name="FechaCompromiso" id="editarFechaCompromiso" type="date" class="form-control" />
+                    </div>
+                    <div>
+                        <label class="form-label">Fecha atención</label>
+                        <input name="FechaAtencion" id="editarFechaAtencion" type="date" class="form-control" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade reuniones-modal" id="reunionesComentarioModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="AgregarComentario" asp-controller="Reuniones" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="AsuntoId" id="comentarioAsuntoId" />
+                <input type="hidden" name="TipoMensaje" value="Comentario" />
+                <div class="modal-header">
+                    <h5 class="modal-title">Agregar comentario</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2" id="comentarioAsuntoTitulo"></p>
+                    <label class="form-label">Comentario</label>
+                    <textarea name="Mensaje" class="form-control" rows="5" required></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Agregar comentario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade reuniones-modal" id="reunionesMonicaModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="MarcarEnvioMonica" asp-controller="Reuniones" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="AsuntoId" id="monicaAsuntoId" />
+                <div class="modal-header">
+                    <h5 class="modal-title">Marcar envío a Mónica</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2" id="monicaAsuntoTitulo"></p>
+                    <label class="form-label">Observaciones</label>
+                    <textarea name="ObservacionesEnvioMonica" id="monicaObservaciones" class="form-control" rows="4"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Confirmar envío</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade reuniones-modal" id="reunionesDesactivarModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="DesactivarAsunto" asp-controller="Reuniones" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="AsuntoId" id="desactivarAsuntoId" />
+                <div class="modal-header">
+                    <h5 class="modal-title">Desactivar asunto</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">Se desactivará el asunto <strong id="desactivarAsuntoTitulo"></strong> y dejará de aparecer en el tablero activo.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger">Desactivar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+                                                @section Scripts {
+                                                    <script>
+                                                        (() => {
+                                                            const coloresInstitucionales = {
+                                                                guinda: '#9B2247',
+                                                                verde: '#1E5B4F',
+                                                                dorado: '#A57F2C',
+                                                                amarilloClaro: '#E9C46A',
+                                                                gris: '#6c757d',
+                                                                fondo: '#ffffff',
+                                                                texto: '#243444',
+                                                                linea: '#d9c7ad'
+                                                            };
+
+                                                            const asuntoPayload = @Html.Raw(asuntoPayloadJson);
+                                                            const asuntos = @Html.Raw(asuntosJson);
+                                                            const searchInput = document.getElementById('reunionesSearchInput');
+                                                            const searchSummary = document.getElementById('reunionesSearchSummary');
+                                                            const paginationSummary = document.getElementById('reunionesPaginationSummary');
+                                                            const paginationPages = document.getElementById('reunionesPaginationPages');
+                                                            const mainRows = Array.from(document.querySelectorAll('.reuniones-main-row'));
+                                                            const charts = [];
+                                                            const pageSize = 10;
+                                                            let currentPage = 1;
+                                                            let filteredIndexes = mainRows.map((_, index) => index);
+
+                                                            function renderCharts() {
+                                                                if (!window.Highcharts) {
+                                                                    return;
+                                                                }
+
+                                                                Highcharts.setOptions({
+                                                                    colors: [
+                                                                        coloresInstitucionales.guinda,
+                                                                        coloresInstitucionales.verde,
+                                                                        coloresInstitucionales.dorado,
+                                                                        coloresInstitucionales.amarilloClaro,
+                                                                        coloresInstitucionales.gris
+                                                                    ],
+                                                                    chart: {
+                                                                        backgroundColor: coloresInstitucionales.fondo,
+                                                                        style: {
+                                                                            fontFamily: 'Noto Sans, sans-serif'
+                                                                        }
+                                                                    },
+                                                                    title: {
+                                                                        style: {
+                                                                            color: coloresInstitucionales.texto,
+                                                                            fontWeight: '700'
+                                                                        }
+                                                                    },
+                                                                    xAxis: {
+                                                                        lineColor: coloresInstitucionales.linea,
+                                                                        tickColor: coloresInstitucionales.linea,
+                                                                        labels: {
+                                                                            style: {
+                                                                                color: coloresInstitucionales.texto
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    yAxis: {
+                                                                        gridLineColor: '#eadfce',
+                                                                        title: {
+                                                                            style: {
+                                                                                color: coloresInstitucionales.texto
+                                                                            }
+                                                                        },
+                                                                        labels: {
+                                                                            style: {
+                                                                                color: coloresInstitucionales.texto
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    legend: {
+                                                                        itemStyle: {
+                                                                            color: coloresInstitucionales.texto,
+                                                                            fontWeight: '600'
+                                                                        }
+                                                                    },
+                                                                    tooltip: {
+                                                                        backgroundColor: '#ffffff',
+                                                                        borderColor: coloresInstitucionales.dorado,
+                                                                        style: {
+                                                                            color: coloresInstitucionales.texto
+                                                                        }
+                                                                    },
+                                                                    lang: {
+                                                                        viewFullscreen: 'Pantalla completa',
+                                                                        exitFullscreen: 'Salir de pantalla completa',
+                                                                        printChart: 'Imprimir gráfico',
+                                                                        downloadPNG: 'Descargar PNG',
+                                                                        downloadJPEG: 'Descargar JPEG',
+                                                                        downloadPDF: 'Descargar PDF',
+                                                                        downloadSVG: 'Descargar SVG'
+                                                                    },
+                                                                    navigation: {
+                                                                        buttonOptions: {
+                                                                            theme: {
+                                                                                fill: '#ffffff',
+                                                                                stroke: coloresInstitucionales.linea,
+                                                                                r: 10,
+                                                                                states: {
+                                                                                    hover: {
+                                                                                        fill: '#f3f4f6'
+                                                                                    },
+                                                                                    select: {
+                                                                                        fill: '#e5e7eb'
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                });
+
+                                                                const estatusCounts = contar(asuntos, 'Estatus');
+                                                                const semaforoCounts = contar(asuntos, 'Semaforo');
+                                                                const monicaCounts = contar(asuntos, 'AlertaEnvioMonica');
+
+                                                                charts.push(Highcharts.chart('reunionesChartEstatus', {
+                                                                    chart: { type: 'column', backgroundColor: coloresInstitucionales.fondo },
+                                                                    title: { text: null },
+                                                                    credits: { enabled: false },
+                                                                    exporting: { enabled: true },
+                                                                    xAxis: { categories: Object.keys(estatusCounts), crosshair: true },
+                                                                    yAxis: { title: { text: 'Asuntos' }, allowDecimals: false },
+                                                                    legend: { enabled: false },
+                                                                    series: [{
+                                                                        name: 'Estatus',
+                                                                        borderRadius: 8,
+                                                                        data: Object.entries(estatusCounts).map(([name, y]) => ({
+                                                                            name,
+                                                                            y,
+                                                                            color: name === 'Atendido' ? coloresInstitucionales.verde : coloresInstitucionales.guinda
+                                                                        }))
+                                                                    }]
+                                                                }));
+
+                                                                charts.push(Highcharts.chart('reunionesChartSemaforo', {
+                                                                    chart: { type: 'pie', backgroundColor: coloresInstitucionales.fondo },
+                                                                    title: { text: null },
+                                                                    credits: { enabled: false },
+                                                                    exporting: { enabled: true },
+                                                                    tooltip: {
+                                                                        pointFormat: '<b>{point.y}</b> asunto(s)'
+                                                                    },
+                                                                    plotOptions: {
+                                                                        pie: {
+                                                                            innerSize: '55%',
+                                                                            borderWidth: 2,
+                                                                            borderColor: '#ffffff',
+                                                                            dataLabels: {
+                                                                                enabled: true,
+                                                                                distance: 18,
+                                                                                style: {
+                                                                                    color: coloresInstitucionales.texto,
+                                                                                    textOutline: 'none',
+                                                                                    fontWeight: '600'
+                                                                                },
+                                                                                format: '{point.name}: {point.y}'
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    series: [{
+                                                                        name: 'Semáforo',
+                                                                        data: Object.entries(semaforoCounts).map(([name, y]) => ({
+                                                                            name,
+                                                                            y,
+                                                                            color: name === 'Rojo'
+                                                                                ? coloresInstitucionales.guinda
+                                                                                : name === 'Amarillo'
+                                                                                    ? coloresInstitucionales.amarilloClaro
+                                                                                    : name === 'Verde'
+                                                                                        ? coloresInstitucionales.verde
+                                                                                        : coloresInstitucionales.dorado
+                                                                        }))
+                                                                    }]
+                                                                }));
+
+                                                                charts.push(Highcharts.chart('reunionesChartMonica', {
+                                                                    chart: { type: 'bar', backgroundColor: coloresInstitucionales.fondo },
+                                                                    title: { text: null },
+                                                                    credits: { enabled: false },
+                                                                    exporting: { enabled: true },
+                                                                    xAxis: { categories: Object.keys(monicaCounts) },
+                                                                    yAxis: { title: { text: 'Asuntos' }, allowDecimals: false },
+                                                                    legend: { enabled: false },
+                                                                    series: [{
+                                                                        name: 'Jurídico',
+                                                                        data: Object.entries(monicaCounts).map(([name, y]) => ({
+                                                                            name,
+                                                                            y,
+                                                                            color: name === 'Pendiente de envío a Mónica'
+                                                                                ? coloresInstitucionales.guinda
+                                                                                : name === 'Enviado a Mónica'
+                                                                                    ? coloresInstitucionales.verde
+                                                                                    : coloresInstitucionales.dorado
+                                                                        }))
+                                                                    }]
+                                                                }));
+                                                            }
+
+                                                            function contar(items, key) {
+                                                                return items.reduce((acc, item) => {
+                                                                    const value = (item[key] || 'Sin dato').trim();
+                                                                    acc[value] = (acc[value] || 0) + 1;
+                                                                    return acc;
+                                                                }, {});
+                                                            }
+
+                                                            function applyFilter() {
+                                                                const query = (searchInput?.value || '').trim().toLowerCase();
+
+                                                                filteredIndexes = mainRows
+                                                                    .map((row, index) => ({ row, index }))
+                                                                    .filter(item => !query || (item.row.dataset.search || '').includes(query))
+                                                                    .map(item => item.index);
+
+                                                                currentPage = 1;
+                                                                renderTablePage();
+                                                            }
+
+                                                            function renderTablePage() {
+                                                                const totalItems = filteredIndexes.length;
+                                                                const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+                                                                if (currentPage > totalPages) {
+                                                                    currentPage = totalPages;
+                                                                }
+
+                                                                const start = (currentPage - 1) * pageSize;
+                                                                const end = start + pageSize;
+                                                                const visibleIndexes = new Set(filteredIndexes.slice(start, end));
+
+                                                                mainRows.forEach((row, index) => {
+                                                                    const detailRow = row.nextElementSibling;
+                                                                    const shouldShow = visibleIndexes.has(index);
+                                                                    row.style.display = shouldShow ? '' : 'none';
+                                                                    if (!shouldShow && detailRow) {
+                                                                        detailRow.style.display = 'none';
+                                                                        detailRow.classList.remove('is-visible');
+                                                                        const icon = row.querySelector('.reuniones-toggle-detail i');
+                                                                        if (icon) {
+                                                                            icon.className = 'bi bi-plus-lg';
+                                                                        }
+                                                                    }
+                                                                });
+
+                                                                if (searchSummary) {
+                                                                    searchSummary.textContent = `${totalItems} asunto(s) encontrados`;
+                                                                }
+
+                                                                if (paginationSummary) {
+                                                                    if (totalItems === 0) {
+                                                                        paginationSummary.textContent = 'Sin resultados para la búsqueda actual.';
+                                                                    } else {
+                                                                        paginationSummary.textContent = `Mostrando ${start + 1}-${Math.min(end, totalItems)} de ${totalItems} asunto(s)`;
+                                                                    }
+                                                                }
+
+                                                                renderPagination(totalPages);
+                                                            }
+
+                                                            function renderPagination(totalPages) {
+                                                                if (!paginationPages) {
+                                                                    return;
+                                                                }
+
+                                                                paginationPages.innerHTML = '';
+
+                                                                for (let page = 1; page <= totalPages; page++) {
+                                                                    const button = document.createElement('button');
+                                                                    button.type = 'button';
+                                                                    button.className = `btn btn-sm btn-outline-secondary${page === currentPage ? ' active' : ''}`;
+                                                                    button.textContent = page;
+                                                                    button.addEventListener('click', () => {
+                                                                        currentPage = page;
+                                                                        renderTablePage();
+                                                                    });
+                                                                    paginationPages.appendChild(button);
+                                                                }
+                                                            }
+
+                                                            document.querySelectorAll('.reuniones-toggle-detail').forEach(button => {
+                                                                button.addEventListener('click', () => {
+                                                                    const mainRow = button.closest('tr');
+                                                                    const detailRow = mainRow?.nextElementSibling;
+                                                                    const icon = button.querySelector('i');
+
+                                                                    if (!detailRow) {
+                                                                        return;
+                                                                    }
+
+                                                                    const isVisible = detailRow.classList.toggle('is-visible');
+                                                                    detailRow.style.display = isVisible ? 'table-row' : 'none';
+
+                                                                    if (icon) {
+                                                                        icon.className = isVisible ? 'bi bi-dash-lg' : 'bi bi-plus-lg';
+                                                                    }
+                                                                });
+                                                            });
+
+                                                            function bindCrudModals() {
+                                                                document.querySelectorAll('[data-bs-target="#reunionesEditarModal"]').forEach((button) => {
+                                                                    button.addEventListener('click', () => {
+                                                                        const asuntoId = button.dataset.asuntoId;
+                                                                        const item = asuntoPayload[asuntoId];
+                                                                        document.getElementById('editarAsuntoId').value = asuntoId;
+                                                                        document.getElementById('editarAsuntoEstatus').value = item?.Estatus || 'Pendiente';
+                                                                        document.getElementById('editarFechaCompromiso').value = item?.FechaCompromiso || '';
+                                                                        document.getElementById('editarFechaAtencion').value = item?.FechaAtencion || '';
+                                                                    });
+                                                                });
+
+                                                                document.querySelectorAll('[data-bs-target="#reunionesComentarioModal"]').forEach((button) => {
+                                                                    button.addEventListener('click', () => {
+                                                                        document.getElementById('comentarioAsuntoId').value = button.dataset.asuntoId;
+                                                                        document.getElementById('comentarioAsuntoTitulo').textContent = button.dataset.asuntoTitulo || '';
+                                                                    });
+                                                                });
+
+                                                                document.querySelectorAll('[data-bs-target="#reunionesMonicaModal"]').forEach((button) => {
+                                                                    button.addEventListener('click', () => {
+                                                                        const asuntoId = button.dataset.asuntoId;
+                                                                        const item = asuntoPayload[asuntoId];
+                                                                        document.getElementById('monicaAsuntoId').value = asuntoId;
+                                                                        document.getElementById('monicaAsuntoTitulo').textContent = button.dataset.asuntoTitulo || '';
+                                                                        document.getElementById('monicaObservaciones').value = item?.ObservacionesEnvioMonica || '';
+                                                                    });
+                                                                });
+
+                                                                document.querySelectorAll('[data-bs-target="#reunionesDesactivarModal"]').forEach((button) => {
+                                                                    button.addEventListener('click', () => {
+                                                                        document.getElementById('desactivarAsuntoId').value = button.dataset.asuntoId;
+                                                                        document.getElementById('desactivarAsuntoTitulo').textContent = button.dataset.asuntoTitulo || '';
+                                                                    });
+                                                                });
+                                                            }
+
+                                                            function bindChartFullscreen() {
+                                                                const requestFullscreen = (element) => {
+                                                                    if (element.requestFullscreen) {
+                                                                        return element.requestFullscreen();
+                                                                    }
+
+                                                                    if (element.webkitRequestFullscreen) {
+                                                                        return element.webkitRequestFullscreen();
+                                                                    }
+
+                                                                    return Promise.resolve();
+                                                                };
+
+                                                                document.querySelectorAll('[data-chart-fullscreen]').forEach((button) => {
+                                                                    button.addEventListener('click', async () => {
+                                                                        const card = button.closest('.reuniones-chart-card');
+                                                                        if (!card) {
+                                                                            return;
+                                                                        }
+
+                                                                        const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+                                                                        if (fullscreenElement === card) {
+                                                                            if (document.exitFullscreen) {
+                                                                                await document.exitFullscreen();
+                                                                            } else if (document.webkitExitFullscreen) {
+                                                                                document.webkitExitFullscreen();
+                                                                            }
+                                                                            return;
+                                                                        }
+
+                                                                        await requestFullscreen(card);
+                                                                    });
+                                                                });
+
+                                                                ['fullscreenchange', 'webkitfullscreenchange'].forEach((eventName) => {
+                                                                    document.addEventListener(eventName, () => {
+                                                                        const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+
+                                                                        window.setTimeout(() => {
+                                                                            charts.forEach((chart) => {
+                                                                                if (!fullscreenElement && chart?.renderTo) {
+                                                                                    chart.renderTo.style.height = '';
+                                                                                    chart.setSize(null, null, false);
+                                                                                }
+
+                                                                                chart.reflow();
+                                                                            });
+                                                                        }, 120);
+                                                                    });
+                                                                });
+                                                            }
+
+                                                            searchInput?.addEventListener('input', applyFilter);
+
+                                                            renderCharts();
+                                                            bindChartFullscreen();
+                                                            bindCrudModals();
+                                                            renderTablePage();
+                                                        })();
+                                                    </script>
+                                                }

@@ -131,7 +131,7 @@ namespace NSIE.Servicios
                 using (var connection = new SqlConnection(connectionString))
                 {
                     await connection.OpenAsync();
-                    var query = SelectUsuarioDetallado + " ORDER BY u.[IdUsuario] DESC";
+                    var query = SelectUsuarioDetallado + " WHERE u.[Vigente] = 1 ORDER BY u.[IdUsuario] DESC";
                     var usuarios = await connection.QueryAsync<UserViewModel>(query);
                     return usuarios;
                 }
@@ -193,7 +193,7 @@ namespace NSIE.Servicios
             }
         }
 
-        // Elimina un usuario y sus roles asociados (transaccional)
+        // Elimina físicamente un usuario y sus dependencias (transaccional)
         public async Task<bool> EliminarUsuario(int usuarioId)
         {
             using (var connection = new SqlConnection(connectionString))
@@ -203,13 +203,86 @@ namespace NSIE.Servicios
                 {
                     try
                     {
-                        // Elimina roles asociados
+                        // Limpieza de módulos opcionales relacionados por FK.
+                        var sqlDependenciasOpcionales = @"
+IF OBJECT_ID('[dgmesnie].[Gestor_Corresponsables]','U') IS NOT NULL AND OBJECT_ID('[dgmesnie].[Gestor_Actividades]','U') IS NOT NULL
+BEGIN
+    DELETE gc
+    FROM [dgmesnie].[Gestor_Corresponsables] gc
+    WHERE gc.[IdUsuario] = @IdUsuario
+       OR gc.[ActividadId] IN (
+            SELECT ga.[ActividadId]
+            FROM [dgmesnie].[Gestor_Actividades] ga
+            WHERE ga.[ResponsableId] = @IdUsuario
+       );
+END;
+
+IF OBJECT_ID('[dgmesnie].[Gestor_Actividades]','U') IS NOT NULL AND OBJECT_ID('[dgmesnie].[Gestor_Temas]','U') IS NOT NULL
+BEGIN
+    DELETE gc
+    FROM [dgmesnie].[Gestor_Corresponsables] gc
+    WHERE gc.[ActividadId] IN (
+        SELECT ga.[ActividadId]
+        FROM [dgmesnie].[Gestor_Actividades] ga
+        WHERE ga.[TemaId] IN (
+            SELECT gt.[TemaId]
+            FROM [dgmesnie].[Gestor_Temas] gt
+            WHERE gt.[ResponsablePrincipalId] = @IdUsuario
+        )
+    );
+
+    DELETE FROM [dgmesnie].[Gestor_Actividades]
+    WHERE [ResponsableId] = @IdUsuario
+       OR [TemaId] IN (
+            SELECT gt.[TemaId]
+            FROM [dgmesnie].[Gestor_Temas] gt
+            WHERE gt.[ResponsablePrincipalId] = @IdUsuario
+       );
+END;
+
+IF OBJECT_ID('[dgmesnie].[Gestor_Corresponsables]','U') IS NOT NULL
+BEGIN
+    DELETE FROM [dgmesnie].[Gestor_Corresponsables] WHERE [IdUsuario] = @IdUsuario;
+END;
+
+IF OBJECT_ID('[dgmesnie].[Gestor_Temas]','U') IS NOT NULL
+BEGIN
+    DELETE FROM [dgmesnie].[Gestor_Temas] WHERE [ResponsablePrincipalId] = @IdUsuario;
+END;
+
+IF OBJECT_ID('[dgmesnie].[AsuntoComentario]','U') IS NOT NULL
+BEGIN
+    DELETE FROM [dgmesnie].[AsuntoComentario] WHERE [IdUsuario] = @IdUsuario;
+END;
+
+IF OBJECT_ID('[dgmesnie].[AsuntoMovimiento]','U') IS NOT NULL
+BEGIN
+    DELETE FROM [dgmesnie].[AsuntoMovimiento] WHERE [IdUsuario] = @IdUsuario;
+END;
+
+IF OBJECT_ID('[dgmesnie].[AsuntoSeguimiento]','U') IS NOT NULL
+BEGIN
+    UPDATE [dgmesnie].[AsuntoSeguimiento]
+       SET [EnviadoAMonicaPorIdUsuario] = CASE WHEN [EnviadoAMonicaPorIdUsuario] = @IdUsuario THEN NULL ELSE [EnviadoAMonicaPorIdUsuario] END,
+           [IdUsuarioCreacion] = CASE WHEN [IdUsuarioCreacion] = @IdUsuario THEN NULL ELSE [IdUsuarioCreacion] END,
+           [IdUsuarioUltimaActualizacion] = CASE WHEN [IdUsuarioUltimaActualizacion] = @IdUsuario THEN NULL ELSE [IdUsuarioUltimaActualizacion] END
+     WHERE [EnviadoAMonicaPorIdUsuario] = @IdUsuario
+        OR [IdUsuarioCreacion] = @IdUsuario
+        OR [IdUsuarioUltimaActualizacion] = @IdUsuario;
+END;
+
+IF OBJECT_ID('[dgmesnie].[UsuarioVistaOverride]','U') IS NOT NULL
+BEGIN
+    DELETE FROM [dgmesnie].[UsuarioVistaOverride] WHERE [IdUsuario] = @IdUsuario;
+END;";
+                        await connection.ExecuteAsync(sqlDependenciasOpcionales, new { IdUsuario = usuarioId }, transaction);
+
+                        // Limpieza de tablas base.
                         var sqlRolesUsuario = "DELETE FROM [dgmesnie].[UsuarioRol] WHERE [IdUsuario] = @IdUsuario;";
                         await connection.ExecuteAsync(sqlRolesUsuario, new { IdUsuario = usuarioId }, transaction);
 
-                        // Elimina recuperación de contraseña
-                        var sqlRecuperarContraseña = "DELETE FROM [dgmesnie].[RecuperacionContrasena] WHERE [IdUsuario] = @IdUsuario;";
-                        await connection.ExecuteAsync(sqlRecuperarContraseña, new { IdUsuario = usuarioId }, transaction);
+                        var sqlRecuperarContrasena = "DELETE FROM [dgmesnie].[RecuperacionContrasena] WHERE [IdUsuario] = @IdUsuario;";
+                        await connection.ExecuteAsync(sqlRecuperarContrasena, new { IdUsuario = usuarioId }, transaction);
 
                         var sqlNotificaciones = "DELETE FROM [dgmesnie].[Notificacion] WHERE [IdUsuario] = @IdUsuario;";
                         await connection.ExecuteAsync(sqlNotificaciones, new { IdUsuario = usuarioId }, transaction);
@@ -223,17 +296,23 @@ namespace NSIE.Servicios
                         var sqlSesiones = "DELETE FROM [dgmesnie].[Sesion] WHERE [IdUsuario] = @IdUsuario;";
                         await connection.ExecuteAsync(sqlSesiones, new { IdUsuario = usuarioId }, transaction);
 
-                        // Elimina al usuario
                         var sqlUsuario = "DELETE FROM [dgmesnie].[Usuario] WHERE [IdUsuario] = @IdUsuario;";
-                        await connection.ExecuteAsync(sqlUsuario, new { IdUsuario = usuarioId }, transaction);
+                        var filasUsuario = await connection.ExecuteAsync(sqlUsuario, new { IdUsuario = usuarioId }, transaction);
+
+                        if (filasUsuario == 0)
+                        {
+                            transaction.Rollback();
+                            return false;
+                        }
 
                         transaction.Commit();
                         return true;
                     }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
                         try { transaction.Rollback(); } catch { }
-                        return false;
+                        _logger.LogError(ex, "Error al dar de baja al usuario {UsuarioId}", usuarioId);
+                        throw;
                     }
                 }
             }

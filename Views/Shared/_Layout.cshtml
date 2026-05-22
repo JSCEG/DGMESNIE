@@ -39,8 +39,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <link rel="icon" type="image/png" href="~/Ejemplos/img/logo_sener.png" asp-append-version="true" />
-    <link rel="apple-touch-icon" href="~/Ejemplos/img/logo_sener.png" asp-append-version="true" />
+    <link rel="icon" type="image/png" href="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" />
+    <link rel="apple-touch-icon" href="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" />
 
     <title>@ViewData["Title"] - SNIER</title>
 
@@ -778,19 +778,54 @@
             position: relative; /* necesario para que el link-mask se posicione dentro */
             cursor: pointer;
         }
+
+        #sessionExpireModal {
+            z-index: 20050;
+        }
+
+        .modal-backdrop.show {
+            z-index: 20040;
+        }
     </style>
 
     <!-- Sección de notificaciones -->
     <script>
+        function isBlockedHtmlResponse(payload) {
+            if (typeof payload !== 'string') return false;
+            return payload.includes('Actividad sospechosa') || payload.includes('Acceso bloqueado temporalmente');
+        }
+
+        function showSessionExpiredModal(message) {
+            $('#page-preloader, #ajax-preloader').hide();
+            $('#sessionExpireModal').appendTo('body');
+            $('#sessionExpireModalLabel').text('Sesión Expirada');
+            $('#sessionExpireModal .modal-body').text(message || 'Su sesión ha expirado. Será redirigido a la página de inicio de sesión.');
+            $('#btnCerrarSesion').hide();
+            $('#btnContinuarSesion').text('Ir a Login').off('click').on('click', function () {
+                window.location.href = '/Acceso/Login';
+            });
+            $('#sessionExpireModal').modal('show');
+        }
+
+        function isInvalidNotificationPayload(data) {
+            return !data || typeof data !== 'object' || !Array.isArray(data.notifications);
+        }
+
         $(document).ready(function () {
-            function loadNotifications() {
+            window.loadNotifications = function () {
                 $.ajax({
                     url: '@Url.Action("GetNotifications", "Usuarios")',
                     type: 'GET',
+                    dataType: 'json',
                     global: false,
                     data: { userId: '@ViewData["IDUsuario"]' },
                     success: function (data) {
                         console.log("Tabla de notificaciones: ", data);
+                        if (isInvalidNotificationPayload(data)) {
+                            showSessionExpiredModal('Se detectó una respuesta no válida del servidor. Inicie sesión nuevamente.');
+                            return;
+                        }
+
                         var notificationCount = data.totalUnreadCount;
                         var notifications = data.notifications;
                         var notificationBadge = $('#notification-count');
@@ -825,20 +860,24 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <a class="link-mask" href="@Url.Action("NotificationDetails", "Usuarios")?titulo=${encodeURIComponent(notification.titulo_Notificacion)}&mensaje=${encodeURIComponent(notification.mensaje)}&fecha=${encodeURIComponent(notification.fecha_Notificacion)}&link=${encodeURIComponent(notification.link)}" target="_blank" onclick="markAsRead(${notification.id}, this)"></a>
+                                    <a class="link-mask" href="@Url.Action("NotificationDetails", "Usuarios")?id=${encodeURIComponent(notification.id)}" target="_blank" onclick="markAsRead(${notification.id}, this)"></a>
                                 </div>`;
                             notificationsList.append(notificationItem);
                         });
                     },
                     error: function (xhr, status, error) {
+                        if (xhr.status === 401 || isBlockedHtmlResponse(xhr.responseText)) {
+                            showSessionExpiredModal('Su sesión expiró o la solicitud fue bloqueada por seguridad. Inicie sesión nuevamente.');
+                            return;
+                        }
                         console.error("Error al cargar las notificaciones:", error);
                     }
                 });
-            }
+            };
 
-            loadNotifications();
+            window.loadNotifications();
 
-            setInterval(loadNotifications, 60000);
+            setInterval(window.loadNotifications, 60000);
 
             $('#generate-test-notification').on('click', function () {
                 $.ajax({
@@ -847,7 +886,7 @@
                     data: { userId: '@ViewData["IDUsuario"]' },
                     success: function (response) {
                         if (response.success) {
-                            loadNotifications();
+                            window.loadNotifications();
                             alert("Notificación de prueba generada con éxito.");
                         } else {
                             alert("Error al generar la notificación de prueba.");
@@ -864,6 +903,7 @@
             $.ajax({
                 url: '@Url.Action("MarkNotificationAsRead", "Usuarios")',
                 type: 'POST',
+                dataType: 'json',
                 data: { notificationId: notificationId },
                 success: function (response) {
                     if (response.success) {
@@ -880,7 +920,7 @@
                             notificationBadge.addClass('hidden');
                         }
 
-                        loadNotifications();
+                        window.loadNotifications();
 
                         var url = $(linkElement).attr('href');
                         window.open(url, '_blank');
@@ -889,6 +929,10 @@
                     }
                 },
                 error: function (xhr, status, error) {
+                    if (xhr.status === 401 || isBlockedHtmlResponse(xhr.responseText)) {
+                        showSessionExpiredModal('Su sesión expiró o la solicitud fue bloqueada por seguridad. Inicie sesión nuevamente.');
+                        return;
+                    }
                     console.error("Error al marcar la notificación como leída:", error);
                 }
             });
@@ -954,6 +998,7 @@
                     url: '/Bitacora/RegistrarActividad',
                     type: 'POST',
                     global: false,
+                    dataType: 'json',
                     contentType: 'application/json',
                     data: JSON.stringify({
                         userId: userId,
@@ -968,9 +1013,17 @@
                         additionalData: additionalData
                     }),
                     success: function (response) {
+                        if (isBlockedHtmlResponse(response)) {
+                            showSessionExpiredModal('La sesión se invalidó mientras se registraba actividad. Inicie sesión nuevamente.');
+                            return;
+                        }
                         console.log('Actividad registrada exitosamente:', response);
                     },
                     error: function (xhr, status, error) {
+                        if (xhr.status === 401 || isBlockedHtmlResponse(xhr.responseText)) {
+                            showSessionExpiredModal('Su sesión expiró o la solicitud fue bloqueada por seguridad. Inicie sesión nuevamente.');
+                            return;
+                        }
                         console.log('Error al registrar la actividad:', error);
                     }
                 });
@@ -1105,14 +1158,7 @@
                     },
                     error: function (xhr, status, error) {
                         if (xhr.status === 401) {
-                            // Mostrar modal de sesión expirada
-                            $('#sessionExpireModalLabel').text('Sesión Expirada');
-                            $('#sessionExpireModal .modal-body').text('Su sesión ha expirado. Será redirigido a la página de inicio de sesión.');
-                            $('#btnCerrarSesion').hide(); // Ocultar botón innecesario
-                            $('#btnContinuarSesion').text('Ir a Login').off('click').on('click', function () {
-                                window.location.href = '/Acceso/Login';
-                            });
-                            $('#sessionExpireModal').modal('show');
+                            showSessionExpiredModal('Su sesión ha expirado. Será redirigido a la página de inicio de sesión.');
                         } else {
                             console.error("Error en la solicitud Heartbeat:", error);
                         }

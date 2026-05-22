@@ -14,11 +14,13 @@ namespace NSIE.Controllers
     {
         private readonly IRepositorioUsuarios repositorioUsuarios;
         private readonly IRepositorioAcceso repositorioAcceso;
+        private readonly ILogger<UsuariosController> logger;
 
-        public UsuariosController(IRepositorioUsuarios repositorioUsuarios, IRepositorioAcceso repositorioAcceso)
+        public UsuariosController(IRepositorioUsuarios repositorioUsuarios, IRepositorioAcceso repositorioAcceso, ILogger<UsuariosController> logger)
         {
             this.repositorioUsuarios = repositorioUsuarios;
             this.repositorioAcceso = repositorioAcceso;
+            this.logger = logger;
         }
 
         // ============================
@@ -37,9 +39,25 @@ namespace NSIE.Controllers
         // Elimina un usuario por ID
         public async Task<IActionResult> Eliminar(int id)
         {
-            var wasDeleted = await repositorioUsuarios.EliminarUsuario(id);
-            TempData["UserMessage"] = wasDeleted ? "Usuario eliminado exitosamente!" : "Hubo un problema y el usuario no se pudo eliminar.";
-            TempData["IsSuccess"] = wasDeleted;
+            try
+            {
+                var wasDeleted = await repositorioUsuarios.EliminarUsuario(id);
+                TempData["UserMessage"] = wasDeleted ? "Usuario eliminado exitosamente." : "Hubo un problema y el usuario no se pudo eliminar.";
+                TempData["IsSuccess"] = wasDeleted;
+                if (!wasDeleted)
+                {
+                    TempData["UserErrorDetail"] = $"La operación regresó false para IdUsuario={id}.";
+                    logger.LogWarning("EliminarUsuario regresó false para IdUsuario={IdUsuario}", id);
+                }
+            }
+            catch (Exception ex)
+            {
+                TempData["UserMessage"] = "Hubo un problema y el usuario no se pudo eliminar.";
+                TempData["IsSuccess"] = false;
+                TempData["UserErrorDetail"] = $"{ex.GetType().Name}: {ex.Message}";
+                logger.LogError(ex, "Error eliminando usuario {IdUsuario}", id);
+            }
+
             return RedirectToAction("AdministrarUsuarios");
         }
 
@@ -411,13 +429,31 @@ namespace NSIE.Controllers
             }
         }
 
-        public IActionResult NotificationDetails(string titulo, string mensaje, DateTime fecha, string link, string imagen)
+        public async Task<IActionResult> NotificationDetails(int? id, string titulo = "", string mensaje = "", DateTime? fecha = null, string link = "", string imagen = "")
         {
+            if (id.HasValue && id.Value > 0)
+            {
+                var notification = await repositorioUsuarios.ObtenerNotificacionPorId(id.Value);
+                if (notification == null)
+                    return NotFound();
+
+                var modelFromDb = new NotificationDetails
+                {
+                    Titulo = notification.Titulo_Notificacion,
+                    Mensaje = notification.Mensaje,
+                    Fecha = notification.Fecha_Notificacion,
+                    Link = notification.Link,
+                    Imagen = notification.Imagen
+                };
+
+                return View(modelFromDb);
+            }
+
             var model = new NotificationDetails
             {
                 Titulo = titulo,
                 Mensaje = mensaje,
-                Fecha = fecha,
+                Fecha = fecha ?? DateTime.Now,
                 Link = link,
                 Imagen = imagen
             };

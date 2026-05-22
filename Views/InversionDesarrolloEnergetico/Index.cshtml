@@ -1,0 +1,266 @@
+@using System.Globalization
+@model NSIE.Models.InversionDesarrolloEnergeticoViewModel
+
+@{
+    ViewData["Title"] = "PVIRSE";
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 inversiones-energeticas-page">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    }
+
+    <section class="pvirse-slide card border-0 shadow-sm">
+        <div class="card-body p-4 p-lg-5">
+            <div class="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-4">
+                <div>
+                    <div class="pvirse-kicker">Primera lámina</div>
+                    <h2 class="pvirse-title mb-2">PVIRSE</h2>
+                    <p class="pvirse-subtitle mb-2">Programa Vinculante para la Instalación y Retiro de Centrales
+                        Eléctricas 2026-2040</p>
+                        <p class="text-muted mb-0">Corte de centrales por entidad federativa y tipo de inversión a partir
+                            del archivo oficial PVIRCE2026-2040_SQ.xlsx.</p>
+                        </div>
+                        <div class="text-muted small text-xl-end">
+                            <div>Fuente: @Model.FuenteDatos</div>
+                            <div>Actualizado: @Model.FechaActualizacion.ToString("dd/MM/yyyy")</div>
+                        </div>
+                    </div>
+
+                    <div class="card border-0 bg-light mb-4">
+                        <div class="card-body">
+                            <div class="row g-3 align-items-end">
+                                <div class="col-lg-4">
+                                    <label class="form-label fw-semibold" for="entidad">Entidad federativa</label>
+                                    <select id="entidad" name="entidad" class="form-select" form="pvirseFiltros">
+                                        <option value="">Todas</option>
+                                        @foreach (var entidad in Model.EntidadesDisponibles)
+                                        {
+                                            <option value="@entidad" selected="@(entidad == Model.EntidadSeleccionada)">@entidad
+                                            </option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-lg-4">
+                                    <label class="form-label fw-semibold" for="tipoInversion">Tipo de inversión</label>
+                                    <select id="tipoInversion" name="tipoInversion" class="form-select" form="pvirseFiltros">
+                                        <option value="">Todos</option>
+                                        @foreach (var tipo in Model.TiposInversionDisponibles)
+                                        {
+                                            <option value="@tipo" selected="@(tipo == Model.TipoInversionSeleccionado)">@tipo
+                                            </option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-lg-4 d-flex gap-2 justify-content-lg-end flex-wrap">
+                                    <form id="pvirseFiltros" method="get"></form>
+                                    <button type="submit" form="pvirseFiltros" class="btn btn-primary">Filtrar</button>
+                                    <a asp-action="Index" class="btn btn-outline-secondary">Limpiar</a>
+                                    <form asp-action="ImportarBaseOficial" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn-outline-primary">Importar Excel</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6 col-xl-3">
+                            <div class="pvirse-stat">
+                                <span>Centrales visibles</span>
+                                <strong>@Model.TotalRegistros</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="pvirse-stat">
+                                <span>Capacidad total</span>
+                                <strong>@Model.CapacidadTotalMw.ToString("N2", CultureInfo.InvariantCulture) MW</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="pvirse-stat">
+                                <span>Adiciones</span>
+                                <strong>@Model.TotalAdiciones</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-3">
+                            <div class="pvirse-stat">
+                                <span>Sustituciones / retiros</span>
+                                <strong>@Model.TotalSustituciones</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <div class="pvirse-block">
+                                <h5>Composición institucional</h5>
+                                <div class="pvirse-detail-row"><span>CFE</span><strong>@Model.TotalCfe</strong></div>
+                                <div class="pvirse-detail-row">
+                                    <span>Particulares</span><strong>@Model.TotalParticulares</strong></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="pvirse-block">
+                                    <h5>Lectura del filtro actual</h5>
+                                    <ul class="pvirse-list mb-0">
+                                        <li>Entidad: @(string.IsNullOrWhiteSpace(Model.EntidadSeleccionada) ? "Todas" :
+                                                                            Model.EntidadSeleccionada)</li>
+                                            <li>Tipo de inversión: @(string.IsNullOrWhiteSpace(Model.TipoInversionSeleccionado) ?
+                                                           "Todos" : Model.TipoInversionSeleccionado)</li>
+                                                <li>La tabla inferior muestra centrales individuales con MW, año y localización.</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-hover align-middle mb-0 bg-white">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Tipo de inversión</th>
+                                                <th>Nombre real</th>
+                                                <th style="width:90px;">Año</th>
+                                                <th style="width:160px;">Movimiento</th>
+                                                <th style="width:100px;">Tipo</th>
+                                                <th style="width:100px;">MW</th>
+                                                <th style="width:150px;">Entidad</th>
+                                                <th style="width:150px;">Municipio</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var item in Model.Registros)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <div class="fw-semibold">@item.Status</div>
+                                                        <div class="small text-muted">@(string.IsNullOrWhiteSpace(item.StatusVf) ? "-" :
+                                                                                                item.StatusVf)</div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="fw-semibold">@item.NombreReal</div>
+                                                            <div class="small text-muted">@(string.IsNullOrWhiteSpace(item.ContratoOUnidad) ? "-" :
+                                                                                                    item.ContratoOUnidad)</div>
+                                                            </td>
+                                                            <td>@(item.Anio?.ToString() ?? "-")</td>
+                                                            <td>@(string.IsNullOrWhiteSpace(item.AdicionesOSustituciones) ? "-" :
+                                                                                                item.AdicionesOSustituciones)</td>
+                                                                <td>@(string.IsNullOrWhiteSpace(item.Tipo) ? "-" : item.Tipo)</td>
+                                                                <td>@((item.Mw ?? 0).ToString("N2", CultureInfo.InvariantCulture))</td>
+                                                                <td>@(string.IsNullOrWhiteSpace(item.EntidadFederativa) ? "-" : item.EntidadFederativa)</td>
+                                                                <td>@(string.IsNullOrWhiteSpace(item.Municipio) ? "-" : item.Municipio)</td>
+                                                            </tr>
+                                                        }
+                                                        @if (!Model.Registros.Any())
+                                                        {
+                                                            <tr>
+                                                                <td colspan="8" class="text-center py-4 text-muted">No hay registros PVIRSE para el filtro
+                                                                    seleccionado.</td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </section>
+                                    </div>
+
+                                    <style>
+                                        .inversiones-energeticas-page {
+                                            --pvirse-guinda: #9b2247;
+                                            --pvirse-tinta: #2d2d2d;
+                                            --pvirse-borde: #d9d9d9;
+                                            --pvirse-fondo: #ffffff;
+                                        }
+
+                                        .pvirse-slide {
+                                            background: var(--pvirse-fondo);
+                                            border: 1px solid var(--pvirse-borde);
+                                            border-radius: 0.75rem;
+                                        }
+
+                                        .pvirse-kicker {
+                                            text-transform: uppercase;
+                                            letter-spacing: 0.14em;
+                                            font-size: 0.78rem;
+                                            color: var(--pvirse-guinda);
+                                            margin-bottom: 0.75rem;
+                                            font-weight: 700;
+                                        }
+
+                                        .pvirse-title {
+                                            color: var(--pvirse-guinda);
+                                            font-weight: 700;
+                                            margin: 0;
+                                        }
+
+                                        .pvirse-subtitle {
+                                            color: var(--pvirse-tinta);
+                                            font-size: 1.05rem;
+                                        }
+
+                                        .pvirse-stat,
+                                        .pvirse-block {
+                                            border: 1px solid var(--pvirse-borde);
+                                            border-radius: 0.75rem;
+                                            background: #fff;
+                                            padding: 1rem;
+                                            height: 100%;
+                                        }
+
+                                        .pvirse-stat span,
+                                        .pvirse-detail-row span {
+                                            display: block;
+                                            color: #6c757d;
+                                            font-size: 0.85rem;
+                                            margin-bottom: 0.35rem;
+                                        }
+
+                                        .pvirse-stat strong,
+                                        .pvirse-detail-row strong {
+                                            color: var(--pvirse-tinta);
+                                            font-size: 1.2rem;
+                                        }
+
+                                        .pvirse-block h5 {
+                                            color: var(--pvirse-guinda);
+                                            margin-bottom: 0.85rem;
+                                        }
+
+                                        .pvirse-list {
+                                            margin: 0;
+                                            padding-left: 1.1rem;
+                                        }
+
+                                        .pvirse-list li {
+                                            margin-bottom: 0.5rem;
+                                            color: var(--pvirse-tinta);
+                                        }
+
+                                        .pvirse-detail-row {
+                                            display: flex;
+                                            justify-content: space-between;
+                                            gap: 1rem;
+                                            padding: 0.5rem 0;
+                                            border-top: 1px solid #ececec;
+                                        }
+
+                                        .pvirse-detail-row:first-of-type {
+                                            border-top: 0;
+                                        }
+                                    </style>
