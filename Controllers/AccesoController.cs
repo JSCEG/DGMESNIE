@@ -768,8 +768,6 @@ namespace NSIE.Controllers
         public async Task<IActionResult> ForgotPassword(string Correo)
         {
             var user = await _repositorioAcceso.GetUserByEmail(Correo);
-            var logo = "https://cdn.sassoapps.com/img_snier/login/logo_snier.png";
-
             if (user == null)
             {
                 ViewData["Mensaje"] = "La dirección de correo no está asociada con una cuenta, verifica tus datos.";
@@ -780,7 +778,7 @@ namespace NSIE.Controllers
             await SavePasswordResetToken(user.IdUsuario, token);
 
             var callbackUrl = Url.Action("ResetPassword", "Acceso", new { token }, protocol: HttpContext.Request.Scheme);
-            var mensaje = EmailReinstatement(logo, user.Nombre, token, callbackUrl);
+            var mensaje = EmailReinstatement(user.Nombre, callbackUrl);
 
             try
             {
@@ -798,154 +796,133 @@ namespace NSIE.Controllers
             }
         }
 
-        private string EmailReinstatement(string logo, string nombre, string token, string url)
+        private string EmailReinstatement(string nombre, string url)
         {
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <meta http-equiv='X-UA-Compatible' content='IE=edge' />
-                    <title>Restablecimiento de Contraseña</title>
-                    <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
-                    <style>
-                        .ReadMsgBody {{width: 100%; background-color: #ffffff;}}
-                        .ExternalClass {{width: 100%; background-color: #ffffff;}}
-                        @-ms-viewport {{width: device-width;}}
-                    </style>
-                </head>
-                <body style='background: #ffffff; width: 100%; height: 100%; margin: 0; padding: 0; font-family: Montserrat, sans-serif;'>
-                    <center class='wrapper' style='padding-top: 5%; width: 100%; max-width: 960px;'>
-                        <div class='webkit'>
-                            <table cellpadding='0' cellspacing='0' border='0' bgcolor='#ffffff' style='width: 100%; max-width: 960px;'>
-                                <tbody>
-                                    <tr>
-                                        <td align='center'>
-                                            <img src='{logo}' alt='Logo' width='120px' height='100px'>
-                                            <h1>¡Hola, {nombre}!</h1>
-                                            <p>Por favor, usa el siguiente enlace para restablecer tu contraseña. Recuerda que el enlace expirará en 30 minutos.</p>
-                                            <a href='{url}' style='padding: 10px; background-color: #8BC34A; color: white; text-decoration: none; border-radius: 5px; display: inline-block;'>Restablecer Contraseña</a>
-                                            <p>*Este correo se genera automáticamente y no requiere respuesta.</p>
-                                            <p>Sin otro particular, reciba un cordial saludo.</p>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </center>
-                </body>
-                </html>";
+            var contenido = @"
+                <p style='margin:0 0 14px;'>Hemos recibido una solicitud para restablecer tu contraseña en la plataforma NSIE.</p>
+                <p style='margin:0 0 18px;'>Por seguridad, este enlace tendrá vigencia de 30 minutos.</p>";
+
+            return BuildInstitutionalEmail(
+                titulo: "Restablecimiento de contraseña",
+                nombre: nombre,
+                contenidoHtml: contenido,
+                botonTexto: "Restablecer contraseña",
+                botonUrl: url);
         }
 
-        private string EmailExpiration(string logo, string nombre, string token, string url)
+        private string EmailExpiration(string nombre, string token, string url)
         {
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <meta http-equiv='X-UA-Compatible' content='IE=edge' />
-                    <title>Restablecimiento de Contraseña</title>
-                    <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
-                    <style>
-                        .ReadMsgBody {{width: 100%; background-color: #ffffff;}}
-                        .ExternalClass {{width: 100%; background-color: #ffffff;}}
-                        @-ms-viewport {{width: device-width;}}
-                    </style>
-                </head>
-                <body style='background: #ffffff; width: 100%; height: 100%; margin: 0; padding: 0; font-family: Montserrat, sans-serif;'>
-                    <center class='wrapper' style='padding-top: 5%; width: 100%; max-width: 960px;'>
-                        <div class='webkit'>
-                            <table cellpadding='0' cellspacing='0' border='0' bgcolor='#ffffff' style='width: 100%; max-width: 960px;'>
-                                <tbody>
-                                    <tr>
-                                        <td align='center'>
-                                            <img src='{logo}' alt='Logo' width='120px' height='100px'>
-                                            <h1>¡Hola, {nombre}!</h1>
-                                            <p>Su Token anterior ha expirado. Use el siguiente enlace para restablecer su contraseña (Recuerde que tiene 30 minutos antes de que su Token expire):</p>
-                                            <a href='{url}' style='padding: 10px; background-color: #8BC34A; color: white; text-decoration: none; border-radius: 5px; display: inline-block;'>Restablecer Contraseña</a>
-                                            <p>Tu Token de Seguridad es:<strong> {token}</strong></p>
-                                            <p>Deberás usarlo para recuperar tu contraseña.</p>
-                                            <p>*Este correo se genera automáticamente y no requiere respuesta.</p>
-                                            <p>Sin otro particular, reciba un cordial saludo.</p>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </center>
-                </body>
-                </html>";
+            var detalle = $@"
+                <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:16px 0 6px;'>
+                    <tr>
+                        <td style='background:#f7ecf1; color:#6b1034; font-weight:700; padding:10px 12px; border:1px solid #e5c7d4; width:35%;'>Token nuevo</td>
+                        <td style='padding:10px 12px; border:1px solid #eadde4; color:#2b2b2b;'>{token}</td>
+                    </tr>
+                </table>";
+
+            var contenido = @"
+                <p style='margin:0 0 14px;'>Tu token anterior expiró. Ya generamos uno nuevo para continuar con el proceso.</p>
+                <p style='margin:0 0 18px;'>Utiliza el siguiente botón y completa el cambio de contraseña dentro de los próximos 30 minutos.</p>";
+
+            return BuildInstitutionalEmail(
+                titulo: "Nuevo enlace de restablecimiento",
+                nombre: nombre,
+                contenidoHtml: contenido,
+                tablaHtml: detalle,
+                botonTexto: "Restablecer contraseña",
+                botonUrl: url);
         }
 
-        private string EmailConfirmed(string logo, string nombre)
+        private string EmailConfirmed(string nombre)
         {
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <meta http-equiv='X-UA-Compatible' content='IE=edge' />
-                    <title>Restablecimiento de Contraseña</title>
-                    <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
-                    <style>
-                        .ReadMsgBody {{width: 100%; background-color: #ffffff;}}
-                        .ExternalClass {{width: 100%; background-color: #ffffff;}}
-                        @-ms-viewport {{width: device-width;}}
-                    </style>
-                </head>
-                <body style='background: #ffffff; width: 100%; height: 100%; margin: 0; padding: 0; font-family: Montserrat, sans-serif;'>
-                    <center class='wrapper' style='padding-top: 5%; width: 100%; max-width: 960px;'>
-                        <div class='webkit'>
-                            <table cellpadding='0' cellspacing='0' border='0' bgcolor='#ffffff' style='width: 100%; max-width: 960px;'>
-                                <tbody>
-                                    <tr>
-                                        <td align='center'>
-                                            <img src='{logo}' alt='Logo' width='120px' height='100px'>
-                                            <h1>¡Hola, {nombre}!</h1>
-                                            <p>Le informamos que su contraseña ha sido restablecida correctamente.</p>
-                                            <p>*Este correo se genera automáticamente y no requiere respuesta.</p>
-                                            <p>Sin otro particular, reciba un cordial saludo.</p>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </center>
-                </body>
-                </html>";
+            var contenido = @"
+                <p style='margin:0 0 14px;'>La contraseña de tu cuenta fue restablecida correctamente.</p>
+                <p style='margin:0 0 18px;'>Si no reconoces esta acción, repórtala de inmediato al equipo administrador del sistema.</p>";
+
+            var loginUrl = Url.Action("Login", "Acceso", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
+            return BuildInstitutionalEmail(
+                titulo: "Contraseña actualizada",
+                nombre: nombre,
+                contenidoHtml: contenido,
+                botonTexto: "Ir al inicio de sesión",
+                botonUrl: loginUrl);
         }
 
-        private string EmailPasswordChangedFromAccount(string logo, string nombre)
+        private string EmailPasswordChangedFromAccount(string nombre)
         {
+            var contenido = @"
+                <p style='margin:0 0 14px;'>La contraseña de tu cuenta fue actualizada desde el panel institucional.</p>
+                <p style='margin:0 0 18px;'>Si no realizaste este cambio, notifica inmediatamente al administrador del sistema.</p>";
+
+            var loginUrl = Url.Action("Login", "Acceso", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
+            return BuildInstitutionalEmail(
+                titulo: "Cambio de contraseña exitoso",
+                nombre: nombre,
+                contenidoHtml: contenido,
+                botonTexto: "Ir al inicio de sesión",
+                botonUrl: loginUrl);
+        }
+
+        private string BuildInstitutionalEmail(
+            string titulo,
+            string nombre,
+            string contenidoHtml,
+            string? tablaHtml = null,
+            string? botonTexto = null,
+            string? botonUrl = null)
+        {
+            var botonHtml = string.Empty;
+            if (!string.IsNullOrWhiteSpace(botonTexto) && !string.IsNullOrWhiteSpace(botonUrl))
+            {
+                botonHtml = $@"
+                    <div style='margin:18px 0 16px; text-align:center;'>
+                        <a href='{botonUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
+                            {botonTexto}
+                        </a>
+                    </div>";
+            }
+
             return $@"
                 <html lang='es'>
                 <head>
                     <meta charset='UTF-8'>
                     <meta http-equiv='X-UA-Compatible' content='IE=edge' />
-                    <title>Cambio de Contraseña Exitoso</title>
                     <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
-                    <style>
-                        .ReadMsgBody {{width: 100%; background-color: #ffffff;}}
-                        .ExternalClass {{width: 100%; background-color: #ffffff;}}
-                        @-ms-viewport {{width: device-width;}}
-                    </style>
+                    <title>{titulo}</title>
                 </head>
-                <body style='background: #ffffff; width: 100%; height: 100%; margin: 0; padding: 0; font-family: Montserrat, sans-serif;'>
-                    <center class='wrapper' style='padding-top: 5%; width: 100%; max-width: 960px;'>
-                        <div class='webkit'>
-                            <table cellpadding='0' cellspacing='0' border='0' bgcolor='#ffffff' style='width: 100%; max-width: 960px;'>
-                                <tbody>
+                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
+                    <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
+                        <tr>
+                            <td style='padding:16px 20px; border-bottom:1px solid #eee;'>
+                                <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
                                     <tr>
-                                        <td align='center'>
-                                            <img src='{logo}' alt='Logo' width='120px' height='100px'>
-                                            <h1>¡Hola, {nombre}!</h1>
-                                            <p>Le informamos que la contraseña de su cuenta fue actualizada correctamente desde el panel de usuario.</p>
-                                            <p>*Este correo se genera automáticamente y no requiere respuesta.</p>
-                                            <p>Sin otro particular, reciba un cordial saludo.</p>
+                                        <td style='width:50%;'>
+                                            <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
+                                        </td>
+                                        <td style='width:50%; text-align:right;'>
+                                            <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
                                         </td>
                                     </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </center>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>
+                                {titulo}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style='padding:22px 20px;'>
+                                <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Hola, {nombre}.</p>
+                                {contenidoHtml}
+                                {tablaHtml}
+                                {botonHtml}
+                                <p style='margin:18px 0 0; font-size:13px; color:#555;'>
+                                    Este correo se genera automáticamente y no requiere respuesta.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
                 </body>
                 </html>";
         }
@@ -976,7 +953,6 @@ namespace NSIE.Controllers
         public async Task<IActionResult> ResetPassword(string Token, string Clave, string ConfirmarClave)
         {
             var user = await _repositorioAcceso.GetUserByPasswordResetToken(Token);
-            var logo = "https://cdn.sassoapps.com/img_snier/login/logo_snier.png";
 
             if (user == null)
             {
@@ -999,7 +975,7 @@ namespace NSIE.Controllers
 
                 var correoUsuario = usuario.Correo;
                 var nuevoCallbackUrl = Url.Action("ResetPassword", "Acceso", new { token = nuevoToken }, protocol: HttpContext.Request.Scheme);
-                var nuevoMensaje = EmailExpiration(logo, usuario.Nombre, nuevoToken, nuevoCallbackUrl);
+                var nuevoMensaje = EmailExpiration(usuario.Nombre, nuevoToken, nuevoCallbackUrl);
                 await _servicioEmailSMTP.EnviarCorreo(correoUsuario, "Nuevo restablecimiento de contraseña", nuevoMensaje);
 
                 return View();
@@ -1027,7 +1003,7 @@ namespace NSIE.Controllers
             }
 
             var correoUsuarioFinal = usuarioFinal.Correo;
-            var nuevoMensajeFinal = EmailConfirmed(logo, usuarioFinal.Nombre);
+            var nuevoMensajeFinal = EmailConfirmed(usuarioFinal.Nombre);
             await _servicioEmailSMTP.EnviarCorreo(correoUsuarioFinal, "Restablecimiento de contraseña exitoso", nuevoMensajeFinal);
 
             await _repositorioAcceso.DeletePasswordResetToken(user.IdUsuario);
@@ -1041,8 +1017,6 @@ namespace NSIE.Controllers
         [HttpPost]
         public async Task<IActionResult> ResetPasswordUser(string Clave, string ConfirmarClave, int IdUsuario)
         {
-            var logo = "https://cdn.sassoapps.com/img_snier/login/logo_snier.png";
-
             if (Clave != ConfirmarClave)
             {
                 return BadRequest("Las contraseñas no coinciden.");
@@ -1058,7 +1032,7 @@ namespace NSIE.Controllers
             }
 
             var correoUsuarioFinal = usuarioFinal.Correo;
-            var nuevoMensajeFinal = EmailPasswordChangedFromAccount(logo, usuarioFinal.Nombre);
+            var nuevoMensajeFinal = EmailPasswordChangedFromAccount(usuarioFinal.Nombre);
 
             try
             {

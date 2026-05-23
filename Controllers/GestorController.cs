@@ -227,7 +227,8 @@ namespace NSIE.Controllers
                 return;
 
             var asunto = $"Nueva asignacion de actividad: {actividad.Clave}";
-            var cuerpo = ConstruirCorreoAsignacionActividad(responsable.Nombre, actividad);
+            var portalUrl = Url.Action("Index", "Gestor", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
+            var cuerpo = ConstruirCorreoAsignacionActividad(responsable.Nombre, actividad, portalUrl);
 
             try
             {
@@ -242,7 +243,7 @@ namespace NSIE.Controllers
             }
         }
 
-        private static string ConstruirCorreoAsignacionActividad(string nombreResponsable, GestorActividad actividad)
+        private static string ConstruirCorreoAsignacionActividad(string nombreResponsable, GestorActividad actividad, string portalUrl)
         {
             var fechaCompromiso = actividad.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
             var fechaInicio = actividad.FechaInicio?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
@@ -256,25 +257,40 @@ namespace NSIE.Controllers
                     <meta charset='UTF-8'>
                     <title>Asignacion de actividad</title>
                 </head>
-                <body style='font-family:Segoe UI, Arial, sans-serif; color:#1f2937; background:#f5f5f5; margin:0; padding:24px;'>
-                    <div style='max-width:680px; margin:0 auto; background:#ffffff; border:1px solid #d6d6d6; border-radius:8px; overflow:hidden;'>
-                        <div style='background:#13322b; color:#ffffff; padding:20px 24px;'>
-                            <h1 style='margin:0; font-size:20px;'>Nueva actividad asignada</h1>
-                        </div>
-                        <div style='padding:24px;'>
-                            <p style='margin-top:0;'>Hola {nombreResponsable},</p>
-                            <p>Se te ha asignado una actividad dentro del Gestor de Actividades DGMESNIE.</p>
-                            <table style='width:100%; border-collapse:collapse; margin:20px 0;'>
-                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Clave</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{actividad.Clave}</td></tr>
-                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Tema</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{actividad.TemaNombre ?? "Sin tema"}</td></tr>
-                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Actividad</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{actividad.Actividad}</td></tr>
-                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Descripcion</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{descripcion}</td></tr>
-                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Fecha de inicio</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{fechaInicio}</td></tr>
-                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Fecha compromiso</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{fechaCompromiso}</td></tr>
-                                <tr><td style='padding:8px; border-bottom:1px solid #e5e7eb; font-weight:600;'>Prioridad</td><td style='padding:8px; border-bottom:1px solid #e5e7eb;'>{actividad.Prioridad}</td></tr>
-                                <tr><td style='padding:8px; font-weight:600;'>Estatus</td><td style='padding:8px;'>{actividad.Estatus}</td></tr>
+                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
+                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
+                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
+                                <tr>
+                                    <td style='width:50%;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
+                                    </td>
+                                    <td style='width:50%; text-align:right;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
+                                    </td>
+                                </tr>
                             </table>
-                            <p style='margin-bottom:0;'>Este aviso se envia automaticamente cuando una actividad se asigna o cambia de responsable.</p>
+                        </div>
+                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Nueva actividad asignada</div>
+                        <div style='padding:22px 20px;'>
+                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Hola, {nombreResponsable}.</p>
+                            <p>Se te ha asignado una actividad dentro del Gestor de Actividades DGMESNIE.</p>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Clave}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Tema</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.TemaNombre ?? "Sin tema"}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Actividad}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripcion</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha de inicio</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaInicio}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaCompromiso}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Prioridad}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Estatus}</td></tr>
+                            </table>
+                            <div style='margin:18px 0 16px; text-align:center;'>
+                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
+                                    Abrir Gestor de Actividades
+                                </a>
+                            </div>
+                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envia automaticamente cuando una actividad se asigna o cambia de responsable.</p>
                         </div>
                     </div>
                 </body>
