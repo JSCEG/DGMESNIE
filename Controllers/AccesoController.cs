@@ -767,9 +767,12 @@ namespace NSIE.Controllers
         [HttpPost]
         public async Task<IActionResult> ForgotPassword(string Correo)
         {
+            _logger.LogInformation("ForgotPassword recibido para correo: {Correo}", Correo);
+
             var user = await _repositorioAcceso.GetUserByEmail(Correo);
             if (user == null)
             {
+                _logger.LogWarning("ForgotPassword sin usuario asociado para correo: {Correo}", Correo);
                 ViewData["Mensaje"] = "La dirección de correo no está asociada con una cuenta, verifica tus datos.";
                 return View();
             }
@@ -783,15 +786,18 @@ namespace NSIE.Controllers
             try
             {
                 await _servicioEmailSMTP.EnviarCorreo(Correo, "Restablecer contraseña", mensaje);
+                _logger.LogInformation("ForgotPassword: correo enviado correctamente a {Correo}", Correo);
 
                 ViewData["EsExitoso"] = true;
                 ViewData["Mensaje"] = "Se ha enviado un enlace de restablecimiento a su dirección de correo electrónico.";
                 return View();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(ex, "ForgotPassword: error al enviar correo a {Correo}", Correo);
                 ViewData["EsExitoso"] = false;
                 ViewData["Mensaje"] = "Hubo un error al enviar el correo electrónico. Por favor, inténtelo de nuevo más tarde.";
+                ViewData["DetalleError"] = ex.Message;
                 return View();
             }
         }

@@ -3,10 +3,10 @@
 const C = {
     guinda: '#8a0031',
     verde: '#1e5b4f',
-    dorado: '#a57f2c',
+    dorado: '#245b8f',
     ok: '#027a48',
-    proceso: '#b54708',
-    riesgo: '#b42318',
+    proceso: '#8a0031',
+    riesgo: '#a14d6a',
     pendiente: '#667085',
     texto: '#243444',
     textoSuave: '#6c7a89',
@@ -29,6 +29,10 @@ const BASE_CHART = {
 
 let themeApplied = false;
 let fullscreenWired = false;
+
+function activeFullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement || null;
+}
 
 function applyInstitutionalTheme() {
     if (themeApplied || !window.Highcharts) return;
@@ -252,7 +256,7 @@ function syncFullscreenButtons() {
     const buttons = document.querySelectorAll('[data-chart-fullscreen]');
     buttons.forEach((button) => {
         const panel = getFullscreenPanel(button);
-        const isFull = !!panel && document.fullscreenElement === panel;
+        const isFull = !!panel && activeFullscreenElement() === panel;
 
         button.classList.toggle('is-active', isFull);
         button.textContent = isFull ? 'Salir de vista completa' : 'Vista completa';
@@ -277,8 +281,14 @@ export function wireChartFullscreenButtons() {
             return;
         }
 
-        if (document.fullscreenElement === panel) {
-            await document.exitFullscreen();
+        if (activeFullscreenElement() === panel) {
+            if (document.exitFullscreen) {
+                await document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
         } else if (panel.requestFullscreen) {
             await panel.requestFullscreen();
         } else if (panel.webkitRequestFullscreen) {
@@ -295,8 +305,23 @@ export function wireChartFullscreenButtons() {
     });
 
     const handleFullscreenChange = () => {
+        const fullscreenElement = activeFullscreenElement();
         syncFullscreenButtons();
-        window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+
+        window.setTimeout(() => {
+            Highcharts.charts.forEach((chart) => {
+                if (!chart) {
+                    return;
+                }
+
+                if (!fullscreenElement && chart?.renderTo) {
+                    chart.renderTo.style.height = '';
+                    chart.setSize(null, null, false);
+                }
+
+                chart.reflow();
+            });
+        }, 120);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);

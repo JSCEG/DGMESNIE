@@ -7,10 +7,55 @@ using System;
 
 public class AutorizacionFiltro : ActionFilterAttribute
 {
+    private static readonly HashSet<string> PublicAccesoActions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Login",
+        "LoginGoogle",
+        "LoginFacebook",
+        "GoogleResponse",
+        "FacebookResponse",
+        "ForgotPassword",
+        "ResetPassword",
+        "ResetPasswordUser",
+        "SesionExpirada",
+        "ActividadSospechosa",
+        "Logout",
+        "Heartbeat",
+        "ActualizarInicioSesion"
+    };
+
     public override void OnActionExecuting(ActionExecutingContext context)
     {
         // Log para confirmar que el filtro se ejecuta
         Console.WriteLine("Filtro AutorizacionFiltro ejecutado");
+
+        var requestPath = context.HttpContext.Request.Path.ToString();
+        if (!string.IsNullOrWhiteSpace(requestPath) &&
+            (requestPath.StartsWith("/Acceso/Login", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/ForgotPassword", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/ResetPassword", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/SesionExpirada", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/ActividadSospechosa", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/Heartbeat", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/ActualizarInicioSesion", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/GoogleResponse", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/FacebookResponse", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/LoginGoogle", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/LoginFacebook", StringComparison.OrdinalIgnoreCase)))
+        {
+            base.OnActionExecuting(context);
+            return;
+        }
+
+        var controller = context.RouteData.Values["controller"]?.ToString() ?? string.Empty;
+        var action = context.RouteData.Values["action"]?.ToString() ?? string.Empty;
+
+        if (string.Equals(controller, "Acceso", StringComparison.OrdinalIgnoreCase) &&
+            PublicAccesoActions.Contains(action))
+        {
+            base.OnActionExecuting(context);
+            return;
+        }
 
         var serviceProvider = context.HttpContext.RequestServices;
         var configuration = serviceProvider.GetRequiredService<IConfiguration>();

@@ -2,7 +2,7 @@
 import { dataService, dataSource, isOnline } from './data-service.js';
 import { renderDashboard } from './dashboard.js';
 import { renderTemas, openTemaModal } from './temas.js';
-import { renderTabla, openActividadModal, exportarCsv } from './actividades.js';
+import * as actividadesModule from './actividades.js?v=tabla-v2';
 import { renderKanban, poblarFiltroKanban } from './kanban.js';
 import { renderGantt } from './gantt.js';
 import { renderCalendario, calPrev, calNext } from './calendario.js';
@@ -12,6 +12,16 @@ import { setReportesData, wireReportes, renderDeck } from './reportes.js';
 import { wireChartFullscreenButtons } from './charts.js';
 
 const state = { temas: [], actividades: [], view: 'dashboard' };
+
+function getTablaFilters() {
+    return {
+        search: document.getElementById('filtro-tabla')?.value || '',
+        temaId: document.getElementById('filtro-tabla-tema')?.value || '',
+        estatus: document.getElementById('filtro-tabla-estatus')?.value || '',
+        prioridad: document.getElementById('filtro-tabla-prioridad')?.value || '',
+        responsable: document.getElementById('filtro-tabla-responsable')?.value || ''
+    };
+}
 
 function setPreloader(title, sub, err = false) {
     const pre = document.getElementById('tracking-preloader');
@@ -49,7 +59,7 @@ function renderCurrent() {
         case 'dashboard': renderDashboard(temas, actividades); break;
         case 'temas': renderTemas(temas, actividades, document.getElementById('filtro-temas').value); break;
         case 'kanban': renderKanban(temas, actividades, document.getElementById('filtro-kanban-tema').value); break;
-        case 'tabla': renderTabla(temas, actividades, document.getElementById('filtro-tabla').value); break;
+        case 'tabla': actividadesModule.renderTabla(temas, actividades, getTablaFilters()); break;
         case 'gantt': renderGantt(temas, actividades); break;
         case 'calendario': renderCalendario(temas, actividades); break;
         case 'responsables': renderResponsables(temas, actividades); break;
@@ -82,9 +92,40 @@ function wireEvents() {
     document.getElementById('filtro-temas').oninput = () => renderTemas(state.temas, state.actividades, document.getElementById('filtro-temas').value);
     document.getElementById('btn-nuevo-tema').onclick = () => openTemaModal(null);
 
-    document.getElementById('filtro-tabla').oninput = () => renderTabla(state.temas, state.actividades, document.getElementById('filtro-tabla').value);
-    document.getElementById('btn-nueva-actividad').onclick = () => openActividadModal(null, state.temas);
-    document.getElementById('btn-export-excel').onclick = () => exportarCsv(state.temas, state.actividades);
+    const rerenderTabla = () => {
+        if (typeof actividadesModule.resetTablaPage === 'function') {
+            actividadesModule.resetTablaPage();
+        }
+        actividadesModule.renderTabla(state.temas, state.actividades, getTablaFilters());
+    };
+
+    document.getElementById('filtro-tabla').oninput = rerenderTabla;
+    document.getElementById('filtro-tabla-tema').onchange = rerenderTabla;
+    document.getElementById('filtro-tabla-estatus').onchange = rerenderTabla;
+    document.getElementById('filtro-tabla-prioridad').onchange = rerenderTabla;
+    document.getElementById('filtro-tabla-responsable').onchange = rerenderTabla;
+    document.getElementById('tabla-page-size').onchange = (e) => {
+        if (typeof actividadesModule.setTablaPageSize === 'function') {
+            actividadesModule.setTablaPageSize(e.target.value);
+        }
+        actividadesModule.renderTabla(state.temas, state.actividades, getTablaFilters());
+    };
+
+    document.getElementById('tabla-page-prev').onclick = () => {
+        if (typeof actividadesModule.changeTablaPage === 'function') {
+            actividadesModule.changeTablaPage(-1);
+        }
+        actividadesModule.renderTabla(state.temas, state.actividades, getTablaFilters());
+    };
+
+    document.getElementById('tabla-page-next').onclick = () => {
+        if (typeof actividadesModule.changeTablaPage === 'function') {
+            actividadesModule.changeTablaPage(1);
+        }
+        actividadesModule.renderTabla(state.temas, state.actividades, getTablaFilters());
+    };
+    document.getElementById('btn-nueva-actividad').onclick = () => actividadesModule.openActividadModal(null, state.temas);
+    document.getElementById('btn-export-excel').onclick = () => actividadesModule.exportarCsv(state.temas, state.actividades);
 
     document.getElementById('filtro-kanban-tema').onchange = () => renderKanban(state.temas, state.actividades, document.getElementById('filtro-kanban-tema').value);
 

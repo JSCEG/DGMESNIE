@@ -1,5 +1,9 @@
-import { escape, fmtDate, semaforo, openModal, toast, downloadCsv } from './utils.js';
+import { escape, fmtDate, semaforo, daysBetween, daysFromToday, openModal, toast, downloadCsv } from './utils.js';
 import { dataService } from './data-service.js';
+
+const DEFAULT_PAGE_SIZE = 8;
+let tablaPage = 1;
+let tablaPageSize = DEFAULT_PAGE_SIZE;
 
 function normalizeUserName(value) {
     return String(value || '')
@@ -9,20 +13,145 @@ function normalizeUserName(value) {
         .toLowerCase();
 }
 
-export function renderTabla(temas, actividades, filtro = '') {
-    const f = (filtro || '').toLowerCase();
-    const filtered = actividades.filter(a => {
-        if (!f) return true;
+function buildFilters(filters = {}) {
+    return {
+        search: (filters.search || '').trim().toLowerCase(),
+        temaId: String(filters.temaId || '').trim(),
+        estatus: (filters.estatus || '').trim(),
+        prioridad: (filters.prioridad || '').trim(),
+        responsable: (filters.responsable || '').trim()
+    };
+}
+
+function populateTemasFilter(temas) {
+    const sel = document.getElementById('filtro-tabla-tema');
+    if (!sel) {
+        return;
+    }
+
+    const prevValue = sel.value;
+    const opts = temas
+        .slice()
+        .sort((a, b) => String(a.tema || '').localeCompare(String(b.tema || ''), 'es-MX', { sensitivity: 'base' }))
+        .map(t => `<option value="${t.id}">${escape(t.tema || 'Sin tema')}</option>`)
+        .join('');
+
+    sel.innerHTML = '<option value="">Tema</option>' + opts;
+
+    if (prevValue && temas.some(t => String(t.id) === prevValue)) {
+        sel.value = prevValue;
+    }
+}
+
+function populateResponsablesFilter(actividades) {
+    const sel = document.getElementById('filtro-tabla-responsable');
+    if (!sel) {
+        return;
+    }
+
+    const prevValue = sel.value;
+    const responsables = [...new Set(actividades.map(a => (a.responsable || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'es-MX', { sensitivity: 'base' }));
+
+    sel.innerHTML = '<option value="">Responsable</option>'
+        + responsables.map(r => `<option value="${escape(r)}">${escape(r)}</option>`).join('');
+
+    if (prevValue && responsables.includes(prevValue)) {
+        sel.value = prevValue;
+    }
+}
+
+function filterActividades(temas, actividades, rawFilters = {}) {
+    const filters = buildFilters(rawFilters);
+
+    return actividades.filter(a => {
         const tema = temas.find(t => t.id === a.temaId);
-        return [a.actividad, a.responsable, a.estatus, a.prioridad, tema?.tema]
-            .some(x => (x || '').toLowerCase().includes(f));
+
+        const matchesSearch = !filters.search || [a.actividad, a.responsable, a.estatus, a.prioridad, tema?.tema]
+            .some(x => (x || '').toLowerCase().includes(filters.search));
+        const matchesTema = !filters.temaId || String(a.temaId) === filters.temaId;
+        const matchesEstatus = !filters.estatus || a.estatus === filters.estatus;
+        const matchesPrioridad = !filters.prioridad || a.prioridad === filters.prioridad;
+        const matchesResponsable = !filters.responsable || a.responsable === filters.responsable;
+
+        return matchesSearch && matchesTema && matchesEstatus && matchesPrioridad && matchesResponsable;
     });
+}
+
+function tiempoSemaforoData(actividad) {
+    const sem = semaforo(actividad);
+    const trackCls = sem === 'rojo' ? 'track--issue' : sem === 'amarillo' ? 'track--progress' : sem === 'verde' ? 'track--complete' : 'track--pending';
+
+    const rest = daysFromToday(actividad.fechaCompromiso);
+    const hasRange = !!actividad.fechaInicio && !!actividad.fechaCompromiso;
+    const totalDays = hasRange ? Math.max(1, daysBetween(actividad.fechaInicio, actividad.fechaCompromiso)) : null;
+
+    let percent = 0;
+    if (typeof totalDays === 'number' && totalDays > 0 && typeof rest === 'number') {
+        const elapsed = Math.min(totalDays, Math.max(0, totalDays - rest));
+        percent = Math.round((elapsed / totalDays) * 100);
+    }
+
+    let label = 'Sin fecha';
+    if (actividad.estatus === 'Concluida') {
+        label = 'Concluida';
+    } else if (actividad.bloqueada) {
+        label = 'Bloqueada';
+    } else if (typeof rest === 'number') {
+        label = rest < 0 ? `Vencida ${Math.abs(rest)}d` : `Quedan ${rest}d`;
+    }
+
+    const detail = typeof totalDays === 'number'
+        ? `${percent}% del plazo`
+        : 'Sin rango completo';
+
+    return { sem, trackCls, percent, label, detail };
+}
+
+function renderPagination(total, currentPage, pageSize) {
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(Math.max(1, currentPage), totalPages);
+    const info = document.getElementById('tabla-pagination-info');
+    const label = document.getElementById('tabla-page-current');
+    const prev = document.getElementById('tabla-page-prev');
+    const next = document.getElementById('tabla-page-next');
+
+    const start = total ? ((page - 1) * pageSize) + 1 : 0;
+    const end = total ? Math.min(page * pageSize, total) : 0;
+
+    if (info) {
+        info.textContent = `Mostrando ${start} a ${end} de ${total} actividades`;
+    }
+    if (label) {
+        label.textContent = `${page} / ${totalPages}`;
+    }
+    if (prev) {
+        prev.disabled = page <= 1;
+    }
+    if (next) {
+        next.disabled = page >= totalPages;
+    }
+
+    return page;
+}
+
+export function renderTabla(temas, actividades, filters = {}) {
+    populateTemasFilter(temas);
+    populateResponsablesFilter(actividades);
+
+    const filtered = filterActividades(temas, actividades, filters);
+    const totalPages = Math.max(1, Math.ceil(filtered.length / tablaPageSize));
+    tablaPage = Math.min(Math.max(1, tablaPage), totalPages);
+
+    const startIndex = (tablaPage - 1) * tablaPageSize;
+    const pageItems = filtered.slice(startIndex, startIndex + tablaPageSize);
 
     const tbody = document.querySelector('#tbl-actividades tbody');
-    tbody.innerHTML = filtered.length
-        ? filtered.map(a => {
+    tbody.innerHTML = pageItems.length
+        ? pageItems.map(a => {
             const tema = temas.find(t => t.id === a.temaId);
             const sem = semaforo(a);
+            const tiempo = tiempoSemaforoData(a);
             return `
                 <tr data-id="${a.id}">
                     <td>${escape(tema?.tema || '—')}</td>
@@ -31,17 +160,44 @@ export function renderTabla(temas, actividades, filtro = '') {
                     <td>${fmtDate(a.fechaInicio)}</td>
                     <td>${fmtDate(a.fechaCompromiso)}</td>
                     <td><span class="status-pill ${a.estatus === 'Concluida' ? 'status-pill--complete' : a.estatus === 'En proceso' ? 'status-pill--progress' : a.estatus === 'Vencida' ? 'status-pill--issue' : ''}">${escape(a.estatus)}</span></td>
+                    <td>
+                        <div class="tiempo-cell">
+                            <div class="track ${tiempo.trackCls}" style="width:110px"><span style="width:${tiempo.percent}%"></span></div>
+                            <small class="muted">${escape(tiempo.label)} · ${escape(tiempo.detail)}</small>
+                        </div>
+                    </td>
                     <td><div class="track ${sem === 'rojo' ? 'track--issue' : sem === 'amarillo' ? 'track--progress' : sem === 'verde' ? 'track--complete' : 'track--pending'}" style="width:90px"><span style="width:${a.avance || 0}%"></span></div><small class="muted">${a.avance || 0}%</small></td>
                     <td><span class="chip ${a.prioridad === 'Alta' ? 'p-alta' : a.prioridad === 'Media' ? 'p-media' : 'p-baja'}">${escape(a.prioridad)}</span></td>
                     <td><span class="semaforo ${sem}"></span></td>
                     <td><button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem" data-edit="${a.id}">Editar</button></td>
                 </tr>`;
         }).join('')
-        : '<tr><td colspan="10" style="text-align:center;color:var(--g-text-soft);padding:1.5rem">Sin actividades</td></tr>';
+        : '<tr><td colspan="11" style="text-align:center;color:var(--g-text-soft);padding:1.5rem">Sin actividades</td></tr>';
+
+    tablaPage = renderPagination(filtered.length, tablaPage, tablaPageSize);
 
     tbody.querySelectorAll('[data-edit]').forEach(btn => {
         btn.onclick = () => openActividadModal(actividades.find(a => a.id === btn.dataset.edit), temas);
     });
+
+}
+
+export function changeTablaPage(step) {
+    tablaPage = Math.max(1, tablaPage + step);
+}
+
+export function resetTablaPage() {
+    tablaPage = 1;
+}
+
+export function setTablaPageSize(size) {
+    const parsed = Number(size);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        tablaPageSize = DEFAULT_PAGE_SIZE;
+    } else {
+        tablaPageSize = parsed;
+    }
+    tablaPage = 1;
 }
 
 export async function openActividadModal(actividad, temas) {

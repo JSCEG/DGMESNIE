@@ -175,6 +175,9 @@ namespace NSIE.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ApiActualizarActividad(int id, [FromBody] GestorActividadForm form)
         {
+            if (form == null)
+                return BadRequest(new { error = "Payload de actividad vacio." });
+
             form.ActividadId = id;
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
