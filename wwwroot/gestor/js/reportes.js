@@ -1,8 +1,25 @@
 // Reportes institucionales — deck de slides estilo PPT con filtros y descarga PDF/PPT/Excel.
 
-import { escape, fmtDate, daysFromToday, semaforoTema, avancePromedio, toast } from './utils.js';
+import { escape, fmtDate, daysFromToday, daysBetween, semaforoTema, avancePromedio, toast } from './utils.js';
 
 let _state = { temas: [], actividades: [], filters: {} };
+
+let presentationMode = false;
+let presentationIndex = 0;
+let presentationSlides = [];
+const PRESENTATION_ZOOM_FACTOR = 1.0;
+
+const C_SLIDE = {
+    guinda: '#8a0031',
+    verde: '#1e5b4f',
+    ok: '#027a48',
+    proceso: '#b54708',
+    riesgo: '#b42318',
+    pendiente: '#667085',
+    textoSuave: '#6c7a89'
+};
+const ESTATUS_COLOR = { Pendiente: C_SLIDE.pendiente, 'En proceso': C_SLIDE.proceso, Vencida: C_SLIDE.riesgo, Concluida: C_SLIDE.ok };
+const PRIORIDAD_COLOR = { Alta: C_SLIDE.riesgo, Media: C_SLIDE.proceso, Baja: C_SLIDE.ok };
 
 const REPORT_BACKGROUND_ASSETS = [
     '/gestor/img/fondoppt.png',
@@ -124,12 +141,67 @@ function readFilters() {
     };
 }
 
+function getPeriodRange(period) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+
+    let start, end;
+
+    switch (period) {
+        case 'semana_actual': {
+            const day = today.getDay();
+            const monday = new Date(today);
+            monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
+            monday.setHours(0, 0, 0, 0);
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+            sunday.setHours(23, 59, 59, 999);
+            start = monday;
+            end = sunday;
+            break;
+        }
+        case 'mes_actual': {
+            start = new Date(year, month, 1);
+            end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+            break;
+        }
+        case 'mes_anterior': {
+            start = new Date(year, month - 1, 1);
+            end = new Date(year, month, 0, 23, 59, 59, 999);
+            break;
+        }
+        case 'dos_meses_atras': {
+            start = new Date(year, month - 2, 1);
+            end = new Date(year, month - 1, 0, 23, 59, 59, 999);
+            break;
+        }
+        case 'anio_actual': {
+            start = new Date(year, 0, 1);
+            end = new Date(year, 11, 31, 23, 59, 59, 999);
+            break;
+        }
+        default:
+            return null;
+    }
+    return { start, end };
+}
+
 function applyFilters(acts, f) {
     return acts.filter(a => {
         if (f.tema && String(a.temaId) !== String(f.tema)) return false;
         if (f.resp && a.responsable !== f.resp) return false;
         if (f.estatus && a.estatus !== f.estatus) return false;
         if (f.prioridad && a.prioridad !== f.prioridad) return false;
+
+        const range = getPeriodRange(f.periodo);
+        if (range) {
+            const pad = num => String(num).padStart(2, '0');
+            const startStr = `${range.start.getFullYear()}-${pad(range.start.getMonth() + 1)}-${pad(range.start.getDate())}`;
+            const endStr = `${range.end.getFullYear()}-${pad(range.end.getMonth() + 1)}-${pad(range.end.getDate())}`;
+            if (!a.fechaCompromiso || a.fechaCompromiso < startStr || a.fechaCompromiso > endStr) return false;
+        }
+
         if (f.periodo === '7' || f.periodo === '30') {
             const d = daysFromToday(a.fechaCompromiso);
             const lim = Number(f.periodo);
@@ -227,6 +299,24 @@ function renderStatusStackedBar(c, p, i, pen) {
         </div>`;
 }
 
+function getTiempoTexto(a) {
+    if (a.estatus === 'Concluida') {
+        if (a.fechaInicio && a.fechaCompromiso) {
+            try {
+                const diff = daysBetween(a.fechaInicio, a.fechaCompromiso);
+                return `Realizada en ${diff}d`;
+            } catch (e) {
+                return 'Concluida';
+            }
+        }
+        return 'Concluida';
+    }
+    const rest = daysFromToday(a.fechaCompromiso);
+    if (rest === null) return '—';
+    if (rest < 0) return `Vencida ${Math.abs(rest)}d`;
+    return `Quedan ${rest}d`;
+}
+
 function summary(acts) {
     const total = acts.length;
     const complete = acts.filter(a => a.estatus === 'Concluida').length;
@@ -262,15 +352,52 @@ export function renderDeck() {
         .sort((a, b) => (a.fechaCompromiso || '').localeCompare(b.fechaCompromiso || ''));
 
     deck.innerHTML = `
-        ${slideCover(s, reportDate)}
+        ${slideCover(s, reportDate, f)}
+        ${slideDashboardGraficos(acts, f)}
         ${slideResumen(s, topTemas)}
         ${slideAtencion(atencion)}
         ${slideResponsables(acts)}
+        ${slideTemasDashboard(temasFiltrados, acts)}
+        ${slideTreemap(temasFiltrados, acts)}
         ${temasFiltrados.map(t => slideTema(t, acts.filter(a => a.temaId === t.id))).join('')}
     `;
+
+    initSlideDashboard(acts);
+    initSlideTreemap(temasFiltrados, acts);
 }
 
-function slideCover(s, reportDate) {
+function slideCover(s, reportDate, f) {
+    let filterDetails = [];
+    if (f) {
+        if (f.tema) {
+            const found = _state.temas.find(t => String(t.id) === String(f.tema));
+            if (found) filterDetails.push(`Tema: <strong>${escape(found.tema)}</strong>`);
+        }
+        if (f.resp) filterDetails.push(`Responsable: <strong>${escape(f.resp)}</strong>`);
+        if (f.estatus) filterDetails.push(`Estatus: <strong>${escape(f.estatus)}</strong>`);
+        if (f.prioridad) filterDetails.push(`Prioridad: <strong>${escape(f.prioridad)}</strong>`);
+        if (f.periodo) {
+            const periodLabels = {
+                '7': 'Próximos 7 días',
+                '30': 'Próximos 30 días',
+                'vencidas': 'Vencidas',
+                'semana_actual': 'Semana en curso',
+                'mes_actual': 'Mes en curso',
+                'mes_anterior': '1 mes atrás',
+                'dos_meses_atras': '2 meses atrás',
+                'anio_actual': 'Año en curso'
+            };
+            const lbl = periodLabels[f.periodo] || f.periodo;
+            filterDetails.push(`Periodo: <strong>${escape(lbl)}</strong>`);
+        }
+        if (f.q) filterDetails.push(`Búsqueda: <strong>"${escape(f.q)}"</strong>`);
+    }
+
+    let filterHtml = '';
+    if (filterDetails.length > 0) {
+        filterHtml = `<div class="cover-filters">Filtrado por: ${filterDetails.join(' &nbsp;·&nbsp; ')}</div>`;
+    }
+
     return `
         <section class="internal-slide internal-slide--cover">
             ${renderSlideHeader('DGMESNIE · Seguimiento')}
@@ -278,6 +405,7 @@ function slideCover(s, reportDate) {
                 <p class="eyebrow">Reporte ejecutivo</p>
                 <h2>Seguimiento de Actividades</h2>
                 <p class="unit">Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información Energética</p>
+                ${filterHtml}
                 <div class="internal-cover-meta">
                     <span><strong>Actividades</strong>${s.total}</span>
                     <span><strong>Avance promedio</strong>${s.average}%</span>
@@ -331,19 +459,27 @@ function slideAtencion(rows) {
             <div class="internal-slide__body">
                 <h2>Actividades en atención</h2>
                 <table class="slide-table">
-                    <thead><tr><th>Tema</th><th>Actividad</th><th>Responsable</th><th>Compromiso</th><th>Estatus</th></tr></thead>
+                    <thead><tr><th>Tema</th><th>Actividad</th><th>Responsable</th><th>Compromiso</th><th>Tiempo</th><th>Estatus</th></tr></thead>
                     <tbody>
                         ${rows.length ? rows.slice(0, 18).map(a => {
         const tema = _state.temas.find(t => t.id === a.temaId);
         return `
                                 <tr>
                                     <td>${escape(tema?.tema || '')}</td>
-                                    <td><strong>${escape(a.actividad)}</strong></td>
+                                    <td>
+                                        <strong>${escape(a.actividad)}</strong>
+                                        ${a.evidenciaUrl ? `
+                                            <a href="${escape(a.evidenciaUrl)}" target="_blank" rel="noopener" class="slide-evidencia-link" title="Ver evidencia en SharePoint" style="margin-left: 6px; color: #b48934; display: inline-flex; align-items: center; text-decoration: none;">
+                                                <i class="fa-solid fa-folder-open"></i>
+                                            </a>
+                                        ` : ''}
+                                    </td>
                                     <td>${escape(a.responsable)}</td>
                                     <td>${fmtDate(a.fechaCompromiso)}</td>
+                                    <td><span style="font-size: 0.72rem; font-weight: 600; color: ${a.estatus === 'Vencida' ? C_SLIDE.riesgo : C_SLIDE.pendiente}">${getTiempoTexto(a)}</span></td>
                                     <td><span class="status-pill status-pill--${statusMode(a.estatus)}">${escape(a.estatus)}</span></td>
                                 </tr>`;
-    }).join('') : '<tr><td colspan="5" class="muted" style="text-align:center">Sin actividades en atención</td></tr>'}
+    }).join('') : '<tr><td colspan="6" class="muted" style="text-align:center">Sin actividades en atención</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -361,32 +497,644 @@ function slideResponsables(acts) {
     const rows = [...map.entries()].map(([p, list]) => {
         const total = list.length;
         const c = list.filter(a => a.estatus === 'Concluida').length;
+        const prog = list.filter(a => a.estatus === 'En proceso').length;
+        const pen = list.filter(a => a.estatus === 'Pendiente').length;
+        const vencidas = list.filter(a => a.estatus === 'Vencida' || (a.estatus !== 'Concluida' && daysFromToday(a.fechaCompromiso) < 0)).length;
         const av = total ? Math.round(list.reduce((s, a) => s + (a.avance || 0), 0) / total) : 0;
-        const vencidas = list.filter(a => a.estatus !== 'Concluida' && daysFromToday(a.fechaCompromiso) < 0).length;
-        return { p, total, c, av, vencidas };
+        return { p, total, c, prog, pen, vencidas, av };
     }).sort((a, b) => b.total - a.total);
 
     return `
         <section class="internal-slide internal-slide--content">
             ${renderSlideHeader('Carga por responsable')}
             <div class="internal-slide__body">
-                <h2>Carga de trabajo</h2>
+                <h2>Carga de trabajo y estatus de actividades por responsable</h2>
                 <table class="slide-table">
-                    <thead><tr><th>Responsable</th><th>Actividades</th><th>Concluidas</th><th>Vencidas</th><th>Avance</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>Responsable</th>
+                            <th>Total Actividades</th>
+                            <th>Concluidas</th>
+                            <th>En proceso</th>
+                            <th>Pendientes</th>
+                            <th>Vencidas</th>
+                            <th>Avance Promedio</th>
+                        </tr>
+                    </thead>
                     <tbody>
                         ${rows.length ? rows.map(r => `
                             <tr>
                                 <td><strong>${escape(r.p)}</strong></td>
                                 <td>${r.total}</td>
-                                <td>${r.c}</td>
-                                <td>${r.vencidas ? `<span class="status-pill status-pill--issue">${r.vencidas}</span>` : r.vencidas}</td>
-                                <td>${r.av}%</td>
-                            </tr>`).join('') : '<tr><td colspan="5" class="muted" style="text-align:center">Sin datos</td></tr>'}
+                                <td><span style="font-weight:600; color:#027a48">${r.c}</span></td>
+                                <td><span style="font-weight:600; color:#b54708">${r.prog}</span></td>
+                                <td><span style="font-weight:600; color:#667085">${r.pen}</span></td>
+                                <td>${r.vencidas ? `<span class="status-pill status-pill--issue" style="font-weight:600">${r.vencidas}</span>` : `<span style="color:#667085">0</span>`}</td>
+                                <td><strong>${r.av}%</strong></td>
+                            </tr>`).join('') : '<tr><td colspan="7" class="muted" style="text-align:center">Sin datos</td></tr>'}
                     </tbody>
                 </table>
             </div>
             ${renderSlideFooter()}
         </section>`;
+}
+
+function slideTemasDashboard(temas, acts) {
+    const rows = temas.map(t => {
+        const sub = acts.filter(a => a.temaId === t.id);
+        const total = sub.length;
+        const c = sub.filter(a => a.estatus === 'Concluida').length;
+        const p = sub.filter(a => a.estatus === 'En proceso').length;
+        const pen = sub.filter(a => a.estatus === 'Pendiente').length;
+        const i = sub.filter(a => a.estatus === 'Vencida' || (a.estatus !== 'Concluida' && daysFromToday(a.fechaCompromiso) < 0)).length;
+        const av = total ? Math.round(sub.reduce((s, a) => s + (a.avance || 0), 0) / total) : (t.avanceGeneral || 0);
+        const sem = semaforoTema(t, sub);
+        return { t, total, c, p, pen, i, av, sem };
+    }).sort((a, b) => a.av - b.av);
+
+    return `
+        <section class="internal-slide internal-slide--content">
+            ${renderSlideHeader('Dashboard general de Temas')}
+            <div class="internal-slide__body">
+                <h2>Resumen general y avance de Temas</h2>
+                <table class="slide-table slide-table--themes-dashboard">
+                    <thead>
+                        <tr>
+                            <th>Tema</th>
+                            <th>Responsable Principal</th>
+                            <th>Semáforo</th>
+                            <th>Actividades</th>
+                            <th>Concluidas</th>
+                            <th>En proceso</th>
+                            <th>Pendientes</th>
+                            <th>Vencidas</th>
+                            <th>Avance General</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.length ? rows.slice(0, 15).map(r => `
+                            <tr>
+                                <td><strong>${escape(r.t.tema)}</strong></td>
+                                <td>${escape(r.t.responsablePrincipal || 'Sin responsable')}</td>
+                                <td><span class="semaforo ${r.sem}"></span></td>
+                                <td>${r.total}</td>
+                                <td><span style="font-weight:600; color:#027a48">${r.c}</span></td>
+                                <td><span style="font-weight:600; color:#b54708">${r.p}</span></td>
+                                <td><span style="font-weight:600; color:#667085">${r.pen}</span></td>
+                                <td>${r.i ? `<span class="status-pill status-pill--issue" style="font-weight:600">${r.i}</span>` : `<span style="color:#667085">0</span>`}</td>
+                                <td>
+                                    <div style="display:flex; align-items:center; gap:8px">
+                                        <span style="font-weight:700; min-width:32px">${r.av}%</span>
+                                        <div class="track track--${percentTone(r.av)}" style="width:60px; height:8px; margin:0"><span style="width:${r.av}%"></span></div>
+                                    </div>
+                                </td>
+                            </tr>`).join('') : '<tr><td colspan="9" class="muted" style="text-align:center">Sin datos</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+            ${renderSlideFooter()}
+        </section>`;
+}
+
+function slideDashboardGraficos(acts, f) {
+    let filterName = 'NACIONAL';
+    if (f) {
+        if (f.tema) {
+            const found = _state.temas.find(t => String(t.id) === String(f.tema));
+            if (found) filterName = found.tema;
+        } else if (f.resp) {
+            filterName = f.resp;
+        }
+    }
+
+    const s = summary(acts);
+    const pctComplete = s.total ? Math.round((s.complete / s.total) * 100) : 0;
+    const temasCount = [...new Set(acts.map(a => a.temaId))].length;
+
+    // Calc priority counts and dominant
+    const priCounts = acts.reduce((m, a) => { m[a.prioridad || 'Baja'] = (m[a.prioridad || 'Baja'] || 0) + 1; return m; }, {});
+    let topPrioridad = 'Baja';
+    let topPrioridadCount = 0;
+    Object.entries(priCounts).forEach(([p, c]) => {
+        if (c > topPrioridadCount) {
+            topPrioridad = p;
+            topPrioridadCount = c;
+        }
+    });
+
+    // Calc status counts and dominant
+    const estCounts = acts.reduce((m, a) => { m[a.estatus] = (m[a.estatus] || 0) + 1; return m; }, {});
+    let topEstatus = 'Pendiente';
+    let topEstatusCount = 0;
+    Object.entries(estCounts).forEach(([e, c]) => {
+        if (c > topEstatusCount) {
+            topEstatus = e;
+            topEstatusCount = c;
+        }
+    });
+
+    const estatusLabels = {
+        'Pendiente': 'Pendiente',
+        'En proceso': 'En proceso',
+        'Concluida': 'Concluida',
+        'Vencida': 'Vencida'
+    };
+    const formattedEstatus = estatusLabels[topEstatus] || topEstatus;
+
+    return `
+        <section class="internal-slide internal-slide--content" style="background: #fafbfc;">
+            <!-- Header -->
+            ${renderSlideHeader('Indicadores ejecutivos')}
+
+            <div class="internal-slide__body" style="padding: 10px 24px; gap: 12px; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                <!-- Narrative Paragraph -->
+                <div class="slide-narrative" style="font-family: var(--font-h), Montserrat, sans-serif; font-size: 0.82rem; line-height: 1.5; color: #2d3748; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                    Para <span style="font-weight: 700; color: #8a0031;">${escape(filterName === 'NACIONAL' ? 'el portafolio nacional' : filterName)}</span>, coordinamos <span style="font-weight: 700; color: #8a0031;">${s.total} compromisos</span> de <span style="font-weight: 700; color: #8a0031;">${temasCount} temas</span>, alcanzando <span style="font-weight: 700; color: #8a0031;">${pctComplete}% de avance</span> (${s.complete} concluidos). La mayor carga se concentra en prioridad <span style="font-weight: 700; color: #8a0031;">${topPrioridad}</span> (${topPrioridadCount} tareas), con la mayoría de las actividades <span style="font-weight: 700; color: #8a0031;">${formattedEstatus === 'Concluida' ? 'concluidas' : formattedEstatus === 'En proceso' ? 'en proceso' : formattedEstatus === 'Vencida' ? 'vencidas' : 'pendientes'}</span> (${topEstatusCount}).
+                </div>
+
+                <!-- KPI Cards Row -->
+                <div class="slide-kpi-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;">
+                    <!-- Card 1 -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #8a0031; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
+                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #8a0031; line-height: 1;">${s.total}</span>
+                        <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
+                            TOTAL DE<br>ACTIVIDADES
+                        </div>
+                    </div>
+                    <!-- Card 2 -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #027a48; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
+                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #027a48; line-height: 1;">${s.complete}</span>
+                        <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
+                            ACTIVIDADES<br>CONCLUIDAS
+                        </div>
+                    </div>
+                    <!-- Card 3 -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #b48934; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
+                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #b48934; line-height: 1;">${pctComplete}%</span>
+                        <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
+                            AVANCE PROMEDIO<br>GLOBAL
+                        </div>
+                    </div>
+                    <!-- Card 4 -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #667085; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
+                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #667085; line-height: 1;">${s.progress + s.issue}</span>
+                        <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
+                            ACTIVIDADES<br>EN ATENCIÓN
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3-Column Layout -->
+                <div class="slide-dashboard-3cols" style="display: grid; grid-template-columns: 28% 44% 28%; gap: 14px; flex: 1; min-height: 0; overflow: hidden;">
+                    
+                    <!-- Column 1 (Left) -->
+                    <div style="display: flex; flex-direction: column; gap: 12px; min-height: 0;">
+                        <!-- Chart Box -->
+                        <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 215px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                            <h3 style="font-size: 10px; margin: 0 0 5px; color: #8a0031; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
+                                <span style="display: inline-block; width: 5px; height: 5px; background-color: #8a0031; border-radius: 50%;"></span>
+                                Estatus por Prioridad
+                            </h3>
+                            <div id="slide-dash-priority-chart" style="flex: 1; min-height: 0; width: 100%;"></div>
+                        </div>
+                        
+                        <!-- Mini Table Box -->
+                        <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 165px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); overflow: hidden;">
+                            <h3 style="font-size: 10px; margin: 0 0 8px; color: #b48934; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
+                                <span style="display: inline-block; width: 5px; height: 5px; background-color: #b48934; border-radius: 50%;"></span>
+                                Resumen por Prioridad
+                            </h3>
+                            <div style="flex: 1; overflow-y: auto;">
+                                <table style="width: 100%; border-collapse: collapse; font-family: Montserrat, sans-serif; font-size: 0.72rem; line-height: 1.3;">
+                                    <thead>
+                                        <tr style="border-bottom: 2px solid #b48934; text-align: left;">
+                                            <th style="padding: 4px 6px; font-weight: 700; color: #b48934; text-transform: uppercase; font-size: 0.65rem;">Prioridad</th>
+                                            <th style="padding: 4px 6px; font-weight: 700; color: #b48934; text-transform: uppercase; font-size: 0.65rem; text-align: right; width: 50px;">Total</th>
+                                            <th style="padding: 4px 6px; font-weight: 700; color: #b48934; text-transform: uppercase; font-size: 0.65rem; text-align: right; width: 60px;">Avance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${['Alta', 'Media', 'Baja'].map(p => {
+        const sub = acts.filter(a => (a.prioridad || 'Baja') === p);
+        const totalPri = sub.length;
+        const pctPri = s.total ? Math.round((totalPri / s.total) * 100) : 0;
+        const avPri = totalPri ? Math.round(sub.reduce((acc, x) => acc + (x.avance || 0), 0) / totalPri) : 0;
+        return `
+                                                <tr style="border-bottom: 1px solid #f0f2f5;">
+                                                    <td style="padding: 5px 6px; font-weight: 600; color: #2d3748;">
+                                                        <span style="display:inline-block; width: 6px; height: 6px; background-color: ${PRIORIDAD_COLOR[p] || '#667085'}; border-radius: 50%; margin-right: 5px; vertical-align: middle;"></span>
+                                                        ${p}
+                                                    </td>
+                                                    <td style="padding: 5px 6px; text-align: right; font-weight: 700; color: #2d3748;">
+                                                        ${totalPri} <span style="font-weight: 500; font-size: 0.6rem; color: #718096;">(${pctPri}%)</span>
+                                                    </td>
+                                                    <td style="padding: 5px 6px; text-align: right; font-weight: 700; color: ${avPri >= 75 ? C_SLIDE.ok : avPri >= 40 ? C_SLIDE.proceso : C_SLIDE.riesgo};">
+                                                        ${avPri}%
+                                                    </td>
+                                                </tr>
+                                            `;
+    }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2 (Center) -->
+                    <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 392px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); min-height: 0;">
+                        <h3 style="font-size: 10px; margin: 0 0 8px; color: #1e5b4f; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px; border-bottom: 2px solid #1e5b4f; padding-bottom: 4px;">
+                            <span style="display: inline-block; width: 5px; height: 5px; background-color: #1e5b4f; border-radius: 50%;"></span>
+                            Top 10 Actividades en Atención
+                        </h3>
+                        <div style="flex: 1; overflow-y: auto; min-height: 0;">
+                            <table style="width: 100%; border-collapse: collapse; font-family: Montserrat, sans-serif; font-size: 0.68rem; line-height: 1.3;">
+                                <thead style="position: sticky; top: 0; background: #fff; z-index: 2;">
+                                    <tr style="border-bottom: 1px solid #edf2f7; text-align: left;">
+                                        <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem;">Actividad</th>
+                                        <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem; width: 68px;">Compromiso</th>
+                                        <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem; width: 75px;">Tiempo</th>
+                                        <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem; width: 90px;">Responsable</th>
+                                        <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem; width: 45px; text-align: right;">Avance</th>
+                                        <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem; width: 68px; text-align: center;">Estatus</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${(() => {
+            const topActs = acts
+                .filter(a => a.estatus !== 'Concluida')
+                .sort((a, b) => (a.fechaCompromiso || '').localeCompare(b.fechaCompromiso || ''))
+                .slice(0, 10);
+            return topActs.length ? topActs.map(a => `
+                                            <tr style="border-bottom: 1px solid #f7fafc;">
+                                                <td style="padding: 6px 8px; vertical-align: top; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escape(a.actividad)}">
+                                                    <strong style="color: #2d3748;">${escape(a.actividad)}</strong>
+                                                    ${a.evidenciaUrl ? `
+                                                        <a href="${escape(a.evidenciaUrl)}" target="_blank" rel="noopener" style="color: #b48934; margin-left: 3px; display: inline-flex; align-items: center; text-decoration: none;">
+                                                            <i class="fa-solid fa-folder-open" style="font-size: 0.65rem;"></i>
+                                                        </a>
+                                                    ` : ''}
+                                                </td>
+                                                <td style="padding: 6px 8px; vertical-align: top; color: #4a5568;">${fmtDate(a.fechaCompromiso)}</td>
+                                                <td style="padding: 6px 8px; vertical-align: top; font-weight: 600; color: ${a.estatus === 'Vencida' ? C_SLIDE.riesgo : C_SLIDE.pendiente};">${getTiempoTexto(a)}</td>
+                                                <td style="padding: 6px 8px; vertical-align: top; color: #4a5568; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escape(a.responsable)}">${escape(a.responsable)}</td>
+                                                <td style="padding: 6px 8px; vertical-align: top; text-align: right; font-weight: 700; color: #2d3748;">${a.avance || 0}%</td>
+                                                <td style="padding: 6px 8px; vertical-align: top; text-align: center;">
+                                                    <span class="status-pill status-pill--${statusMode(a.estatus)}" style="font-size: 0.58rem; padding: 1px 5px; min-height: 16px; font-weight: 700;">
+                                                        ${escape(a.estatus)}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        `).join('') : `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #a0aec0; font-style: italic;">Sin actividades pendientes en atención</td></tr>`;
+        })()}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Column 3 (Right) -->
+                    <div style="display: flex; flex-direction: column; gap: 12px; min-height: 0;">
+                        <!-- Chart Box 1 (Donut) -->
+                        <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                            <h3 style="font-size: 10px; margin: 0 0 5px; color: #1e5b4f; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
+                                <span style="display: inline-block; width: 5px; height: 5px; background-color: #1e5b4f; border-radius: 50%;"></span>
+                                Participación por Estatus
+                            </h3>
+                            <div id="slide-dash-status-donut" style="flex: 1; min-height: 0; width: 100%;"></div>
+                        </div>
+                        
+                        <!-- Chart Box 2 (Horizontal Workload Bar) -->
+                        <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                            <h3 style="font-size: 10px; margin: 0 0 5px; color: #667085; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
+                                <span style="display: inline-block; width: 5px; height: 5px; background-color: #667085; border-radius: 50%;"></span>
+                                Actividades por Responsable
+                            </h3>
+                            <div id="slide-dash-workload-bar" style="flex: 1; min-height: 0; width: 100%;"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            ${renderSlideFooter()}
+        </section>`;
+}
+
+function initSlideDashboard(actividades) {
+    const priorityCont = document.getElementById('slide-dash-priority-chart');
+    const donutCont = document.getElementById('slide-dash-status-donut');
+    const workloadCont = document.getElementById('slide-dash-workload-bar');
+
+    if (!priorityCont || !donutCont || !workloadCont || !window.Highcharts) return;
+
+    // 1. Stacked Column Chart for Priority by Status
+    const priEst = {
+        'Concluida': [0, 0, 0], // [Alta, Media, Baja]
+        'En proceso': [0, 0, 0],
+        'Vencida': [0, 0, 0],
+        'Pendiente': [0, 0, 0]
+    };
+    const priMap = { 'Alta': 0, 'Media': 1, 'Baja': 2 };
+    actividades.forEach(a => {
+        const priIdx = priMap[a.prioridad || 'Baja'];
+        if (priIdx !== undefined) {
+            const est = a.estatus || 'Pendiente';
+            if (priEst[est]) {
+                priEst[est][priIdx]++;
+            }
+        }
+    });
+
+    const prioritySeries = Object.entries(priEst).map(([name, data]) => ({
+        name,
+        data,
+        color: ESTATUS_COLOR[name] || C_SLIDE.pendiente
+    })).filter(s => s.data.some(v => v > 0));
+
+    Highcharts.chart(priorityCont, {
+        chart: {
+            type: 'column',
+            style: { fontFamily: 'Montserrat, sans-serif' },
+            backgroundColor: '#ffffff',
+            height: 180,
+            spacing: [5, 5, 5, 5]
+        },
+        credits: { enabled: false },
+        title: { text: '' },
+        exporting: {
+            enabled: true,
+            buttons: {
+                contextButton: {
+                    menuItems: ['viewFullscreen']
+                }
+            }
+        },
+        xAxis: {
+            categories: ['Alta', 'Media', 'Baja'],
+            labels: { style: { fontSize: '8px', fontWeight: '600', color: '#2d3748' } }
+        },
+        yAxis: {
+            title: { text: '' },
+            allowDecimals: false,
+            labels: { style: { fontSize: '8px', color: '#718096' } }
+        },
+        tooltip: { shared: true },
+        plotOptions: {
+            column: {
+                stacking: 'normal',
+                borderRadius: 2,
+                borderWidth: 0,
+                groupPadding: 0.15,
+                pointPadding: 0.05
+            }
+        },
+        legend: {
+            enabled: true,
+            align: 'center',
+            verticalAlign: 'bottom',
+            itemStyle: { fontSize: '7.5px', fontWeight: '600', color: '#2d3748' },
+            margin: 5,
+            padding: 0
+        },
+        series: prioritySeries
+    });
+
+    // 2. Donut for Status Participation
+    const estatusCounts = actividades.reduce((m, a) => { m[a.estatus] = (m[a.estatus] || 0) + 1; return m; }, {});
+    const donutData = Object.entries(estatusCounts).map(([name, y]) => ({
+        name,
+        y,
+        color: ESTATUS_COLOR[name] || C_SLIDE.pendiente
+    })).filter(pt => pt.y > 0);
+
+    Highcharts.chart(donutCont, {
+        chart: {
+            type: 'pie',
+            style: { fontFamily: 'Montserrat, sans-serif' },
+            backgroundColor: '#ffffff',
+            height: 150,
+            spacing: [5, 5, 5, 5]
+        },
+        credits: { enabled: false },
+        title: { text: '' },
+        exporting: {
+            enabled: true,
+            buttons: {
+                contextButton: {
+                    menuItems: ['viewFullscreen']
+                }
+            }
+        },
+        tooltip: { pointFormat: '<b>{point.y}</b> ({point.percentage:.1f}%)' },
+        plotOptions: {
+            pie: {
+                innerSize: '55%',
+                borderWidth: 0,
+                dataLabels: {
+                    enabled: true,
+                    format: '{point.percentage:.0f}%',
+                    distance: -15,
+                    style: { fontSize: '8px', fontWeight: '700', color: '#ffffff', textOutline: 'none' }
+                },
+                showInLegend: true
+            }
+        },
+        legend: {
+            enabled: true,
+            align: 'center',
+            verticalAlign: 'bottom',
+            itemStyle: { fontSize: '7.5px', fontWeight: '600', color: '#2d3748' },
+            margin: 5,
+            padding: 0
+        },
+        series: [{ name: 'Actividades', data: donutData }]
+    });
+
+    // 3. Stacked Horizontal Bar for Workload by Responsible
+    const respMap = {};
+    actividades.forEach(a => {
+        const r = a.responsable || 'Sin responsable';
+        if (!respMap[r]) respMap[r] = { total: 0, Concluida: 0, 'En proceso': 0, Vencida: 0, Pendiente: 0 };
+        respMap[r].total++;
+        respMap[r][a.estatus]++;
+    });
+
+    const topResps = Object.entries(respMap)
+        .sort((a, b) => b[1].total - a[1].total)
+        .slice(0, 5)
+        .map(([name, counts]) => ({ name, counts }));
+
+    const respCategories = topResps.map(r => r.name.length > 12 ? r.name.slice(0, 12) + '…' : r.name);
+    const statusKeys = ['Concluida', 'En proceso', 'Vencida', 'Pendiente'];
+    const respSeries = statusKeys.map(status => ({
+        name: status,
+        color: ESTATUS_COLOR[status] || C_SLIDE.pendiente,
+        data: topResps.map(r => r.counts[status] || 0)
+    })).filter(s => s.data.some(v => v > 0));
+
+    Highcharts.chart(workloadCont, {
+        chart: {
+            type: 'bar',
+            style: { fontFamily: 'Montserrat, sans-serif' },
+            backgroundColor: '#ffffff',
+            height: 155,
+            spacing: [5, 5, 5, 5]
+        },
+        credits: { enabled: false },
+        title: { text: '' },
+        exporting: {
+            enabled: true,
+            buttons: {
+                contextButton: {
+                    menuItems: ['viewFullscreen']
+                }
+            }
+        },
+        xAxis: {
+            categories: respCategories,
+            labels: { style: { fontSize: '8px', fontWeight: '600', color: '#2d3748' } }
+        },
+        yAxis: {
+            title: { text: '' },
+            allowDecimals: false,
+            labels: { style: { fontSize: '8px', color: '#718096' } }
+        },
+        tooltip: { shared: true },
+        plotOptions: {
+            bar: {
+                stacking: 'normal',
+                borderRadius: 2,
+                borderWidth: 0,
+                groupPadding: 0.15,
+                pointPadding: 0.05
+            }
+        },
+        legend: { enabled: false }, // Already documented in donut legend
+        series: respSeries
+    });
+}
+
+function slideTreemap(temas, acts) {
+    return `
+        <section class="internal-slide internal-slide--content">
+            ${renderSlideHeader('Estructura jerárquica de temas y avance')}
+            <div class="internal-slide__body" style="gap: 0.5rem;">
+                <h2>Mapa de calor de actividades (Treemap)</h2>
+                <div id="slide-treemap-container" style="width: 100%; height: 500px; background: #fff; border-radius: 8px; border: 1px solid rgba(15, 23, 42, 0.08); overflow: hidden;"></div>
+            </div>
+            ${renderSlideFooter()}
+        </section>`;
+}
+
+function initSlideTreemap(temas, actividades) {
+    const cont = document.getElementById('slide-treemap-container');
+    if (!cont) return;
+
+    const activeTemaIds = new Set(temas.map(t => t.id));
+    const filteredActs = actividades.filter(a => activeTemaIds.has(a.temaId));
+
+    const data = [];
+
+    temas.forEach(t => {
+        const subActs = filteredActs.filter(a => a.temaId === t.id);
+        data.push({
+            id: `t_${t.id}`,
+            name: t.tema,
+            color: 'rgba(138, 0, 49, 0.06)',
+            value: subActs.length || 1
+        });
+    });
+
+    filteredActs.forEach(a => {
+        data.push({
+            id: `a_${a.id}`,
+            name: a.actividad,
+            parent: `t_${a.temaId}`,
+            value: 1,
+            colorValue: a.avance || 0,
+            responsable: a.responsable || 'Sin responsable',
+            estatus: a.estatus || 'Pendiente'
+        });
+    });
+
+    if (window.Highcharts) {
+        Highcharts.chart(cont, {
+            chart: {
+                style: { fontFamily: 'Montserrat, sans-serif' },
+                backgroundColor: '#ffffff',
+                type: 'treemap',
+                height: 480
+            },
+            credits: { enabled: false },
+            title: { text: '' },
+            exporting: { enabled: false },
+            colorAxis: {
+                min: 0,
+                max: 100,
+                stops: [
+                    [0, '#fee4e2'],
+                    [0.5, '#fef0c7'],
+                    [1, '#d1fadf']
+                ]
+            },
+            tooltip: {
+                useHTML: true,
+                pointFormat: `
+                    <div style="padding: 6px; font-family: Montserrat, sans-serif;">
+                        <b>{point.name}</b><br/>
+                        {if point.parent}
+                            Responsable: <b>{point.responsable}</b><br/>
+                            Progreso: <b>{point.colorValue}%</b><br/>
+                            Estatus: <b>{point.estatus}</b>
+                        {else}
+                            Actividades: <b>{point.value}</b>
+                        {/if}
+                    </div>
+                `
+            },
+            series: [{
+                layoutAlgorithm: 'squarified',
+                allowDrillToNode: true,
+                animationLimit: 120,
+                dataLabels: {
+                    enabled: true,
+                    align: 'left',
+                    verticalAlign: 'top',
+                    style: {
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        textOutline: 'none',
+                        color: '#243444'
+                    }
+                },
+                levelIsConstant: false,
+                levels: [{
+                    level: 1,
+                    dataLabels: {
+                        enabled: true,
+                        style: {
+                            fontSize: '13px',
+                            fontWeight: 'bold',
+                            color: '#8a0031'
+                        }
+                    },
+                    borderWidth: 2,
+                    borderColor: '#8a0031'
+                }, {
+                    level: 2,
+                    dataLabels: {
+                        enabled: true,
+                        style: {
+                            fontSize: '10px',
+                            fontWeight: 'normal',
+                            color: '#333'
+                        }
+                    },
+                    borderWidth: 1,
+                    borderColor: '#ffffff'
+                }],
+                data
+            }]
+        });
+    }
 }
 
 function slideTema(tema, rows) {
@@ -418,16 +1166,24 @@ function slideTema(tema, rows) {
                     ${renderSlideKpi('Atención', i, 'issue')}
                 </div>
                 <table class="slide-table slide-table--detail">
-                    <thead><tr><th>Actividad</th><th>Responsable</th><th>Compromiso</th><th>Avance</th><th>Estatus</th></tr></thead>
+                    <thead><tr><th>Actividad</th><th>Responsable</th><th>Compromiso</th><th>Tiempo</th><th>Avance</th><th>Estatus</th></tr></thead>
                     <tbody>
                         ${rows.length ? rows.slice(0, 12).map(r => `
                             <tr>
-                                <td><strong>${escape(r.actividad)}</strong></td>
+                                <td>
+                                    <strong>${escape(r.actividad)}</strong>
+                                    ${r.evidenciaUrl ? `
+                                        <a href="${escape(r.evidenciaUrl)}" target="_blank" rel="noopener" class="slide-evidencia-link" title="Ver evidencia en SharePoint" style="margin-left: 6px; color: #b48934; display: inline-flex; align-items: center; text-decoration: none;">
+                                            <i class="fa-solid fa-folder-open"></i>
+                                        </a>
+                                    ` : ''}
+                                </td>
                                 <td>${escape(r.responsable)}</td>
                                 <td>${fmtDate(r.fechaCompromiso)}</td>
+                                <td><span style="font-size: 0.72rem; font-weight: 600; color: ${r.estatus === 'Vencida' ? C_SLIDE.riesgo : r.estatus === 'Concluida' ? C_SLIDE.ok : C_SLIDE.pendiente}">${getTiempoTexto(r)}</span></td>
                                 <td>${r.avance || 0}%</td>
                                 <td><span class="status-pill status-pill--${statusMode(r.estatus)}">${escape(r.estatus)}</span></td>
-                            </tr>`).join('') : '<tr><td colspan="5" class="muted" style="text-align:center">Sin actividades</td></tr>'}
+                            </tr>`).join('') : '<tr><td colspan="6" class="muted" style="text-align:center">Sin actividades</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -566,6 +1322,78 @@ export async function descargarExcel() {
     toast('Excel descargado', 'ok');
 }
 
+// ============ PRESENTACION CONTROLLER ============
+
+function setPresentationControls(visible) {
+    const controls = document.getElementById('presentationControls');
+    if (!controls) return;
+    controls.style.display = visible ? 'flex' : 'none';
+    controls.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+function fitActiveSlide() {
+    if (!presentationMode || !presentationSlides.length) return;
+    const active = presentationSlides[presentationIndex];
+    if (!active) return;
+
+    const baseW = active.offsetWidth || 1280;
+    const baseH = active.offsetHeight || 720;
+    const baseScale = Math.min(window.innerWidth / baseW, window.innerHeight / baseH);
+    const scale = Math.max(0.2, baseScale * PRESENTATION_ZOOM_FACTOR);
+    active.style.setProperty('--presentation-scale', scale.toFixed(4));
+}
+
+function renderPresentationState() {
+    if (!presentationSlides.length) return;
+    presentationSlides.forEach((slide, idx) => {
+        slide.classList.toggle('active', idx === presentationIndex);
+        if (idx !== presentationIndex) slide.style.removeProperty('--presentation-scale');
+    });
+    const counter = document.getElementById('presentationCounter');
+    if (counter) counter.textContent = `${presentationIndex + 1}/${presentationSlides.length}`;
+    fitActiveSlide();
+}
+
+export async function enterPresentation(startAt = 0) {
+    presentationSlides = [...document.querySelectorAll('#internal-report-deck .internal-slide')];
+    if (!presentationSlides.length) return;
+    presentationMode = true;
+    presentationIndex = Math.min(Math.max(startAt, 0), presentationSlides.length - 1);
+    document.body.classList.add('presentation-mode');
+    setPresentationControls(true);
+    renderPresentationState();
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        try { await document.documentElement.requestFullscreen(); } catch (_) { }
+    }
+    requestAnimationFrame(fitActiveSlide);
+}
+
+export async function exitPresentation() {
+    if (!presentationMode) return;
+    presentationMode = false;
+    document.body.classList.remove('presentation-mode');
+    presentationSlides.forEach(slide => {
+        slide.classList.remove('active');
+        slide.style.removeProperty('--presentation-scale');
+    });
+    setPresentationControls(false);
+    if (document.fullscreenElement && document.exitFullscreen) {
+        try { await document.exitFullscreen(); } catch (_) { }
+    }
+}
+
+export function nextPresentationSlide() {
+    if (!presentationMode) return;
+    presentationIndex = Math.min(presentationSlides.length - 1, presentationIndex + 1);
+    renderPresentationState();
+}
+
+export function prevPresentationSlide() {
+    if (!presentationMode) return;
+    presentationIndex = Math.max(0, presentationIndex - 1);
+    renderPresentationState();
+}
+
 // ============ WIRE EVENTOS ============
 
 export function wireReportes() {
@@ -581,4 +1409,38 @@ export function wireReportes() {
     document.getElementById('rep-pdf')?.addEventListener('click', descargarPdf);
     document.getElementById('rep-ppt')?.addEventListener('click', descargarPpt);
     document.getElementById('rep-excel')?.addEventListener('click', descargarExcel);
+
+    // Presentation bindings
+    document.getElementById('rep-presentar')?.addEventListener('click', () => enterPresentation(0));
+    document.getElementById('btnPrevSlide')?.addEventListener('click', prevPresentationSlide);
+    document.getElementById('btnNextSlide')?.addEventListener('click', nextPresentationSlide);
+    document.getElementById('btnExitPresentation')?.addEventListener('click', exitPresentation);
+
+    window.addEventListener('resize', fitActiveSlide);
+    document.addEventListener('fullscreenchange', () => {
+        if (presentationMode && !document.fullscreenElement) {
+            exitPresentation();
+        }
+    });
+    document.addEventListener('keydown', (ev) => {
+        if (!presentationMode) return;
+        if (['ArrowRight', 'PageDown', ' '].includes(ev.key)) {
+            ev.preventDefault();
+            nextPresentationSlide();
+        } else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(ev.key)) {
+            ev.preventDefault();
+            prevPresentationSlide();
+        } else if (ev.key === 'Home') {
+            ev.preventDefault();
+            presentationIndex = 0;
+            renderPresentationState();
+        } else if (ev.key === 'End') {
+            ev.preventDefault();
+            presentationIndex = Math.max(0, presentationSlides.length - 1);
+            renderPresentationState();
+        } else if (ev.key === 'Escape') {
+            ev.preventDefault();
+            exitPresentation();
+        }
+    });
 }

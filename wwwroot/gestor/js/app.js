@@ -1,6 +1,6 @@
 // Orquestador principal.
 import { dataService, dataSource, isOnline } from './data-service.js';
-import { renderDashboard } from './dashboard.js?v=charts-v2';
+import { renderDashboard } from './dashboard.js?v=charts-v3';
 import { renderTemas, openTemaModal } from './temas.js';
 import * as actividadesModule from './actividades.js?v=tabla-v3';
 import { renderKanban, poblarFiltroKanban } from './kanban.js';
@@ -8,8 +8,8 @@ import { renderGantt } from './gantt.js';
 import { renderCalendario, calPrev, calNext } from './calendario.js';
 import { renderResponsables } from './responsables.js?v=performance-v1';
 import { renderAlertas } from './alertas.js?v=recordatorio-v1';
-import { setReportesData, wireReportes, renderDeck } from './reportes.js';
-import { wireChartFullscreenButtons } from './charts.js?v=charts-v2';
+import { setReportesData, wireReportes, renderDeck } from './reportes.js?v=presentation-v7';
+import { wireChartFullscreenButtons } from './charts.js?v=charts-v3';
 
 const state = { temas: [], actividades: [], view: 'dashboard' };
 

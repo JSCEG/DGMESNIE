@@ -153,6 +153,9 @@ export function gaugeAvance(actividades) {
         tooltip: { enabled: false },
         plotOptions: {
             solidgauge: {
+                animation: {
+                    duration: 1200
+                },
                 dataLabels: {
                     y: 5, borderWidth: 0, useHTML: true,
                     format: `<div style="text-align:center">
@@ -162,7 +165,14 @@ export function gaugeAvance(actividades) {
                 }
             }
         },
-        series: [{ data: [{ y: avance, color }] }]
+        series: [{
+            name: 'Avance',
+            data: [{ y: avance, color }],
+            animation: {
+                duration: 1200,
+                defer: 150
+            }
+        }]
     });
 }
 
@@ -351,10 +361,121 @@ export function wireChartFullscreenButtons() {
     fullscreenWired = true;
 }
 
+export function treemapTemas(temas, actividades) {
+    applyInstitutionalTheme();
+    const cont = document.getElementById('chart-treemap-temas');
+    if (!cont) return;
+
+    const activeTemaIds = new Set(temas.map(t => t.id));
+    const filteredActs = actividades.filter(a => activeTemaIds.has(a.temaId));
+
+    const data = [];
+
+    temas.forEach(t => {
+        const subActs = filteredActs.filter(a => a.temaId === t.id);
+        data.push({
+            id: `t_${t.id}`,
+            name: t.tema,
+            color: Highcharts.color(C.guinda).setOpacity(0.08).get(),
+            value: subActs.length || 1
+        });
+    });
+
+    filteredActs.forEach(a => {
+        data.push({
+            id: `a_${a.id}`,
+            name: a.actividad,
+            parent: `t_${a.temaId}`,
+            value: 1,
+            colorValue: a.avance || 0,
+            responsable: a.responsable || 'Sin responsable',
+            estatus: a.estatus || 'Pendiente'
+        });
+    });
+
+    Highcharts.chart(cont, {
+        chart: { ...BASE_CHART, type: 'treemap', height: 400 },
+        credits: { enabled: false },
+        title: { text: '' },
+        exporting: { enabled: false },
+        colorAxis: {
+            min: 0,
+            max: 100,
+            minColor: '#fdecec',
+            maxColor: '#dff7ea',
+            stops: [
+                [0, '#fbe3e1'],
+                [0.35, '#f8ecd4'],
+                [0.7, '#eaf6e1'],
+                [1, '#d6f0df']
+            ]
+        },
+        tooltip: {
+            useHTML: true,
+            pointFormat: `
+                <div style="padding: 6px; font-family: Montserrat, sans-serif;">
+                    <b>{point.name}</b><br/>
+                    {if point.parent}
+                        Responsable: <b>{point.responsable}</b><br/>
+                        Progreso: <b>{point.colorValue}%</b><br/>
+                        Estatus: <b>{point.estatus}</b>
+                    {else}
+                        Actividades: <b>{point.value}</b>
+                    {/if}
+                </div>
+            `
+        },
+        series: [{
+            layoutAlgorithm: 'squarified',
+            allowDrillToNode: true,
+            animationLimit: 120,
+            dataLabels: {
+                enabled: true,
+                align: 'left',
+                verticalAlign: 'top',
+                style: {
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    textOutline: 'none',
+                    color: C.texto
+                }
+            },
+            levelIsConstant: false,
+            levels: [{
+                level: 1,
+                dataLabels: {
+                    enabled: true,
+                    style: {
+                        fontSize: '13px',
+                        fontWeight: 'bold',
+                        color: '#6f1233'
+                    }
+                },
+                borderWidth: 2,
+                borderColor: C.guinda
+            }, {
+                level: 2,
+                dataLabels: {
+                    enabled: true,
+                    style: {
+                        fontSize: '10px',
+                        fontWeight: '600',
+                        color: '#22313f'
+                    }
+                },
+                borderWidth: 1,
+                borderColor: '#ffffff'
+            }],
+            data
+        }]
+    });
+}
+
 export function renderAllCharts(temas, actividades) {
     donutEstatus(actividades);
     gaugeAvance(actividades);
     piePrioridad(actividades);
     barrasResponsables(actividades);
     barrasApiladasTemas(temas, actividades);
+    treemapTemas(temas, actividades);
 }
