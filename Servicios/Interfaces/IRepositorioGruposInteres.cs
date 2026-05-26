@@ -12,5 +12,6 @@ namespace NSIE.Servicios.Interfaces
         Task ActualizarAsync(GrupoInteresForm form, int? usuarioId);
         Task EliminarAsync(int id);
         Task<GruposInteresDashboardVM> ObtenerDashboardDataAsync();
+        Task<List<UsuarioCorreoDto>> ObtenerUsuariosCorreoAsync();
     }
 }

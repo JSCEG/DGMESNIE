@@ -24,13 +24,29 @@
 
         /* Forzar z-index para que el modal y SweetAlert2 queden siempre arriba de la navegación y el backdrop */
         .modal {
-            z-index: 1060 !important;
+            z-index: 12000 !important;
         }
         .modal-backdrop {
-            z-index: 1050 !important;
+            z-index: 11990 !important;
         }
         .swal2-container {
-            z-index: 1070 !important;
+            z-index: 12100 !important;
+        }
+
+        #modalGEI .modal-dialog {
+            margin-top: 5.5rem;
+        }
+
+        #modalGEI.readonly-mode .modal-footer .btn-save-gei,
+        #modalGEI.readonly-mode .btn-add-project,
+        #modalGEI.readonly-mode .btn-remove-project {
+            display: none !important;
+        }
+
+        #modalGEI.readonly-mode input,
+        #modalGEI.readonly-mode textarea {
+            background: #f8f9fa;
+            pointer-events: none;
         }
 
         /* Tabs estilizados */
@@ -332,7 +348,7 @@
                     <div class="card shadow-sm border-0">
                         <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center font-weight-bold">
                             <span><i class="bi bi-diagram-3-fill me-2"></i>Proyectos y Empresas del Grupo</span>
-                            <button type="button" class="btn btn-sm btn-light font-weight-bold" onclick="agregarFilaProyecto()">
+                            <button type="button" class="btn btn-sm btn-light font-weight-bold btn-add-project" onclick="agregarFilaProyecto()">
                                 <i class="bi bi-plus-circle text-success"></i> Agregar Proyecto/Empresa
                             </button>
                         </div>
@@ -363,7 +379,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-premium btn-premium-guinda" onclick="guardarGEI()">
+                <button type="button" class="btn btn-premium btn-premium-guinda btn-save-gei" onclick="guardarGEI()">
                     <i class="bi bi-save-fill"></i> Guardar Cambios
                 </button>
             </div>
@@ -393,9 +409,11 @@
             let presentationMode = false;
             let presentationIndex = 0;
             let presentationSlides = [];
+            let usuariosCorreo = [];
 
             $(document).ready(function () {
                 cargarTablero();
+                cargarUsuariosCorreo();
 
                 // Resolver bug de superposición moviendo el modal al body
                 $('#modalGEI').appendTo('body');
@@ -484,6 +502,12 @@
                 });
             }
 
+            function cargarUsuariosCorreo() {
+                $.get('/GruposInteres/Api/UsuariosCorreo', function (data) {
+                    usuariosCorreo = Array.isArray(data) ? data : [];
+                });
+            }
+
             // Paleta de colores de fondo pastel para badges de país (texto siempre negro)
             const COUNTRY_PALETTE = [
                 '#FBBF24', '#34D399', '#60A5FA', '#F87171', '#A78BFA',
@@ -546,12 +570,19 @@
                             orderable: false,
                             className: 'text-center',
                             render: function(data, type, row) {
+                                const nombreSeguro = encodeURIComponent(row.nombre || '');
                                 return `
                                     <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button" class="btn btn-outline-secondary" onclick="abrirModalVer(${row.grupoInteresId})" title="Solo ver">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
                                         <button type="button" class="btn btn-outline-primary" onclick="abrirModalEditar(${row.grupoInteresId})" title="Editar / Ver Detalle">
                                             <i class="bi bi-pencil-square"></i>
                                         </button>
-                                        <button type="button" class="btn btn-outline-danger" onclick="eliminarGrupo(${row.grupoInteresId}, '${row.nombre}')" title="Eliminar">
+                                        <button type="button" class="btn btn-outline-success" onclick="abrirEnvioRegistro(${row.grupoInteresId})" title="Enviar por correo">
+                                            <i class="bi bi-envelope-at"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-danger" onclick="eliminarGrupo(${row.grupoInteresId}, decodeURIComponent('${nombreSeguro}'))" title="Eliminar">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
@@ -587,6 +618,7 @@
 
             // ── COMPORTAMIENTO DE FORMULARIO CRUD ─────────────────────────────────────
             window.abrirModalCrear = function() {
+                setModalReadonly(false);
                 $("#modalGEITitle").html('<i class="bi bi-plus-circle-fill text-success me-2"></i>Nuevo Grupo Económico de Interés');
                 $("#inputGrupoInteresId").val('');
                 $("#formGEI")[0].reset();
@@ -596,7 +628,18 @@
             };
 
             window.abrirModalEditar = function(id) {
+                setModalReadonly(false);
                 $("#modalGEITitle").html('<i class="bi bi-pencil-square text-warning me-2"></i>Detalles y Edición de Grupo de Interés');
+                cargarDetalleEnModal(id);
+            };
+
+            window.abrirModalVer = function(id) {
+                setModalReadonly(true);
+                $("#modalGEITitle").html('<i class="bi bi-eye-fill text-info me-2"></i>Vista de Grupo de Interés');
+                cargarDetalleEnModal(id);
+            };
+
+            function cargarDetalleEnModal(id) {
                 $("#formGEI")[0].reset();
                 $("#tbodyModalProyectos").empty();
 
@@ -627,7 +670,12 @@
                     Swal.close();
                     Swal.fire('Error', 'No se pudieron recuperar los detalles del registro.', 'error');
                 });
-            };
+            }
+
+            function setModalReadonly(isReadonly) {
+                $("#modalGEI").toggleClass('readonly-mode', isReadonly);
+                $("#formGEI").find('input:not([type="hidden"]), textarea').prop('readonly', isReadonly);
+            }
 
             window.agregarFilaProyecto = function(proyecto = null) {
                 const tbody = $("#tbodyModalProyectos");
@@ -649,7 +697,7 @@
                         <td><textarea class="form-control form-control-sm p-correo" rows="1" placeholder="Correo">${correo}</textarea></td>
                         <td><textarea class="form-control form-control-sm p-telefono" rows="1" placeholder="Teléfono">${telefono}</textarea></td>
                         <td class="text-center">
-                            <button type="button" class="btn btn-link btn-sm text-danger" onclick="eliminarFilaProyecto('${idRow}')">
+                            <button type="button" class="btn btn-link btn-sm text-danger btn-remove-project" onclick="eliminarFilaProyecto('${idRow}')">
                                 <i class="bi bi-trash fs-5"></i>
                             </button>
                         </td>
@@ -778,6 +826,76 @@
                 });
             };
 
+            window.abrirEnvioRegistro = function(id) {
+                const optionsHtml = usuariosCorreo.map(u => {
+                    const label = `${escapeHtml(u.nombre || u.correo)}${u.nombre ? ' - ' + escapeHtml(u.correo) : ''}`;
+                    return `
+                        <label class="d-flex align-items-start gap-2 py-1 text-start">
+                            <input type="checkbox" class="form-check-input mt-1 js-user-mail" value="${escapeAttr(u.correo)}">
+                            <span>${label}</span>
+                        </label>
+                    `;
+                }).join('');
+
+                Swal.fire({
+                    title: 'Enviar registro por correo',
+                    html: `
+                        <div class="text-start">
+                            <label class="form-label fw-bold">Usuarios del sistema</label>
+                            <div style="max-height: 220px; overflow:auto; border:1px solid #dee2e6; border-radius:8px; padding:10px; margin-bottom:12px;">
+                                ${optionsHtml || '<div class="text-muted small">No se pudieron cargar usuarios con correo.</div>'}
+                            </div>
+                            <label class="form-label fw-bold">Correos adicionales</label>
+                            <textarea id="correosAdicionales" class="form-control" rows="3" placeholder="correo@energia.gob.mx, otro@energia.gob.mx"></textarea>
+                            <div class="form-text">Separar por coma, punto y coma o salto de línea.</div>
+                        </div>
+                    `,
+                    width: 650,
+                    showCancelButton: true,
+                    confirmButtonColor: '#9B2247',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Enviar',
+                    cancelButtonText: 'Cancelar',
+                    preConfirm: () => {
+                        const seleccionados = $('.js-user-mail:checked').map(function() { return this.value; }).get();
+                        const adicionales = ($('#correosAdicionales').val() || '').split(/[;,\n\r]+/).map(x => x.trim()).filter(Boolean);
+                        const destinatarios = [...new Set([...seleccionados, ...adicionales].map(x => x.toLowerCase()))];
+                        if (!destinatarios.length) {
+                            Swal.showValidationMessage('Seleccione o escriba al menos un correo.');
+                            return false;
+                        }
+                        return destinatarios;
+                    }
+                }).then((result) => {
+                    if (!result.isConfirmed) return;
+
+                    Swal.fire({
+                        title: 'Enviando registro...',
+                        allowOutsideClick: false,
+                        didOpen: () => { Swal.showLoading(); }
+                    });
+
+                    $.ajax({
+                        url: `/GruposInteres/Api/EnviarRegistro/${id}`,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ Destinatarios: result.value }),
+                        headers: {
+                            "RequestVerificationToken": $('input[name="__RequestVerificationToken"]').val()
+                        },
+                        success: function(res) {
+                            Swal.close();
+                            Swal.fire('Enviado', res.mensaje, 'success');
+                        },
+                        error: function(err) {
+                            Swal.close();
+                            const errMsg = err.responseJSON && err.responseJSON.error ? err.responseJSON.error : 'No fue posible enviar el registro.';
+                            Swal.fire('Error de Envío', errMsg, 'error');
+                        }
+                    });
+                });
+            };
+
             // ── GENERACIÓN Y FILTRADO DEL DECK DE DIAPOSITIVAS (REPORTE) ──────────────
             function escapeHtml(str) {
                 if (!str) return '';
@@ -787,6 +905,10 @@
                     .replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#039;');
+            }
+
+            function escapeAttr(str) {
+                return escapeHtml(str).replace(/`/g, '&#096;');
             }
 
             function filterReportData() {

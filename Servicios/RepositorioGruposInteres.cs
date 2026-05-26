@@ -264,5 +264,28 @@ namespace NSIE.Servicios
                 throw;
             }
         }
+
+        public async Task<List<UsuarioCorreoDto>> ObtenerUsuariosCorreoAsync()
+        {
+            const string sql = @"
+                SELECT IdUsuario, Nombre, Correo
+                FROM dgmesnie.Usuario
+                WHERE Vigente = 1
+                  AND Correo IS NOT NULL
+                  AND LTRIM(RTRIM(Correo)) <> ''
+                ORDER BY Nombre, Correo";
+
+            try
+            {
+                using IDbConnection db = new SqlConnection(_connStr);
+                var usuarios = await db.QueryAsync<UsuarioCorreoDto>(sql);
+                return usuarios.ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener usuarios vigentes con correo.");
+                throw;
+            }
+        }
     }
 }
