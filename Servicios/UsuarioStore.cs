@@ -44,10 +44,10 @@ namespace NSIE.Servicios
             return new UsuarioApp
             {
                 Id = usuario.IdUsuario,
-                Usuario = usuario.Nombre,
-                Email = usuario.Correo,
-                EmailNormalizado = usuario.Correo?.ToUpperInvariant(),
-                PasswordHash = usuario.Clave
+                Usuario = usuario.Nombre ?? string.Empty,
+                Email = usuario.Correo ?? string.Empty,
+                EmailNormalizado = usuario.Correo?.ToUpperInvariant() ?? string.Empty,
+                PasswordHash = usuario.Clave ?? string.Empty
             };
         }
 
@@ -122,7 +122,7 @@ namespace NSIE.Servicios
 
         public Task SetEmailAsync(UsuarioApp user, string? email, CancellationToken cancellationToken)
         {
-            user.Email = email;
+            user.Email = email ?? string.Empty;
             return Task.CompletedTask;
         }
 
@@ -134,7 +134,7 @@ namespace NSIE.Servicios
         public Task SetNormalizedEmailAsync(UsuarioApp user, string? normalizedEmail, CancellationToken cancellationToken)
         {
             //throw new NotImplementedException();
-            user.EmailNormalizado = normalizedEmail;
+            user.EmailNormalizado = normalizedEmail ?? string.Empty;
             return Task.CompletedTask;
         }
         public Task SetNormalizedUserNameAsync(UsuarioApp user, string? normalizedName, CancellationToken cancellationToken)
@@ -146,13 +146,13 @@ namespace NSIE.Servicios
         public Task SetPasswordHashAsync(UsuarioApp user, string? passwordHash, CancellationToken cancellationToken)
         {
             //throw new NotImplementedException();
-            user.PasswordHash = passwordHash;
+            user.PasswordHash = passwordHash ?? string.Empty;
             return Task.CompletedTask;
         }
 
         public Task SetUserNameAsync(UsuarioApp user, string? userName, CancellationToken cancellationToken)
         {
-            user.Usuario = userName;
+            user.Usuario = userName ?? string.Empty;
             return Task.CompletedTask;
         }
 
@@ -166,9 +166,9 @@ namespace NSIE.Servicios
                 return IdentityResult.Failed(new IdentityError { Description = "Usuario no encontrado." });
             }
 
-            existente.Correo = user.Email;
-            existente.Clave = user.PasswordHash;
-            existente.Nombre = user.Usuario;
+            existente.Correo = user.Email ?? string.Empty;
+            existente.Clave = user.PasswordHash ?? string.Empty;
+            existente.Nombre = user.Usuario ?? string.Empty;
 
             var actualizado = await repositorioUsuarios.ActualizarUsuario(existente);
             return actualizado
