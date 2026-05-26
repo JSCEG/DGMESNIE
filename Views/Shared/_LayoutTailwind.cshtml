@@ -219,12 +219,14 @@
                                                     var notificationCount = data.totalUnreadCount;
                                                     var notifications = data.notifications;
                                                     var notificationBadge = $('#notification-count');
+                                                    var mobileNotificationBadge = $('#mobile-nav-notification-count');
 
                                                     if (notificationCount > 0) {
-                                                        notificationBadge.text(notificationCount);
-                                                        notificationBadge.removeClass('hidden');
+                                                        notificationBadge.text(notificationCount).removeClass('hidden');
+                                                        mobileNotificationBadge.text(notificationCount).removeClass('d-none');
                                                     } else {
                                                         notificationBadge.addClass('hidden');
+                                                        mobileNotificationBadge.addClass('d-none');
                                                     }
 
                                                     var notificationsList = $('#notifications-list');
@@ -296,13 +298,16 @@
                                                     notificationItem.remove();
 
                                                     var notificationBadge = $('#notification-count');
-                                                    var currentCount = parseInt(notificationBadge.text());
+                                                    var mobileNotificationBadge = $('#mobile-nav-notification-count');
+                                                    var currentCount = parseInt(notificationBadge.text() || mobileNotificationBadge.text() || "0");
                                                     var newCount = currentCount - 1;
 
                                                     if (newCount > 0) {
                                                         notificationBadge.text(newCount);
+                                                        mobileNotificationBadge.text(newCount);
                                                     } else {
                                                         notificationBadge.addClass('hidden');
+                                                        mobileNotificationBadge.addClass('d-none');
                                                     }
 
                                                     loadNotifications();
@@ -623,44 +628,67 @@
                             <!-- Custom Scripts - Toggle real para móviles -->
                             <script>
                                 document.addEventListener('DOMContentLoaded', function () {
-                                const sidebarToggle = document.getElementById('sidebarToggle');
-                                const sidebarMobile = document.getElementById('sidebarMobile');
+                                 const sidebarToggle = document.getElementById('sidebarToggle');
+                                 const sidebarMobile = document.getElementById('sidebarMobile');
 
-                                // Crear instancia única del offcanvas
-                                let offcanvasInstance = new bootstrap.Offcanvas(sidebarMobile, {
-                                backdrop: true,
-                                keyboard: true
-                                });
+                                 // Crear instancia única del offcanvas
+                                 let offcanvasInstance = new bootstrap.Offcanvas(sidebarMobile, {
+                                     backdrop: true,
+                                     keyboard: true
+                                 });
 
-                                // Event listener único para el toggle
-                                sidebarToggle.addEventListener('click', function (e) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                // Esta línea la añades para la animación del botón
-                                this.classList.toggle('is-active');
+                                 // Sincronizar estado del toggle con el offcanvas al cerrar/abrir desde fuera
+                                 sidebarMobile.addEventListener('hidden.bs.offcanvas', function () {
+                                     sidebarToggle.classList.remove('is-active');
+                                 });
+                                 sidebarMobile.addEventListener('shown.bs.offcanvas', function () {
+                                     sidebarToggle.classList.add('is-active');
+                                 });
 
-                                if (window.innerWidth >= 992) {
-                                // Desktop: toggle sidebar
-                                document.body.classList.toggle('sidebar-collapsed');
-                                } else {
-                                // Mobile: toggle offcanvas
-                                offcanvasInstance.toggle();
-                                }
+                                 // Event listener único para el toggle
+                                 sidebarToggle.addEventListener('click', function (e) {
+                                     e.preventDefault();
+                                     e.stopPropagation();
 
-                                // Esperar a que la animación/transición termine (ajusta ms si tu transición es distinta)
-                                setTimeout(() => {
-                                if (typeof sankeyChart !== 'undefined' && sankeyChart) sankeyChart.resize();
-                                if (typeof subSankeyChart !== 'undefined' && subSankeyChart) subSankeyChart.resize();
-                                }, 220);
-                                });
+                                     if (window.innerWidth >= 992) {
+                                         // Desktop: toggle sidebar
+                                         this.classList.toggle('is-active');
+                                         document.body.classList.toggle('sidebar-collapsed');
+                                     } else {
+                                         // Mobile: toggle offcanvas
+                                         offcanvasInstance.toggle();
+                                     }
 
-                                // Prevenir conflictos en collapse buttons
-                                document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(button => {
-                                button.addEventListener('click', function (e) {
-                                e.stopPropagation();
-                                // Bootstrap manejará el collapse automáticamente
-                                });
-                                });
+                                     // Esperar a que la animación/transición termine (ajusta ms si tu transición es distinta)
+                                     setTimeout(() => {
+                                         if (typeof sankeyChart !== 'undefined' && sankeyChart) sankeyChart.resize();
+                                         if (typeof subSankeyChart !== 'undefined' && subSankeyChart) subSankeyChart.resize();
+                                     }, 220);
+                                 });
+
+                                 // Event listener para el botón "Menú" de la barra inferior móvil
+                                 document.querySelectorAll('.mobile-menu-trigger').forEach(trigger => {
+                                     trigger.addEventListener('click', function (e) {
+                                         e.preventDefault();
+                                         e.stopPropagation();
+                                         offcanvasInstance.toggle();
+                                     });
+                                 });
+
+                                 // Prevenir conflictos en collapse buttons
+                                 document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(button => {
+                                     button.addEventListener('click', function (e) {
+                                         e.stopPropagation();
+                                         // Bootstrap manejará el collapse automáticamente
+                                     });
+                                 });
+
+                                 // Cerrar offcanvas al hacer click en cualquier enlace de navegación real (etiqueta a)
+                                 document.querySelectorAll('#sidebarMobile a').forEach(link => {
+                                     link.addEventListener('click', function() {
+                                         offcanvasInstance.hide();
+                                     });
+                                 });
 
                                 // Cerrar offcanvas en resize
                                 window.addEventListener('resize', function () {

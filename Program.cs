@@ -61,7 +61,10 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 //builder.Services.AddSession();
 //builder.Services.AddControllersWithViews();
 // Configura la serialización JSON globalmente
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    options.ModelBinderProviders.Insert(0, new NSIE.Filters.InvariantDecimalModelBinderProvider());
+});
 // .AddJsonOptions(options =>
 // {
 //     // Configura la serialización JSON aquítivar la conversión a camelCas
@@ -104,6 +107,7 @@ builder.Services.AddTransient<IRepositorioSIIL, RepositorioSIIL>();
 builder.Services.AddTransient<ManualSharePointImportService>();
 builder.Services.AddTransient<InformePormenorizadoImportService>();
 builder.Services.AddTransient<IRepositorioGestor, RepositorioGestor>();
+builder.Services.AddTransient<IRepositorioProyectosPrivados, RepositorioProyectosPrivados>();
 
 
 builder.Services.AddTransient<IUserStore<UsuarioApp>, UsuarioStore>();

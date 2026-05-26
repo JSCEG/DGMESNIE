@@ -161,7 +161,7 @@ namespace NSIE.Controllers
                 var id = await _repo.CrearActividadAsync(form, GetCurrentUserId());
                 var act = await _repo.ObtenerActividadPorIdAsync(id);
                 if (act != null)
-                    await NotificarAsignacionActividadAsync(act);
+                    await NotificarAsignacionActividadAsync(act, form.ResponsableId);
                 return CreatedAtAction(nameof(ApiActividad), new { id }, act);
             }
             catch (Exception ex)
@@ -186,8 +186,9 @@ namespace NSIE.Controllers
                 var actividadAnterior = await _repo.ObtenerActividadPorIdAsync(id);
                 await _repo.ActualizarActividadAsync(form, GetCurrentUserId());
                 var act = await _repo.ObtenerActividadPorIdAsync(id);
-                if (act != null && actividadAnterior?.ResponsableId != act.ResponsableId)
-                    await NotificarAsignacionActividadAsync(act);
+                var responsableCambioSolicitado = form.ResponsableId != actividadAnterior?.ResponsableId;
+                if (act != null && responsableCambioSolicitado && form.ResponsableId.HasValue)
+                    await NotificarAsignacionActividadAsync(act, form.ResponsableId);
                 return Json(act);
             }
             catch (Exception ex)
@@ -220,14 +221,36 @@ namespace NSIE.Controllers
             return int.TryParse(claim, out var id) ? id : null;
         }
 
-        private async Task NotificarAsignacionActividadAsync(GestorActividad actividad)
+        private async Task NotificarAsignacionActividadAsync(GestorActividad actividad, int? responsableIdOverride = null)
         {
-            if (!actividad.ResponsableId.HasValue)
+            var responsableId = actividad.ResponsableId ?? responsableIdOverride;
+            if (!responsableId.HasValue)
+            {
+                _logger.LogInformation(
+                    "Actividad {ActividadId} sin ResponsableId. No se envia correo.",
+                    actividad.ActividadId);
                 return;
+            }
 
-            var responsable = await _repo.ObtenerUsuarioVigentePorIdAsync(actividad.ResponsableId.Value);
-            if (responsable == null || string.IsNullOrWhiteSpace(responsable.Correo))
+            var responsable = await _repo.ObtenerUsuarioVigentePorIdAsync(responsableId.Value);
+            if (responsable == null)
+            {
+                _logger.LogWarning(
+                    "No se encontro usuario vigente para ResponsableId {ResponsableId} en actividad {ActividadId}.",
+                    responsableId.Value,
+                    actividad.ActividadId);
                 return;
+            }
+
+            var correoResponsable = responsable.Correo?.Trim();
+            if (string.IsNullOrWhiteSpace(correoResponsable))
+            {
+                _logger.LogWarning(
+                    "El responsable {ResponsableId} de la actividad {ActividadId} no tiene correo registrado.",
+                    responsableId.Value,
+                    actividad.ActividadId);
+                return;
+            }
 
             var asunto = $"Nueva asignacion de actividad: {actividad.Clave}";
             var portalUrl = Url.Action("Index", "Gestor", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
@@ -235,14 +258,20 @@ namespace NSIE.Controllers
 
             try
             {
-                await _servicioEmailSMTP.EnviarCorreo(responsable.Correo, asunto, cuerpo);
+                _logger.LogInformation(
+                    "Enviando correo de asignacion de actividad {ActividadId} a responsable {ResponsableId} ({Correo}).",
+                    actividad.ActividadId,
+                    responsableId.Value,
+                    correoResponsable);
+
+                await _servicioEmailSMTP.EnviarCorreo(correoResponsable, asunto, cuerpo);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
                     "La actividad {ActividadId} se guardo, pero no fue posible enviar correo al responsable {ResponsableId}.",
                     actividad.ActividadId,
-                    actividad.ResponsableId);
+                    responsableId.Value);
             }
         }
 

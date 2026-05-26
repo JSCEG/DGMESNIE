@@ -48,7 +48,13 @@ public class ValidacionInputFiltro : ActionFilterAttribute
         "Acceso.Heartbeat",
         "Acceso.ActualizarInicioSesion",
         "Gestor.ApiCrearActividad",
-        "Gestor.ApiActualizarActividad"
+        "Gestor.ApiActualizarActividad",
+        "ProyectosPrivados.ApiProyectos",
+        "ProyectosPrivados.ApiProyecto",
+        "ProyectosPrivados.ApiAcciones",
+        "ProyectosPrivados.ApiActualizarEstatusAccion",
+        "ProyectosPrivados.ApiCrearAccion",
+        "ProyectosPrivados.Minuta"
     };
 
     public ValidacionInputFiltro(ILogger<ValidacionInputFiltro> logger)
@@ -194,6 +200,9 @@ public class ValidacionInputFiltro : ActionFilterAttribute
         return headerKey.StartsWith("Sec-CH-UA", StringComparison.OrdinalIgnoreCase)
             || headerKey.StartsWith("X-ARR", StringComparison.OrdinalIgnoreCase)
             || headerKey.StartsWith("X-Forwarded", StringComparison.OrdinalIgnoreCase)
+            || headerKey.StartsWith("X-Original", StringComparison.OrdinalIgnoreCase)
+            || headerKey.StartsWith("X-Rewrite", StringComparison.OrdinalIgnoreCase)
+            || headerKey.StartsWith("X-MS-", StringComparison.OrdinalIgnoreCase)
             || string.Equals(headerKey, "X-Requested-With", StringComparison.OrdinalIgnoreCase);
     }
 

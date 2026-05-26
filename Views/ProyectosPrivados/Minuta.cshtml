@@ -1,0 +1,732 @@
+@using NSIE.Models.ProyectosPrivados
+@using Newtonsoft.Json
+@{
+    ViewData["Title"] = "Registrar Minuta";
+    var header = ViewData["HeaderViewModel"] as NSIE.Models.HeaderViewModel;
+}
+
+@section Styles {
+    <style>
+        .meeting-card {
+            background: #fff;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            margin-bottom: 24px;
+        }
+        .project-selection-box {
+            background: #FAFAFA;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+            position: relative;
+        }
+        .search-results-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: #FFF;
+            border: 1px solid #DADCE0;
+            border-radius: 0 0 6px 6px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            max-height: 250px;
+            overflow-y: auto;
+            display: none;
+            margin-top: -1px;
+        }
+        .search-results-list li {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #F1F3F4;
+            transition: background 0.2s;
+            font-size: 13px;
+        }
+        .search-results-list li:hover {
+            background: #F1F3F4;
+        }
+        .associated-project-card {
+            background: #FFF;
+            border: 1px solid #E0E0E0;
+            border-left: 5px solid var(--color-gobmx-guinda, #9B2247);
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+            transition: all 0.2s;
+        }
+        .associated-project-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+        }
+        .section-sub-title {
+            color: var(--color-gobmx-verde, #1E5B4F);
+            font-weight: 700;
+            border-bottom: 1px dashed #DDD;
+            padding-bottom: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+        .action-item-row {
+            background: #F8F9FA;
+            border: 1px solid #E5E5E5;
+            border-radius: 4px;
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .action-item-info {
+            font-size: 13px;
+        }
+        .action-item-info strong {
+            color: var(--color-gobmx-guinda, #9B2247);
+        }
+    </style>
+}
+
+@if (header != null)
+{
+    @await Html.PartialAsync("_ViewHeader", header)
+}
+
+<div class="container ps-5 pe-5 mb-5">
+    <!-- Breadcrumbs -->
+    <div class="alert alert-light mb-3" role="alert" style="padding-left: 15px;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb lp-5 mb-0">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "ProyectosPrivados")">Proyectos Privados</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Registrar Minuta</li>
+            </ol>
+        </nav>
+    </div>
+
+    <form id="frm-minuta">
+        @Html.AntiForgeryToken()
+
+        <!-- 1. Datos de la Reunión -->
+        <div class="meeting-card">
+            <h3 class="h5 pb-2 mb-3" style="color: var(--color-gobmx-guinda, #9B2247); border-bottom: 2px solid #E0E0E0; font-weight: 700;">
+                <i class="fas fa-handshake"></i> 1. Información General de la Reunión
+            </h3>
+            
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <div class="form-group">
+                        <label for="Reunion_Titulo" class="form-label" style="font-weight: 600;">Título o Asunto de la Reunión *</label>
+                        <input type="text" id="Reunion_Titulo" class="form-control" placeholder="Ej. Reunión de Seguimiento con Promoventes - Mayo 2026" required />
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="Reunion_Fecha" class="form-label" style="font-weight: 600;">Fecha de la Reunión *</label>
+                        <input type="date" id="Reunion_Fecha" class="form-control" value="@DateTime.Today.ToString("yyyy-MM-dd")" required />
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="Reunion_Modalidad" class="form-label" style="font-weight: 600;">Modalidad</label>
+                        <select id="Reunion_Modalidad" class="form-select">
+                            <option value="Presencial">Presencial</option>
+                            <option value="Virtual">Virtual</option>
+                            <option value="Híbrida">Híbrida</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="Reunion_Lugar" class="form-label" style="font-weight: 600;">Lugar / Plataforma</label>
+                        <input type="text" id="Reunion_Lugar" class="form-control" placeholder="Ej. Sala de Juntas 3er Piso o Teams" />
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-group">
+                        <label for="Reunion_SharePointUrl" class="form-label" style="font-weight: 600;">Enlace de Minuta (SharePoint)</label>
+                        <input type="url" id="Reunion_SharePointUrl" class="form-control" placeholder="Ej. https://sener.sharepoint.com/..." />
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="Reunion_Objetivo" class="form-label" style="font-weight: 600;">Objetivo de la Reunión</label>
+                        <textarea id="Reunion_Objetivo" class="form-control" rows="3" placeholder="Describa brevemente el propósito funcional de la sesión..."></textarea>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="Reunion_Asistentes" class="form-label" style="font-weight: 600;">Asistentes (Funcionarios y Externos)</label>
+                        <textarea id="Reunion_Asistentes" class="form-control" rows="3" placeholder="Nombre completo - Cargo (Ej. Ing. Juan Pérez - Director de Generación)"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Selección de Proyectos -->
+        <div class="project-selection-box">
+            <h3 class="h5 pb-2 mb-3" style="color: var(--color-gobmx-guinda, #9B2247); border-bottom: 2px solid #E0E0E0; font-weight: 700;">
+                <i class="fas fa-search-plus"></i> 2. Asociar Proyectos
+            </h3>
+            <p class="text-muted" style="font-size: 13px;">Busque y seleccione los proyectos que fueron discutidos en la reunión para registrar acuerdos específicos y actualizar sus características.</p>
+            
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <input type="text" id="project-search-input" class="form-control" placeholder="Escriba el nombre del proyecto a asociar..." autocomplete="off">
+                    </div>
+                    <ul class="search-results-list" id="project-search-results"></ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Lista de Proyectos y Acuerdos -->
+        <div id="projects-container-header" style="display: none;">
+            <h3 class="h5 pb-2 mb-3" style="color: #333; font-weight: 700;">
+                Proyectos Asociados a la Reunión y Acuerdos
+            </h3>
+        </div>
+        
+        <div id="projects-container">
+            <div id="no-projects-placeholder" class="text-center py-5 border rounded" style="background-color: #FDFDFD; border-style: dashed !important;">
+                <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                <p class="text-muted mb-0">No ha seleccionado ningún proyecto aún.</p>
+                <p class="text-muted" style="font-size: 12px;">Use el buscador superior para agregar proyectos.</p>
+            </div>
+        </div>
+
+        <!-- Acciones del Formulario -->
+        <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+            <a href="@Url.Action("Index", "ProyectosPrivados")" class="btn btn-secondary" style="background-color: var(--color-gobmx-gris, #98989A); border: none; font-weight: 600;">
+                Cancelar
+            </a>
+            <button type="button" id="btn-submit-minuta" class="btn btn-primary" style="background-color: var(--color-gobmx-guinda, #9B2247); border: none; font-weight: 600;">
+                <i class="fas fa-save"></i> Registrar Minuta y Guardar Cambios
+            </button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        // Catalog data serialized from C#
+        const catValoraciones = @Html.Raw(JsonConvert.SerializeObject(ViewBag.Valoraciones));
+        const catClasificaciones = @Html.Raw(JsonConvert.SerializeObject(ViewBag.Clasificaciones));
+        const catPrioridades = @Html.Raw(JsonConvert.SerializeObject(ViewBag.Prioridades));
+        const catSemaforos = @Html.Raw(JsonConvert.SerializeObject(ViewBag.Semaforos));
+        const catUsuarios = @Html.Raw(JsonConvert.SerializeObject(ViewBag.Usuarios));
+
+        let selectedProjects = [];
+
+        $(document).ready(function () {
+            const $searchInput = $('#project-search-input');
+            const $searchResults = $('#project-search-results');
+            const $container = $('#projects-container');
+            const $placeholder = $('#no-projects-placeholder');
+            const $header = $('#projects-container-header');
+
+            // ── Project Search ──
+            $searchInput.on('input', debounce(function () {
+                const query = $(this).val().trim();
+                if (query.length < 2) {
+                    $searchResults.hide();
+                    return;
+                }
+
+                $.ajax({
+                    type: 'GET',
+                    url: '@Url.Content("~/ProyectosPrivados/Api/Proyectos")?buscar=' + encodeURIComponent(query),
+                    dataType: 'json',
+                    success: function (projects) {
+                        $searchResults.empty();
+                        if (projects.length === 0) {
+                            $searchResults.append('<li>No se encontraron proyectos</li>');
+                        } else {
+                            projects.forEach(function (p) {
+                                // Skip already selected projects
+                                if (selectedProjects.some(sp => sp.proyectoId === p.ProyectoId)) return;
+
+                                const li = $('<li class="d-flex justify-content-between align-items-center">')
+                                    .html('<span><strong>' + p.Nombre + '</strong> <small class="text-muted">(' + (p.GrupoEconomico || p.Promovente || '') + ')</small></span>' +
+                                          '<span class="badge text-white" style="background-color:' + (p.SemaforoColorHex || '#808080') + '">' + (p.SemaforoNombre || 'Gris') + '</span>');
+                                
+                                li.on('click', function () {
+                                    addProjectToMeeting(p.ProyectoId);
+                                    $searchResults.hide();
+                                    $searchInput.val('');
+                                });
+                                $searchResults.append(li);
+                            });
+                        }
+                        $searchResults.show();
+                    },
+                    error: function () {
+                        $searchResults.html('<li>Error al buscar proyectos</li>').show();
+                    }
+                });
+            }, 300));
+
+            // Close search results when clicking outside
+            $(document).on('click', function (e) {
+                if (!$(e.target).closest('.project-selection-box').length) {
+                    $searchResults.hide();
+                }
+            });
+
+            // ── Add Project Card to UI ──
+            function addProjectToMeeting(projectId) {
+                // Fetch full project details to seed edit form
+                $.ajax({
+                    type: 'GET',
+                    url: '@Url.Content("~/ProyectosPrivados/Api/Proyectos/")' + projectId,
+                    dataType: 'json',
+                    success: function (p) {
+                        const projData = {
+                            proyectoId: p.ProyectoId,
+                            nombre: p.Nombre,
+                            status: p.Status || '',
+                            capacidadMW: p.CapacidadMW || null,
+                            categoria: p.Categoria || '',
+                            clasificacionId: p.ClasificacionId || null,
+                            prioridadId: p.PrioridadId || null,
+                            semaforoId: p.SemaforoId || null,
+                            siguientesPasos: p.SiguientesPasos || '',
+                            valoracionMinutaId: null,
+                            valoracionTexto: '',
+                            resumenAcuerdos: '',
+                            compromisosSiguientesPasos: '',
+                            riesgosObservaciones: '',
+                            accionesAInsertar: []
+                        };
+
+                        selectedProjects.push(projData);
+                        renderProjectCard(projData);
+                        checkPlaceholder();
+                    },
+                    error: function () {
+                        Swal.fire('Error', 'No se pudo cargar el detalle del proyecto.', 'error');
+                    }
+                });
+            }
+
+            function renderProjectCard(proj) {
+                const cardId = `proj-card-${proj.proyectoId}`;
+                const card = $('<div class="associated-project-card">').attr('id', cardId);
+
+                // Card Title Bar
+                const titleBar = $('<div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">')
+                    .html(`<h4 class="h5 mb-0" style="color: var(--color-gobmx-guinda, #9B2247); font-weight: 700;">
+                                <i class="fas fa-file-invoice"></i> ${proj.nombre}
+                           </h4>
+                           <button type="button" class="btn btn-sm btn-outline-danger btn-remove-proj" data-id="${proj.proyectoId}">
+                                <i class="fas fa-trash-alt"></i> Quitar
+                           </button>`);
+                card.append(titleBar);
+
+                // Grid layout for fields
+                const grid = $('<div class="row g-3">');
+
+                // 1. Acuerdos y Seguimiento
+                const colAcuerdos = $('<div class="col-md-7">')
+                    .append('<h5 class="section-sub-title"><i class="fas fa-clipboard-list"></i> 1. Acuerdos y Seguimiento en la Reunión</h5>');
+
+                // Valoración Minuta Row
+                const valRow = $('<div class="row g-2 mb-2">');
+                
+                // Dropdown Valoraciones
+                const valOptions = catValoraciones.map(item => `<option value="${item.Id}">${item.Nombre}</option>`).join('');
+                valRow.append(`<div class="col-md-6">
+                    <div class="form-group mb-2">
+                        <label class="form-label small font-weight-bold">Valoración de Minuta</label>
+                        <select class="form-select form-select-sm input-val-id" data-id="${proj.proyectoId}">
+                            <option value="">-- Seleccionar --</option>
+                            ${valOptions}
+                        </select>
+                    </div>
+                </div>`);
+
+                // Valoración Texto
+                valRow.append(`<div class="col-md-6">
+                    <div class="form-group mb-2">
+                        <label class="form-label small font-weight-bold">Valoración Texto libre</label>
+                        <input type="text" class="form-control form-control-sm input-val-text" data-id="${proj.proyectoId}" placeholder="Ej. Avance sustantivo" />
+                    </div>
+                </div>`);
+                colAcuerdos.append(valRow);
+
+                // Textareas
+                colAcuerdos.append(`<div class="form-group mb-2">
+                    <label class="form-label small font-weight-bold">Resumen de Acuerdos</label>
+                    <textarea class="form-control form-control-sm input-resumen" data-id="${proj.proyectoId}" rows="2" placeholder="Qué se acordó en esta sesión..."></textarea>
+                </div>`);
+
+                colAcuerdos.append(`<div class="form-group mb-2">
+                    <label class="form-label small font-weight-bold">Compromisos de Reunión / Siguientes Pasos</label>
+                    <textarea class="form-control form-control-sm input-compromisos" data-id="${proj.proyectoId}" rows="2" placeholder="Pasos inmediatos acordados en minuta..."></textarea>
+                </div>`);
+
+                colAcuerdos.append(`<div class="form-group mb-2">
+                    <label class="form-label small font-weight-bold">Riesgos u Observaciones</label>
+                    <textarea class="form-control form-control-sm input-riesgos" data-id="${proj.proyectoId}" rows="2" placeholder="Riesgos identificados, bloqueos o retrasos..."></textarea>
+                </div>`);
+
+                grid.append(colAcuerdos);
+
+                // 2. Actualización de Datos de Proyecto
+                const colCampos = $('<div class="col-md-5">')
+                    .append('<h5 class="section-sub-title"><i class="fas fa-edit"></i> 2. Actualización de Campos</h5>');
+
+                // Status, MW, Categoria Row
+                const fieldsRow1 = $('<div class="row g-2 mb-2">');
+                fieldsRow1.append(`<div class="col-md-4">
+                    <label class="form-label small font-weight-bold">Estatus</label>
+                    <input type="text" class="form-control form-control-sm input-status" data-id="${proj.proyectoId}" value="${proj.status}" placeholder="Status" />
+                </div>`);
+                fieldsRow1.append(`<div class="col-md-4">
+                    <label class="form-label small font-weight-bold">Capacidad (MW)</label>
+                    <input type="number" step="0.001" class="form-control form-control-sm input-mw" data-id="${proj.proyectoId}" value="${proj.capacidadMW || ''}" placeholder="MW" />
+                </div>`);
+                fieldsRow1.append(`<div class="col-md-4">
+                    <label class="form-label small font-weight-bold">Categoría</label>
+                    <input type="text" class="form-control form-control-sm input-categoria" data-id="${proj.proyectoId}" value="${proj.categoria}" placeholder="Cat" />
+                </div>`);
+                colCampos.append(fieldsRow1);
+
+                // Dropdowns row: Clasificacion, Prioridad, Semaforo
+                const fieldsRow2 = $('<div class="row g-2 mb-2">');
+                const clasOptions = catClasificaciones.map(item => `<option value="${item.Id}" ${item.Id === proj.clasificacionId ? 'selected' : ''}>${item.Nombre}</option>`).join('');
+                fieldsRow2.append(`<div class="col-md-4">
+                    <label class="form-label small font-weight-bold">Clasificación</label>
+                    <select class="form-select form-select-sm input-clasif" data-id="${proj.proyectoId}">
+                        <option value="">-- Seleccionar --</option>
+                        ${clasOptions}
+                    </select>
+                </div>`);
+
+                const prioOptions = catPrioridades.map(item => `<option value="${item.Id}" ${item.Id === proj.prioridadId ? 'selected' : ''}>${item.Nombre}</option>`).join('');
+                fieldsRow2.append(`<div class="col-md-4">
+                    <label class="form-label small font-weight-bold">Prioridad</label>
+                    <select class="form-select form-select-sm input-prior" data-id="${proj.proyectoId}">
+                        <option value="">-- Seleccionar --</option>
+                        ${prioOptions}
+                    </select>
+                </div>`);
+
+                const semOptions = catSemaforos.map(item => `<option value="${item.Id}" ${item.Id === proj.semaforoId ? 'selected' : ''}>${item.Nombre}</option>`).join('');
+                fieldsRow2.append(`<div class="col-md-4">
+                    <label class="form-label small font-weight-bold">Semáforo</label>
+                    <select class="form-select form-select-sm input-sem" data-id="${proj.proyectoId}">
+                        <option value="">-- Seleccionar --</option>
+                        ${semOptions}
+                    </select>
+                </div>`);
+                colCampos.append(fieldsRow2);
+
+                colCampos.append(`<div class="form-group mb-2">
+                    <label class="form-label small font-weight-bold">Siguientes Pasos (General Ficha)</label>
+                    <textarea class="form-control form-control-sm input-sig-pasos" data-id="${proj.proyectoId}" rows="2" placeholder="Siguientes pasos en el expediente...">${proj.siguientesPasos}</textarea>
+                </div>`);
+
+                grid.append(colCampos);
+
+                // 3. Spawning follow-up actions (compromisos)
+                const colAcciones = $('<div class="col-12 mt-3">')
+                    .append('<h5 class="section-sub-title"><i class="fas fa-tasks"></i> 3. Generar Tareas de Seguimiento</h5>');
+                
+                const actionsContainer = $('<div class="actions-list-container mb-3">').attr('id', `actions-list-${proj.proyectoId}`);
+                colAcciones.append(actionsContainer);
+
+                // Sub-form to add tasks
+                const userOptions = catUsuarios.map(item => `<option value="${item.Id}">${item.Nombre}</option>`).join('');
+                const addActionForm = $(`<div class="row g-2 p-3 border rounded mb-2 bg-light">
+                    <div class="col-md-3">
+                        <input type="text" class="form-control form-control-sm new-act-title" placeholder="Título de la tarea (Corto) *" />
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control form-control-sm new-act-desc" placeholder="Descripción de la actividad..." />
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm new-act-resp">
+                            <option value="">-- Asignar Responsable * --</option>
+                            ${userOptions}
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex gap-1">
+                        <input type="date" class="form-control form-control-sm new-act-date" />
+                        <button type="button" class="btn btn-sm btn-success btn-add-action-item" data-id="${proj.proyectoId}" style="background-color:var(--color-gobmx-verde, #1E5B4F); border:none;">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </div>`);
+                colAcciones.append(addActionForm);
+
+                grid.append(colAcciones);
+                card.append(grid);
+                $container.append(card);
+            }
+
+            // Remove Project click handler
+            $container.on('click', '.btn-remove-proj', function () {
+                const id = $(this).data('id');
+                selectedProjects = selectedProjects.filter(sp => sp.proyectoId !== id);
+                $(`#proj-card-${id}`).remove();
+                checkPlaceholder();
+            });
+
+            // Add Follow-up Action to a Project
+            $container.on('click', '.btn-add-action-item', function () {
+                const projId = $(this).data('id');
+                const card = $(`#proj-card-${projId}`);
+                const title = card.find('.new-act-title').val().trim();
+                const desc = card.find('.new-act-desc').val().trim();
+                const respSelect = card.find('.new-act-resp');
+                const respId = respSelect.val();
+                const respNombre = respSelect.find('option:selected').text();
+                const date = card.find('.new-act-date').val();
+
+                if (!title || !respId) {
+                    Swal.fire('Advertencia', 'El título y el responsable son obligatorios para generar una tarea.', 'warning');
+                    return;
+                }
+
+                const proj = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (proj) {
+                    const actionItem = {
+                        titulo: title,
+                        descripcion: desc,
+                        responsableUsuarioId: String(respId),
+                        responsableNombre: respNombre,
+                        fechaCompromiso: date ? date : null
+                    };
+                    proj.accionesAInsertar.push(actionItem);
+
+                    // Clear fields
+                    card.find('.new-act-title').val('');
+                    card.find('.new-act-desc').val('');
+                    respSelect.val('');
+                    card.find('.new-act-date').val('');
+
+                    renderActionItemsList(proj);
+                }
+            });
+
+            // Remove follow-up action
+            $container.on('click', '.btn-remove-action-item', function () {
+                const projId = $(this).data('proj-id');
+                const idx = $(this).data('idx');
+                const proj = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (proj) {
+                    proj.accionesAInsertar.splice(idx, 1);
+                    renderActionItemsList(proj);
+                }
+            });
+
+            function renderActionItemsList(proj) {
+                const listContainer = $(`#actions-list-${proj.proyectoId}`);
+                listContainer.empty();
+
+                proj.accionesAInsertar.forEach((act, index) => {
+                    const row = $('<div class="action-item-row">')
+                        .html(`<div class="action-item-info">
+                                    <strong>Compromiso:</strong> ${act.titulo} | 
+                                    <strong>Responsable:</strong> ${act.responsableNombre} | 
+                                    <strong>Fecha Compromiso:</strong> ${act.fechaCompromiso ? act.fechaCompromiso : 'Sin fecha'}
+                                    ${act.descripcion ? `<br/><small class="text-muted">${act.descripcion}</small>` : ''}
+                               </div>
+                               <button type="button" class="btn btn-sm btn-link text-danger btn-remove-action-item" data-proj-id="${proj.proyectoId}" data-idx="${index}">
+                                    <i class="fas fa-times-circle"></i> Eliminar
+                               </button>`);
+                    listContainer.append(row);
+                });
+            }
+
+            function checkPlaceholder() {
+                if (selectedProjects.length === 0) {
+                    $placeholder.show();
+                    $header.hide();
+                } else {
+                    $placeholder.hide();
+                    $header.show();
+                }
+            }
+
+            // ── Update values in memory on input change ──
+            $container.on('change', '.input-val-id', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.valoracionMinutaId = $(this).val() ? parseInt($(this).val()) : null;
+            });
+            $container.on('input', '.input-val-text', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.valoracionTexto = $(this).val();
+            });
+            $container.on('input', '.input-resumen', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.resumenAcuerdos = $(this).val();
+            });
+            $container.on('input', '.input-compromisos', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.compromisosSiguientesPasos = $(this).val();
+            });
+            $container.on('input', '.input-riesgos', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.riesgosObservaciones = $(this).val();
+            });
+            // Update fields
+            $container.on('input', '.input-status', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.status = $(this).val();
+            });
+            $container.on('input', '.input-mw', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.capacidadMW = $(this).val() ? parseFloat($(this).val()) : null;
+            });
+            $container.on('input', '.input-categoria', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.categoria = $(this).val();
+            });
+            $container.on('change', '.input-clasif', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.clasificacionId = $(this).val() ? parseInt($(this).val()) : null;
+            });
+            $container.on('change', '.input-prior', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.prioridadId = $(this).val() ? parseInt($(this).val()) : null;
+            });
+            $container.on('change', '.input-sem', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.semaforoId = $(this).val() ? parseInt($(this).val()) : null;
+            });
+            $container.on('input', '.input-sig-pasos', function () {
+                const projId = $(this).data('id');
+                const p = selectedProjects.find(sp => sp.proyectoId === projId);
+                if (p) p.siguientesPasos = $(this).val();
+            });
+
+            // ── Form Submission ──
+            $('#btn-submit-minuta').on('click', function () {
+                const title = $('#Reunion_Titulo').val().trim();
+                const fecha = $('#Reunion_Fecha').val();
+                
+                if (!title || !fecha) {
+                    Swal.fire('Faltan Datos', 'El título y la fecha de la reunión son obligatorios.', 'warning');
+                    return;
+                }
+
+                if (selectedProjects.length === 0) {
+                    Swal.fire('Faltan Asociar Proyectos', 'Debe asociar al menos un proyecto para registrar la minuta.', 'warning');
+                    return;
+                }
+
+                const payload = {
+                    Titulo: title,
+                    FechaReunion: fecha,
+                    Modalidad: $('#Reunion_Modalidad').val(),
+                    Lugar: $('#Reunion_Lugar').val().trim(),
+                    Objetivo: $('#Reunion_Objetivo').val().trim(),
+                    Asistentes: $('#Reunion_Asistentes').val().trim(),
+                    SharePointUrl: $('#Reunion_SharePointUrl').val().trim(),
+                    ProyectoEntradas: selectedProjects.map(sp => {
+                        return {
+                            ProyectoId: sp.proyectoId,
+                            ValoracionMinutaId: sp.valoracionMinutaId,
+                            ValoracionTexto: sp.valoracionTexto.trim(),
+                            ResumenAcuerdos: sp.resumenAcuerdos.trim(),
+                            CompromisosSiguientesPasos: sp.compromisosSiguientesPasos.trim(),
+                            RiesgosObservaciones: sp.riesgosObservaciones.trim(),
+                            Status: sp.status.trim() || null,
+                            CapacidadMW: sp.capacidadMW,
+                            Categoria: sp.categoria.trim() || null,
+                            ClasificacionId: sp.clasificacionId,
+                            PrioridadId: sp.prioridadId,
+                            SemaforoId: sp.semaforoId,
+                            SiguientesPasos: sp.siguientesPasos.trim() || null,
+                            AccionesAInsertar: sp.accionesAInsertar
+                        };
+                    })
+                };
+
+                Swal.fire({
+                    title: '¿Guardar Minuta?',
+                    text: 'Se registrará la reunión, las entradas de bitácora y se aplicarán los cambios a los proyectos.',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: 'var(--color-gobmx-guinda, #9B2247)',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Sí, registrar',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // Show Loading
+                        Swal.fire({
+                            title: 'Guardando minuta...',
+                            html: 'Por favor espere mientras procesamos la información.',
+                            allowOutsideClick: false,
+                            didOpen: () => {
+                                Swal.showLoading();
+                            }
+                        });
+
+                        $.ajax({
+                            type: 'POST',
+                            url: '@Url.Action("Minuta", "ProyectosPrivados")',
+                            contentType: 'application/json',
+                            data: JSON.stringify(payload),
+                            headers: {
+                                "RequestVerificationToken": $('input[name="__RequestVerificationToken"]').val()
+                            },
+                            success: function (res) {
+                                Swal.close();
+                                if (res.success) {
+                                    Swal.fire({
+                                        title: 'Minuta Registrada',
+                                        text: 'La reunión se registró de forma correcta.',
+                                        icon: 'success',
+                                        confirmButtonColor: 'var(--color-gobmx-guinda, #9B2247)',
+                                        confirmButtonText: 'Aceptar'
+                                    }).then(() => {
+                                        window.location.href = '@Url.Action("Index", "ProyectosPrivados")';
+                                    });
+                                } else {
+                                    Swal.fire('Error', res.error || 'Ocurrió un error inesperado.', 'error');
+                                }
+                            },
+                            error: function (xhr) {
+                                Swal.close();
+                                console.error("Error guardando minuta: ", xhr.responseText);
+                                Swal.fire('Error', 'Hubo un error al registrar la reunión.', 'error');
+                            }
+                        });
+                    }
+                });
+            });
+
+            // Debouncer helper
+            function debounce(func, wait) {
+                let timeout;
+                return function () {
+                    const context = this, args = arguments;
+                    clearTimeout(timeout);
+                    timeout = setTimeout(function () {
+                        func.apply(context, args);
+                    }, wait);
+                };
+            }
+        });
+    </script>
+}

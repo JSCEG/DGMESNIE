@@ -158,6 +158,15 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
             Url = Url.Action("Index", "CNE"),
             Icono = "bi-search",
             Etiqueta = "Registro Público"
+        },
+        new
+        {
+            Categoria = "Proyectos",
+            Titulo = "Proyectos Privados Firmes",
+            Descripcion = "Administración, seguimiento regulatorio y bitácora de la cartera de proyectos privados firmes.",
+            Url = Url.Action("Index", "ProyectosPrivados"),
+            Icono = "bi-shield-check",
+            Etiqueta = "Control Directivo"
         }
     };
     var totalSecciones = Model.Secciones.Count;
@@ -187,13 +196,7 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
 
     <section id="hero-home" aria-label="Inicio principal">
         <div class="hero-home__background" aria-hidden="true">
-            <div class="hero-home__media">
-                <iframe id="heroBackgroundVideo"
-                        src="https://www.youtube-nocookie.com/embed/3Os0pbDTubQ?autoplay=1&mute=1&controls=0&loop=1&playlist=3Os0pbDTubQ&playsinline=1&rel=0&modestbranding=1&enablejsapi=1"
-                        title="Video institucional de fondo" tabindex="-1"
-                        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                        referrerpolicy="strict-origin-when-cross-origin">
-                </iframe>
+            <div class="hero-home__media" id="heroMediaContainer">
             </div>
             <div class="hero-home__brand-strip">
                 <img src="https://cdn.sassoapps.com/dgmesnie/logo_gob.png" alt="Gobierno de México"
@@ -275,39 +278,30 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
                                         <div class="card-icon"><i class="bi bi-folder2-open"></i></div>
                                         <div>
                                             <h3 class="card-title mb-1">Accesos de SharePoint</h3>
-                                            <p class="text-muted small mb-0">Accesos directos a carpetas institucionales
-                                                priorizadas.</p>
-                                            </div>
+                                            <p class="text-muted small mb-0">Accesos directos a carpetas institucionales priorizadas.</p>
                                         </div>
                                     </div>
-                                    <div class="card-body">
-                                        <div class="home-document-groups">
-                                            @foreach (var grupo in gruposSharePoint)
-                                            {
-                                                <article class="home-document-group">
-                                                    <header class="home-document-group__header">
-                                                        <span class="home-document-group__eyebrow">@grupo.Key</span>
-                                                    </header>
-                                                    <div class="home-document-group__list">
-                                                        @foreach (var documento in grupo)
-                                                        {
-                                                            <a class="home-document-link" href="@documento.Url" target="_blank"
-                                                               rel="noopener noreferrer">
-                                                                <span class="home-document-link__icon"><i class="bi bi-folder"></i></span>
-                                                                <span class="home-document-link__copy">
-                                                                    <strong>@documento.Titulo</strong>
-                                                                    <small>@documento.Descripcion</small>
-                                                                </span>
-                                                                <span class="home-document-link__arrow"><i
-                                                                    class="bi bi-chevron-right"></i></span>
-                                                                </a>
-                                                            }
-                                                        </div>
-                                                    </article>
-                                                }
-                                            </div>
-                                        </div>
-                                    </section>
+                                </div>
+                                <div class="card-body">
+                                    <div class="home-document-groups">
+                                        @foreach (var documento in documentosSharePoint)
+                                        {
+                                            <a class="home-document-link" href="@documento.Url" target="_blank"
+                                               rel="noopener noreferrer">
+                                                <span class="home-document-link__icon"><i class="bi bi-folder"></i></span>
+                                                <div class="home-document-link__copy">
+                                                    <small class="home-document-link__section">@documento.Grupo</small>
+                                                    <strong>@documento.Titulo</strong>
+                                                    <span>@documento.Descripcion</span>
+                                                </div>
+                                                <span class="home-document-link__arrow">
+                                                    <i class="bi bi-box-arrow-up-right"></i>
+                                                </span>
+                                            </a>
+                                        }
+                                    </div>
+                                </div>
+                            </section>
                                 </div>
                             </div>
                         </div>
@@ -334,7 +328,6 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
                                 $(function () {
                                     const fondosBienvenida = @Html.Raw(JsonConvert.SerializeObject(fondosBienvenida));
                                     const $heroWelcomePanel = $('#heroWelcomePanel');
-                                    const heroVideoFrame = document.getElementById('heroBackgroundVideo');
 
                                     function aplicarFondoBienvenida(item) {
                                         if (!item || !$heroWelcomePanel.length) {
@@ -349,17 +342,28 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
                                         aplicarFondoBienvenida(fondosBienvenida[0]);
                                     }
 
-                                    if (heroVideoFrame) {
-                                        heroVideoFrame.addEventListener('load', function () {
-                                            const playerWindow = heroVideoFrame.contentWindow;
+                                    // Cargar video de fondo de YouTube dinámicamente solo en pantallas de escritorio (>= 992px)
+                                    if (window.innerWidth >= 992) {
+                                        const mediaContainer = document.getElementById('heroMediaContainer');
+                                        if (mediaContainer) {
+                                            const iframe = document.createElement('iframe');
+                                            iframe.id = 'heroBackgroundVideo';
+                                            iframe.src = 'https://www.youtube-nocookie.com/embed/3Os0pbDTubQ?autoplay=1&mute=1&controls=0&loop=1&playlist=3Os0pbDTubQ&playsinline=1&rel=0&modestbranding=1&enablejsapi=1';
+                                            iframe.title = 'Video institucional de fondo';
+                                            iframe.tabIndex = -1;
+                                            iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+                                            iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
 
-                                            if (!playerWindow) {
-                                                return;
-                                            }
+                                            iframe.addEventListener('load', function () {
+                                                const playerWindow = iframe.contentWindow;
+                                                if (playerWindow) {
+                                                    playerWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
+                                                    playerWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
+                                                }
+                                            });
 
-                                            playerWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
-                                            playerWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
-                                        });
+                                            mediaContainer.appendChild(iframe);
+                                        }
                                     }
                                 });
                         </script>

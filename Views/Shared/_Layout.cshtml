@@ -408,10 +408,10 @@
    <!-- SIDEBAR PARA MÓVILES - Sin iconos solo en secciones -->
 <div class="offcanvas offcanvas-start offcanvas-custom d-lg-none" tabindex="-1" id="sidebarMobile">
     <div class="offcanvas-header border-bottom">
-        <h5 class="offcanvas-title text-dark">
+        <h5 class="offcanvas-title text-white">
             <i class="bi bi-speedometer2 me-2"></i>Menú Principal
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>
 
     <div class="offcanvas-body p-0 custom-scroll">
@@ -429,18 +429,23 @@
 
                 @foreach (var seccion in seccionesUsuario)
                 {
+                    var modulosVisibles = seccion.Modulos.ToList();
+                    var isActiveSection = modulosVisibles.Any(m =>
+                        (m.Vistas != null && m.Vistas.Any(v => currentController == v.VistaController && currentAction == v.VistaAction)) ||
+                        (currentController == m.Controller && currentAction == m.Action));
+
                     var seccionIdMobile = $"mobile-seccion-{seccion.Id}";
                     <li class="nav-item">
-                        <button class="nav-link d-flex justify-content-between align-items-center w-100 border-0 bg-transparent text-start"
+                        <button class="nav-link d-flex justify-content-between align-items-center w-100 border-0 bg-transparent text-start @(isActiveSection ? "active" : "")"
                                 type="button"
                                 data-bs-toggle="collapse" 
                                 data-bs-target="#@seccionIdMobile" 
-                                aria-expanded="false">
+                                aria-expanded="@(isActiveSection.ToString().ToLower())">
                             <span>@seccion.Titulo</span>
                             <i class="bi bi-chevron-down"></i>
                         </button>
 
-                        <div class="collapse" id="@seccionIdMobile">
+                        <div class="collapse @(isActiveSection ? "show" : "")" id="@seccionIdMobile">
                             <ul class="nav flex-column ms-3">
                                 @foreach (var modulo in seccion.Modulos)
                                 {
@@ -520,6 +525,31 @@
         </nav>
     </div>
 </div>
+
+<!-- Menú Inferior Móvil (Bottom Navigation Bar) -->
+<nav class="mobile-bottom-nav d-md-none" aria-label="Navegación móvil inferior">
+    <a href="@Url.Action("Index", "Home")" class="mobile-bottom-nav__item @(currentController == "Home" ? "is-active" : "")">
+        <i class="bi bi-house-door-fill"></i>
+        <span>Inicio</span>
+    </a>
+    <button type="button" class="mobile-bottom-nav__item mobile-menu-trigger">
+        <i class="bi bi-grid-fill"></i>
+        <span>Menú</span>
+    </button>
+    <a href="@Url.Action("Asistente", "Chat")" class="mobile-bottom-nav__item @(currentController == "Chat" ? "is-active" : "")">
+        <i class="bi bi-chat-left-text-fill"></i>
+        <span>Asistente</span>
+    </a>
+    <a href="@Url.Action("AllNotifications", "Usuarios")" class="mobile-bottom-nav__item position-relative @(currentController == "Usuarios" && currentAction == "AllNotifications" ? "is-active" : "")">
+        <i class="bi bi-bell-fill"></i>
+        <span class="mobile-badge icon-badge d-none" id="mobile-nav-notification-count">0</span>
+        <span>Avisos</span>
+    </a>
+    <a href="@Url.Action("ModeloCuentaCompuesto", "Usuarios", new { id = ViewData["IDUsuario"] })" class="mobile-bottom-nav__item @(currentController == "Usuarios" && currentAction == "ModeloCuentaCompuesto" ? "is-active" : "")">
+        <i class="bi bi-person-circle"></i>
+        <span>Perfil</span>
+    </a>
+</nav>
 
     <!-- CONTENIDO PRINCIPAL -->
     <main class="main-content content flex-fill">
@@ -829,12 +859,14 @@
                         var notificationCount = data.totalUnreadCount;
                         var notifications = data.notifications;
                         var notificationBadge = $('#notification-count');
+                        var mobileNotificationBadge = $('#mobile-nav-notification-count');
 
                         if (notificationCount > 0) {
-                            notificationBadge.text(notificationCount);
-                            notificationBadge.removeClass('hidden');
+                            notificationBadge.text(notificationCount).removeClass('hidden');
+                            mobileNotificationBadge.text(notificationCount).removeClass('d-none');
                         } else {
                             notificationBadge.addClass('hidden');
+                            mobileNotificationBadge.addClass('d-none');
                         }
 
                         var notificationsList = $('#notifications-list');
@@ -911,13 +943,16 @@
                         notificationItem.remove();
 
                         var notificationBadge = $('#notification-count');
-                        var currentCount = parseInt(notificationBadge.text());
+                        var mobileNotificationBadge = $('#mobile-nav-notification-count');
+                        var currentCount = parseInt(notificationBadge.text() || mobileNotificationBadge.text() || "0");
                         var newCount = currentCount - 1;
 
                         if (newCount > 0) {
                             notificationBadge.text(newCount);
+                            mobileNotificationBadge.text(newCount);
                         } else {
                             notificationBadge.addClass('hidden');
+                            mobileNotificationBadge.addClass('d-none');
                         }
 
                         window.loadNotifications();
@@ -1254,12 +1289,19 @@
                 keyboard: true
             });
 
+            // Sincronizar estado del toggle con el offcanvas al cerrar/abrir desde fuera
+            sidebarMobile.addEventListener('hidden.bs.offcanvas', function () {
+                sidebarToggle.classList.remove('is-active');
+            });
+            sidebarMobile.addEventListener('shown.bs.offcanvas', function () {
+                sidebarToggle.classList.add('is-active');
+            });
+
             // Event listener único para el toggle
             sidebarToggle.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 if (window.innerWidth < 992) {
-                    this.classList.toggle('is-active');
                     offcanvasInstance.toggle();
                 }
 
@@ -1270,11 +1312,27 @@
                 }, 220);
             });
 
+            // Event listener para el botón "Menú" de la barra inferior móvil
+            document.querySelectorAll('.mobile-menu-trigger').forEach(trigger => {
+                trigger.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    offcanvasInstance.toggle();
+                });
+            });
+
             // Prevenir conflictos en collapse buttons
             document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(button => {
                 button.addEventListener('click', function(e) {
                     e.stopPropagation();
                     // Bootstrap manejará el collapse automáticamente
+                });
+            });
+
+            // Cerrar offcanvas al hacer click en cualquier enlace de navegación real (etiqueta a)
+            document.querySelectorAll('#sidebarMobile a').forEach(link => {
+                link.addEventListener('click', function() {
+                    offcanvasInstance.hide();
                 });
             });
 
