@@ -273,8 +273,9 @@ namespace NSIE.Servicios
                 WHERE Vigente = 1
                   AND Correo IS NOT NULL
                   AND LTRIM(RTRIM(Correo)) <> ''
-                  AND LOWER(REPLACE(Correo, ' ', '')) NOT LIKE '%consultapublica%'
-                  AND LOWER(REPLACE(Nombre, ' ', '')) NOT LIKE '%consultapublica%'
+                  AND LOWER(LTRIM(RTRIM(Correo))) <> 'invitado@energia.gob.mx'
+                  AND LOWER(REPLACE(Correo, ' ', '')) COLLATE Latin1_General_CI_AI NOT LIKE '%consultapublica%'
+                  AND LOWER(REPLACE(Nombre, ' ', '')) COLLATE Latin1_General_CI_AI NOT LIKE '%consultapublica%'
                 ORDER BY Nombre, Correo";
 
             try
