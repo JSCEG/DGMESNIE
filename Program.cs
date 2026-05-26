@@ -108,6 +108,8 @@ builder.Services.AddTransient<ManualSharePointImportService>();
 builder.Services.AddTransient<InformePormenorizadoImportService>();
 builder.Services.AddTransient<IRepositorioGestor, RepositorioGestor>();
 builder.Services.AddTransient<IRepositorioProyectosPrivados, RepositorioProyectosPrivados>();
+builder.Services.AddTransient<IRepositorioGruposInteres, RepositorioGruposInteres>();
+
 
 
 builder.Services.AddTransient<IUserStore<UsuarioApp>, UsuarioStore>();

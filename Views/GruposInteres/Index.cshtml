@@ -1,0 +1,1292 @@
+@using Newtonsoft.Json
+@{
+    ViewData["Title"] = "Grupos de Interés";
+}
+
+@await Html.PartialAsync("_ViewHeader", ViewData["HeaderViewModel"] as NSIE.Models.HeaderViewModel)
+
+<!-- Estilos personalizados para estética premium y z-index modal -->
+@section Styles {
+    <link rel="stylesheet" href="~/gestor/css/gestor.css" asp-append-version="true" />
+    <style>
+        :root {
+            --color-guinda: #9B2247;
+            --color-verde: #1E5B4F;
+            --color-dorado: #A57F2C;
+            --color-gris-claro: #F8F9FA;
+            --color-guinda-light: rgba(155, 34, 71, 0.05);
+            --color-verde-light: rgba(30, 91, 79, 0.05);
+            --color-dorado-light: rgba(165, 127, 44, 0.05);
+            --border-radius: 12px;
+            --shadow-premium: 0 8px 30px rgba(0, 0, 0, 0.05);
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Forzar z-index para que el modal y SweetAlert2 queden siempre arriba de la navegación y el backdrop */
+        .modal {
+            z-index: 1060 !important;
+        }
+        .modal-backdrop {
+            z-index: 1050 !important;
+        }
+        .swal2-container {
+            z-index: 1070 !important;
+        }
+
+        /* Tabs estilizados */
+        .custom-nav-tabs {
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 2rem;
+            gap: 0.5rem;
+        }
+
+        .custom-nav-tabs .nav-link {
+            border: none;
+            color: #666;
+            font-weight: 600;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px 8px 0 0;
+            position: relative;
+            transition: var(--transition-smooth);
+            background: transparent;
+        }
+
+        .custom-nav-tabs .nav-link:hover {
+            color: var(--color-guinda);
+            background: var(--color-guinda-light);
+        }
+
+        .custom-nav-tabs .nav-link.active {
+            color: var(--color-guinda);
+            background: transparent;
+        }
+
+        .custom-nav-tabs .nav-link.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background-color: var(--color-guinda);
+            border-radius: 3px 3px 0 0;
+        }
+
+        /* Tabla y paneles */
+        .glass-panel {
+            background: #ffffff;
+            border-radius: var(--border-radius);
+            padding: 2rem;
+            box-shadow: var(--shadow-premium);
+            border: 1px solid rgba(0, 0, 0, 0.03);
+            margin-bottom: 2rem;
+        }
+
+        .btn-premium {
+            padding: 0.6rem 1.4rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: var(--transition-smooth);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.95rem;
+        }
+
+        .btn-premium-guinda {
+            background-color: var(--color-guinda);
+            color: #ffffff;
+            border: 1px solid var(--color-guinda);
+        }
+
+        .btn-premium-guinda:hover {
+            background-color: #821c3b;
+            color: #ffffff;
+            transform: translateY(-2px);
+        }
+
+        .btn-premium-verde {
+            background-color: var(--color-verde);
+            color: #ffffff;
+            border: 1px solid var(--color-verde);
+        }
+
+        .btn-premium-verde:hover {
+            background-color: #17483e;
+            color: #ffffff;
+            transform: translateY(-2px);
+        }
+
+        .btn-premium-outline {
+            background-color: transparent;
+            color: var(--color-guinda);
+            border: 1.5px solid var(--color-guinda);
+        }
+
+        .btn-premium-outline:hover {
+            background-color: var(--color-guinda-light);
+            color: var(--color-guinda);
+            transform: translateY(-2px);
+        }
+
+        .modal-xl-custom {
+            max-width: 90%;
+        }
+
+        /* Estilos específicos de tablas de diapositiva */
+        .slide-table th {
+            background-color: #9B2247 !important;
+            color: #ffffff !important;
+            text-transform: uppercase;
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            padding: 10px;
+        }
+        .slide-table td {
+            padding: 10px;
+            border-bottom: 1px solid #edf0f3;
+            color: #243444;
+        }
+
+        /* Forzar aspect-ratio 16:9 en cada diapositiva cuando se muestra en el deck */
+        #internal-report-deck .internal-slide {
+            width: min(100%, 1280px);
+            min-height: unset;
+            aspect-ratio: 16 / 9;
+        }
+    </style>
+}
+
+<div class="shell-page-container py-3">
+    <!-- Pestañas -->
+    <ul class="nav custom-nav-tabs" id="gruposTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tablero-tab" data-bs-toggle="tab" data-bs-target="#tablero-pane" type="button" role="tab" aria-controls="tablero-pane" aria-selected="true">
+                <i class="bi bi-table me-2"></i>Tablero de Gestión
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="reporte-tab" data-bs-toggle="tab" data-bs-target="#reporte-pane" type="button" role="tab" aria-controls="reporte-pane" aria-selected="false">
+                <i class="bi bi-bar-chart-line-fill me-2"></i>Reporte Ejecutivo
+            </button>
+        </li>
+    </ul>
+
+    <!-- Contenido de Pestañas -->
+    <div class="tab-content" id="gruposTabsContent">
+        
+        <!-- Pestaña 1: Tablero de Gestión (CRUD) -->
+        <div class="tab-pane fade show active" id="tablero-pane" role="tabpanel" aria-labelledby="tablero-tab" tabindex="0">
+            <div class="glass-panel">
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+                    <h3 class="mb-0 text-guinda font-headings"><i class="bi bi-folder-check me-2"></i>Grupos Económicos de Interés Registrados</h3>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-premium btn-premium-guinda" onclick="abrirModalCrear()">
+                            <i class="bi bi-plus-circle-fill"></i> Nuevo Grupo Económico
+                        </button>
+                        <a href="@Url.Action("ExportarExcel", "GruposInteres")" class="btn btn-premium btn-premium-verde">
+                            <i class="bi bi-file-earmark-excel-fill"></i> Exportar a Excel
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Filtros del DataTable -->
+                <div class="row g-3 mb-4 p-3 bg-light rounded border">
+                    <div class="col-md-6 col-lg-4">
+                        <label class="form-label font-weight-bold">Filtrar por Origen / País:</label>
+                        <select id="filtroOrigen" class="form-select">
+                            <option value="">Todos los países</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 col-lg-4">
+                        <label class="form-label font-weight-bold">Filtrar por Carga de Proyectos:</label>
+                        <select id="filtroProyectos" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="con">Con proyectos registrados</option>
+                            <option value="sin">Sin proyectos registrados</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tabla Principal -->
+                <div class="table-responsive">
+                    <table id="tablaGEIs" class="table table-striped table-hover align-middle w-100" style="font-family: 'Noto Sans', sans-serif;">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 5%">ID</th>
+                                <th style="width: 35%">Grupo Económico / Desarrollador</th>
+                                <th style="width: 15%">País de Origen</th>
+                                <th style="width: 20%">Contacto Principal</th>
+                                <th style="width: 10%" class="text-center">Proyectos</th>
+                                <th style="width: 15%" class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Se llena por AJAX -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pestaña 2: Reporte Ejecutivo (Dashboard Homologado con Diapositivas) -->
+        <div class="tab-pane fade" id="reporte-pane" role="tabpanel" aria-labelledby="reporte-tab" tabindex="0">
+            <!-- Filtros de Reporte -->
+            <div class="border rounded-3 bg-white p-4 shadow-sm mb-4">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+                    <div>
+                        <h4 class="mb-1">Reporte Ejecutivo e Institucional</h4>
+                        <p class="text-muted mb-0">Visualiza la vista previa estilo presentación, descarga en formato PDF o envía por correo.</p>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-outline-secondary" id="rep-refresh"><i class="bi bi-arrow-clockwise me-1"></i>Actualizar</button>
+                        <button type="button" class="btn btn-outline-primary" id="rep-presentar"><i class="bi bi-play-fill me-1"></i>Presentar</button>
+                        <button type="button" class="btn btn-outline-danger" id="rep-pdf"><i class="bi bi-file-pdf me-1"></i>PDF</button>
+                        <button type="button" class="btn btn-premium btn-premium-outline" id="rep-correo"><i class="bi bi-envelope-at-fill me-1"></i>Enviar por Correo</button>
+                    </div>
+                </div>
+                
+                <div class="row g-3">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label small fw-bold text-muted">Búsqueda rápida</label>
+                        <input type="search" id="rep-filtro-busqueda" class="form-control" placeholder="Buscar por desarrollador, contacto..." />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label small fw-bold text-muted">País de origen</label>
+                        <select id="rep-filtro-origen" class="form-select">
+                            <option value="">Todos los países</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label small fw-bold text-muted">Carga de proyectos</label>
+                        <select id="rep-filtro-proyectos" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="con">Con proyectos registrados</option>
+                            <option value="sin">Sin proyectos registrados</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border rounded-3 bg-white p-4 shadow-sm">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0 fw-bold">Vista previa del reporte</h5>
+                    <span id="rep-summary" class="text-muted small">—</span>
+                </div>
+                
+                <!-- Deck of slides wrapper -->
+                <div id="internal-report-deck" class="internal-report-deck" style="background: #e9ecef; padding: 2rem; border-radius: 12px; display: flex; flex-direction: column; gap: 2rem; align-items: center;">
+                    <!-- Slides will be rendered dynamically here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CRUD (CREAR / EDITAR GRUPO DE INTERÉS) -->
+<div class="modal fade" id="modalGEI" tabindex="-1" aria-labelledby="modalGEITitle" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="modalGEITitle"><i class="bi bi-folder2-open me-2"></i>Detalle de Grupo de Interés</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body bg-light">
+                <form id="formGEI">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" id="inputGrupoInteresId" name="GrupoInteresId" />
+
+                    <!-- Datos del Grupo -->
+                    <div class="card mb-4 shadow-sm border-0">
+                        <div class="card-header bg-secondary text-white font-weight-bold">
+                            <i class="bi bi-info-circle-fill me-2"></i>Datos Generales del Grupo Económico
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-8">
+                                    <label for="inputNombre" class="form-label font-weight-bold">Nombre del Grupo / Desarrollador *</label>
+                                    <input type="text" class="form-control" id="inputNombre" required maxlength="250">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="inputOrigen" class="form-label font-weight-bold">País de Origen</label>
+                                    <input type="text" class="form-control" id="inputOrigen" placeholder="Ej. España, México" maxlength="150">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="inputContacto" class="form-label font-weight-bold">Contacto Principal</label>
+                                    <input type="text" class="form-control" id="inputContacto">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="inputCorreo" class="form-label font-weight-bold">Correo Electrónico</label>
+                                    <input type="email" class="form-control" id="inputCorreo" placeholder="correo@ejemplo.com">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="inputTelefono" class="form-label font-weight-bold">Teléfono de Contacto</label>
+                                    <input type="text" class="form-control" id="inputTelefono">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Proyectos Hijos -->
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center font-weight-bold">
+                            <span><i class="bi bi-diagram-3-fill me-2"></i>Proyectos y Empresas del Grupo</span>
+                            <button type="button" class="btn btn-sm btn-light font-weight-bold" onclick="agregarFilaProyecto()">
+                                <i class="bi bi-plus-circle text-success"></i> Agregar Proyecto/Empresa
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover table-bordered align-middle mb-0" id="tablaModalProyectos">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="width: 25%">Razón Social</th>
+                                            <th style="width: 25%">Nombre Proyecto</th>
+                                            <th style="width: 20%">Contacto</th>
+                                            <th style="width: 15%">Correo</th>
+                                            <th style="width: 10%">Teléfono</th>
+                                            <th style="width: 5%" class="text-center">Eliminar</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbodyModalProyectos">
+                                        <!-- Filas dinámicas -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div id="sinProyectosMensaje" class="text-center py-4 text-muted">
+                                <i class="bi bi-info-circle fs-3 d-block mb-2"></i> No hay proyectos o razones sociales asociadas a este grupo económico.
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-premium btn-premium-guinda" onclick="guardarGEI()">
+                    <i class="bi bi-save-fill"></i> Guardar Cambios
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CONTROLES FLOTANTES MODO PRESENTACIÓN -->
+<div id="presentationControls" class="presentation-controls" style="display: none;">
+    <button id="btnPrevSlide" type="button" aria-label="Lámina anterior">◀ Anterior</button>
+    <span id="presentationCounter" class="counter">1/1</span>
+    <button id="btnNextSlide" type="button" aria-label="Siguiente lámina">Siguiente ▶</button>
+    <button id="btnExitPresentation" type="button" aria-label="Salir de presentación">Salir</button>
+</div>
+
+<!-- SCRIPTS DE COMPORTAMIENTO -->
+@section Scripts {
+    <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+    <script>
+        (() => {
+            let tabla = null;
+            let gruposDeInteresGlobal = [];
+            let presentationMode = false;
+            let presentationIndex = 0;
+            let presentationSlides = [];
+
+            $(document).ready(function () {
+                cargarTablero();
+
+                // Resolver bug de superposición moviendo el modal al body
+                $('#modalGEI').appendTo('body');
+
+                // Escuchador de pestañas
+                $('#reporte-tab').on('shown.bs.tab', function () {
+                    renderReportDeck();
+                });
+
+                // Escuchadores de eventos para filtros en pestaña de reporte
+                $('#rep-filtro-origen, #rep-filtro-proyectos').on('change', renderReportDeck);
+                $('#rep-filtro-busqueda').on('input', renderReportDeck);
+                $('#rep-refresh').on('click', renderReportDeck);
+
+                // Botones de acción del reporte
+                $('#rep-presentar').on('click', () => enterPresentation(0));
+                $('#rep-pdf').on('click', descargarPdf);
+                $('#rep-correo').on('click', abrirModalCorreo);
+
+                // Controles flotantes de presentación
+                $('#btnPrevSlide').on('click', prevPresentationSlide);
+                $('#btnNextSlide').on('click', nextPresentationSlide);
+                $('#btnExitPresentation').on('click', exitPresentation);
+
+                // Eventos de teclado para Modo Presentación
+                $(document).on('keydown', function (e) {
+                    if (!presentationMode) return;
+                    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) {
+                        e.preventDefault();
+                        nextPresentationSlide();
+                    } else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) {
+                        e.preventDefault();
+                        prevPresentationSlide();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        exitPresentation();
+                    }
+                });
+
+                // Control de redimensionamiento para auto-escalado
+                $(window).on('resize', fitActiveSlide);
+
+                // Detectar salida nativa de fullscreen
+                $(document).on('fullscreenchange webkitfullscreenchange mozfullscreenchange MSFullscreenChange', function () {
+                    if (presentationMode && !document.fullscreenElement && !document.webkitIsFullScreen) {
+                        exitPresentation();
+                    }
+                });
+            });
+
+            // ── GESTIÓN DE DATOS Y TABLERO (CRUD) ──────────────────────────────────
+            function cargarTablero() {
+                $.get('/GruposInteres/Api/ObtenerTodos', function (data) {
+                    gruposDeInteresGlobal = data;
+
+                    // Inicializar o recargar DataTable
+                    if (tabla) {
+                        tabla.clear().rows.add(gruposDeInteresGlobal).draw();
+                    } else {
+                        inicializarDataTable(gruposDeInteresGlobal);
+                    }
+
+                    // Rellenar selectores de origen (Países)
+                    const paises = new Set();
+                    gruposDeInteresGlobal.forEach(item => {
+                        if (item.origen && item.origen.trim()) {
+                            paises.add(item.origen.trim());
+                        }
+                    });
+
+                    const selectTablero = $('#filtroOrigen');
+                    const selectReporte = $('#rep-filtro-origen');
+
+                    selectTablero.empty().append('<option value="">Todos los países</option>');
+                    selectReporte.empty().append('<option value="">Todos los países</option>');
+
+                    Array.from(paises).sort().forEach(p => {
+                        selectTablero.append(`<option value="${p}">${p}</option>`);
+                        selectReporte.append(`<option value="${p}">${p}</option>`);
+                    });
+
+                    // Si la pestaña de reporte está activa al cargar, renderizar diapositivas
+                    if ($('#reporte-tab').hasClass('active')) {
+                        renderReportDeck();
+                    }
+                });
+            }
+
+            // Paleta de colores de fondo pastel para badges de país (texto siempre negro)
+            const COUNTRY_PALETTE = [
+                '#FBBF24', '#34D399', '#60A5FA', '#F87171', '#A78BFA',
+                '#FB923C', '#4ADE80', '#38BDF8', '#F472B6', '#A3E635',
+                '#2DD4BF', '#818CF8', '#FCD34D', '#6EE7B7', '#93C5FD',
+                '#FCA5A5', '#C4B5FD', '#86EFAC', '#7DD3FC', '#FDA4AF'
+            ];
+            const _countryColorMap = {};
+            let _countryColorIdx = 0;
+            function countryColor(name) {
+                if (!name) return null;
+                const key = name.trim().toLowerCase();
+                if (!_countryColorMap[key]) {
+                    _countryColorMap[key] = COUNTRY_PALETTE[_countryColorIdx % COUNTRY_PALETTE.length];
+                    _countryColorIdx++;
+                }
+                return _countryColorMap[key];
+            }
+
+            function inicializarDataTable(data) {
+                tabla = $('#tablaGEIs').DataTable({
+                    data: data,
+                    columns: [
+                        { data: 'grupoInteresId' },
+                        { 
+                            data: 'nombre',
+                            render: function(data, type, row) {
+                                return `<strong class="text-dark">${data}</strong>`;
+                            }
+                        },
+                        { 
+                            data: 'origen',
+                            render: function(data) {
+                                if (!data) return '<span class="text-muted fst-italic">N/E</span>';
+                                const bg = countryColor(data);
+                                return `<span style="display:inline-block; background:${bg}; color:#1a1a1a; font-weight:700; font-size:0.82rem; padding:4px 10px; border-radius:20px; white-space:nowrap;">${data}</span>`;
+                            }
+                        },
+                        { 
+                            data: 'contacto',
+                            render: function(data, type, row) {
+                                if (!data) return '<span class="text-muted">-</span>';
+                                let html = `<div><i class="bi bi-person-fill text-muted me-1"></i>${data.split('\n')[0]}</div>`;
+                                if (row.correo) {
+                                    html += `<div style="font-size:0.8rem; color:#666;"><i class="bi bi-envelope text-muted me-1"></i>${row.correo.split('\n')[0]}</div>`;
+                                }
+                                return html;
+                            }
+                        },
+                        { 
+                            data: 'totalProyectos',
+                            className: 'text-center',
+                            render: function(data) {
+                                let colorClass = data > 0 ? 'bg-success' : 'bg-light text-dark border';
+                                return `<span class="badge ${colorClass} rounded-pill px-3 py-2" style="font-size:0.9rem;">${data}</span>`;
+                            }
+                        },
+                        {
+                            data: null,
+                            orderable: false,
+                            className: 'text-center',
+                            render: function(data, type, row) {
+                                return `
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button" class="btn btn-outline-primary" onclick="abrirModalEditar(${row.grupoInteresId})" title="Editar / Ver Detalle">
+                                            <i class="bi bi-pencil-square"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-danger" onclick="eliminarGrupo(${row.grupoInteresId}, '${row.nombre}')" title="Eliminar">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                `;
+                            }
+                        }
+                    ],
+                    language: {
+                        url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+                    },
+                    pageLength: 10,
+                    dom: '<"d-flex justify-content-between align-items-center mb-3"l>rtip',
+                    initComplete: function() {
+                        // Eventos para filtros del datatable
+                        $('#filtroOrigen').change(function() {
+                            let val = $(this).val();
+                            tabla.column(2).search(val ? `^${val}$` : '', true, false).draw();
+                        });
+
+                        $('#filtroProyectos').change(function() {
+                            let val = $(this).val();
+                            if (val === 'con') {
+                                tabla.column(4).search('^[1-9][0-9]*$', true, false).draw();
+                            } else if (val === 'sin') {
+                                tabla.column(4).search('^0$', true, false).draw();
+                            } else {
+                                tabla.column(4).search('').draw();
+                            }
+                        });
+                    }
+                });
+            }
+
+            // ── COMPORTAMIENTO DE FORMULARIO CRUD ─────────────────────────────────────
+            window.abrirModalCrear = function() {
+                $("#modalGEITitle").html('<i class="bi bi-plus-circle-fill text-success me-2"></i>Nuevo Grupo Económico de Interés');
+                $("#inputGrupoInteresId").val('');
+                $("#formGEI")[0].reset();
+                $("#tbodyModalProyectos").empty();
+                actualizarVisibilidadMensajeProyectos();
+                $("#modalGEI").modal('show');
+            };
+
+            window.abrirModalEditar = function(id) {
+                $("#modalGEITitle").html('<i class="bi bi-pencil-square text-warning me-2"></i>Detalles y Edición de Grupo de Interés');
+                $("#formGEI")[0].reset();
+                $("#tbodyModalProyectos").empty();
+
+                Swal.fire({
+                    title: 'Cargando datos...',
+                    allowOutsideClick: false,
+                    didOpen: () => { Swal.showLoading(); }
+                });
+
+                $.get(`/GruposInteres/Api/ObtenerDetalle/${id}`, function(res) {
+                    Swal.close();
+                    $("#inputGrupoInteresId").val(res.grupoInteresId);
+                    $("#inputNombre").val(res.nombre);
+                    $("#inputOrigen").val(res.origen);
+                    $("#inputContacto").val(res.contacto);
+                    $("#inputCorreo").val(res.correo);
+                    $("#inputTelefono").val(res.telefono);
+
+                    if (res.proyectos && res.proyectos.length > 0) {
+                        res.proyectos.forEach(p => {
+                            agregarFilaProyecto(p);
+                        });
+                    }
+
+                    actualizarVisibilidadMensajeProyectos();
+                    $("#modalGEI").modal('show');
+                }).fail(function() {
+                    Swal.close();
+                    Swal.fire('Error', 'No se pudieron recuperar los detalles del registro.', 'error');
+                });
+            };
+
+            window.agregarFilaProyecto = function(proyecto = null) {
+                const tbody = $("#tbodyModalProyectos");
+                const idRow = 'p_row_' + Date.now() + Math.floor(Math.random() * 1000);
+                
+                const razonSocial = proyecto ? (proyecto.razonSocial || '') : '';
+                const nombreProyecto = proyecto ? (proyecto.nombreProyecto || '') : '';
+                const contacto = proyecto ? (proyecto.contacto || '') : '';
+                const correo = proyecto ? (proyecto.correo || '') : '';
+                const telefono = proyecto ? (proyecto.telefono || '') : '';
+                const idProj = proyecto ? (proyecto.proyectoId || '') : '';
+
+                const rowHtml = `
+                    <tr id="${idRow}" class="fila-proyecto">
+                        <input type="hidden" class="p-id" value="${idProj}">
+                        <td><input type="text" class="form-control form-control-sm p-razon" value="${razonSocial}" placeholder="Razón Social"></td>
+                        <td><input type="text" class="form-control form-control-sm p-nombre" value="${nombreProyecto}" placeholder="Nombre Proyecto/Obra"></td>
+                        <td><textarea class="form-control form-control-sm p-contacto" rows="1" placeholder="Contacto">${contacto}</textarea></td>
+                        <td><textarea class="form-control form-control-sm p-correo" rows="1" placeholder="Correo">${correo}</textarea></td>
+                        <td><textarea class="form-control form-control-sm p-telefono" rows="1" placeholder="Teléfono">${telefono}</textarea></td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-link btn-sm text-danger" onclick="eliminarFilaProyecto('${idRow}')">
+                                <i class="bi bi-trash fs-5"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                tbody.append(rowHtml);
+                actualizarVisibilidadMensajeProyectos();
+            };
+
+            window.eliminarFilaProyecto = function(idRow) {
+                $(`#${idRow}`).remove();
+                actualizarVisibilidadMensajeProyectos();
+            };
+
+            function actualizarVisibilidadMensajeProyectos() {
+                const count = $("#tbodyModalProyectos tr").length;
+                if (count === 0) {
+                    $("#sinProyectosMensaje").show();
+                    $("#tablaModalProyectos").hide();
+                } else {
+                    $("#sinProyectosMensaje").hide();
+                    $("#tablaModalProyectos").show();
+                }
+            }
+
+            window.guardarGEI = function() {
+                const nombre = $("#inputNombre").val().trim();
+                if (!nombre) {
+                    Swal.fire('Atención', 'El nombre del grupo económico es obligatorio.', 'warning');
+                    return;
+                }
+
+                const idGEI = $("#inputGrupoInteresId").val();
+                
+                const proyectos = [];
+                $("#tbodyModalProyectos tr").each(function() {
+                    const row = $(this);
+                    const rz = row.find(".p-razon").val().trim();
+                    const np = row.find(".p-nombre").val().trim();
+                    
+                    if (rz || np) {
+                        proyectos.push({
+                            ProyectoId: row.find(".p-id").val() ? parseInt(row.find(".p-id").val()) : null,
+                            RazonSocial: rz,
+                            NombreProyecto: np,
+                            Contacto: row.find(".p-contacto").val().trim(),
+                            Correo: row.find(".p-correo").val().trim(),
+                            Telefono: row.find(".p-telefono").val().trim()
+                        });
+                    }
+                });
+
+                const formData = {
+                    GrupoInteresId: idGEI ? parseInt(idGEI) : null,
+                    Nombre: nombre,
+                    Origen: $("#inputOrigen").val().trim(),
+                    Contacto: $("#inputContacto").val().trim(),
+                    Correo: $("#inputCorreo").val().trim(),
+                    Telefono: $("#inputTelefono").val().trim(),
+                    Proyectos: proyectos
+                };
+
+                Swal.fire({
+                    title: 'Guardando...',
+                    allowOutsideClick: false,
+                    didOpen: () => { Swal.showLoading(); }
+                });
+
+                $.ajax({
+                    url: '/GruposInteres/Api/Guardar',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(formData),
+                    headers: {
+                        "RequestVerificationToken": $('input[name="__RequestVerificationToken"]').val()
+                    },
+                    success: function(res) {
+                        Swal.close();
+                        $("#modalGEI").modal('hide');
+                        Swal.fire('Guardado', res.mensaje, 'success');
+                        cargarTablero();
+                    },
+                    error: function(err) {
+                        Swal.close();
+                        const errMsg = err.responseJSON && err.responseJSON.error ? err.responseJSON.error : 'Ocurrió un error inesperado al guardar.';
+                        Swal.fire('Error', errMsg, 'error');
+                    }
+                });
+            };
+
+            window.eliminarGrupo = function(id, nombre) {
+                Swal.fire({
+                    title: '¿Está seguro?',
+                    text: `Se eliminará de forma lógica el grupo económico "${nombre}" y todos sus proyectos vinculados.`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#9B2247',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Sí, eliminar',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        Swal.fire({
+                            title: 'Eliminando...',
+                            allowOutsideClick: false,
+                            didOpen: () => { Swal.showLoading(); }
+                        });
+
+                        $.ajax({
+                            url: `/GruposInteres/Api/Eliminar/${id}`,
+                            type: 'DELETE',
+                            headers: {
+                                "RequestVerificationToken": $('input[name="__RequestVerificationToken"]').val()
+                            },
+                            success: function(res) {
+                                Swal.close();
+                                Swal.fire('Eliminado', res.mensaje, 'success');
+                                cargarTablero();
+                            },
+                            error: function() {
+                                Swal.close();
+                                Swal.fire('Error', 'No se pudo eliminar el registro.', 'error');
+                            }
+                        });
+                    }
+                });
+            };
+
+            // ── GENERACIÓN Y FILTRADO DEL DECK DE DIAPOSITIVAS (REPORTE) ──────────────
+            function escapeHtml(str) {
+                if (!str) return '';
+                return str.toString()
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function filterReportData() {
+                const q = ($('#rep-filtro-busqueda').val() || '').trim().toLowerCase();
+                const origen = $('#rep-filtro-origen').val() || '';
+                const carga = $('#rep-filtro-proyectos').val() || '';
+
+                return gruposDeInteresGlobal.filter(g => {
+                    if (origen && g.origen !== origen) return false;
+                    
+                    if (carga === 'con' && g.totalProyectos === 0) return false;
+                    if (carga === 'sin' && g.totalProyectos > 0) return false;
+
+                    if (q) {
+                        const searchStr = `${g.nombre} ${g.origen || ''} ${g.contacto || ''} ${g.correo || ''}`.toLowerCase();
+                        if (!searchStr.includes(q)) return false;
+                    }
+                    return true;
+                });
+            }
+
+            function getCoverSlideHtml(totalGrupos, totalProyectos, totalPaises) {
+                return `
+                    <section class="internal-slide internal-slide--cover">
+                        <div class="internal-slide__top">
+                            <div class="internal-slide__brand">
+                                <img src="https://cdn.sassoapps.com/dgmesnie/logo_gob.png" alt="Gobierno de México">
+                                <img src="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" alt="Secretaría de Energía">
+                            </div>
+                            <div class="internal-slide__title">DGMESNIE · Grupos de Interés</div>
+                            <div class="internal-slide__unit">DGMESNIE · Subsecretaría de Planeación y Transición Energética</div>
+                        </div>
+                        <div class="internal-cover-body" style="padding-top: 2.5rem; padding-bottom: 3rem;">
+                            <p class="eyebrow">Reporte Ejecutivo de Desarrolladores</p>
+                            <h2>Grupos Económicos de Interés</h2>
+                            <p class="unit" style="margin-bottom: 0.8rem;">Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información Energética</p>
+                            <div class="internal-cover-meta">
+                                <span><strong>Total de Grupos</strong>${totalGrupos}</span>
+                                <span><strong>Proyectos Asociados</strong>${totalProyectos}</span>
+                                <span><strong>Países de Origen</strong>${totalPaises}</span>
+                            </div>
+                        </div>
+                        <div class="internal-slide__footer">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                    </section>
+                `;
+            }
+
+            function getIndicatorsSlideHtml(totalGrupos, totalProyectos, totalPaises) {
+                return `
+                    <section class="internal-slide internal-slide--content" style="background: #fafbfc;">
+                        <div class="internal-slide__top">
+                            <div class="internal-slide__brand">
+                                <img src="https://cdn.sassoapps.com/dgmesnie/logo_gob.png" alt="Gobierno de México">
+                                <img src="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" alt="Secretaría de Energía">
+                            </div>
+                            <div class="internal-slide__title">Métricas de Participación</div>
+                            <div class="internal-slide__unit">DGMESNIE · Grupos de Interés</div>
+                        </div>
+                        <div class="internal-slide__body" style="padding: 10px 24px; gap: 12px; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                            <div class="slide-kpi-row" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 10px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #9b2247; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 68px;">
+                                    <span style="font-family: Montserrat, sans-serif; font-size: 2.2rem; font-weight: 800; color: #9b2247; line-height: 1;">${totalGrupos}</span>
+                                    <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">GRUPOS<br>ECONÓMICOS</div>
+                                </div>
+                                <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #1e5b4f; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 68px;">
+                                    <span style="font-family: Montserrat, sans-serif; font-size: 2.2rem; font-weight: 800; color: #1e5b4f; line-height: 1;">${totalProyectos}</span>
+                                    <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">PROYECTOS<br>ASOCIADOS</div>
+                                </div>
+                                <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #A57F2C; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 68px;">
+                                    <span style="font-family: Montserrat, sans-serif; font-size: 2.2rem; font-weight: 800; color: #A57F2C; line-height: 1;">${totalPaises}</span>
+                                    <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">PAÍSES DE<br>PROCEDENCIA</div>
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; flex: 1; min-height: 0; overflow: hidden; margin-bottom: 5px;">
+                                <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                                    <h3 style="font-size: 10px; margin: 0 0 5px; color: #9b2247; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700;">Top Desarrolladores</h3>
+                                    <div id="slide-chart-barras" style="flex: 1; min-height: 0; width: 100%;"></div>
+                                </div>
+                                <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                                    <h3 style="font-size: 10px; margin: 0 0 5px; color: #1e5b4f; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700;">Distribución Geográfica</h3>
+                                    <div id="slide-chart-pie" style="flex: 1; min-height: 0; width: 100%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="internal-slide__footer">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                    </section>
+                `;
+            }
+
+            // NOTE: getBarChartSlideHtml and getPieChartSlideHtml are now merged into getIndicatorsSlideHtml (combined KPI + chart slide)
+            // These functions are kept as empty stubs to avoid breaking references, but no longer inject slides.
+            function getBarChartSlideHtml() { return ''; }
+            function getPieChartSlideHtml() { return ''; }
+
+            function getGroupsDetailSlidesHtml(filtered) {
+                const chunkSize = 8;
+                let slidesHtml = '';
+                
+                for (let i = 0; i < filtered.length; i += chunkSize) {
+                    const chunk = filtered.slice(i, i + chunkSize);
+                    const pageNum = Math.floor(i / chunkSize) + 1;
+                    const totalPages = Math.ceil(filtered.length / chunkSize);
+                    
+                    const rowsHtml = chunk.map(g => {
+                        const contactName = g.contacto ? g.contacto.split('\n')[0] : '-';
+                        const contactEmail = g.correo ? g.correo.split('\n')[0] : '';
+                        const emailHtml = contactEmail ? `<br><small class="text-muted"><i class="bi bi-envelope me-1"></i>${escapeHtml(contactEmail)}</small>` : '';
+                        const totalProjClass = g.totalProyectos > 0 ? 'bg-success text-white' : 'bg-light text-dark border';
+                        const countryBadge = g.origen ? `<span class="badge bg-secondary px-2 py-1">${escapeHtml(g.origen)}</span>` : '<span class="text-muted italic">N/E</span>';
+
+                        return `
+                            <tr>
+                                <td style="width: 60px; text-align: center;"><strong>${g.grupoInteresId}</strong></td>
+                                <td><strong>${escapeHtml(g.nombre)}</strong></td>
+                                <td style="width: 150px; text-align: center;">${countryBadge}</td>
+                                <td>${escapeHtml(contactName)}${emailHtml}</td>
+                                <td style="width: 120px; text-align: center;"><span class="badge ${totalProjClass} rounded-pill px-3 py-1 fw-bold">${g.totalProyectos}</span></td>
+                            </tr>
+                        `;
+                    }).join('');
+                    
+                    slidesHtml += `
+                        <section class="internal-slide internal-slide--content">
+                            <div class="internal-slide__top">
+                                <div class="internal-slide__brand">
+                                     <img src="https://cdn.sassoapps.com/dgmesnie/logo_gob.png" alt="Gobierno de México">
+                                     <img src="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" alt="Secretaría de Energía">
+                                </div>
+                                <div class="internal-slide__title">Listado de Desarrolladores (${pageNum} de ${totalPages})</div>
+                                <div class="internal-slide__unit">DGMESNIE · Grupos de Interés</div>
+                            </div>
+                            <div class="internal-slide__body" style="padding: 24px; display: flex; flex-direction: column; flex: 1;">
+                                <h2>Matriz de Grupos Económicos Registrados</h2>
+                                <table class="slide-table" style="font-size: 0.85rem; width: 100%;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 60px; text-align: center;">ID</th>
+                                            <th>Grupo de Interés / Desarrollador</th>
+                                            <th style="width: 150px; text-align: center;">Origen</th>
+                                            <th>Contacto Principal</th>
+                                            <th style="width: 120px; text-align: center;">Proyectos</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${rowsHtml}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="internal-slide__footer">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                        </section>
+                    `;
+                }
+                return slidesHtml;
+            }
+
+            function renderSlideCharts(filtered) {
+                // Palette institucional
+                const palette = ['#9B2247', '#1E5B4F', '#A57F2C', '#245b8f', '#e26b8e', '#5fa095', '#d4af37', '#6c757d', '#c0392b', '#27ae60'];
+
+                // Establecer opciones globales de Highcharts con la paleta institucional
+                if (window.Highcharts) {
+                    Highcharts.setOptions({
+                        colors: palette,
+                        chart: {
+                            backgroundColor: '#ffffff',
+                            style: { fontFamily: 'Inter, Noto Sans, sans-serif' }
+                        },
+                        title: {
+                            style: { color: '#243444', fontWeight: '700', fontSize: '11px' }
+                        },
+                        xAxis: {
+                            labels: { style: { color: '#425163', fontSize: '9px' } }
+                        },
+                        yAxis: {
+                            title: { style: { color: '#425163', fontSize: '9px' } },
+                            labels: { style: { color: '#425163', fontSize: '9px' } }
+                        },
+                        legend: {
+                            itemStyle: { color: '#243444', fontSize: '9px', fontWeight: '600' }
+                        },
+                        tooltip: {
+                            backgroundColor: '#ffffff',
+                            borderColor: '#A57F2C',
+                            style: { color: '#243444' }
+                        }
+                    });
+                }
+
+                const topData = [...filtered]
+                    .sort((a, b) => b.totalProyectos - a.totalProyectos)
+                    .slice(0, 10);
+
+                const nombres = topData.map(d => d.nombre.length > 20 ? d.nombre.substring(0, 20) + '…' : d.nombre);
+                const cantidades = topData.map((d, i) => ({ y: d.totalProyectos, color: palette[i % palette.length] }));
+
+                const counts = {};
+                filtered.forEach(g => {
+                    const p = g.origen || 'No especificado';
+                    counts[p] = (counts[p] || 0) + 1;
+                });
+                const pieData = Object.entries(counts).map(([name, y], i) => ({ name, y, color: palette[i % palette.length] }));
+
+                if (document.getElementById('slide-chart-barras') && window.Highcharts) {
+                    Highcharts.chart('slide-chart-barras', {
+                        chart: { type: 'column', backgroundColor: '#ffffff' },
+                        title: { text: null },
+                        credits: { enabled: false },
+                        exporting: { enabled: false },
+                        xAxis: {
+                            categories: nombres,
+                            labels: { style: { color: '#425163', fontSize: '9px' }, rotation: -30 }
+                        },
+                        yAxis: {
+                            title: { text: null },
+                            allowDecimals: false
+                        },
+                        plotOptions: {
+                            column: {
+                                borderRadius: 4,
+                                colorByPoint: true
+                            }
+                        },
+                        series: [{
+                            name: 'Proyectos / Filiales',
+                            data: cantidades
+                        }],
+                        legend: { enabled: false }
+                    });
+                }
+
+                if (document.getElementById('slide-chart-pie') && window.Highcharts) {
+                    Highcharts.chart('slide-chart-pie', {
+                        chart: { type: 'pie', backgroundColor: '#ffffff' },
+                        title: { text: null },
+                        credits: { enabled: false },
+                        exporting: { enabled: false },
+                        tooltip: { pointFormat: '<b>{point.y}</b> grupo(s) ({point.percentage:.1f}%)' },
+                        plotOptions: {
+                            pie: {
+                                innerSize: '45%',
+                                borderWidth: 2,
+                                borderColor: '#ffffff',
+                                dataLabels: { enabled: false },
+                                showInLegend: true
+                            }
+                        },
+                        legend: {
+                            align: 'center',
+                            verticalAlign: 'bottom',
+                            itemStyle: { fontSize: '9px', color: '#243444' }
+                        },
+                        series: [{
+                            name: 'Desarrolladores',
+                            colorByPoint: true,
+                            data: pieData
+                        }]
+                    });
+                }
+            }
+
+            function renderReportDeck() {
+                const deck = document.getElementById('internal-report-deck');
+                if (!deck) return;
+
+                const filtered = filterReportData();
+                const totalGrupos = filtered.length;
+                const totalProyectos = filtered.reduce((acc, item) => acc + (item.totalProyectos || 0), 0);
+                const uniqueCountries = new Set(filtered.map(x => x.origen).filter(Boolean));
+                const totalPaises = uniqueCountries.size;
+
+                const summaryEl = document.getElementById('rep-summary');
+                if (summaryEl) {
+                    summaryEl.textContent = `${totalGrupos} desarrollador(es) · ${totalProyectos} proyectos asociados · ${totalPaises} países involucrados`;
+                }
+
+                let deckHtml = '';
+                deckHtml += getCoverSlideHtml(totalGrupos, totalProyectos, totalPaises);
+                deckHtml += getIndicatorsSlideHtml(totalGrupos, totalProyectos, totalPaises);
+                
+                if (totalGrupos > 0) {
+                    deckHtml += getBarChartSlideHtml();
+                    deckHtml += getPieChartSlideHtml();
+                    deckHtml += getGroupsDetailSlidesHtml(filtered);
+                } else {
+                    deckHtml += `
+                        <section class="internal-slide internal-slide--content">
+                            <div class="internal-slide__body justify-content-center align-items-center">
+                                <i class="bi bi-info-circle text-muted fs-1 mb-3"></i>
+                                <p class="text-muted">No hay datos que coincidan con los filtros seleccionados.</p>
+                            </div>
+                        </section>
+                    `;
+                }
+
+                deck.innerHTML = deckHtml;
+
+                if (totalGrupos > 0) {
+                    renderSlideCharts(filtered);
+                }
+            }
+
+            // ── EXPORTACIÓN DE DIAPOSITIVAS A PDF (LANDSCAPE) ─────────────────────────
+            async function descargarPdf() {
+                if (!window.jspdf || !window.html2canvas) {
+                    Swal.fire('Error', 'Las librerías de generación de PDF no están cargadas.', 'error');
+                    return;
+                }
+                const slides = [...document.querySelectorAll('#internal-report-deck .internal-slide')];
+                if (!slides.length) {
+                    Swal.fire('Error', 'No hay diapositivas para exportar.', 'error');
+                    return;
+                }
+
+                Swal.fire({
+                    title: 'Generando PDF...',
+                    text: 'Procesando cada lámina del reporte en alta definición...',
+                    allowOutsideClick: false,
+                    didOpen: () => { Swal.showLoading(); }
+                });
+
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1280, 720] });
+
+                    for (let idx = 0; idx < slides.length; idx++) {
+                        const canvas = await html2canvas(slides[idx], {
+                            scale: 2, 
+                            useCORS: true,
+                            allowTaint: false,
+                            backgroundColor: '#ffffff'
+                        });
+                        const img = canvas.toDataURL('image/jpeg', 0.95);
+                        if (idx > 0) pdf.addPage([1280, 720], 'landscape');
+                        pdf.addImage(img, 'JPEG', 0, 0, 1280, 720);
+                    }
+
+                    pdf.save(`Reporte_Grupos_Interes_${new Date().toISOString().slice(0, 10)}.pdf`);
+                    Swal.close();
+                    Swal.fire('¡Éxito!', 'El PDF ha sido generado y descargado.', 'success');
+                } catch (err) {
+                    console.error('Error generando PDF', err);
+                    Swal.close();
+                    Swal.fire('Error', 'No fue posible generar el PDF del reporte.', 'error');
+                }
+            }
+
+            // ── ENVÍO DE REPORTES POR CORREO (SMTP INTEGRATION) ──────────────────────
+            function abrirModalCorreo() {
+                Swal.fire({
+                    title: 'Enviar Reporte Ejecutivo',
+                    input: 'email',
+                    inputLabel: 'Introduzca la dirección de correo electrónico del destinatario:',
+                    inputPlaceholder: 'correo@energia.gob.mx',
+                    showCancelButton: true,
+                    confirmButtonColor: '#9B2247',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Enviar Reporte',
+                    cancelButtonText: 'Cancelar',
+                    inputValidator: (value) => {
+                        if (!value) {
+                            return '¡El correo electrónico es requerido!';
+                        }
+                        const emailRegex = /^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/;
+                        if (!emailRegex.test(value)) {
+                            return '¡Por favor ingrese un formato de correo válido!';
+                        }
+                    }
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        const email = result.value;
+
+                        Swal.fire({
+                            title: 'Enviando correo...',
+                            text: 'Generando reporte y conectando con el servidor SMTP...',
+                            allowOutsideClick: false,
+                            didOpen: () => { Swal.showLoading(); }
+                        });
+
+                        $.ajax({
+                            url: '/GruposInteres/Api/EnviarReporte',
+                            type: 'POST',
+                            contentType: 'application/json',
+                            data: JSON.stringify({ Destinatario: email }),
+                            headers: {
+                                "RequestVerificationToken": $('input[name="__RequestVerificationToken"]').val()
+                            },
+                            success: function(res) {
+                                Swal.close();
+                                Swal.fire('¡Enviado!', res.mensaje, 'success');
+                            },
+                            error: function(err) {
+                                Swal.close();
+                                const errMsg = err.responseJSON && err.responseJSON.error ? err.responseJSON.error : 'No se pudo enviar el correo electrónico.';
+                                Swal.fire('Error de Envío', errMsg, 'error');
+                            }
+                        });
+                    }
+                });
+            }
+
+            // ── MODO PRESENTACIÓN (PANTALLA COMPLETA) ──────────────────────────────────
+            function setPresentationControls(visible) {
+                const controls = document.getElementById('presentationControls');
+                if (!controls) return;
+                controls.style.display = visible ? 'flex' : 'none';
+                controls.setAttribute('aria-hidden', visible ? 'false' : 'true');
+            }
+
+            function fitActiveSlide() {
+                if (!presentationMode || !presentationSlides.length) return;
+                const active = presentationSlides[presentationIndex];
+                if (!active) return;
+
+                const baseW = active.offsetWidth || 1280;
+                const baseH = active.offsetHeight || 720;
+                const baseScale = Math.min(window.innerWidth / baseW, window.innerHeight / baseH);
+                const scale = Math.max(0.2, baseScale * 0.98);
+                active.style.setProperty('--presentation-scale', scale.toFixed(4));
+            }
+
+            function renderPresentationState() {
+                if (!presentationSlides.length) return;
+                presentationSlides.forEach((slide, idx) => {
+                    slide.classList.toggle('active', idx === presentationIndex);
+                    if (idx !== presentationIndex) slide.style.removeProperty('--presentation-scale');
+                });
+                const counter = document.getElementById('presentationCounter');
+                if (counter) counter.textContent = `${presentationIndex + 1}/${presentationSlides.length}`;
+                fitActiveSlide();
+
+                // Reflow Highcharts in current active slide to scale nicely
+                setTimeout(() => {
+                    if (window.Highcharts) {
+                        Highcharts.charts.forEach(c => {
+                            if (c) c.reflow();
+                        });
+                    }
+                }, 50);
+            }
+
+            async function enterPresentation(startAt = 0) {
+                presentationSlides = [...document.querySelectorAll('#internal-report-deck .internal-slide')];
+                if (!presentationSlides.length) return;
+                presentationMode = true;
+                presentationIndex = Math.min(Math.max(startAt, 0), presentationSlides.length - 1);
+                document.body.classList.add('presentation-mode');
+                setPresentationControls(true);
+                renderPresentationState();
+                if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+                    try { await document.documentElement.requestFullscreen(); } catch (_) { }
+                }
+                requestAnimationFrame(fitActiveSlide);
+            }
+
+            async function exitPresentation() {
+                if (!presentationMode) return;
+                presentationMode = false;
+                document.body.classList.remove('presentation-mode');
+                presentationSlides.forEach(slide => {
+                    slide.classList.remove('active');
+                    slide.style.removeProperty('--presentation-scale');
+                });
+                setPresentationControls(false);
+                if (document.fullscreenElement && document.exitFullscreen) {
+                    try { await document.exitFullscreen(); } catch (_) { }
+                }
+                
+                // Reflow Highcharts back to normal sizes
+                setTimeout(() => {
+                    if (window.Highcharts) {
+                        Highcharts.charts.forEach(c => {
+                            if (c) c.reflow();
+                        });
+                    }
+                }, 100);
+            }
+
+            function nextPresentationSlide() {
+                if (!presentationMode) return;
+                presentationIndex = Math.min(presentationSlides.length - 1, presentationIndex + 1);
+                renderPresentationState();
+            }
+
+            function prevPresentationSlide() {
+                if (!presentationMode) return;
+                presentationIndex = Math.max(0, presentationIndex - 1);
+                renderPresentationState();
+            }
+        })();
+    </script>
+}
