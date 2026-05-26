@@ -81,6 +81,8 @@ namespace NSIE.Controllers
             {
                 var id = await _repo.CrearTemaAsync(form, GetCurrentUserId());
                 var tema = await _repo.ObtenerTemaPorIdAsync(id);
+                if (tema != null && form.ResponsablePrincipalId.HasValue)
+                    await NotificarAsignacionTemaAsync(tema, form.ResponsablePrincipalId);
                 return CreatedAtAction(nameof(ApiTema), new { id }, tema);
             }
             catch (Exception ex)
@@ -99,8 +101,12 @@ namespace NSIE.Controllers
                 return BadRequest(ModelState);
             try
             {
+                var temaAnterior = await _repo.ObtenerTemaPorIdAsync(id);
                 await _repo.ActualizarTemaAsync(form, GetCurrentUserId());
                 var tema = await _repo.ObtenerTemaPorIdAsync(id);
+                var responsableCambioSolicitado = form.ResponsablePrincipalId != temaAnterior?.ResponsablePrincipalId;
+                if (tema != null && responsableCambioSolicitado && form.ResponsablePrincipalId.HasValue)
+                    await NotificarAsignacionTemaAsync(tema, form.ResponsablePrincipalId);
                 return Json(tema);
             }
             catch (Exception ex)
@@ -310,6 +316,114 @@ namespace NSIE.Controllers
                     actividad.ActividadId,
                     responsableId.Value);
             }
+        }
+
+        private async Task NotificarAsignacionTemaAsync(GestorTema tema, int? responsableIdOverride = null)
+        {
+            var responsableId = tema.ResponsablePrincipalId ?? responsableIdOverride;
+            if (!responsableId.HasValue)
+            {
+                _logger.LogInformation(
+                    "Tema {TemaId} sin ResponsablePrincipalId. No se envia correo.",
+                    tema.TemaId);
+                return;
+            }
+
+            var responsable = await _repo.ObtenerUsuarioVigentePorIdAsync(responsableId.Value);
+            if (responsable == null)
+            {
+                _logger.LogWarning(
+                    "No se encontro usuario vigente para ResponsablePrincipalId {ResponsableId} en tema {TemaId}.",
+                    responsableId.Value,
+                    tema.TemaId);
+                return;
+            }
+
+            var correoResponsable = responsable.Correo?.Trim();
+            if (string.IsNullOrWhiteSpace(correoResponsable))
+            {
+                _logger.LogWarning(
+                    "El responsable {ResponsableId} del tema {TemaId} no tiene correo registrado.",
+                    responsableId.Value,
+                    tema.TemaId);
+                return;
+            }
+
+            var asunto = $"Nueva asignacion de tema: {tema.Clave}";
+            var portalUrl = Url.Action("Index", "Gestor", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
+            var cuerpo = ConstruirCorreoAsignacionTema(responsable.Nombre, tema, portalUrl);
+
+            try
+            {
+                _logger.LogInformation(
+                    "Enviando correo de asignacion de tema {TemaId} a responsable {ResponsableId} ({Correo}).",
+                    tema.TemaId,
+                    responsableId.Value,
+                    correoResponsable);
+
+                await _servicioEmailSMTP.EnviarCorreo(correoResponsable, asunto, cuerpo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "El tema {TemaId} se guardo, pero no fue posible enviar correo al responsable {ResponsableId}.",
+                    tema.TemaId,
+                    responsableId.Value);
+            }
+        }
+
+        private static string ConstruirCorreoAsignacionTema(string nombreResponsable, GestorTema tema, string portalUrl)
+        {
+            var fechaCompromiso = tema.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+            var fechaInicio = tema.FechaInicio?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+            var descripcion = string.IsNullOrWhiteSpace(tema.Descripcion)
+                ? "Sin descripcion registrada."
+                : tema.Descripcion;
+
+            return $@"
+                <html lang='es'>
+                <head>
+                    <meta charset='UTF-8'>
+                    <title>Asignacion de tema</title>
+                </head>
+                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
+                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
+                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
+                                <tr>
+                                    <td style='width:50%;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
+                                    </td>
+                                    <td style='width:50%; text-align:right;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Nuevo tema asignado</div>
+                        <div style='padding:22px 20px;'>
+                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Hola, {nombreResponsable}.</p>
+                            <p>Se te ha asignado un tema dentro del Gestor de Actividades DGMESNIE.</p>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Clave}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Tema</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Tema}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripcion</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Categoria</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Categoria ?? "Sin categoria"}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha de inicio</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaInicio}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaCompromiso}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Prioridad}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Estatus}</td></tr>
+                            </table>
+                            <div style='margin:18px 0 16px; text-align:center;'>
+                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
+                                    Abrir Gestor de Actividades
+                                </a>
+                            </div>
+                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envia automaticamente cuando un tema se asigna o cambia de responsable principal.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>";
         }
 
         private static string ConstruirCorreoAsignacionActividad(string nombreResponsable, GestorActividad actividad, string portalUrl)
