@@ -273,6 +273,8 @@ namespace NSIE.Servicios
                 WHERE Vigente = 1
                   AND Correo IS NOT NULL
                   AND LTRIM(RTRIM(Correo)) <> ''
+                  AND LOWER(REPLACE(Correo, ' ', '')) NOT LIKE '%consultapublica%'
+                  AND LOWER(REPLACE(Nombre, ' ', '')) NOT LIKE '%consultapublica%'
                 ORDER BY Nombre, Correo";
 
             try
