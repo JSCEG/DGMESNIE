@@ -169,7 +169,7 @@ export function renderTabla(temas, actividades, filters = {}) {
                     <td><div class="track ${sem === 'rojo' ? 'track--issue' : sem === 'amarillo' ? 'track--progress' : sem === 'verde' ? 'track--complete' : 'track--pending'}" style="width:90px"><span style="width:${a.avance || 0}%"></span></div><small class="muted">${a.avance || 0}%</small></td>
                     <td><span class="chip ${a.prioridad === 'Alta' ? 'p-alta' : a.prioridad === 'Media' ? 'p-media' : 'p-baja'}">${escape(a.prioridad)}</span></td>
                     <td><span class="semaforo ${sem}"></span></td>
-                    <td><button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem" data-edit="${a.id}">Editar</button></td>
+                    <td><span class="tabla-actions-cell">${a.evidenciaUrl ? `<a href="${escape(a.evidenciaUrl)}" target="_blank" rel="noopener" class="tabla-link-btn" title="Abrir evidencia" style="margin-right: 8px; display: inline-flex; align-items: center;"><i class="fa-solid fa-folder-open" style="font-size: 1.15rem; color: #b48934;"></i></a>` : ''}<button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem" data-edit="${a.id}">Editar</button></span></td>
                 </tr>`;
         }).join('')
         : '<tr><td colspan="11" style="text-align:center;color:var(--g-text-soft);padding:1.5rem">Sin actividades</td></tr>';

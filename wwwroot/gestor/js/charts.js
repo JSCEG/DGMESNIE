@@ -1,4 +1,4 @@
-﻿// Gráficos con Highcharts — cargado globalmente en _Layout.cshtml
+// Gráficos con Highcharts — cargado globalmente en _Layout.cshtml
 
 const C = {
     guinda: '#8a0031',
@@ -106,26 +106,28 @@ export function donutEstatus(actividades) {
     const data = Object.entries(counts).map(([name, y]) => ({ name, y, color: ESTATUS_COLOR[name] || C.guinda }));
     const total = actividades.length;
 
-    const hc = Highcharts.chart(cont, {
+    Highcharts.chart(cont, {
         chart: { ...BASE_CHART, type: 'pie', height: 260 },
-        credits: { enabled: false }, title: { text: '' }, exporting: { enabled: false },
+        credits: { enabled: false },
+        title: {
+            text: `<div style="text-align:center;margin-top:14px;">
+                <span style="font-size:2.2rem;font-weight:800;color:${C.guinda};font-family:Montserrat,sans-serif;line-height:1;">${total}</span><br>
+                <span style="font-size:.65rem;font-weight:700;color:${C.textoSuave};letter-spacing:.08em;line-height:1.2;">ACTIVIDADES</span>
+            </div>`,
+            align: 'center',
+            verticalAlign: 'middle',
+            y: -24, // Offset slightly upward to account for bottom legend pushing the plot area up
+            useHTML: true
+        },
+        exporting: { enabled: false },
         tooltip: { pointFormat: '<b>{point.y}</b> ({point.percentage:.0f}%)' },
-        plotOptions: { pie: { innerSize: '58%', dataLabels: { enabled: false }, showInLegend: true } },
+        plotOptions: { pie: { innerSize: '62%', dataLabels: { enabled: false }, showInLegend: true } },
         legend: {
             enabled: true, align: 'center', verticalAlign: 'bottom',
-            itemStyle: { fontWeight: '600', fontSize: '12px' }
+            itemStyle: { fontWeight: '600', fontSize: '11px' }
         },
         series: [{ name: 'Actividades', data }]
     });
-    // Texto central con renderer
-    const cx = hc.plotLeft + hc.plotSizeX / 2;
-    const cy = hc.plotTop + hc.plotSizeY / 2 + 10;
-    hc.renderer.text(String(total), cx, cy - 8)
-        .css({ fontSize: '2rem', fontWeight: '700', color: C.guinda, fontFamily: 'Montserrat, sans-serif' })
-        .attr({ align: 'center', zIndex: 5 }).add();
-    hc.renderer.text('ACTIVIDADES', cx, cy + 14)
-        .css({ fontSize: '.7rem', fontWeight: '700', color: C.textoSuave, letterSpacing: '.08em' })
-        .attr({ align: 'center', zIndex: 5 }).add();
 }
 
 // ============ GAUGE — Avance global ============
@@ -179,11 +181,14 @@ export function piePrioridad(actividades) {
         plotOptions: {
             pie: {
                 dataLabels: {
-                    enabled: true, format: '<b>{point.name}</b>: {point.y}',
-                    style: { fontWeight: '600', fontSize: '12px', color: C.texto, textOutline: 'none' }
+                    enabled: false
                 },
-                showInLegend: false
+                showInLegend: true
             }
+        },
+        legend: {
+            enabled: true, align: 'center', verticalAlign: 'bottom',
+            itemStyle: { fontWeight: '600', fontSize: '11px' }
         },
         series: [{ name: 'Actividades', data }]
     });
@@ -198,11 +203,18 @@ export function barrasResponsables(actividades) {
         .reduce((m, a) => { if (a.responsable) m[a.responsable] = (m[a.responsable] || 0) + 1; return m; }, {});
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const palette = [C.guinda, C.verde, C.dorado, C.proceso, C.pendiente, C.ok, C.riesgo];
+    const isMobile = window.innerWidth < 600;
 
     Highcharts.chart(cont, {
         chart: { ...BASE_CHART, type: 'bar', height: Math.max(160, sorted.length * 40 + 60) },
         credits: { enabled: false }, title: { text: '' }, exporting: { enabled: false },
-        xAxis: { categories: sorted.map(([k]) => k), labels: { style: { fontWeight: '600', fontSize: '12px' } } },
+        xAxis: {
+            categories: sorted.map(([k]) => {
+                const maxLen = isMobile ? 12 : 25;
+                return k.length > maxLen ? k.slice(0, maxLen - 2) + '…' : k;
+            }),
+            labels: { style: { fontWeight: '600', fontSize: isMobile ? '10px' : '12px' } }
+        },
         yAxis: { title: { text: '' }, allowDecimals: false },
         tooltip: { valueSuffix: ' actividades pendientes' },
         legend: { enabled: false },
@@ -221,7 +233,11 @@ export function barrasApiladasTemas(temas, actividades) {
     const cont = document.getElementById('chart-stacked-temas');
     if (!cont) return;
     const claves = ['Concluida', 'En proceso', 'Pendiente', 'Vencida'];
-    const cats = temas.map(t => t.tema.length > 30 ? t.tema.slice(0, 28) + '\u2026' : t.tema);
+    const isMobile = window.innerWidth < 600;
+    const cats = temas.map(t => {
+        const maxLen = isMobile ? 15 : 30;
+        return t.tema.length > maxLen ? t.tema.slice(0, maxLen - 2) + '…' : t.tema;
+    });
     const series = claves.map(k => ({
         name: k, color: ESTATUS_COLOR[k],
         data: temas.map(t => actividades.filter(a => a.temaId === t.id && a.estatus === k).length)
@@ -230,7 +246,10 @@ export function barrasApiladasTemas(temas, actividades) {
     Highcharts.chart(cont, {
         chart: { ...BASE_CHART, type: 'bar', height: Math.max(180, temas.length * 44 + 80) },
         credits: { enabled: false }, title: { text: '' }, exporting: { enabled: false },
-        xAxis: { categories: cats, labels: { style: { fontWeight: '600', fontSize: '11px' } } },
+        xAxis: {
+            categories: cats,
+            labels: { style: { fontWeight: '600', fontSize: isMobile ? '9px' : '11px' } }
+        },
         yAxis: { title: { text: '' }, allowDecimals: false },
         plotOptions: { bar: { stacking: 'normal', borderRadius: 8, dataLabels: { enabled: false } } },
         tooltip: { shared: false, valueSuffix: ' actividades' },

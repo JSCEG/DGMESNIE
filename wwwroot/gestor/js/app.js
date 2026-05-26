@@ -1,15 +1,15 @@
 // Orquestador principal.
 import { dataService, dataSource, isOnline } from './data-service.js';
-import { renderDashboard } from './dashboard.js';
+import { renderDashboard } from './dashboard.js?v=charts-v2';
 import { renderTemas, openTemaModal } from './temas.js';
-import * as actividadesModule from './actividades.js?v=tabla-v2';
+import * as actividadesModule from './actividades.js?v=tabla-v3';
 import { renderKanban, poblarFiltroKanban } from './kanban.js';
 import { renderGantt } from './gantt.js';
 import { renderCalendario, calPrev, calNext } from './calendario.js';
-import { renderResponsables } from './responsables.js';
-import { renderAlertas } from './alertas.js';
+import { renderResponsables } from './responsables.js?v=performance-v1';
+import { renderAlertas } from './alertas.js?v=recordatorio-v1';
 import { setReportesData, wireReportes, renderDeck } from './reportes.js';
-import { wireChartFullscreenButtons } from './charts.js';
+import { wireChartFullscreenButtons } from './charts.js?v=charts-v2';
 
 const state = { temas: [], actividades: [], view: 'dashboard' };
 
@@ -32,7 +32,19 @@ function setPreloader(title, sub, err = false) {
 }
 function hidePreloader() {
     const pre = document.getElementById('tracking-preloader');
-    if (pre) setTimeout(() => pre.classList.add('is-hidden'), 200);
+    if (pre) {
+        setTimeout(() => {
+            pre.classList.add('is-hidden');
+            // Reflow charts once layout is fully settled
+            setTimeout(() => {
+                if (window.Highcharts) {
+                    Highcharts.charts.forEach(chart => {
+                        if (chart) chart.reflow();
+                    });
+                }
+            }, 300);
+        }, 200);
+    }
 }
 function showPreloader() {
     const pre = document.getElementById('tracking-preloader');
@@ -47,27 +59,51 @@ async function loadAll() {
         setPreloader('Listo', `${state.temas.length} temas · ${state.actividades.length} actividades`);
         renderCurrent();
         hidePreloader();
+        setTimeout(() => {
+            if (window.Highcharts) {
+                Highcharts.charts.forEach(chart => {
+                    if (chart) chart.reflow();
+                });
+            }
+        }, 100);
     } catch (e) {
         setPreloader('Error al cargar', e.message || 'Reintenta en un momento', true);
     }
 }
 
+function getFilteredActividades() {
+    const { actividades } = state;
+    const desde = document.getElementById('filtro-global-desde')?.value || '';
+    const hasta = document.getElementById('filtro-global-hasta')?.value || '';
+    
+    let list = actividades;
+    if (desde) {
+        list = list.filter(a => a.fechaCompromiso && a.fechaCompromiso >= desde);
+    }
+    if (hasta) {
+        list = list.filter(a => a.fechaCompromiso && a.fechaCompromiso <= hasta);
+    }
+    return list;
+}
+
 function renderCurrent() {
-    const { temas, actividades, view } = state;
+    const { temas, view } = state;
+    const filteredActividades = getFilteredActividades();
+    
     poblarFiltroKanban(temas);
     switch (view) {
-        case 'dashboard': renderDashboard(temas, actividades); break;
-        case 'temas': renderTemas(temas, actividades, document.getElementById('filtro-temas').value); break;
-        case 'kanban': renderKanban(temas, actividades, document.getElementById('filtro-kanban-tema').value); break;
-        case 'tabla': actividadesModule.renderTabla(temas, actividades, getTablaFilters()); break;
-        case 'gantt': renderGantt(temas, actividades); break;
-        case 'calendario': renderCalendario(temas, actividades); break;
-        case 'responsables': renderResponsables(temas, actividades); break;
-        case 'alertas': renderAlertas(temas, actividades); break;
-        case 'reportes': setReportesData(temas, actividades); break;
+        case 'dashboard': renderDashboard(temas, filteredActividades); break;
+        case 'temas': renderTemas(temas, filteredActividades, document.getElementById('filtro-temas').value); break;
+        case 'kanban': renderKanban(temas, filteredActividades, document.getElementById('filtro-kanban-tema').value); break;
+        case 'tabla': actividadesModule.renderTabla(temas, filteredActividades, getTablaFilters()); break;
+        case 'gantt': renderGantt(temas, filteredActividades); break;
+        case 'calendario': renderCalendario(temas, filteredActividades); break;
+        case 'responsables': renderResponsables(temas, filteredActividades); break;
+        case 'alertas': renderAlertas(temas, filteredActividades); break;
+        case 'reportes': setReportesData(temas, filteredActividades); break;
     }
     // Alertas badge siempre
-    renderAlertas(temas, actividades);
+    renderAlertas(temas, filteredActividades);
 }
 
 function switchView(view) {
@@ -80,6 +116,17 @@ function switchView(view) {
         v.setAttribute('aria-hidden', String(!isActive));
     });
     renderCurrent();
+    
+    // Multiple delayed reflows to ensure correct container size calculation on mobile
+    [50, 150, 300, 500].forEach(delay => {
+        setTimeout(() => {
+            if (window.Highcharts) {
+                Highcharts.charts.forEach(chart => {
+                    if (chart) chart.reflow();
+                });
+            }
+        }, delay);
+    });
 }
 
 function wireEvents() {
@@ -89,14 +136,14 @@ function wireEvents() {
 
     wireChartFullscreenButtons();
 
-    document.getElementById('filtro-temas').oninput = () => renderTemas(state.temas, state.actividades, document.getElementById('filtro-temas').value);
+    document.getElementById('filtro-temas').oninput = () => renderTemas(state.temas, getFilteredActividades(), document.getElementById('filtro-temas').value);
     document.getElementById('btn-nuevo-tema').onclick = () => openTemaModal(null);
 
     const rerenderTabla = () => {
         if (typeof actividadesModule.resetTablaPage === 'function') {
             actividadesModule.resetTablaPage();
         }
-        actividadesModule.renderTabla(state.temas, state.actividades, getTablaFilters());
+        actividadesModule.renderTabla(state.temas, getFilteredActividades(), getTablaFilters());
     };
 
     document.getElementById('filtro-tabla').oninput = rerenderTabla;
@@ -108,29 +155,56 @@ function wireEvents() {
         if (typeof actividadesModule.setTablaPageSize === 'function') {
             actividadesModule.setTablaPageSize(e.target.value);
         }
-        actividadesModule.renderTabla(state.temas, state.actividades, getTablaFilters());
+        actividadesModule.renderTabla(state.temas, getFilteredActividades(), getTablaFilters());
     };
 
     document.getElementById('tabla-page-prev').onclick = () => {
         if (typeof actividadesModule.changeTablaPage === 'function') {
             actividadesModule.changeTablaPage(-1);
         }
-        actividadesModule.renderTabla(state.temas, state.actividades, getTablaFilters());
+        actividadesModule.renderTabla(state.temas, getFilteredActividades(), getTablaFilters());
     };
 
     document.getElementById('tabla-page-next').onclick = () => {
         if (typeof actividadesModule.changeTablaPage === 'function') {
             actividadesModule.changeTablaPage(1);
         }
-        actividadesModule.renderTabla(state.temas, state.actividades, getTablaFilters());
+        actividadesModule.renderTabla(state.temas, getFilteredActividades(), getTablaFilters());
     };
     document.getElementById('btn-nueva-actividad').onclick = () => actividadesModule.openActividadModal(null, state.temas);
-    document.getElementById('btn-export-excel').onclick = () => actividadesModule.exportarCsv(state.temas, state.actividades);
+    document.getElementById('btn-export-excel').onclick = () => actividadesModule.exportarCsv(state.temas, getFilteredActividades());
 
-    document.getElementById('filtro-kanban-tema').onchange = () => renderKanban(state.temas, state.actividades, document.getElementById('filtro-kanban-tema').value);
+    document.getElementById('filtro-kanban-tema').onchange = () => renderKanban(state.temas, getFilteredActividades(), document.getElementById('filtro-kanban-tema').value);
 
-    document.getElementById('cal-prev').onclick = () => { calPrev(); renderCalendario(state.temas, state.actividades); };
-    document.getElementById('cal-next').onclick = () => { calNext(); renderCalendario(state.temas, state.actividades); };
+    document.getElementById('cal-prev').onclick = () => { calPrev(); renderCalendario(state.temas, getFilteredActividades()); };
+    document.getElementById('cal-next').onclick = () => { calNext(); renderCalendario(state.temas, getFilteredActividades()); };
+
+    // Eventos filtro fechas global
+    const inputDesde = document.getElementById('filtro-global-desde');
+    const inputHasta = document.getElementById('filtro-global-hasta');
+    const btnLimpiar = document.getElementById('btn-limpiar-fechas');
+
+    const handleFechaChange = () => {
+        renderCurrent();
+        // Forzar redibujado/reflow de gráficos tras aplicar filtros
+        setTimeout(() => {
+            if (window.Highcharts) {
+                Highcharts.charts.forEach(chart => {
+                    if (chart) chart.reflow();
+                });
+            }
+        }, 150);
+    };
+
+    if (inputDesde) inputDesde.onchange = handleFechaChange;
+    if (inputHasta) inputHasta.onchange = handleFechaChange;
+    if (btnLimpiar) {
+        btnLimpiar.onclick = () => {
+            if (inputDesde) inputDesde.value = '';
+            if (inputHasta) inputHasta.value = '';
+            handleFechaChange();
+        };
+    }
 
     wireReportes();
 

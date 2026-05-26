@@ -1,5 +1,5 @@
 import { escape, semaforoTema, avancePromedio, daysFromToday, fmtDate } from './utils.js';
-import { renderAllCharts } from './charts.js';
+import { renderAllCharts } from './charts.js?v=charts-v2';
 
 function trackClass(estatus) {
     if (estatus === 'Vencida') return 'track--issue';

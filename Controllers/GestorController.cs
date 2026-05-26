@@ -214,6 +214,43 @@ namespace NSIE.Controllers
             }
         }
 
+        [HttpPost("Gestor/Api/Actividades/{id:int}/Recordatorio")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApiEnviarRecordatorio(int id)
+        {
+            try
+            {
+                var act = await _repo.ObtenerActividadPorIdAsync(id);
+                if (act == null)
+                    return NotFound(new { error = "No se encontró la actividad especificada." });
+
+                if (!act.ResponsableId.HasValue)
+                    return BadRequest(new { error = "La actividad no tiene un responsable asignado." });
+
+                var responsable = await _repo.ObtenerUsuarioVigentePorIdAsync(act.ResponsableId.Value);
+                if (responsable == null)
+                    return BadRequest(new { error = "No se encontró el responsable de la actividad." });
+
+                var correoResponsable = responsable.Correo?.Trim();
+                if (string.IsNullOrWhiteSpace(correoResponsable))
+                    return BadRequest(new { error = "El responsable no tiene correo electrónico registrado." });
+
+                var asunto = $"🔔 RECORDATORIO: Actividad pendiente o por vencer - {act.Clave}";
+                var portalUrl = Url.Action("Index", "Gestor", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
+                var cuerpo = ConstruirCorreoRecordatorioActividad(responsable.Nombre, act, portalUrl);
+
+                _logger.LogInformation("Enviando correo de recordatorio para la actividad {ActividadId} a {Correo}.", id, correoResponsable);
+                await _servicioEmailSMTP.EnviarCorreo(correoResponsable, asunto, cuerpo);
+
+                return Ok(new { success = true, mensaje = "Recordatorio enviado con éxito." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error enviando recordatorio para actividad {Id}.", id);
+                return StatusCode(500, new { error = "No fue posible enviar el recordatorio." });
+            }
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────
         private int? GetCurrentUserId()
         {
@@ -323,6 +360,60 @@ namespace NSIE.Controllers
                                 </a>
                             </div>
                             <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envia automaticamente cuando una actividad se asigna o cambia de responsable.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>";
+        }
+
+        private static string ConstruirCorreoRecordatorioActividad(string nombreResponsable, GestorActividad actividad, string portalUrl)
+        {
+            var fechaCompromiso = actividad.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+            var fechaInicio = actividad.FechaInicio?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+            var descripcion = string.IsNullOrWhiteSpace(actividad.Descripcion)
+                ? "Sin descripción registrada."
+                : actividad.Descripcion;
+
+            return $@"
+                <html lang='es'>
+                <head>
+                    <meta charset='UTF-8'>
+                    <title>Recordatorio de actividad</title>
+                </head>
+                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
+                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
+                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
+                                <tr>
+                                    <td style='width:50%;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
+                                    </td>
+                                    <td style='width:50%; text-align:right;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Recordatorio de Actividad Pendiente / Por Vencer</div>
+                        <div style='padding:22px 20px;'>
+                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Estimado(a) {nombreResponsable},</p>
+                            <p>Le enviamos este recordatorio sobre una actividad asignada a su cargo en el Gestor de Actividades DGMESNIE que requiere de su atención:</p>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Clave}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Tema</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.TemaNombre ?? "Sin tema"}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Actividad}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4; font-weight: 700; color: #8a0031;'>{fechaCompromiso}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Estatus}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Avance</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Avance}%</td></tr>
+                            </table>
+                            <p style='margin-bottom: 20px;'>Agradecemos de antemano su valiosa colaboración para mantener al día el seguimiento de estos compromisos institucionales.</p>
+                            <div style='margin:18px 0 16px; text-align:center;'>
+                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
+                                    Abrir Gestor de Actividades
+                                </a>
+                            </div>
+                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía a solicitud del administrador o coordinador del seguimiento en la plataforma.</p>
                         </div>
                     </div>
                 </body>
