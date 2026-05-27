@@ -6,9 +6,10 @@ import * as actividadesModule from './actividades.js?v=tabla-v5';
 import { renderKanban, poblarFiltroKanban } from './kanban.js';
 import { renderGantt } from './gantt.js';
 import { renderCalendario, calPrev, calNext } from './calendario.js';
-import { renderResponsables } from './responsables.js?v=performance-v1';
+import { renderResponsables } from './responsables.js?v=reporte-v2';
 import { renderAlertas } from './alertas.js?v=recordatorio-v1';
 import { setReportesData, wireReportes, renderDeck } from './reportes.js?v=presentation-v7';
+import { setPresentacionData, wirePresentacion } from './reportes-presentar.js';
 import { wireChartFullscreenButtons } from './charts.js?v=charts-v3';
 
 const state = { temas: [], actividades: [], view: 'dashboard' };
@@ -100,6 +101,7 @@ function renderCurrent() {
         case 'calendario': renderCalendario(actividades, filteredTemas); break;
         case 'responsables': renderResponsables(actividades, filteredTemas); break;
         case 'alertas': renderAlertas(actividades, filteredTemas); break;
+        case 'reportes-presentar': setPresentacionData(actividades, filteredTemas); break;
         case 'reportes': setReportesData(actividades, filteredTemas); break;
     }
     // Alertas badge siempre
@@ -265,6 +267,7 @@ function wireEvents() {
     }
 
     wireReportes();
+    wirePresentacion();
 
     window.addEventListener('gestor:refresh', () => { showPreloader(); loadAll(); });
 
