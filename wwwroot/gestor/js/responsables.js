@@ -13,12 +13,12 @@ export function renderResponsables(actividades, temas) {
     const personas = uniqueResponsables(actividades, temas);
 
     cont.innerHTML = personas.map(p => {
-        const ts = temas.filter(t => t.responsable === p || (t.corresponsables && t.corresponsables.some(c => c.nombre === p)));
+        const ts = temas.filter(t => participaEnTema(t, p));
         const activas = ts.filter(t => t.estatus !== 'Concluida');
         const completadas = ts.filter(t => t.estatus === 'Concluida');
         const vencidas = activas.filter(t => daysFromToday(t.fechaCompromiso) < 0);
         const porVencer = activas.filter(t => { const d = daysFromToday(t.fechaCompromiso); return d >= 0 && d <= 7; });
-        const coCount = ts.filter(t => t.responsable !== p).length;
+        const coCount = ts.filter(t => rolEnTema(t, p) !== 'Responsable').length;
         
         // Sort: active ones first (sorted by compromiso), then completed ones
         const sortedTs = [...activas].sort((a, b) => (a.fechaCompromiso || '').localeCompare(b.fechaCompromiso || ''))
@@ -38,7 +38,7 @@ export function renderResponsables(actividades, temas) {
                     ${sortedTs.length
                         ? sortedTs.map(t => {
                             const isComp = t.estatus === 'Concluida';
-                            const isCo = t.responsable !== p;
+                            const isCo = rolEnTema(t, p) !== 'Responsable';
                             return `<li style="${isComp ? 'opacity: 0.65;' : ''}">
                                 <span>
                                     <span class="semaforo ${semaforo(t)}"></span> 
@@ -63,10 +63,37 @@ export function renderResponsables(actividades, temas) {
     cont.querySelectorAll('.btn-ver-reporte').forEach(btn => {
         btn.onclick = () => {
             const respName = btn.dataset.resp;
-            const ts = temas.filter(t => t.responsable === respName || (t.corresponsables && t.corresponsables.some(c => c.nombre === respName)));
+            const ts = temas.filter(t => participaEnTema(t, respName));
             mostrarReporteResponsable(respName, ts, actividades);
         };
     });
+}
+
+function participaEnTema(t, nombre) {
+    if (!nombre) return false;
+    if (t.responsable === nombre) return true;
+    if (Array.isArray(t.corresponsables) && t.corresponsables.some(c => c.nombre === nombre)) return true;
+    return Array.isArray(t.etapas) && t.etapas.some(e =>
+        e.responsableNombre === nombre ||
+        (Array.isArray(e.corresponsables) && e.corresponsables.some(c => c.nombre === nombre)));
+}
+
+function rolEnTema(t, nombre) {
+    if (t.responsable === nombre) return 'Responsable';
+    if (Array.isArray(t.etapas) && t.etapas.some(e => e.responsableNombre === nombre)) return 'Responsable de etapa';
+    return 'Corresponsable';
+}
+
+function etapasParticipacion(t, nombre) {
+    if (!Array.isArray(t.etapas)) return '';
+    return t.etapas
+        .filter(e => e.responsableNombre === nombre ||
+            (Array.isArray(e.corresponsables) && e.corresponsables.some(c => c.nombre === nombre)))
+        .map(e => {
+            const rol = e.responsableNombre === nombre ? 'responsable' : 'corresponsable';
+            return `${e.nombre || 'Etapa'} (${rol})`;
+        })
+        .join(', ');
 }
 
 function periodoLabel(value) {
@@ -135,7 +162,7 @@ function resumenResponsable(responsableName, ts) {
     const activas = ts.filter(t => t.estatus !== 'Concluida');
     const vencidas = activas.filter(t => daysFromToday(t.fechaCompromiso) < 0);
     const porVencer = activas.filter(t => { const d = daysFromToday(t.fechaCompromiso); return d >= 0 && d <= 7; });
-    const coCount = ts.filter(t => t.responsable !== responsableName).length;
+    const coCount = ts.filter(t => rolEnTema(t, responsableName) !== 'Responsable').length;
     const avanceProm = total > 0 ? Math.round(ts.reduce((s, t) => s + (t.avance || 0), 0) / total) : 0;
     return { total, concluidas, activas, vencidas, porVencer, coCount, avanceProm };
 }
@@ -183,8 +210,8 @@ function renderReporteResponsable(responsableName, ts, actividades, periodo) {
                         ${miniKpi('Temas', r.total)}
                         ${miniKpi('Activos', r.activas.length)}
                         ${miniKpi('Concluidos', r.concluidas.length, '#027a48')}
-                        ${miniKpi('Por vencer', r.porVencer.length, '#d97706')}
-                        ${miniKpi('Vencidos', r.vencidas.length, '#c0222a')}
+                        ${miniKpi('Por vencer', r.porVencer.length, '#b48934')}
+                        ${miniKpi('Vencidos', r.vencidas.length, '#8a0031')}
                         ${miniKpi('Avance', `${r.avanceProm}%`, '#1e5b4f')}
                     </div>
                     <div style="display:grid;grid-template-columns:34% 33% 33%;gap:14px;align-items:stretch;min-height:390px;">
@@ -311,7 +338,7 @@ function renderDetalleResponsableSlides(responsableName, rows, actividades, peri
                             <th>Actividad</th>
                             <th>Tema</th>
                             <th>Papel</th>
-                            <th>Etapa actual</th>
+                            <th>Etapas donde participa</th>
                             <th>Compromiso</th>
                             <th>Estado</th>
                             <th>Avance</th>
@@ -328,13 +355,14 @@ function renderDetalleResponsableSlides(responsableName, rows, actividades, peri
 
 function renderDetalleResponsableRow(t, responsableName, actividades) {
     const etapa = etapaActual(t);
-    const papel = t.responsable === responsableName ? 'Responsable' : 'Corresponsable';
+    const papel = rolEnTema(t, responsableName);
+    const etapas = etapasParticipacion(t, responsableName) || etapa?.nombre || 'Seguimiento simple';
     return `
         <tr>
             <td>${escape(actividadNombre(actividades, t))}</td>
             <td><strong>${escape(t.tema)}</strong></td>
             <td>${papel}</td>
-            <td>${escape(etapa?.nombre || 'Seguimiento simple')}</td>
+            <td>${escape(etapas)}</td>
             <td>${fmtDate(t.fechaCompromiso)}</td>
             <td>${escape(t.estatus || 'Pendiente')}</td>
             <td><strong>${t.avance || 0}%</strong></td>
@@ -429,8 +457,8 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
     const statusData = [
         { name: 'Concluidos', y: concluidos, color: '#027a48' },
         { name: 'Activos', y: activos, color: '#667085' },
-        { name: 'Por vencer', y: porVencer, color: '#d97706' },
-        { name: 'Vencidos', y: vencidos, color: '#c0222a' }
+        { name: 'Por vencer', y: porVencer, color: '#b48934' },
+        { name: 'Vencidos', y: vencidos, color: '#8a0031' }
     ].filter(x => x.y > 0);
 
     const byActivity = actividades.map(a => {
@@ -439,12 +467,13 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
     }).filter(x => x.y > 0).sort((a, b) => b.y - a.y).slice(0, 8);
 
     const roleData = [
-        { name: 'Responsable', y: rows.filter(t => t.responsable === responsableName).length, color: '#8a0031' },
-        { name: 'Corresponsable', y: rows.filter(t => t.responsable !== responsableName).length, color: '#b48934' }
+        { name: 'Responsable', y: rows.filter(t => rolEnTema(t, responsableName) === 'Responsable').length, color: '#8a0031' },
+        { name: 'Responsable de etapa', y: rows.filter(t => rolEnTema(t, responsableName) === 'Responsable de etapa').length, color: '#027a48' },
+        { name: 'Corresponsable', y: rows.filter(t => rolEnTema(t, responsableName) === 'Corresponsable').length, color: '#b48934' }
     ].filter(x => x.y > 0);
     const dueData = [
-        { name: 'Vencidos', y: vencidos, color: '#c0222a' },
-        { name: '7 días', y: porVencer, color: '#d97706' },
+        { name: 'Vencidos', y: vencidos, color: '#8a0031' },
+        { name: '7 días', y: porVencer, color: '#b48934' },
         { name: '30 días', y: rows.filter(t => {
             const d = daysFromToday(t.fechaCompromiso);
             return t.estatus !== 'Concluida' && d > 7 && d <= 30;
@@ -452,7 +481,7 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
         { name: 'Sin fecha', y: rows.filter(t => !t.fechaCompromiso).length, color: '#667085' }
     ].filter(x => x.y > 0);
     const priorityNames = ['Alta', 'Media', 'Baja'];
-    const priorityColors = { Alta: '#c0222a', Media: '#d97706', Baja: '#027a48' };
+    const priorityColors = { Alta: '#8a0031', Media: '#b48934', Baja: '#027a48' };
     const priorityData = priorityNames.map(name => ({
         name,
         y: rows.filter(t => (t.prioridad || '').toLowerCase() === name.toLowerCase()).length,
@@ -506,7 +535,7 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
     });
 
     const avgProgress = rows.length ? Math.round(rows.reduce((sum, t) => sum + Number(t.avance || 0), 0) / rows.length) : 0;
-    const progressColor = avgProgress >= 75 ? '#027a48' : avgProgress >= 40 ? '#d97706' : '#c0222a';
+    const progressColor = avgProgress >= 75 ? '#027a48' : avgProgress >= 40 ? '#b48934' : '#8a0031';
 
     Highcharts.chart(progressCont, {
         ...baseOptions,
@@ -605,7 +634,7 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
 
 function renderResponsableGantt(cont, rows) {
     const data = [];
-    const C = { ok: '#027a48', proceso: '#d97706', riesgo: '#c0222a', pendiente: '#667085' };
+    const C = { ok: '#027a48', proceso: '#b48934', riesgo: '#8a0031', pendiente: '#667085' };
     rows.filter(t => t.fechaInicio && t.fechaCompromiso)
         .sort((a, b) => (a.fechaInicio || '').localeCompare(b.fechaInicio || ''))
         .slice(0, 18)
@@ -886,14 +915,14 @@ async function descargarReporteResponsableExcel(responsableName, rows, actividad
     ws.addRow(['Responsable', responsableName]);
     ws.addRow(['Periodo', periodoLabel(periodo)]);
     ws.addRow([]);
-    ws.addRow(['Actividad', 'Tema', 'Papel', 'Etapa actual', 'Fecha compromiso', 'Estatus', 'Avance']);
+    ws.addRow(['Actividad', 'Tema', 'Papel', 'Etapas donde participa', 'Fecha compromiso', 'Estatus', 'Avance']);
     rows.forEach(t => {
         const etapa = etapaActual(t);
         ws.addRow([
             actividadNombre(actividades, t),
             t.tema,
-            t.responsable === responsableName ? 'Responsable' : 'Corresponsable',
-            etapa?.nombre || 'Seguimiento simple',
+            rolEnTema(t, responsableName),
+            etapasParticipacion(t, responsableName) || etapa?.nombre || 'Seguimiento simple',
             t.fechaCompromiso || '',
             t.estatus || 'Pendiente',
             Number(t.avance || 0)

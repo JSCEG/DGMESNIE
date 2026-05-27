@@ -1,6 +1,6 @@
 import { escape, fmtDate, semaforo, toast } from './utils.js';
 import { dataService } from './data-service.js';
-import { openTemaModal } from './actividades.js';
+import { openTemaModal } from './actividades.js?v=etapas-correo-v2';
 
 const COLS = ['Pendiente', 'En proceso', 'Vencida', 'Concluida'];
 
@@ -15,8 +15,9 @@ export function renderKanban(actividades, temas, actividadIdFilter = '') {
                 <h4>${col} <span class="count">${items.length}</span></h4>
                 ${items.map(t => {
                     const actividad = actividades.find(a => a.id === t.actividadId);
-                    const coLabel = t.corresponsables && t.corresponsables.length
-                        ? ` (+${t.corresponsables.length})`
+                    const participantes = participantesPorEtapa(t);
+                    const coLabel = participantes
+                        ? ` <span title="${escape(participantes)}" style="color:#1e5b4f;font-weight:700;">(+)</span>`
                         : '';
                     const stagesCount = t.etapas && t.etapas.length > 0
                         ? `<span class="badge-etapas" style="font-size:0.68rem;font-weight:700;color:var(--guinda);background:rgba(138,0,49,0.06);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;margin-left:auto;" title="Este tema tiene ${t.etapas.length} etapas"><i class="fa-solid fa-route" style="font-size:0.62rem;"></i> ${t.etapas.length} etapas</span>`
@@ -96,6 +97,23 @@ export function renderKanban(actividades, temas, actividadIdFilter = '') {
             }
         });
     });
+}
+
+function participantesPorEtapa(t) {
+    if (!Array.isArray(t.etapas)) return '';
+    return t.etapas
+        .map(e => {
+            const items = [];
+            if (e.responsableNombre && e.responsableNombre !== t.responsable) {
+                items.push(`Resp.: ${e.responsableNombre}`);
+            }
+            if (Array.isArray(e.corresponsables) && e.corresponsables.length) {
+                items.push(`Co.: ${e.corresponsables.map(c => c.nombre).join(', ')}`);
+            }
+            return items.length ? `${e.nombre || 'Etapa'}: ${items.join(' / ')}` : '';
+        })
+        .filter(Boolean)
+        .join(' · ');
 }
 
 export function poblarFiltroKanban(actividades) {

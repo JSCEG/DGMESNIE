@@ -109,7 +109,15 @@ function normalizeEtapa(raw = {}) {
         fechaCompromiso: toDateOnly(raw.fechaCompromiso),
         avance: Number(raw.avance ?? 0),
         estatus: raw.estatus ?? 'Pendiente',
-        orden: Number(raw.orden ?? 1)
+        orden: Number(raw.orden ?? 1),
+        corresponsablesIds: Array.isArray(raw.corresponsables)
+            ? raw.corresponsables.map(x => Number(x.idUsuario)).filter(Number.isFinite)
+            : Array.isArray(raw.corresponsablesIds)
+                ? raw.corresponsablesIds.map(Number).filter(Number.isFinite)
+                : [],
+        corresponsables: Array.isArray(raw.corresponsables)
+            ? raw.corresponsables.map(normalizeUsuario)
+            : []
     };
 }
 
@@ -203,7 +211,10 @@ export class ApiStore {
                     fechaCompromiso: e.fechaCompromiso || null,
                     avance: Number(e.avance ?? 0),
                     estatus: e.estatus ?? 'Pendiente',
-                    orden: Number(e.orden ?? 1)
+                    orden: Number(e.orden ?? 1),
+                    corresponsablesIds: Array.isArray(e.corresponsablesIds)
+                        ? e.corresponsablesIds.map(Number).filter(Number.isFinite)
+                        : []
                 }))
                 : []
         };

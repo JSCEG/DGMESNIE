@@ -2,7 +2,7 @@
 import { dataService, dataSource, isOnline } from './data-service.js';
 import { renderDashboard } from './dashboard.js?v=charts-v3';
 import { renderTemas, openActividadModal } from './temas.js?v=modal-v2';
-import * as actividadesModule from './actividades.js?v=tabla-v5';
+import * as actividadesModule from './actividades.js?v=etapas-correo-v2';
 import { renderKanban, poblarFiltroKanban } from './kanban.js';
 import { renderGantt } from './gantt.js';
 import { renderCalendario, calPrev, calNext } from './calendario.js';

@@ -248,10 +248,16 @@ namespace NSIE.Controllers
                 var tema = await _repo.ObtenerTemaPorIdAsync(id);
                 if (tema != null)
                 {
-                    await NotificarAsignacionTemaAsync(tema, form.ResponsableId);
-                    if (form.CorresponsablesIds != null && form.CorresponsablesIds.Any())
+                    var responsablesAsignados = ObtenerResponsablesEtapas(form);
+                    foreach (var responsableId in responsablesAsignados)
                     {
-                        await NotificarCorresponsablesTemaAsync(tema, form.CorresponsablesIds);
+                        await NotificarAsignacionTemaAsync(tema, responsableId);
+                    }
+
+                    var etapaCorresponsables = ObtenerCorresponsablesEtapas(form);
+                    if (etapaCorresponsables.Any())
+                    {
+                        await NotificarCorresponsablesTemaAsync(tema, etapaCorresponsables);
                     }
                     if (form.NotificarUsuariosIds != null && form.NotificarUsuariosIds.Any())
                     {
@@ -290,31 +296,20 @@ namespace NSIE.Controllers
                 var temaAnterior = await _repo.ObtenerTemaPorIdAsync(id);
                 await _repo.ActualizarTemaAsync(form, GetCurrentUserId());
                 var tema = await _repo.ObtenerTemaPorIdAsync(id);
-                var responsableCambioSolicitado = form.ResponsableId != temaAnterior?.ResponsableId;
-                var seCreoNuevaEtapa = form.Etapas != null && form.Etapas.Any(e => !e.EtapaId.HasValue || e.EtapaId.Value == 0);
                 if (tema != null)
                 {
-                    if ((responsableCambioSolicitado || seCreoNuevaEtapa) && tema.ResponsableId.HasValue)
+                    var responsablesNuevosOCambiados = ObtenerResponsablesEtapasNuevasOCambiadas(form, temaAnterior);
+                    foreach (var responsableId in responsablesNuevosOCambiados)
                     {
-                        await NotificarAsignacionTemaAsync(tema, tema.ResponsableId);
+                        await NotificarAsignacionTemaAsync(tema, responsableId);
                     }
 
-                    if (form.Etapas != null)
-                    {
-                        var newStagesResponsibles = form.Etapas
-                            .Where(e => !e.EtapaId.HasValue || e.EtapaId.Value == 0)
-                            .Select(e => e.ResponsableId)
-                            .Distinct()
-                            .Where(rid => rid != (tema.ResponsableId ?? 0))
-                            .ToList();
-
-                        foreach (var rid in newStagesResponsibles)
-                        {
-                            await NotificarAsignacionTemaAsync(tema, rid);
-                        }
-                    }
-
-                    var nuevosCorresponsables = form.CorresponsablesIds.Except(temaAnterior?.Corresponsables.Select(c => c.IdUsuario) ?? Enumerable.Empty<int>()).ToList();
+                    var anterioresCorresponsables = temaAnterior?.Etapas
+                        .SelectMany(e => e.Corresponsables.Select(c => c.IdUsuario))
+                        .Distinct() ?? Enumerable.Empty<int>();
+                    var nuevosCorresponsables = ObtenerCorresponsablesEtapas(form)
+                        .Except(anterioresCorresponsables)
+                        .ToList();
                     if (nuevosCorresponsables.Any())
                     {
                         await NotificarCorresponsablesTemaAsync(tema, nuevosCorresponsables);
@@ -340,6 +335,52 @@ namespace NSIE.Controllers
                 _logger.LogError(ex, "Error actualizando tema {Id}.", id);
                 return StatusCode(500, new { error = "No fue posible actualizar el tema." });
             }
+        }
+
+        private static List<int> ObtenerCorresponsablesEtapas(GestorTemaForm form)
+        {
+            return form.Etapas?
+                .SelectMany(e => e.CorresponsablesIds ?? [])
+                .Distinct()
+                .ToList() ?? [];
+        }
+
+        private static List<int> ObtenerResponsablesEtapas(GestorTemaForm form)
+        {
+            var responsables = form.Etapas?
+                .Where(e => e.ResponsableId > 0)
+                .Select(e => e.ResponsableId)
+                .Distinct()
+                .ToList() ?? [];
+
+            if (!responsables.Any() && form.ResponsableId.HasValue)
+            {
+                responsables.Add(form.ResponsableId.Value);
+            }
+
+            return responsables;
+        }
+
+        private static List<int> ObtenerResponsablesEtapasNuevasOCambiadas(GestorTemaForm form, GestorTema? temaAnterior)
+        {
+            if (form.Etapas == null || !form.Etapas.Any())
+            {
+                return form.ResponsableId.HasValue && form.ResponsableId != temaAnterior?.ResponsableId
+                    ? [form.ResponsableId.Value]
+                    : [];
+            }
+
+            var anteriores = temaAnterior?.Etapas.ToDictionary(e => e.EtapaId, e => e.ResponsableId)
+                ?? new Dictionary<int, int>();
+
+            return form.Etapas
+                .Where(e => e.ResponsableId > 0)
+                .Where(e => !e.EtapaId.HasValue || e.EtapaId.Value == 0 ||
+                            !anteriores.TryGetValue(e.EtapaId.Value, out var previo) ||
+                            previo != e.ResponsableId)
+                .Select(e => e.ResponsableId)
+                .Distinct()
+                .ToList();
         }
 
         [HttpDelete("Gestor/Api/Temas/{id:int}")]
@@ -494,7 +535,7 @@ namespace NSIE.Controllers
 
         private async Task NotificarAsignacionTemaAsync(GestorTema tema, int? responsableIdOverride = null)
         {
-            var responsableId = tema.ResponsableId ?? responsableIdOverride;
+            var responsableId = responsableIdOverride ?? tema.ResponsableId;
             if (!responsableId.HasValue)
             {
                 _logger.LogInformation("Tema {TemaId} sin ResponsableId. No se envía correo.", tema.TemaId);
@@ -610,18 +651,18 @@ namespace NSIE.Controllers
                     continue;
                 }
 
-                var asunto = $"Notificación de tema: {tema.Clave} - {tema.Tema}";
+                var asunto = $"Copia de conocimiento: {tema.Clave} - {tema.Tema}";
                 var portalUrl = Url.Action("Index", "Gestor", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
                 var cuerpo = ConstruirCorreoCompartirTema(usuario.Nombre, tema, portalUrl);
 
                 try
                 {
-                    _logger.LogInformation("Enviando correo de notificación de tema {TemaId} a {Correo}.", tema.TemaId, correo);
+                    _logger.LogInformation("Enviando copia de conocimiento de tema {TemaId} a {Correo}.", tema.TemaId, correo);
                     await _servicioEmailSMTP.EnviarCorreo(correo, asunto, cuerpo);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error enviando notificación de tema {TemaId} a {Correo}.", tema.TemaId, correo);
+                    _logger.LogError(ex, "Error enviando copia de conocimiento de tema {TemaId} a {Correo}.", tema.TemaId, correo);
                 }
             }
         }
@@ -809,7 +850,7 @@ namespace NSIE.Controllers
                 <html lang='es'>
                 <head>
                     <meta charset='UTF-8'>
-                    <title>Compartir tema</title>
+                    <title>Copia de conocimiento</title>
                 </head>
                 <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
                     <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
@@ -825,10 +866,10 @@ namespace NSIE.Controllers
                                 </tr>
                             </table>
                         </div>
-                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Tema Compartido / Notificación</div>
+                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Copia de conocimiento</div>
                         <div style='padding:22px 20px;'>
                             <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Estimado(a) {nombreDestinatario},</p>
-                            <p>Le compartimos los detalles del siguiente tema registrado en el Gestor de Actividades DGMESNIE:</p>
+                            <p>Se le comparte este tema para su conocimiento. No requiere una acción directa, salvo que se le indique por otro medio.</p>
                             <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Clave}</td></tr>
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.ActividadNombre ?? "Sin actividad"}</td></tr>
@@ -848,7 +889,7 @@ namespace NSIE.Controllers
                                     Abrir Gestor de Actividades
                                 </a>
                             </div>
-                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía automáticamente para compartir el estatus del tema.</p>
+                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía solo para conocimiento. No lo agrega como responsable ni corresponsable del tema.</p>
                         </div>
                     </div>
                 </body>

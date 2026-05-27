@@ -76,6 +76,7 @@ namespace NSIE.Models.Gestor
         public int Avance { get; set; }
         public string Estatus { get; set; } = "Pendiente";
         public int Orden { get; set; }
+        public List<GestorUsuarioDto> Corresponsables { get; set; } = [];
     }
 
     public class GestorUsuarioDto
@@ -148,5 +149,6 @@ namespace NSIE.Models.Gestor
         public int Avance { get; set; }
         public string Estatus { get; set; } = "Pendiente";
         public int Orden { get; set; }
+        public List<int> CorresponsablesIds { get; set; } = [];
     }
 }

@@ -53,7 +53,10 @@ namespace NSIE.Servicios
                     Cargo = rd.IsDBNull(3) ? null : rd.GetString(3)
                 });
             }
-            return result;
+            return result
+                .GroupBy(u => u.IdUsuario)
+                .Select(g => g.First())
+                .ToList();
         }
 
         public async Task<GestorUsuarioDto?> ObtenerUsuarioVigentePorIdAsync(int idUsuario)
@@ -82,19 +85,33 @@ namespace NSIE.Servicios
         }
 
         // ── Corresponsables (helpers privados) ───────────────────────────────
-        private async Task<List<GestorUsuarioDto>> CargarCorresponsablesAsync(SqlConnection cn, int? temaId, int? actividadId)
+        private async Task EnsureCorresponsablesEtapaColumnAsync(SqlConnection cn, SqlTransaction? tx = null)
         {
+            const string sql = @"
+                IF COL_LENGTH('dgmesnie.Gestor_Corresponsables', 'EtapaId') IS NULL
+                BEGIN
+                    ALTER TABLE [dgmesnie].[Gestor_Corresponsables] ADD [EtapaId] INT NULL;
+                END";
+            await using var cmd = new SqlCommand(sql, cn, tx);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        private async Task<List<GestorUsuarioDto>> CargarCorresponsablesAsync(SqlConnection cn, int? temaId, int? actividadId, int? etapaId = null)
+        {
+            await EnsureCorresponsablesEtapaColumnAsync(cn);
             const string sql = @"
                 SELECT u.IdUsuario, u.Nombre, u.Correo, u.Cargo
                 FROM [dgmesnie].[Gestor_Corresponsables] gc
                 JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = gc.IdUsuario
                 WHERE (@temaId IS NULL OR gc.TemaId = @temaId)
-                  AND (@actividadId IS NULL OR gc.ActividadId = @actividadId)";
+                  AND (@actividadId IS NULL OR gc.ActividadId = @actividadId)
+                  AND (@etapaId IS NULL OR gc.EtapaId = @etapaId)";
 
             var result = new List<GestorUsuarioDto>();
             await using var cmd = new SqlCommand(sql, cn);
             cmd.Parameters.AddWithValue("@temaId", (object?)temaId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@actividadId", (object?)actividadId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@etapaId", (object?)etapaId ?? DBNull.Value);
             await using var rd = await cmd.ExecuteReaderAsync();
             while (await rd.ReadAsync())
             {
@@ -110,27 +127,31 @@ namespace NSIE.Servicios
         }
 
         private async Task SincronizarCorresponsablesAsync(SqlConnection cn, SqlTransaction tx,
-            int? temaId, int? actividadId, List<int> nuevosIds)
+            int? temaId, int? actividadId, List<int> nuevosIds, int? etapaId = null)
         {
+            await EnsureCorresponsablesEtapaColumnAsync(cn, tx);
             // Borrar los existentes para este padre
             const string del = @"
                 DELETE FROM [dgmesnie].[Gestor_Corresponsables]
-                WHERE (@temaId IS NULL OR TemaId = @temaId)
-                  AND (@actividadId IS NULL OR ActividadId = @actividadId)";
+                WHERE ((@temaId IS NULL AND TemaId IS NULL) OR TemaId = @temaId)
+                  AND ((@actividadId IS NULL AND ActividadId IS NULL) OR ActividadId = @actividadId)
+                  AND ((@etapaId IS NULL AND EtapaId IS NULL) OR EtapaId = @etapaId)";
             await using var cmdDel = new SqlCommand(del, cn, tx);
             cmdDel.Parameters.AddWithValue("@temaId", (object?)temaId ?? DBNull.Value);
             cmdDel.Parameters.AddWithValue("@actividadId", (object?)actividadId ?? DBNull.Value);
+            cmdDel.Parameters.AddWithValue("@etapaId", (object?)etapaId ?? DBNull.Value);
             await cmdDel.ExecuteNonQueryAsync();
 
             // Insertar los nuevos
             foreach (var uid in nuevosIds.Distinct())
             {
                 const string ins = @"
-                    INSERT INTO [dgmesnie].[Gestor_Corresponsables] (TemaId, ActividadId, IdUsuario)
-                    VALUES (@temaId, @actividadId, @uid)";
+                    INSERT INTO [dgmesnie].[Gestor_Corresponsables] (TemaId, ActividadId, EtapaId, IdUsuario)
+                    VALUES (@temaId, @actividadId, @etapaId, @uid)";
                 await using var cmdIns = new SqlCommand(ins, cn, tx);
                 cmdIns.Parameters.AddWithValue("@temaId", (object?)temaId ?? DBNull.Value);
                 cmdIns.Parameters.AddWithValue("@actividadId", (object?)actividadId ?? DBNull.Value);
+                cmdIns.Parameters.AddWithValue("@etapaId", (object?)etapaId ?? DBNull.Value);
                 cmdIns.Parameters.AddWithValue("@uid", uid);
                 await cmdIns.ExecuteNonQueryAsync();
             }
@@ -167,6 +188,11 @@ namespace NSIE.Servicios
                     Orden = rd.GetInt32(9)
                 });
             }
+            rd.Close();
+            foreach (var etapa in result)
+            {
+                etapa.Corresponsables = await CargarCorresponsablesAsync(cn, temaId, null, etapa.EtapaId);
+            }
             return result;
         }
 
@@ -180,15 +206,30 @@ namespace NSIE.Servicios
 
             if (existingIds.Any())
             {
+                await EnsureCorresponsablesEtapaColumnAsync(cn, tx);
                 const string del = "UPDATE [dgmesnie].[Gestor_Temas_Etapas] SET Activo = 0 WHERE TemaId = @temaId AND EtapaId NOT IN ({0})";
                 var inClause = string.Join(",", existingIds);
                 var formattedDel = string.Format(del, inClause);
                 await using var cmdDel = new SqlCommand(formattedDel, cn, tx);
                 cmdDel.Parameters.AddWithValue("@temaId", temaId);
                 await cmdDel.ExecuteNonQueryAsync();
+
+                var delCorr = $"DELETE FROM [dgmesnie].[Gestor_Corresponsables] WHERE TemaId = @temaId AND EtapaId IS NOT NULL AND EtapaId NOT IN ({inClause})";
+                await using var cmdDelCorr = new SqlCommand(delCorr, cn, tx);
+                cmdDelCorr.Parameters.AddWithValue("@temaId", temaId);
+                await cmdDelCorr.ExecuteNonQueryAsync();
             }
             else
             {
+                await EnsureCorresponsablesEtapaColumnAsync(cn, tx);
+                const string delCorrAll = @"
+                    DELETE FROM [dgmesnie].[Gestor_Corresponsables]
+                    WHERE TemaId = @temaId AND EtapaId IS NOT NULL";
+                await using (var cmdDelCorr = new SqlCommand(delCorrAll, cn, tx))
+                {
+                    cmdDelCorr.Parameters.AddWithValue("@temaId", temaId);
+                    await cmdDelCorr.ExecuteNonQueryAsync();
+                }
                 const string delAll = "UPDATE [dgmesnie].[Gestor_Temas_Etapas] SET Activo = 0 WHERE TemaId = @temaId";
                 await using var cmdDel = new SqlCommand(delAll, cn, tx);
                 cmdDel.Parameters.AddWithValue("@temaId", temaId);
@@ -235,6 +276,7 @@ namespace NSIE.Servicios
             {
                 if (stg.EtapaId.HasValue && stg.EtapaId.Value > 0)
                 {
+                    var etapaId = stg.EtapaId.Value;
                     const string upd = @"
                         UPDATE [dgmesnie].[Gestor_Temas_Etapas] SET
                             Nombre = @nombre, ResponsableId = @respId,
@@ -249,9 +291,10 @@ namespace NSIE.Servicios
                     cmdUpd.Parameters.AddWithValue("@avance", stg.Avance);
                     cmdUpd.Parameters.AddWithValue("@estatus", stg.Estatus);
                     cmdUpd.Parameters.AddWithValue("@orden", orden++);
-                    cmdUpd.Parameters.AddWithValue("@etapaId", stg.EtapaId.Value);
+                    cmdUpd.Parameters.AddWithValue("@etapaId", etapaId);
                     cmdUpd.Parameters.AddWithValue("@temaId", temaId);
                     await cmdUpd.ExecuteNonQueryAsync();
+                    await SincronizarCorresponsablesAsync(cn, tx, temaId, null, stg.CorresponsablesIds, etapaId);
                 }
                 else
                 {
@@ -259,7 +302,8 @@ namespace NSIE.Servicios
                         INSERT INTO [dgmesnie].[Gestor_Temas_Etapas]
                             (TemaId, Nombre, ResponsableId, FechaInicio, FechaCompromiso, Avance, Estatus, Orden, Activo)
                         VALUES
-                            (@temaId, @nombre, @respId, @inicio, @comp, @avance, @estatus, @orden, 1)";
+                            (@temaId, @nombre, @respId, @inicio, @comp, @avance, @estatus, @orden, 1);
+                        SELECT SCOPE_IDENTITY();";
                     await using var cmdIns = new SqlCommand(ins, cn, tx);
                     cmdIns.Parameters.AddWithValue("@temaId", temaId);
                     cmdIns.Parameters.AddWithValue("@nombre", stg.Nombre);
@@ -269,7 +313,8 @@ namespace NSIE.Servicios
                     cmdIns.Parameters.AddWithValue("@avance", stg.Avance);
                     cmdIns.Parameters.AddWithValue("@estatus", stg.Estatus);
                     cmdIns.Parameters.AddWithValue("@orden", orden++);
-                    await cmdIns.ExecuteNonQueryAsync();
+                    var etapaId = Convert.ToInt32(await cmdIns.ExecuteScalarAsync());
+                    await SincronizarCorresponsablesAsync(cn, tx, temaId, null, stg.CorresponsablesIds, etapaId);
                 }
             }
         }
@@ -585,7 +630,7 @@ namespace NSIE.Servicios
                 AddTemaParams(cmd, form);
                 cmd.Parameters.AddWithValue("@creador", (object?)usuarioId ?? DBNull.Value);
                 var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-                await SincronizarCorresponsablesAsync(cn, tx, id, null, form.CorresponsablesIds);
+                await SincronizarCorresponsablesAsync(cn, tx, id, null, []);
 
                 var stages = form.Etapas;
                 if (stages == null || !stages.Any())
@@ -599,7 +644,8 @@ namespace NSIE.Servicios
                             FechaInicio = form.FechaInicio,
                             FechaCompromiso = form.FechaCompromiso,
                             Avance = form.Avance,
-                            Estatus = form.Estatus
+                            Estatus = form.Estatus,
+                            CorresponsablesIds = form.CorresponsablesIds ?? []
                         }
                     };
                 }
@@ -637,7 +683,7 @@ namespace NSIE.Servicios
                 AddTemaParams(cmd, form);
                 cmd.Parameters.AddWithValue("@temaId", form.TemaId!.Value);
                 await cmd.ExecuteNonQueryAsync();
-                await SincronizarCorresponsablesAsync(cn, tx, form.TemaId.Value, null, form.CorresponsablesIds);
+                await SincronizarCorresponsablesAsync(cn, tx, form.TemaId.Value, null, []);
 
                 if (form.Etapas != null && form.Etapas.Any())
                 {
@@ -664,7 +710,8 @@ namespace NSIE.Servicios
                                 FechaInicio = form.FechaInicio,
                                 FechaCompromiso = form.FechaCompromiso,
                                 Avance = form.Avance,
-                                Estatus = form.Estatus
+                                Estatus = form.Estatus,
+                                CorresponsablesIds = form.CorresponsablesIds ?? []
                             }
                         };
                         await SincronizarEtapasAsync(cn, tx, form.TemaId.Value, defaultStages);

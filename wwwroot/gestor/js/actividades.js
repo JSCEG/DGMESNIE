@@ -54,6 +54,12 @@ function populateResponsablesFilter(temas) {
     temas.forEach(t => {
         if (t.responsable) set.add(t.responsable.trim());
         if (t.corresponsables) t.corresponsables.forEach(c => { if (c.nombre) set.add(c.nombre.trim()); });
+        if (Array.isArray(t.etapas)) {
+            t.etapas.forEach(e => {
+                if (e.responsableNombre) set.add(e.responsableNombre.trim());
+                if (e.corresponsables) e.corresponsables.forEach(c => { if (c.nombre) set.add(c.nombre.trim()); });
+            });
+        }
     });
     const responsables = [...set].sort((a, b) => a.localeCompare(b, 'es-MX', { sensitivity: 'base' }));
 
@@ -70,13 +76,20 @@ function filterActividades(actividades, temas, rawFilters = {}) {
 
     return temas.filter(t => {
         const actividad = actividades.find(a => a.id === t.actividadId);
+        const stageNames = Array.isArray(t.etapas)
+            ? t.etapas.flatMap(e => [e.responsableNombre, ...(e.corresponsables || []).map(c => c.nombre)]).filter(Boolean).join(' ')
+            : '';
         const corrSearchNames = t.corresponsables ? t.corresponsables.map(c => c.nombre).join(' ') : '';
-        const matchesSearch = !filters.search || [t.tema, t.responsable, t.estatus, t.prioridad, actividad?.actividad, corrSearchNames]
+        const matchesSearch = !filters.search || [t.tema, t.responsable, t.estatus, t.prioridad, actividad?.actividad, corrSearchNames, stageNames]
             .some(x => (x || '').toLowerCase().includes(filters.search));
         const matchesActividad = !filters.temaId || String(t.actividadId) === filters.temaId;
         const matchesEstatus = !filters.estatus || t.estatus === filters.estatus;
         const matchesPrioridad = !filters.prioridad || t.prioridad === filters.prioridad;
-        const matchesResponsable = !filters.responsable || t.responsable === filters.responsable || (t.corresponsables && t.corresponsables.some(c => c.nombre === filters.responsable));
+        const matchesResponsable = !filters.responsable || t.responsable === filters.responsable ||
+            (t.corresponsables && t.corresponsables.some(c => c.nombre === filters.responsable)) ||
+            (Array.isArray(t.etapas) && t.etapas.some(e =>
+                e.responsableNombre === filters.responsable ||
+                (e.corresponsables && e.corresponsables.some(c => c.nombre === filters.responsable))));
 
         return matchesSearch && matchesActividad && matchesEstatus && matchesPrioridad && matchesResponsable;
     });
@@ -176,6 +189,12 @@ function renderEtapasDetailRow(t, colSpan) {
         const dateRange = e.fechaInicio 
             ? `${fmtDate(e.fechaInicio)} al ${fmtDate(e.fechaCompromiso)}`
             : `Compromiso: ${fmtDate(e.fechaCompromiso)}`;
+        const etapaCorr = Array.isArray(e.corresponsables) && e.corresponsables.length
+            ? `<div style="font-size:0.74rem;color:#1e5b4f;display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;">
+                    <i class="fa-solid fa-users" style="font-size:.7rem;color:#b48934;margin-top:2px;"></i>
+                    <span><strong>Corresponsables:</strong> ${escape(e.corresponsables.map(c => c.nombre).join(', '))}</span>
+               </div>`
+            : '';
 
         return `
             <div class="timeline-step ${colorClass}" style="flex: 1; min-width: 190px; position: relative; padding: 12px; border-radius: 10px; background: #fff; border: 1px solid rgba(138,0,49,0.1); box-shadow: 0 4px 10px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: space-between;">
@@ -186,6 +205,7 @@ function renderEtapasDetailRow(t, colSpan) {
                         <i class="fa-solid fa-user-check" style="font-size: 0.72rem; color: var(--guinda);"></i>
                         <span style="font-weight: 500;">${escape(e.responsableNombre || 'Sin asignar')}</span>
                     </div>
+                    ${etapaCorr}
                     <div style="font-size: 0.74rem; color: var(--texto-suave); margin-bottom: 8px;">${dateRange}</div>
                 </div>
                 <div>
@@ -219,6 +239,23 @@ function renderEtapasDetailRow(t, colSpan) {
     `;
 }
 
+function resumenParticipantesEtapas(t) {
+    if (!Array.isArray(t.etapas)) return '';
+    const parts = t.etapas
+        .map(e => {
+            const items = [];
+            if (e.responsableNombre && e.responsableNombre !== t.responsable) {
+                items.push(`Resp.: ${e.responsableNombre}`);
+            }
+            if (Array.isArray(e.corresponsables) && e.corresponsables.length) {
+                items.push(`Co.: ${e.corresponsables.map(c => c.nombre).join(', ')}`);
+            }
+            return items.length ? `${e.nombre || 'Etapa'}: ${items.join(' / ')}` : '';
+        })
+        .filter(Boolean);
+    return parts.join(' · ');
+}
+
 export function renderTabla(temas, actividades, filters = {}) {
     // Note: We swap the arguments inside app.js call as well
     populateTemasFilter(actividades);
@@ -237,8 +274,9 @@ export function renderTabla(temas, actividades, filters = {}) {
             const actividad = actividades.find(a => a.id === t.actividadId);
             const sem = semaforo(t);
             const tiempo = tiempoSemaforoData(t);
-            const coText = t.corresponsables && t.corresponsables.length
-                ? `<br><small class="muted" style="font-size: 0.72rem; display: block; margin-top: 2px;">Co: ${escape(t.corresponsables.map(c => c.nombre.split(' ')[0]).join(', '))}</small>`
+            const coEtapas = resumenParticipantesEtapas(t);
+            const coText = coEtapas
+                ? `<br><small class="muted" title="${escape(coEtapas)}" style="font-size: 0.72rem; display: block; margin-top: 2px; color:#1e5b4f;"><i class="fa-solid fa-users" style="color:#b48934;"></i> Participan por etapa</small>`
                 : '';
             
             const hasEtapas = t.etapas && t.etapas.length > 0;
@@ -545,7 +583,8 @@ export async function openTemaModal(tema, actividades) {
             fechaInicio: t.fechaInicio || '',
             fechaCompromiso: t.fechaCompromiso || '',
             avance: t.avance ?? 0,
-            estatus: t.estatus || 'Pendiente'
+            estatus: t.estatus || 'Pendiente',
+            corresponsablesIds: t.corresponsablesIds || []
         });
     }
 
@@ -570,17 +609,6 @@ export async function openTemaModal(tema, actividades) {
                     <select name="bloqueada"><option value="false" ${!t.bloqueada ? 'selected' : ''}>No</option><option value="true" ${t.bloqueada ? 'selected' : ''}>Sí</option></select>
                 </div>
                 <div class="form-field"><label>Motivo bloqueo</label><input name="motivoBloqueo" value="${escape(t.motivoBloqueo || '')}"></div>
-                <div class="form-field full" style="margin-top: 10px;">
-                    <label style="font-weight: 700; color: var(--texto); margin-bottom: 6px; display: block;">Corresponsables</label>
-                    <div class="usuarios-check-list" style="max-height: 140px; overflow-y: auto; border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
-                        ${filteredUsers.map(u => `
-                            <label class="corresponsable-label" data-id="${u.idUsuario}" style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.85rem; color: var(--texto); cursor: pointer; margin: 0;">
-                                <input type="checkbox" name="corresponsablesIds" value="${u.idUsuario}" ${t.corresponsablesIds.includes(u.idUsuario) ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: var(--guinda); cursor: pointer;">
-                                <span>${escape(u.nombre)}</span>
-                            </label>
-                        `).join('')}
-                    </div>
-                </div>
                 <div class="form-field full"><label>Evidencia URL</label><input type="url" name="evidenciaUrl" value="${escape(t.evidenciaUrl || '')}"></div>
                 <div class="form-field full"><label>Comentarios</label><textarea name="comentarios">${escape(t.comentarios || '')}</textarea></div>
                 
@@ -601,7 +629,10 @@ export async function openTemaModal(tema, actividades) {
                 </div>
 
                 <div class="form-field full" style="margin-top: 10px;">
-                    <label style="font-weight: 700; color: var(--texto); margin-bottom: 6px; display: block;">Enviar notificación por correo a:</label>
+                    <label style="font-weight: 700; color: var(--texto); margin-bottom: 4px; display: block;">Poner en copia a</label>
+                    <p style="margin:0 0 8px;font-size:.78rem;color:var(--texto-suave);line-height:1.35;">
+                        Recibirán el aviso solo para conocimiento. No se agregan como responsables del tema.
+                    </p>
                     <div class="usuarios-check-list" style="max-height: 140px; overflow-y: auto; border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
                         ${filteredUsers.map(u => `
                             <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.85rem; color: var(--texto); cursor: pointer; margin: 0;">
@@ -694,9 +725,7 @@ export async function openTemaModal(tema, actividades) {
 
             data.bloqueada = data.bloqueada === 'true';
             data.fechaUltimaActualizacion = new Date().toISOString().slice(0, 10);
-
-            const corresponsablesCbs = document.querySelectorAll('#modal-body form input[name="corresponsablesIds"]:checked');
-            data.corresponsablesIds = Array.from(corresponsablesCbs).map(cb => Number(cb.value));
+            data.corresponsablesIds = [];
 
             const checkboxes = document.querySelectorAll('#modal-body form input[name="notificarUsuariosIds"]:checked');
             data.notificarUsuariosIds = Array.from(checkboxes).map(cb => Number(cb.value));
@@ -760,7 +789,8 @@ export async function openTemaModal(tema, actividades) {
             fechaInicio: inicio || null,
             fechaCompromiso: compromiso || null,
             avance,
-            estatus
+            estatus,
+            corresponsablesIds: t.corresponsablesIds || []
         };
     };
 
@@ -878,16 +908,32 @@ export async function openTemaModal(tema, actividades) {
                 fechaInicio: card.querySelector('input[name="etapaFechaInicio"]').value || null,
                 fechaCompromiso: card.querySelector('input[name="etapaFechaCompromiso"]').value || null,
                 avance: Number(card.querySelector('input[name="etapaAvance"]').value),
-                estatus: card.querySelector('select[name="etapaEstatus"]').value
+                estatus: card.querySelector('select[name="etapaEstatus"]').value,
+                orden: idx + 1,
+                corresponsablesIds: Array.from(card.querySelectorAll('input[name="etapaCorresponsablesIds"]:checked'))
+                    .map(cb => Number(cb.value))
+                    .filter(Number.isFinite)
             };
         });
     };
 
     const renderEtapaRow = (etapa, index) => {
+        const selectedStageResponsible = String(etapa.responsableId || '');
+        const etapaCorresponsables = Array.isArray(etapa.corresponsablesIds)
+            ? etapa.corresponsablesIds.map(Number)
+            : [];
         const usersOptionsForEtapa = [
             '<option value="">Selecciona responsable</option>',
             ...filteredUsers.map(u => `<option value="${u.idUsuario}" ${String(u.idUsuario) === String(etapa.responsableId) ? 'selected' : ''}>${escape(u.nombre)}</option>`)
         ].join('');
+        const stageCorresponsablesHtml = filteredUsers.map(u => {
+            const isResponsible = String(u.idUsuario) === selectedStageResponsible;
+            return `
+                <label class="etapa-corresponsable-label" data-id="${u.idUsuario}" style="display:${isResponsible ? 'none' : 'flex'}; align-items:center; gap:7px; font-weight:500; font-size:.78rem; color:var(--texto); cursor:pointer; margin:0;">
+                    <input type="checkbox" name="etapaCorresponsablesIds" value="${u.idUsuario}" ${!isResponsible && etapaCorresponsables.includes(Number(u.idUsuario)) ? 'checked' : ''} style="width:14px;height:14px;accent-color:var(--guinda);cursor:pointer;">
+                    <span>${escape(u.nombre)}</span>
+                </label>`;
+        }).join('');
 
         return `
             <div class="etapa-row-card" data-index="${index}" style="border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 12px; background: #faf8f9; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
@@ -926,6 +972,12 @@ export async function openTemaModal(tema, actividades) {
                             <option value="En proceso" ${etapa.estatus === 'En proceso' ? 'selected' : ''}>En proceso</option>
                             <option value="Concluida" ${etapa.estatus === 'Concluida' ? 'selected' : ''}>Concluida</option>
                         </select>
+                    </div>
+                </div>
+                <div class="form-field full" style="margin:0;">
+                    <label style="font-size:0.75rem; margin-bottom: 4px;">Corresponsables de la etapa</label>
+                    <div class="usuarios-check-list etapa-corresponsables-list" style="max-height:105px; overflow-y:auto; border:1px solid rgba(138,0,49,.14); border-radius:8px; padding:8px; background:#fff; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px;">
+                        ${stageCorresponsablesHtml}
                     </div>
                 </div>
             </div>
@@ -1003,9 +1055,22 @@ export async function openTemaModal(tema, actividades) {
             }
 
             card.querySelector('input[name="etapaNombre"]').oninput = () => { saveCurrentInputsState(); };
-            card.querySelector('select[name="etapaResponsableId"]').onchange = () => { saveCurrentInputsState(); syncStagesToMain(); };
+            card.querySelector('select[name="etapaResponsableId"]').onchange = (event) => {
+                const selected = String(event.target.value || '');
+                card.querySelectorAll('.etapa-corresponsable-label').forEach(label => {
+                    const isResponsible = label.dataset.id === selected;
+                    label.style.display = isResponsible ? 'none' : 'flex';
+                    const input = label.querySelector('input[type="checkbox"]');
+                    if (isResponsible && input) input.checked = false;
+                });
+                saveCurrentInputsState();
+                syncStagesToMain();
+            };
             card.querySelector('input[name="etapaFechaInicio"]').onchange = () => { saveCurrentInputsState(); syncStagesToMain(); };
             card.querySelector('input[name="etapaFechaCompromiso"]').onchange = () => { saveCurrentInputsState(); syncStagesToMain(); };
+            card.querySelectorAll('input[name="etapaCorresponsablesIds"]').forEach(cb => {
+                cb.onchange = saveCurrentInputsState;
+            });
         });
     };
 
@@ -1025,7 +1090,8 @@ export async function openTemaModal(tema, actividades) {
                 fechaInicio: previous?.fechaCompromiso || '',
                 fechaCompromiso: '',
                 avance: 0,
-                estatus: 'Pendiente'
+                estatus: 'Pendiente',
+                corresponsablesIds: []
             });
         }
         updateEtapasView();

@@ -10,6 +10,56 @@ function getInitials(name) {
         .join('');
 }
 
+function getStageParticipants(tema) {
+    if (!Array.isArray(tema?.etapas)) {
+        return { responsablesEtapa: [], corresponsablesEtapa: [], resumen: '' };
+    }
+
+    const mainName = tema.responsable || '';
+    const responsablesMap = new Map();
+    const corresponsablesMap = new Map();
+    const lines = [];
+
+    tema.etapas.forEach(etapa => {
+        const etapaNombre = etapa.nombre || 'Etapa';
+        const lineParts = [];
+
+        if (etapa.responsableNombre && etapa.responsableNombre !== mainName) {
+            responsablesMap.set(etapa.responsableNombre, {
+                nombre: etapa.responsableNombre,
+                etapa: etapaNombre,
+                rol: 'Responsable de etapa'
+            });
+            lineParts.push(`Resp.: ${etapa.responsableNombre}`);
+        }
+
+        if (Array.isArray(etapa.corresponsables) && etapa.corresponsables.length) {
+            etapa.corresponsables.forEach(c => {
+                if (!c.nombre || c.nombre === mainName) return;
+                corresponsablesMap.set(c.nombre, {
+                    nombre: c.nombre,
+                    etapa: etapaNombre,
+                    rol: 'Corresponsable de etapa'
+                });
+            });
+            const names = etapa.corresponsables
+                .map(c => c.nombre)
+                .filter(n => n && n !== mainName);
+            if (names.length) lineParts.push(`Co.: ${names.join(', ')}`);
+        }
+
+        if (lineParts.length) {
+            lines.push(`${etapaNombre}: ${lineParts.join(' / ')}`);
+        }
+    });
+
+    return {
+        responsablesEtapa: [...responsablesMap.values()],
+        corresponsablesEtapa: [...corresponsablesMap.values()],
+        resumen: lines.join(' · ')
+    };
+}
+
 export function generarAlertas(actividades, temas) {
     const alertas = [];
     temas.forEach(t => {
@@ -48,22 +98,34 @@ export function renderAlertas(actividades, temas) {
             const hasResponsable = al.act && al.act.responsableId;
             const mainResp = al.act.responsable || 'Sin responsable';
             const mainInitials = getInitials(mainResp);
-            const corresponsablesList = al.act.corresponsables || [];
+            const stageParticipants = getStageParticipants(al.act);
+            const participantesList = [
+                ...stageParticipants.responsablesEtapa,
+                ...stageParticipants.corresponsablesEtapa
+            ];
             const sem = semaforo(al.act);
             const semLabel = semLabels[sem] || sem;
+            const participantSummary = [
+                stageParticipants.responsablesEtapa.length
+                    ? `${stageParticipants.responsablesEtapa.length} responsable${stageParticipants.responsablesEtapa.length > 1 ? 's' : ''} de etapa`
+                    : '',
+                stageParticipants.corresponsablesEtapa.length
+                    ? `${stageParticipants.corresponsablesEtapa.length} co. por etapa`
+                    : ''
+            ].filter(Boolean).join(' · ');
 
             const avatarsHtml = `
                 <div class="alerta-avatars" style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
-                    <div style="display: flex; align-items: center;" title="Responsable principal: ${escape(mainResp)}${corresponsablesList.length ? ' · Corresponsables: ' + escape(corresponsablesList.map(c => c.nombre).join(', ')) : ''}">
+                    <div style="display: flex; align-items: center;" title="Responsable del tema: ${escape(mainResp)}${stageParticipants.resumen ? ' · ' + escape(stageParticipants.resumen) : ''}">
                         <span class="avatar-circle main" title="Responsable: ${escape(mainResp)}" style="background: var(--guinda); color: #fff; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(138,0,49,0.25); position: relative; z-index: 10; cursor: default;">
                             ${mainInitials}
                         </span>
-                        ${corresponsablesList.map((c, idx) => {
-                            const coInitials = getInitials(c.nombre);
-                            const coColors = ['#1e5b4f','#1a4a7a','#5b3a1e','#4a1e5b','#1e4a5b'];
+                        ${participantesList.map((p, idx) => {
+                            const coInitials = getInitials(p.nombre);
+                            const coColors = ['#1e5b4f','#b48934','#1a4a7a','#5b3a1e','#4a1e5b'];
                             const bg = coColors[idx % coColors.length];
                             return `
-                                <span class="avatar-circle co" title="Corresponsable: ${escape(c.nombre)}" style="background: ${bg}; color: #fff; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.15); margin-left: -10px; position: relative; z-index: ${9 - idx}; cursor: default;">
+                                <span class="avatar-circle co" title="${escape(p.rol)}: ${escape(p.nombre)} · ${escape(p.etapa)}" style="background: ${bg}; color: #fff; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.15); margin-left: -10px; position: relative; z-index: ${9 - idx}; cursor: default;">
                                     ${coInitials}
                                 </span>
                             `;
@@ -71,7 +133,7 @@ export function renderAlertas(actividades, temas) {
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 1px;">
                         <span style="font-size: 0.78rem; color: var(--texto); font-weight: 600; line-height: 1.2;">${escape(mainResp)}</span>
-                        ${corresponsablesList.length ? `<span style="font-size: 0.72rem; color: var(--guinda); font-weight: 700;">+${corresponsablesList.length} corresponsable${corresponsablesList.length > 1 ? 's' : ''}</span>` : ''}
+                        ${participantSummary ? `<span title="${escape(stageParticipants.resumen)}" style="font-size: 0.72rem; color: var(--guinda); font-weight: 700;">${escape(participantSummary)}</span>` : ''}
                     </div>
                 </div>
             `;

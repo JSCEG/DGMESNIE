@@ -480,7 +480,10 @@ function slideAtencion(rows) {
                                             </a>
                                         ` : ''}
                                     </td>
-                                    <td>${escape(a.responsable)}</td>
+                                    <td>
+                                        ${escape(a.responsable)}
+                                        ${corresponsablesEtapaReporte(a) ? `<br><small style="color:#1e5b4f;">Co: ${escape(corresponsablesEtapaReporte(a))}</small>` : ''}
+                                    </td>
                                     <td>${fmtDate(a.fechaCompromiso)}</td>
                                     <td><span style="font-size: 0.72rem; font-weight: 600; color: ${a.estatus === 'Vencida' ? C_SLIDE.riesgo : C_SLIDE.pendiente}">${getTiempoTexto(a)}</span></td>
                                     <td><span class="status-pill status-pill--${statusMode(a.estatus)}">${escape(a.estatus)}</span></td>
@@ -491,6 +494,14 @@ function slideAtencion(rows) {
             </div>
             ${renderSlideFooter()}
         </section>`;
+}
+
+function corresponsablesEtapaReporte(t) {
+    if (!Array.isArray(t.etapas)) return '';
+    return t.etapas
+        .filter(e => Array.isArray(e.corresponsables) && e.corresponsables.length)
+        .map(e => `${e.nombre || 'Etapa'}: ${e.corresponsables.map(c => c.nombre).join(', ')}`)
+        .join(' · ');
 }
 
 function slideResponsables(acts) {

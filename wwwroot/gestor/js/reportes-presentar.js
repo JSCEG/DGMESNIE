@@ -235,11 +235,30 @@ function byResponsable(temas) {
         const name = stage?.responsableNombre || t.responsable || 'Sin responsable';
         if (!map.has(name)) map.set(name, []);
         map.get(name).push(t);
+        if (Array.isArray(t.etapas)) {
+            t.etapas.forEach(e => {
+                if (Array.isArray(e.corresponsables)) {
+                    e.corresponsables.forEach(c => {
+                        if (!c.nombre) return;
+                        if (!map.has(c.nombre)) map.set(c.nombre, []);
+                        if (!map.get(c.nombre).some(x => x.id === t.id)) map.get(c.nombre).push(t);
+                    });
+                }
+            });
+        }
     });
     return [...map.entries()].map(([responsable, rows]) => ({
         responsable,
         ...calculateSummary(rows)
     })).sort((a, b) => b.vencidas - a.vencidas || b.porVencer - a.porVencer || b.total - a.total);
+}
+
+function corresponsablesEtapa(t) {
+    if (!Array.isArray(t.etapas)) return '';
+    return t.etapas
+        .filter(e => Array.isArray(e.corresponsables) && e.corresponsables.length)
+        .map(e => `${e.nombre || 'Etapa'}: ${e.corresponsables.map(c => c.nombre).join(', ')}`)
+        .join(' · ');
 }
 
 function renderPresentacionDeck() {
@@ -363,7 +382,10 @@ function slideAtencion(rows) {
                                 <td>${escape(stage?.responsableNombre || t.responsable || 'Sin responsable')}</td>
                                 <td>${fmtDate(t.fechaCompromiso)}</td>
                                 <td>${statusPill(t)}</td>
-                                <td>${escape(stage?.nombre || 'Seguimiento simple')}</td>
+                                <td>
+                                    ${escape(stage?.nombre || 'Seguimiento simple')}
+                                    ${corresponsablesEtapa(t) ? `<br><small style="color:#1e5b4f;">Co: ${escape(corresponsablesEtapa(t))}</small>` : ''}
+                                </td>
                             </tr>`;
                     }).join('') || emptyRow(6)}</tbody>
                 </table>

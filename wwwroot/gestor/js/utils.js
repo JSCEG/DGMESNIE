@@ -108,6 +108,12 @@ export function uniqueResponsables(actividades, temas) {
         const resp = t.responsablePrincipal || t.responsable;
         if (resp) set.add(resp.trim());
         if (t.corresponsables) t.corresponsables.forEach(c => { if (c.nombre) set.add(c.nombre.trim()); });
+        if (Array.isArray(t.etapas)) {
+            t.etapas.forEach(e => {
+                if (e.responsableNombre) set.add(e.responsableNombre.trim());
+                if (e.corresponsables) e.corresponsables.forEach(c => { if (c.nombre) set.add(c.nombre.trim()); });
+            });
+        }
     });
     return [...set].filter(Boolean).sort((x, y) => x.localeCompare(y, 'es-MX', { sensitivity: 'base' }));
 }
