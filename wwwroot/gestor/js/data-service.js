@@ -172,6 +172,9 @@ export class ApiStore {
             comentarios: payload.comentarios || null,
             corresponsablesIds: Array.isArray(payload.corresponsablesIds)
                 ? payload.corresponsablesIds.map(Number).filter(Number.isFinite)
+                : [],
+            notificarUsuariosIds: Array.isArray(payload.notificarUsuariosIds)
+                ? payload.notificarUsuariosIds.map(Number).filter(Number.isFinite)
                 : []
         };
     }

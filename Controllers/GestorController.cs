@@ -5,9 +5,21 @@ using NSIE.Servicios;
 using NSIE.Servicios.Interfaces;
 using Newtonsoft.Json;
 using System.Security.Claims;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace NSIE.Controllers
 {
+    public class NotificarRequest
+    {
+        public List<int> UsuarioIds { get; set; } = [];
+    }
+
+    public class RecordatorioRequest
+    {
+        public List<int> UsuarioIds { get; set; } = [];
+    }
+
     [ServiceFilter(typeof(ValidacionInputFiltro))]
     [AutorizacionFiltro]
     public class GestorController : Controller
@@ -167,7 +179,13 @@ namespace NSIE.Controllers
                 var id = await _repo.CrearActividadAsync(form, GetCurrentUserId());
                 var act = await _repo.ObtenerActividadPorIdAsync(id);
                 if (act != null)
+                {
                     await NotificarAsignacionActividadAsync(act, form.ResponsableId);
+                    if (form.NotificarUsuariosIds != null && form.NotificarUsuariosIds.Any())
+                    {
+                        await NotificarCompartirActividadAsync(act, form.NotificarUsuariosIds);
+                    }
+                }
                 return CreatedAtAction(nameof(ApiActividad), new { id }, act);
             }
             catch (Exception ex)
@@ -193,8 +211,16 @@ namespace NSIE.Controllers
                 await _repo.ActualizarActividadAsync(form, GetCurrentUserId());
                 var act = await _repo.ObtenerActividadPorIdAsync(id);
                 var responsableCambioSolicitado = form.ResponsableId != actividadAnterior?.ResponsableId;
-                if (act != null && responsableCambioSolicitado && form.ResponsableId.HasValue)
-                    await NotificarAsignacionActividadAsync(act, form.ResponsableId);
+                if (act != null)
+                {
+                    if (responsableCambioSolicitado && form.ResponsableId.HasValue)
+                        await NotificarAsignacionActividadAsync(act, form.ResponsableId);
+                    
+                    if (form.NotificarUsuariosIds != null && form.NotificarUsuariosIds.Any())
+                    {
+                        await NotificarCompartirActividadAsync(act, form.NotificarUsuariosIds);
+                    }
+                }
                 return Json(act);
             }
             catch (Exception ex)
@@ -222,7 +248,7 @@ namespace NSIE.Controllers
 
         [HttpPost("Gestor/Api/Actividades/{id:int}/Recordatorio")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ApiEnviarRecordatorio(int id)
+        public async Task<IActionResult> ApiEnviarRecordatorio(int id, [FromBody] RecordatorioRequest? request = null)
         {
             try
             {
@@ -230,23 +256,41 @@ namespace NSIE.Controllers
                 if (act == null)
                     return NotFound(new { error = "No se encontró la actividad especificada." });
 
-                if (!act.ResponsableId.HasValue)
-                    return BadRequest(new { error = "La actividad no tiene un responsable asignado." });
+                List<int> idsToSend = [];
+                if (request?.UsuarioIds != null && request.UsuarioIds.Any())
+                {
+                    idsToSend = request.UsuarioIds.Distinct().ToList();
+                }
+                else
+                {
+                    if (!act.ResponsableId.HasValue)
+                        return BadRequest(new { error = "La actividad no tiene un responsable asignado." });
+                    idsToSend.Add(act.ResponsableId.Value);
+                }
 
-                var responsable = await _repo.ObtenerUsuarioVigentePorIdAsync(act.ResponsableId.Value);
-                if (responsable == null)
-                    return BadRequest(new { error = "No se encontró el responsable de la actividad." });
+                foreach (var uid in idsToSend)
+                {
+                    var destinatario = await _repo.ObtenerUsuarioVigentePorIdAsync(uid);
+                    if (destinatario == null)
+                    {
+                        _logger.LogWarning("No se encontró usuario vigente para recordatorio con ID {UsuarioId}.", uid);
+                        continue;
+                    }
 
-                var correoResponsable = responsable.Correo?.Trim();
-                if (string.IsNullOrWhiteSpace(correoResponsable))
-                    return BadRequest(new { error = "El responsable no tiene correo electrónico registrado." });
+                    var correoDestinatario = destinatario.Correo?.Trim();
+                    if (string.IsNullOrWhiteSpace(correoDestinatario))
+                    {
+                        _logger.LogWarning("El destinatario {UsuarioId} no tiene correo registrado para recordatorio.", uid);
+                        continue;
+                    }
 
-                var asunto = $"🔔 RECORDATORIO: Actividad pendiente o por vencer - {act.Clave}";
-                var portalUrl = Url.Action("Index", "Gestor", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
-                var cuerpo = ConstruirCorreoRecordatorioActividad(responsable.Nombre, act, portalUrl);
+                    var asunto = $"🔔 RECORDATORIO: Actividad pendiente o por vencer - {act.Clave}";
+                    var portalUrl = Url.Action("Index", "Gestor", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
+                    var cuerpo = ConstruirCorreoRecordatorioActividad(destinatario.Nombre, act, portalUrl);
 
-                _logger.LogInformation("Enviando correo de recordatorio para la actividad {ActividadId} a {Correo}.", id, correoResponsable);
-                await _servicioEmailSMTP.EnviarCorreo(correoResponsable, asunto, cuerpo);
+                    _logger.LogInformation("Enviando correo de recordatorio para la actividad {ActividadId} a {Correo}.", id, correoDestinatario);
+                    await _servicioEmailSMTP.EnviarCorreo(correoDestinatario, asunto, cuerpo);
+                }
 
                 return Ok(new { success = true, mensaje = "Recordatorio enviado con éxito." });
             }
@@ -254,6 +298,30 @@ namespace NSIE.Controllers
             {
                 _logger.LogError(ex, "Error enviando recordatorio para actividad {Id}.", id);
                 return StatusCode(500, new { error = "No fue posible enviar el recordatorio." });
+            }
+        }
+
+        [HttpPost("Gestor/Api/Actividades/{id:int}/Notificar")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApiNotificarActividad(int id, [FromBody] NotificarRequest request)
+        {
+            try
+            {
+                var act = await _repo.ObtenerActividadPorIdAsync(id);
+                if (act == null)
+                    return NotFound(new { error = "No se encontró la actividad especificada." });
+
+                if (request?.UsuarioIds == null || !request.UsuarioIds.Any())
+                    return BadRequest(new { error = "Debe proporcionar al menos un usuario para notificar." });
+
+                await NotificarCompartirActividadAsync(act, request.UsuarioIds);
+
+                return Ok(new { success = true, mensaje = "Actividad notificada con éxito." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error notificando actividad {Id} a usuarios.", id);
+                return StatusCode(500, new { error = "No fue posible enviar la notificación." });
             }
         }
 
@@ -315,6 +383,38 @@ namespace NSIE.Controllers
                     "La actividad {ActividadId} se guardo, pero no fue posible enviar correo al responsable {ResponsableId}.",
                     actividad.ActividadId,
                     responsableId.Value);
+            }
+        }
+
+        private async Task NotificarCompartirActividadAsync(GestorActividad actividad, List<int> usuarioIds)
+        {
+            if (usuarioIds == null || !usuarioIds.Any()) return;
+
+            foreach (var uid in usuarioIds.Distinct())
+            {
+                var usuario = await _repo.ObtenerUsuarioVigentePorIdAsync(uid);
+                if (usuario == null) continue;
+
+                var correo = usuario.Correo?.Trim();
+                if (string.IsNullOrWhiteSpace(correo))
+                {
+                    _logger.LogWarning("El usuario {UsuarioId} no tiene correo registrado.", uid);
+                    continue;
+                }
+
+                var asunto = $"Notificación de actividad: {actividad.Clave} - {actividad.Actividad}";
+                var portalUrl = Url.Action("Index", "Gestor", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
+                var cuerpo = ConstruirCorreoCompartirActividad(usuario.Nombre, actividad, portalUrl);
+
+                try
+                {
+                    _logger.LogInformation("Enviando correo de notificación de actividad {ActividadId} a {Correo}.", actividad.ActividadId, correo);
+                    await _servicioEmailSMTP.EnviarCorreo(correo, asunto, cuerpo);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error enviando notificación de actividad {ActividadId} a {Correo}.", actividad.ActividadId, correo);
+                }
             }
         }
 
@@ -528,6 +628,62 @@ namespace NSIE.Controllers
                                 </a>
                             </div>
                             <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía a solicitud del administrador o coordinador del seguimiento en la plataforma.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>";
+        }
+
+        private static string ConstruirCorreoCompartirActividad(string nombreDestinatario, GestorActividad actividad, string portalUrl)
+        {
+            var fechaCompromiso = actividad.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+            var fechaInicio = actividad.FechaInicio?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+            var descripcion = string.IsNullOrWhiteSpace(actividad.Descripcion)
+                ? "Sin descripción registrada."
+                : actividad.Descripcion;
+
+            return $@"
+                <html lang='es'>
+                <head>
+                    <meta charset='UTF-8'>
+                    <title>Compartir actividad</title>
+                </head>
+                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
+                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
+                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
+                                <tr>
+                                    <td style='width:50%;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
+                                    </td>
+                                    <td style='width:50%; text-align:right;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Actividad Compartida / Notificación</div>
+                        <div style='padding:22px 20px;'>
+                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Estimado(a) {nombreDestinatario},</p>
+                            <p>Le compartimos los detalles de la siguiente actividad registrada en el Gestor de Actividades DGMESNIE:</p>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Clave}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Tema</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.TemaNombre ?? "Sin tema"}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Actividad}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Responsable</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.ResponsableNombre ?? "Sin responsable asignado"}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha de inicio</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaInicio}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaCompromiso}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Estatus}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Avance</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Avance}%</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Prioridad}</td></tr>
+                            </table>
+                            <div style='margin:18px 0 16px; text-align:center;'>
+                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
+                                    Abrir Gestor de Actividades
+                                </a>
+                            </div>
+                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía automáticamente para compartir el estatus de la actividad.</p>
                         </div>
                     </div>
                 </body>

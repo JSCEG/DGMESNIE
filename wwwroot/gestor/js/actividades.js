@@ -169,7 +169,15 @@ export function renderTabla(temas, actividades, filters = {}) {
                     <td><div class="track ${sem === 'rojo' ? 'track--issue' : sem === 'amarillo' ? 'track--progress' : sem === 'verde' ? 'track--complete' : 'track--pending'}" style="width:90px"><span style="width:${a.avance || 0}%"></span></div><small class="muted">${a.avance || 0}%</small></td>
                     <td><span class="chip ${a.prioridad === 'Alta' ? 'p-alta' : a.prioridad === 'Media' ? 'p-media' : 'p-baja'}">${escape(a.prioridad)}</span></td>
                     <td><span class="semaforo ${sem}"></span></td>
-                    <td><span class="tabla-actions-cell">${a.evidenciaUrl ? `<a href="${escape(a.evidenciaUrl)}" target="_blank" rel="noopener" class="tabla-link-btn" title="Abrir evidencia" style="margin-right: 8px; display: inline-flex; align-items: center;"><i class="fa-solid fa-folder-open" style="font-size: 1.15rem; color: #b48934;"></i></a>` : ''}<button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem" data-edit="${a.id}">Editar</button></span></td>
+                    <td>
+                        <span class="tabla-actions-cell">
+                            ${a.evidenciaUrl ? `<a href="${escape(a.evidenciaUrl)}" target="_blank" rel="noopener" class="tabla-link-btn" title="Abrir evidencia" style="margin-right: 8px; display: inline-flex; align-items: center;"><i class="fa-solid fa-folder-open" style="font-size: 1.15rem; color: #b48934;"></i></a>` : ''}
+                            <button class="tabla-action-btn" data-email="${a.id}" title="Enviar por correo" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
+                                <i class="fa-solid fa-envelope" style="font-size: 1.15rem; color: #8a0031;"></i>
+                            </button>
+                            <button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem" data-edit="${a.id}">Editar</button>
+                        </span>
+                    </td>
                 </tr>`;
         }).join('')
         : '<tr><td colspan="11" style="text-align:center;color:var(--g-text-soft);padding:1.5rem">Sin actividades</td></tr>';
@@ -178,6 +186,10 @@ export function renderTabla(temas, actividades, filters = {}) {
 
     tbody.querySelectorAll('[data-edit]').forEach(btn => {
         btn.onclick = () => openActividadModal(actividades.find(a => a.id === btn.dataset.edit), temas);
+    });
+
+    tbody.querySelectorAll('[data-email]').forEach(btn => {
+        btn.onclick = () => openSendEmailModal(actividades.find(a => a.id === btn.dataset.email));
     });
 
 }
@@ -248,6 +260,17 @@ export async function openActividadModal(actividad, temas) {
                 <div class="form-field"><label>Motivo bloqueo</label><input name="motivoBloqueo" value="${escape(a.motivoBloqueo || '')}"></div>
                 <div class="form-field full"><label>Evidencia URL</label><input type="url" name="evidenciaUrl" value="${escape(a.evidenciaUrl || '')}"></div>
                 <div class="form-field full"><label>Comentarios</label><textarea name="comentarios">${escape(a.comentarios || '')}</textarea></div>
+                <div class="form-field full" style="margin-top: 10px;">
+                    <label style="font-weight: 700; color: var(--texto); margin-bottom: 6px; display: block;">Enviar notificación por correo a:</label>
+                    <div class="usuarios-check-list" style="max-height: 140px; overflow-y: auto; border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                        ${filteredUsers.map(u => `
+                            <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.85rem; color: var(--texto); cursor: pointer; margin: 0;">
+                                <input type="checkbox" name="notificarUsuariosIds" value="${u.idUsuario}" style="width: 16px; height: 16px; accent-color: var(--guinda); cursor: pointer;">
+                                <span>${escape(u.nombre)}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
             </div>
             <div class="form-actions">
                 ${!isNew ? `<button type="button" class="internal-button" style="color:var(--riesgo);border-color:rgba(180,35,24,.3)" id="btn-del-act">Eliminar</button>` : ''}
@@ -259,6 +282,10 @@ export async function openActividadModal(actividad, temas) {
         data.bloqueada = data.bloqueada === 'true';
         data.fechaUltimaActualizacion = new Date().toISOString().slice(0, 10);
         if (data.avance === 100) data.estatus = 'Concluida';
+
+        const checkboxes = document.querySelectorAll('#modal-body form input[name="notificarUsuariosIds"]:checked');
+        data.notificarUsuariosIds = Array.from(checkboxes).map(cb => Number(cb.value));
+
         if (isNew) {
             await dataService.create('actividades', data);
             toast('Actividad creada', 'ok');
@@ -288,4 +315,81 @@ export function exportarCsv(temas, actividades) {
     });
     downloadCsv('actividades.csv', rows);
     toast('CSV descargado', 'ok');
+}
+
+export async function openSendEmailModal(actividad) {
+    const users = await dataService.list('usuarios');
+    const filteredUsers = users
+        .filter(u => normalizeUserName(u.nombre) !== 'consulta publica')
+        .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es-MX', { sensitivity: 'base' }));
+
+    const html = `
+        <form id="compartir-email-form">
+            <div class="form-row">
+                <div class="form-field full">
+                    <p style="margin-bottom: 12px; font-size: 0.9rem; color: var(--texto-suave);">
+                        Seleccione uno o más usuarios para enviar los detalles de la actividad <strong>${escape(actividad.clave)} - ${escape(actividad.actividad)}</strong> por correo electrónico:
+                    </p>
+                    <div class="usuarios-check-list" style="max-height: 220px; overflow-y: auto; border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                        ${filteredUsers.map(u => `
+                            <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.85rem; color: var(--texto); cursor: pointer; margin: 0;">
+                                <input type="checkbox" name="notificarUsuariosIds" value="${u.idUsuario}" style="width: 16px; height: 16px; accent-color: var(--guinda); cursor: pointer;">
+                                <span>${escape(u.nombre)} ${u.correo ? `(${escape(u.correo)})` : ''}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top: 15px;">
+                <button type="button" class="internal-button" id="btn-cancel-share">Cancelar</button>
+                <button type="submit" class="internal-button internal-button--primary">Enviar por correo</button>
+            </div>
+        </form>
+    `;
+
+    const close = openModal(`Enviar actividad por correo`, html, null);
+    
+    document.getElementById('btn-cancel-share').onclick = close;
+
+    const form = document.getElementById('compartir-email-form');
+    form.onsubmit = async (e) => {
+        e.preventDefault();
+        const checkboxes = form.querySelectorAll('input[name="notificarUsuariosIds"]:checked');
+        const userIds = Array.from(checkboxes).map(cb => Number(cb.value));
+
+        if (userIds.length === 0) {
+            toast('Debe seleccionar al menos un usuario.', 'err');
+            return;
+        }
+
+        try {
+            const submitBtn = form.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Enviando...';
+
+            const token = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+            const res = await fetch(`/Gestor/Api/Actividades/${actividad.id}/Notificar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': token
+                },
+                body: JSON.stringify({ usuarioIds: userIds })
+            });
+
+            if (!res.ok) {
+                const body = await res.json().catch(() => null);
+                throw new Error(body?.error || `Error ${res.status}`);
+            }
+
+            toast('Correo(s) enviado(s) con éxito', 'ok');
+            close();
+        } catch (err) {
+            toast(err.message || 'No fue posible enviar el correo', 'err');
+            const submitBtn = form.querySelector('button[type="submit"]');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Enviar por correo';
+        }
+    };
 }

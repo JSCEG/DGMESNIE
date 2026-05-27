@@ -1,4 +1,5 @@
 import { escape, fmtDate, daysFromToday, openModal, toast } from './utils.js';
+import { dataService } from './data-service.js';
 
 export function generarAlertas(temas, actividades) {
     const alertas = [];
@@ -64,12 +65,42 @@ export function renderAlertas(temas, actividades) {
     });
 }
 
-function confirmarYEnviarRecordatorio(act) {
+async function confirmarYEnviarRecordatorio(act) {
+    function normalizeUserName(value) {
+        return String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+            .toLowerCase();
+    }
+
+    const users = await dataService.list('usuarios');
+    const filteredUsers = users
+        .filter(u => normalizeUserName(u.nombre) !== 'consulta publica')
+        .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es-MX', { sensitivity: 'base' }));
+
+    const selectedById = Number(act.responsableId);
+    const currentById = Number.isFinite(selectedById) && selectedById > 0
+        ? filteredUsers.find(u => u.idUsuario === selectedById)
+        : null;
+    const currentByName = filteredUsers.find(u => u.nombre === act.responsable);
+    const selectedUserId = (currentById?.idUsuario ?? currentByName?.idUsuario ?? null);
+
     const html = `
         <form id="recordatorio-form" style="margin: 0;">
-            <p style="margin-bottom: 1.25rem; line-height: 1.5; color: var(--texto);">
-                ¿Está seguro de enviar un recordatorio por correo electrónico a <strong>${escape(act.responsable)}</strong> para esta actividad?
+            <p style="margin-bottom: 12px; font-size: 0.9rem; color: var(--texto-suave);">
+                Seleccione uno o más usuarios para enviar el recordatorio de la actividad por correo electrónico:
             </p>
+            
+            <div class="usuarios-check-list" style="max-height: 180px; overflow-y: auto; border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); margin-bottom: 15px;">
+                ${filteredUsers.map(u => `
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.85rem; color: var(--texto); cursor: pointer; margin: 0;">
+                        <input type="checkbox" name="notificarUsuariosIds" value="${u.idUsuario}" ${u.idUsuario === selectedUserId ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: var(--guinda); cursor: pointer;">
+                        <span>${escape(u.nombre)} ${u.correo ? `(${escape(u.correo)})` : ''}</span>
+                    </label>
+                `).join('')}
+            </div>
+
             <div style="background: rgba(138, 0, 49, 0.04); border-left: 4px solid var(--guinda); padding: 12px; margin-bottom: 1.5rem; border-radius: 4px;">
                 <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--guinda); font-weight: 700; margin-bottom: 4px;">Actividad</div>
                 <div style="font-weight: 700; color: var(--texto); font-size: 0.95rem;">${escape(act.actividad)}</div>
@@ -77,6 +108,7 @@ function confirmarYEnviarRecordatorio(act) {
                     Fecha Compromiso: ${fmtDate(act.fechaCompromiso)}
                 </div>
             </div>
+            
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
                 <button type="button" id="btn-cancelar-envio" class="internal-button" style="min-height: 36px; padding: 0.5rem 1rem;">Cancelar</button>
                 <button type="submit" id="btn-confirmar-envio" class="internal-button internal-button--primary" style="min-height: 36px; padding: 0.5rem 1rem; display: inline-flex; align-items: center; gap: 8px;">
@@ -98,6 +130,14 @@ function confirmarYEnviarRecordatorio(act) {
         form.onsubmit = async (e) => {
             e.preventDefault();
             
+            const checkboxes = form.querySelectorAll('input[name="notificarUsuariosIds"]:checked');
+            const userIds = Array.from(checkboxes).map(cb => Number(cb.value));
+
+            if (userIds.length === 0) {
+                toast('Debe seleccionar al menos un usuario.', 'err');
+                return;
+            }
+
             // Disable buttons and show "Enviando..."
             if (btnCancel) btnCancel.disabled = true;
             if (btnConfirm) {
@@ -112,7 +152,8 @@ function confirmarYEnviarRecordatorio(act) {
                     headers: {
                         'Content-Type': 'application/json',
                         'RequestVerificationToken': token
-                    }
+                    },
+                    body: JSON.stringify({ usuarioIds: userIds })
                 });
 
                 if (!res.ok) {

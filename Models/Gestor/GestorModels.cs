@@ -115,5 +115,6 @@ namespace NSIE.Models.Gestor
         public string? EvidenciaUrl { get; set; }
         public string? Comentarios { get; set; }
         public List<int> CorresponsablesIds { get; set; } = [];
+        public List<int> NotificarUsuariosIds { get; set; } = [];
     }
 }
