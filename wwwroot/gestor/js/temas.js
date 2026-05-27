@@ -12,15 +12,47 @@ function normalizeUserName(value) {
         .toLowerCase();
 }
 
-export function renderTemas(actividades, temas, filtro = '') {
+export function populateActividadesResponsablesFilter(actividades) {
+    const sel = document.getElementById('filtro-temas-responsable');
+    if (!sel) return;
+    const prevValue = sel.value;
+    
+    const set = new Set();
+    actividades.forEach(a => {
+        if (a.responsablePrincipal) set.add(a.responsablePrincipal.trim());
+        if (a.corresponsables) a.corresponsables.forEach(c => { if (c.nombre) set.add(c.nombre.trim()); });
+    });
+    
+    const responsibles = [...set].sort((x, y) => x.localeCompare(y, 'es-MX', { sensitivity: 'base' }));
+    sel.innerHTML = '<option value="">Responsable</option>' +
+        responsibles.map(r => `<option value="${escape(r)}">${escape(r)}</option>`).join('');
+        
+    if (prevValue && responsibles.includes(prevValue)) {
+        sel.value = prevValue;
+    }
+}
+
+export function renderTemas(actividades, temas, filtro = '', responsableFilter = '') {
     _actsState = actividades; _temasState = temas;
+    populateActividadesResponsablesFilter(actividades);
+
     const f = (filtro || '').toLowerCase();
-    const filtered = actividades.filter(a =>
-        !f ||
-        a.actividad.toLowerCase().includes(f) ||
-        (a.responsablePrincipal || '').toLowerCase().includes(f) ||
-        (a.categoria || '').toLowerCase().includes(f)
-    );
+    let filtered = actividades;
+
+    if (f) {
+        filtered = filtered.filter(a =>
+            a.actividad.toLowerCase().includes(f) ||
+            (a.responsablePrincipal || '').toLowerCase().includes(f) ||
+            (a.categoria || '').toLowerCase().includes(f)
+        );
+    }
+
+    if (responsableFilter) {
+        filtered = filtered.filter(a =>
+            a.responsablePrincipal === responsableFilter ||
+            (a.corresponsables && a.corresponsables.some(c => c.nombre === responsableFilter))
+        );
+    }
 
     const cont = document.getElementById('cards-temas');
     cont.innerHTML = filtered.length

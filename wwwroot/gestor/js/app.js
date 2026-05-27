@@ -93,7 +93,7 @@ function renderCurrent() {
     poblarFiltroKanban(actividades);
     switch (view) {
         case 'dashboard': renderDashboard(actividades, filteredTemas); break;
-        case 'temas': renderTemas(actividades, filteredTemas, document.getElementById('filtro-temas').value); break;
+        case 'temas': renderTemas(actividades, filteredTemas, document.getElementById('filtro-temas')?.value || '', document.getElementById('filtro-temas-responsable')?.value || ''); break;
         case 'kanban': renderKanban(actividades, filteredTemas, document.getElementById('filtro-kanban-tema').value); break;
         case 'tabla': actividadesModule.renderTabla(filteredTemas, actividades, getTablaFilters()); break;
         case 'gantt': renderGantt(actividades, filteredTemas); break;
@@ -136,7 +136,20 @@ function wireEvents() {
 
     wireChartFullscreenButtons();
 
-    document.getElementById('filtro-temas').oninput = () => renderTemas(state.actividades, getFilteredTemas(), document.getElementById('filtro-temas').value);
+    const rerenderTemas = () => {
+        renderTemas(
+            state.actividades, 
+            getFilteredTemas(), 
+            document.getElementById('filtro-temas')?.value || '',
+            document.getElementById('filtro-temas-responsable')?.value || ''
+        );
+    };
+    if (document.getElementById('filtro-temas')) {
+        document.getElementById('filtro-temas').oninput = rerenderTemas;
+    }
+    if (document.getElementById('filtro-temas-responsable')) {
+        document.getElementById('filtro-temas-responsable').onchange = rerenderTemas;
+    }
     document.getElementById('btn-nuevo-tema').onclick = () => openActividadModal(null);
 
     const rerenderTabla = () => {
