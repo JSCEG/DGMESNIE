@@ -1,5 +1,14 @@
-import { escape, fmtDate, daysFromToday, openModal, toast } from './utils.js';
+import { escape, fmtDate, daysFromToday, openModal, toast, semaforo } from './utils.js';
 import { dataService } from './data-service.js';
+
+function getInitials(name) {
+    return (name || '??')
+        .split(' ')
+        .filter(w => w.length > 0)
+        .slice(0, 2)
+        .map(w => w[0].toUpperCase())
+        .join('');
+}
 
 export function generarAlertas(actividades, temas) {
     const alertas = [];
@@ -7,7 +16,7 @@ export function generarAlertas(actividades, temas) {
         if (t.estatus === 'Concluida') return;
         const dr = daysFromToday(t.fechaCompromiso);
         const actividad = actividades.find(a => a.id === t.actividadId);
-        const ctx = `${actividad?.actividad || ''} · ${t.responsable}`;
+        const ctx = actividad?.actividad || '';
         if (dr < 0) {
             alertas.push({ tipo: 'vencida', titulo: `Vencida: ${t.tema}`, msg: `${ctx} · venció ${fmtDate(t.fechaCompromiso)} (hace ${Math.abs(dr)} d)`, act: t });
         } else if (dr <= 7) {
@@ -32,22 +41,58 @@ export function renderAlertas(actividades, temas) {
     if (!cont) return;
     document.getElementById('badge-alertas').textContent = alertas.length;
 
+    const semLabels = { verde: 'A tiempo / Concluido', amarillo: 'Por vencer (≤ 7 días)', rojo: 'Vencido', gris: 'Bloqueado / Sin fecha' };
+
     cont.innerHTML = alertas.length
         ? alertas.map(al => {
             const hasResponsable = al.act && al.act.responsableId;
-            return `
-            <div class="alerta-item tipo-${al.tipo}">
-                <div style="flex-grow: 1;">
-                    <h5>${escape(al.titulo)}</h5>
-                    <p>${escape(al.msg)}</p>
+            const mainResp = al.act.responsable || 'Sin responsable';
+            const mainInitials = getInitials(mainResp);
+            const corresponsablesList = al.act.corresponsables || [];
+            const sem = semaforo(al.act);
+            const semLabel = semLabels[sem] || sem;
+
+            const avatarsHtml = `
+                <div class="alerta-avatars" style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+                    <div style="display: flex; align-items: center;" title="Responsable principal: ${escape(mainResp)}${corresponsablesList.length ? ' · Corresponsables: ' + escape(corresponsablesList.map(c => c.nombre).join(', ')) : ''}">
+                        <span class="avatar-circle main" title="Responsable: ${escape(mainResp)}" style="background: var(--guinda); color: #fff; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(138,0,49,0.25); position: relative; z-index: 10; cursor: default;">
+                            ${mainInitials}
+                        </span>
+                        ${corresponsablesList.map((c, idx) => {
+                            const coInitials = getInitials(c.nombre);
+                            const coColors = ['#1e5b4f','#1a4a7a','#5b3a1e','#4a1e5b','#1e4a5b'];
+                            const bg = coColors[idx % coColors.length];
+                            return `
+                                <span class="avatar-circle co" title="Corresponsable: ${escape(c.nombre)}" style="background: ${bg}; color: #fff; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.15); margin-left: -10px; position: relative; z-index: ${9 - idx}; cursor: default;">
+                                    ${coInitials}
+                                </span>
+                            `;
+                        }).join('')}
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 1px;">
+                        <span style="font-size: 0.78rem; color: var(--texto); font-weight: 600; line-height: 1.2;">${escape(mainResp)}</span>
+                        ${corresponsablesList.length ? `<span style="font-size: 0.72rem; color: var(--guinda); font-weight: 700;">+${corresponsablesList.length} corresponsable${corresponsablesList.length > 1 ? 's' : ''}</span>` : ''}
+                    </div>
                 </div>
-                <div class="alerta-actions">
+            `;
+
+            return `
+            <div class="alerta-item tipo-${al.tipo}" style="position: relative; display: flex; align-items: flex-start; gap: 14px;">
+                <div style="flex-grow: 1;">
+                    <h5 style="display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 0 0 4px 0; font-family: Montserrat, sans-serif;">
+                        <span class="semaforo ${sem}" style="width: 10px; height: 10px; flex-shrink: 0; margin-top: 0;" title="${escape(semLabel)}"></span>
+                        ${escape(al.titulo)}
+                    </h5>
+                    <p style="margin: 0; font-size: 0.82rem; color: var(--texto-suave); font-family: Montserrat, sans-serif;">${escape(al.msg)}</p>
+                    ${avatarsHtml}
+                </div>
+                <div class="alerta-actions" style="flex-shrink: 0; align-self: center;">
                     ${hasResponsable ? `
                         <button class="btn-recordatorio internal-button" data-act-id="${al.act.id}" title="Enviar recordatorio por correo" style="min-height: 32px; padding: 0.3rem 0.7rem; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 6px;">
                             <i class="fa-solid fa-paper-plane"></i> Recordatorio
                         </button>
                     ` : ''}
-                    <span class="chip">${al.tipo.replace('-', ' ')}</span>
+                    <span class="chip">${al.tipo.replace(/-/g, ' ')}</span>
                 </div>
             </div>`;
         }).join('')
