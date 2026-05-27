@@ -812,12 +812,15 @@ async function descargarReporteResponsablePdf(responsableName) {
         toast('No fue posible preparar el PDF.', 'err');
         return;
     }
+    setReporteResponsableButtons(true);
+    setReporteResponsablePreloader(true, 'Generando PDF', `Preparando ${slides.length} láminas...`);
     try {
         renderResponsableCharts(responsableChartData.rows, responsableChartData.actividades, responsableChartData.responsableName);
         await delay(250);
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [1280, 720] });
         for (let i = 0; i < slides.length; i++) {
+            setReporteResponsablePreloader(true, 'Generando PDF', `Procesando lámina ${i + 1} de ${slides.length}...`);
             await waitForResponsableAssets(slides[i]);
             const canvas = await html2canvas(slides[i], {
                 scale: 2,
@@ -831,8 +834,14 @@ async function descargarReporteResponsablePdf(responsableName) {
         }
         pdf.save(`reporte-${responsableName.replace(/\s+/g, '-').toLowerCase()}.pdf`);
         toast('PDF generado', 'ok');
-    } catch (_) {
+    } catch (err) {
+        console.error(err);
         toast('No fue posible preparar el PDF.', 'err');
+        setReporteResponsablePreloader(true, 'Error al generar PDF', 'Intente nuevamente en unos momentos.', true);
+        setTimeout(() => setReporteResponsablePreloader(false), 2500);
+    } finally {
+        setReporteResponsableButtons(false);
+        setTimeout(() => setReporteResponsablePreloader(false), 500);
     }
 }
 
@@ -842,6 +851,8 @@ async function descargarReporteResponsablePpt(responsableName) {
         toast('No fue posible preparar el PPT.', 'err');
         return;
     }
+    setReporteResponsableButtons(true);
+    setReporteResponsablePreloader(true, 'Generando PPT', `Preparando ${slides.length} láminas...`);
     try {
         renderResponsableCharts(responsableChartData.rows, responsableChartData.actividades, responsableChartData.responsableName);
         await delay(250);
@@ -851,7 +862,9 @@ async function descargarReporteResponsablePpt(responsableName) {
         pptx.subject = 'Seguimiento de actividades';
         pptx.title = `Reporte de ${responsableName}`;
         pptx.company = 'Secretaría de Energía';
-        for (const slideNode of slides) {
+        for (let i = 0; i < slides.length; i++) {
+            const slideNode = slides[i];
+            setReporteResponsablePreloader(true, 'Generando PPT', `Procesando lámina ${i + 1} de ${slides.length}...`);
             await waitForResponsableAssets(slideNode);
             const canvas = await html2canvas(slideNode, {
                 scale: 2,
@@ -865,9 +878,34 @@ async function descargarReporteResponsablePpt(responsableName) {
         }
         await pptx.writeFile({ fileName: `reporte-${responsableName.replace(/\s+/g, '-').toLowerCase()}.pptx` });
         toast('PPT generado', 'ok');
-    } catch (_) {
+    } catch (err) {
+        console.error(err);
         toast('No fue posible preparar el PPT.', 'err');
+        setReporteResponsablePreloader(true, 'Error al generar PPT', 'Intente nuevamente en unos momentos.', true);
+        setTimeout(() => setReporteResponsablePreloader(false), 2500);
+    } finally {
+        setReporteResponsableButtons(false);
+        setTimeout(() => setReporteResponsablePreloader(false), 500);
     }
+}
+
+function setReporteResponsableButtons(disabled) {
+    ['resp-reporte-presentar', 'resp-reporte-pdf', 'resp-reporte-ppt', 'resp-reporte-excel', 'resp-reporte-volver', 'resp-reporte-volver-top'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = disabled;
+    });
+}
+
+function setReporteResponsablePreloader(visible, title, sub, isError = false) {
+    const pre = document.getElementById('tracking-preloader');
+    if (!pre) return;
+    pre.classList.toggle('is-hidden', !visible);
+    pre.classList.toggle('is-error', !!isError);
+    pre.style.display = visible ? 'flex' : '';
+    const t = document.getElementById('tracking-preloader-title');
+    const s = document.getElementById('tracking-preloader-sub');
+    if (t && title) t.textContent = title;
+    if (s && sub) s.textContent = sub;
 }
 
 function delay(ms) {
