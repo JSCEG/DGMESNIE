@@ -586,9 +586,14 @@ export async function openTemaModal(tema, actividades) {
                 
                 <!-- Dynamic Stages Subform -->
                 <div class="form-field full" style="margin-top: 15px; border-top: 1px solid rgba(138, 0, 49, 0.15); padding-top: 15px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <label style="font-weight: 700; color: var(--guinda); font-size:0.95rem; margin:0;">Etapas del Tema</label>
-                        <button type="button" class="internal-button" id="btn-add-etapa" style="padding: 2px 10px; min-height: 28px; font-size: 0.75rem;">+ Agregar Etapa</button>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px;">
+                        <div>
+                            <label style="font-weight: 700; color: var(--guinda); font-size:0.95rem; margin:0;">Etapas del Tema</label>
+                            <p style="margin:4px 0 0;font-size:0.78rem;color:var(--texto-suave);line-height:1.35;">
+                                Opcional. Si no agregas etapas, el sistema usará los datos del tema como etapa inicial.
+                            </p>
+                        </div>
+                        <button type="button" class="internal-button" id="btn-add-etapa" style="padding: 2px 10px; min-height: 28px; font-size: 0.75rem;">+ Agregar etapa</button>
                     </div>
                     <div id="etapas-list-container" style="display: flex; flex-direction: column; gap: 10px;">
                         <!-- Stages render dynamically here -->
@@ -632,7 +637,7 @@ export async function openTemaModal(tema, actividades) {
             saveCurrentInputsState();
             
             if (currentEtapas.length === 0) {
-                throw new Error('Debe agregar al menos una etapa para el tema.');
+                currentEtapas.push(buildStageFromMainForm(data));
             }
 
              for (let i = 0; i < currentEtapas.length; i++) {
@@ -738,6 +743,27 @@ export async function openTemaModal(tema, actividades) {
     const fCompromisoInput = document.querySelector('#modal-body form input[name="fechaCompromiso"]');
     const estatusSelect = document.querySelector('#modal-body form select[name="estatus"]');
 
+    const buildStageFromMainForm = (formData = null) => {
+        const temaNombre = formData?.tema || document.querySelector('#modal-body form input[name="tema"]')?.value || t.tema || 'Etapa inicial';
+        const resp = formData?.responsableId || respSelect?.value || selectedUserId || '';
+        const inicio = formData?.fechaInicio || fInicioInput?.value || '';
+        const compromiso = formData?.fechaCompromiso || fCompromisoInput?.value || '';
+        const estatus = formData?.estatus || estatusSelect?.value || 'Pendiente';
+        let avance = 0;
+        if (estatus === 'Concluida') avance = 100;
+        else if (estatus === 'En proceso') avance = 50;
+
+        return {
+            etapaId: null,
+            nombre: temaNombre,
+            responsableId: Number(resp) || '',
+            fechaInicio: inicio || null,
+            fechaCompromiso: compromiso || null,
+            avance,
+            estatus
+        };
+    };
+
     let previousResponsibleId = respSelect ? respSelect.value : '';
     const updateCorresponsablesChecklist = () => {
         const selectedId = respSelect ? respSelect.value : '';
@@ -765,7 +791,14 @@ export async function openTemaModal(tema, actividades) {
     };
 
     const syncStagesToMain = () => {
-        if (!currentEtapas.length) return;
+        if (!currentEtapas.length) {
+            if (respSelect) respSelect.disabled = false;
+            if (fInicioInput) fInicioInput.readOnly = false;
+            if (fCompromisoInput) fCompromisoInput.readOnly = false;
+            if (estatusSelect) estatusSelect.disabled = false;
+            updateCorresponsablesChecklist();
+            return;
+        }
 
         const sumAv = currentEtapas.reduce((s, st) => s + (st.avance || 0), 0);
         const overallAv = Math.round(sumAv / currentEtapas.length);
@@ -902,6 +935,15 @@ export async function openTemaModal(tema, actividades) {
     const updateEtapasView = () => {
         const container = document.getElementById('etapas-list-container');
         if (!container) return;
+        if (!currentEtapas.length) {
+            container.innerHTML = `
+                <div style="border:1px dashed rgba(138,0,49,.22);border-radius:10px;padding:12px 14px;background:rgba(138,0,49,.025);color:var(--texto-suave);font-size:.82rem;line-height:1.45;">
+                    El tema se guardará con una etapa inicial automática usando el responsable y las fechas capturadas arriba.
+                    Agrega etapas solo si necesitas dividir el seguimiento en una secuencia.
+                </div>`;
+            return;
+        }
+
         container.innerHTML = currentEtapas.map((e, idx) => renderEtapaRow(e, idx)).join('');
 
         container.querySelectorAll('.etapa-row-card').forEach(card => {
@@ -909,7 +951,10 @@ export async function openTemaModal(tema, actividades) {
             
             card.querySelector('.btn-del-etapa').onclick = () => {
                 if (currentEtapas.length <= 1) {
-                    toast('Un tema debe tener al menos una etapa.', 'err');
+                    currentEtapas.splice(idx, 1);
+                    updateEtapasView();
+                    syncStagesToMain();
+                    toast('El tema vuelve a seguimiento simple.', 'ok');
                     return;
                 }
                 currentEtapas.splice(idx, 1);
@@ -969,15 +1014,20 @@ export async function openTemaModal(tema, actividades) {
 
     document.getElementById('btn-add-etapa').onclick = () => {
         saveCurrentInputsState();
-        currentEtapas.push({
-            etapaId: null,
-            nombre: '',
-            responsableId: selectedUserId || '',
-            fechaInicio: '',
-            fechaCompromiso: '',
-            avance: 0,
-            estatus: 'Pendiente'
-        });
+        if (!currentEtapas.length) {
+            currentEtapas.push(buildStageFromMainForm());
+        } else {
+            const previous = currentEtapas[currentEtapas.length - 1];
+            currentEtapas.push({
+                etapaId: null,
+                nombre: '',
+                responsableId: selectedUserId || '',
+                fechaInicio: previous?.fechaCompromiso || '',
+                fechaCompromiso: '',
+                avance: 0,
+                estatus: 'Pendiente'
+            });
+        }
         updateEtapasView();
         syncStagesToMain();
     };

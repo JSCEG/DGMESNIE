@@ -594,7 +594,7 @@ namespace NSIE.Servicios
                     {
                         new GestorEtapaForm
                         {
-                            Nombre = "Etapa Inicial",
+                            Nombre = form.Tema,
                             ResponsableId = form.ResponsableId ?? 0,
                             FechaInicio = form.FechaInicio,
                             FechaCompromiso = form.FechaCompromiso,
@@ -659,7 +659,7 @@ namespace NSIE.Servicios
                         {
                             new GestorEtapaForm
                             {
-                                Nombre = "Etapa Inicial",
+                                Nombre = form.Tema,
                                 ResponsableId = form.ResponsableId ?? 0,
                                 FechaInicio = form.FechaInicio,
                                 FechaCompromiso = form.FechaCompromiso,
