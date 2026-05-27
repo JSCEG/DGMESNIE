@@ -260,6 +260,14 @@ namespace NSIE.Controllers
                 }
                 return CreatedAtAction(nameof(ApiTema), new { id }, tema);
             }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creando tema.");
@@ -283,10 +291,28 @@ namespace NSIE.Controllers
                 await _repo.ActualizarTemaAsync(form, GetCurrentUserId());
                 var tema = await _repo.ObtenerTemaPorIdAsync(id);
                 var responsableCambioSolicitado = form.ResponsableId != temaAnterior?.ResponsableId;
+                var seCreoNuevaEtapa = form.Etapas != null && form.Etapas.Any(e => !e.EtapaId.HasValue || e.EtapaId.Value == 0);
                 if (tema != null)
                 {
-                    if (responsableCambioSolicitado && form.ResponsableId.HasValue)
-                        await NotificarAsignacionTemaAsync(tema, form.ResponsableId);
+                    if ((responsableCambioSolicitado || seCreoNuevaEtapa) && tema.ResponsableId.HasValue)
+                    {
+                        await NotificarAsignacionTemaAsync(tema, tema.ResponsableId);
+                    }
+
+                    if (form.Etapas != null)
+                    {
+                        var newStagesResponsibles = form.Etapas
+                            .Where(e => !e.EtapaId.HasValue || e.EtapaId.Value == 0)
+                            .Select(e => e.ResponsableId)
+                            .Distinct()
+                            .Where(rid => rid != (tema.ResponsableId ?? 0))
+                            .ToList();
+
+                        foreach (var rid in newStagesResponsibles)
+                        {
+                            await NotificarAsignacionTemaAsync(tema, rid);
+                        }
+                    }
 
                     var nuevosCorresponsables = form.CorresponsablesIds.Except(temaAnterior?.Corresponsables.Select(c => c.IdUsuario) ?? Enumerable.Empty<int>()).ToList();
                     if (nuevosCorresponsables.Any())
@@ -300,6 +326,14 @@ namespace NSIE.Controllers
                     }
                 }
                 return Json(tema);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { error = ex.Message });
             }
             catch (Exception ex)
             {
@@ -693,6 +727,7 @@ namespace NSIE.Controllers
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Estatus}</td></tr>
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Corresponsables</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{coResps}</td></tr>
                             </table>
+                            {RenderEtapasHtml(tema.Etapas)}
                             <div style='margin:18px 0 16px; text-align:center;'>
                                 <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
                                     Abrir Gestor de Actividades
@@ -747,6 +782,7 @@ namespace NSIE.Controllers
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Avance</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Avance}%</td></tr>
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Corresponsables</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{coResps}</td></tr>
                             </table>
+                            {RenderEtapasHtml(tema.Etapas)}
                             <p style='margin-bottom: 20px;'>Agradecemos de antemano su valiosa colaboración para mantener al día el seguimiento de estos compromisos institucionales.</p>
                             <div style='margin:18px 0 16px; text-align:center;'>
                                 <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
@@ -806,6 +842,7 @@ namespace NSIE.Controllers
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Prioridad}</td></tr>
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Corresponsables</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{coResps}</td></tr>
                             </table>
+                            {RenderEtapasHtml(tema.Etapas)}
                             <div style='margin:18px 0 16px; text-align:center;'>
                                 <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
                                     Abrir Gestor de Actividades
@@ -907,6 +944,7 @@ namespace NSIE.Controllers
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaCompromiso}</td></tr>
                                 <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Prioridad}</td></tr>
                             </table>
+                            {RenderEtapasHtml(tema.Etapas)}
                             <div style='margin:18px 0 16px; text-align:center;'>
                                 <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
                                     Abrir Gestor de Actividades
@@ -917,6 +955,53 @@ namespace NSIE.Controllers
                     </div>
                 </body>
                 </html>";
+        }
+
+        private static string RenderEtapasHtml(List<GestorEtapa> etapas)
+        {
+            if (etapas == null || !etapas.Any()) return "";
+
+            var activeStage = etapas.FirstOrDefault(e => e.Avance < 100) ?? etapas.Last();
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append("<div style='margin-top:20px; border-top:1px solid #dfdfdf; padding-top:16px;'>");
+            sb.Append("<h3 style='font-size:16px; font-weight:700; color:#8a0031; margin:0 0 12px 0;'>Secuencia y Trazabilidad de Etapas</h3>");
+            sb.Append("<div style='display:flex; flex-direction:column; gap:10px;'>");
+
+            int index = 1;
+            foreach (var e in etapas.OrderBy(x => x.Orden).ThenBy(x => x.EtapaId))
+            {
+                var isCompleted = e.Avance == 100 || e.Estatus == "Concluida";
+                var isActive = e == activeStage;
+
+                var bgStyle = isActive ? "background:#fdfaf6; border-left:4px solid #d97706;" : "background:#f8fafc; border-left:4px solid #cbd5e1;";
+                var badgeBg = isCompleted ? "#d1fae5" : isActive ? "#fef3c7" : "#f1f5f9";
+                var badgeColor = isCompleted ? "#065f46" : isActive ? "#92400e" : "#475569";
+                var statusText = isCompleted ? "Concluida" : isActive ? "En curso" : "Pendiente";
+                var badgeText = isActive ? $"{statusText} &middot; &iexcl;Te toca!" : statusText;
+
+                var dateRange = e.FechaInicio.HasValue 
+                    ? $"{e.FechaInicio.Value:dd/MM/yyyy} al {e.FechaCompromiso.Value:dd/MM/yyyy}"
+                    : e.FechaCompromiso.HasValue ? $"Compromiso: {e.FechaCompromiso.Value:dd/MM/yyyy}" : "Sin fechas";
+
+                sb.Append($@"
+                    <div style='padding:12px; border:1px solid #e2e8f0; border-radius:8px; {bgStyle}'>
+                        <div style='display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;'>
+                            <span style='font-weight:700; font-size:14px; color:#0f172a;'>Etapa {index}: {System.Net.WebUtility.HtmlEncode(e.Nombre)}</span>
+                            <span style='padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700; background:{badgeBg}; color:{badgeColor};'>{badgeText}</span>
+                        </div>
+                        <div style='font-size:12px; color:#64748b;'>
+                            <strong>Asignado a:</strong> {System.Net.WebUtility.HtmlEncode(e.ResponsableNombre ?? "Sin asignar")} &nbsp;|&nbsp; 
+                            <strong>Periodo:</strong> {dateRange} &nbsp;|&nbsp; 
+                            <strong>Avance:</strong> {e.Avance}%
+                        </div>
+                    </div>");
+                index++;
+            }
+
+            sb.Append("</div>");
+            sb.Append("</div>");
+            return sb.ToString();
         }
 
         private static string ConstruirCorreoCompartirActividad(string nombreDestinatario, GestorActividad actividad, string portalUrl)

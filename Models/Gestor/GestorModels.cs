@@ -59,6 +59,23 @@ namespace NSIE.Models.Gestor
 
         // Semáforo calculado
         public string Semaforo { get; set; } = "gris";
+
+        // Etapas de este tema
+        public List<GestorEtapa> Etapas { get; set; } = [];
+    }
+
+    public class GestorEtapa
+    {
+        public int EtapaId { get; set; }
+        public int TemaId { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public int ResponsableId { get; set; }
+        public string? ResponsableNombre { get; set; }
+        public DateTime? FechaInicio { get; set; }
+        public DateTime? FechaCompromiso { get; set; }
+        public int Avance { get; set; }
+        public string Estatus { get; set; } = "Pendiente";
+        public int Orden { get; set; }
     }
 
     public class GestorUsuarioDto
@@ -116,5 +133,20 @@ namespace NSIE.Models.Gestor
         public string? Comentarios { get; set; }
         public List<int> CorresponsablesIds { get; set; } = [];
         public List<int> NotificarUsuariosIds { get; set; } = [];
+
+        // Etapas de este tema
+        public List<GestorEtapaForm> Etapas { get; set; } = [];
+    }
+
+    public class GestorEtapaForm
+    {
+        public int? EtapaId { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public int ResponsableId { get; set; }
+        public DateTime? FechaInicio { get; set; }
+        public DateTime? FechaCompromiso { get; set; }
+        public int Avance { get; set; }
+        public string Estatus { get; set; } = "Pendiente";
+        public int Orden { get; set; }
     }
 }

@@ -22,8 +22,21 @@ async function apiFetch(url, opts = {}) {
 
     const res = await fetch(url, { ...opts, headers });
     if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`[${res.status}] ${url} — ${body}`);
+        let errMsg = `Error del servidor (${res.status})`;
+        try {
+            const text = await res.text();
+            try {
+                const body = JSON.parse(text);
+                if (body && body.error) {
+                    errMsg = body.error;
+                } else if (body && body.errors) {
+                    errMsg = Object.values(body.errors).flat().join(' ');
+                }
+            } catch {
+                if (text && text.length < 200) errMsg = text;
+            }
+        } catch {}
+        throw new Error(errMsg);
     }
     // DELETE 200/204 may return empty body
     const ct = res.headers.get('content-type') ?? '';
@@ -78,7 +91,25 @@ function normalizeTema(raw = {}) {
                 : [],
         corresponsables: Array.isArray(raw.corresponsables)
             ? raw.corresponsables.map(normalizeUsuario)
+            : [],
+        etapas: Array.isArray(raw.etapas)
+            ? raw.etapas.map(normalizeEtapa)
             : []
+    };
+}
+
+function normalizeEtapa(raw = {}) {
+    return {
+        etapaId: raw.etapaId ?? null,
+        temaId: raw.temaId ?? null,
+        nombre: raw.nombre ?? '',
+        responsableId: raw.responsableId ?? null,
+        responsableNombre: raw.responsableNombre ?? '',
+        fechaInicio: toDateOnly(raw.fechaInicio),
+        fechaCompromiso: toDateOnly(raw.fechaCompromiso),
+        avance: Number(raw.avance ?? 0),
+        estatus: raw.estatus ?? 'Pendiente',
+        orden: Number(raw.orden ?? 1)
     };
 }
 
@@ -162,6 +193,18 @@ export class ApiStore {
                 : [],
             notificarUsuariosIds: Array.isArray(payload.notificarUsuariosIds)
                 ? payload.notificarUsuariosIds.map(Number).filter(Number.isFinite)
+                : [],
+            etapas: Array.isArray(payload.etapas)
+                ? payload.etapas.map(e => ({
+                    etapaId: e.etapaId ? Number(e.etapaId) : null,
+                    nombre: e.nombre ?? '',
+                    responsableId: Number(e.responsableId),
+                    fechaInicio: e.fechaInicio || null,
+                    fechaCompromiso: e.fechaCompromiso || null,
+                    avance: Number(e.avance ?? 0),
+                    estatus: e.estatus ?? 'Pendiente',
+                    orden: Number(e.orden ?? 1)
+                }))
                 : []
         };
     }

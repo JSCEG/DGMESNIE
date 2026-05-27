@@ -76,12 +76,17 @@ export function renderAlertas(actividades, temas) {
                 </div>
             `;
 
+            const stagesCount = al.act.etapas && al.act.etapas.length > 0
+                ? `<span class="badge-etapas" style="font-size:0.68rem;font-weight:700;color:var(--guinda);background:rgba(138,0,49,0.06);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;" title="Este tema tiene ${al.act.etapas.length} etapas"><i class="fa-solid fa-route" style="font-size:0.62rem;"></i> ${al.act.etapas.length} etapas</span>`
+                : '';
+
             return `
             <div class="alerta-item tipo-${al.tipo}" style="position: relative; display: flex; align-items: flex-start; gap: 14px;">
                 <div style="flex-grow: 1;">
-                    <h5 style="display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 0 0 4px 0; font-family: Montserrat, sans-serif;">
+                    <h5 style="display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 0 0 4px 0; font-family: Montserrat, sans-serif; flex-wrap: wrap;">
                         <span class="semaforo ${sem}" style="width: 10px; height: 10px; flex-shrink: 0; margin-top: 0;" title="${escape(semLabel)}"></span>
-                        ${escape(al.titulo)}
+                        <span>${escape(al.titulo)}</span>
+                        ${stagesCount}
                     </h5>
                     <p style="margin: 0; font-size: 0.82rem; color: var(--texto-suave); font-family: Montserrat, sans-serif;">${escape(al.msg)}</p>
                     ${avatarsHtml}

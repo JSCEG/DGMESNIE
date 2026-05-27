@@ -1,8 +1,8 @@
 // Orquestador principal.
 import { dataService, dataSource, isOnline } from './data-service.js';
 import { renderDashboard } from './dashboard.js?v=charts-v3';
-import { renderTemas, openActividadModal } from './temas.js';
-import * as actividadesModule from './actividades.js?v=tabla-v3';
+import { renderTemas, openActividadModal } from './temas.js?v=modal-v2';
+import * as actividadesModule from './actividades.js?v=tabla-v5';
 import { renderKanban, poblarFiltroKanban } from './kanban.js';
 import { renderGantt } from './gantt.js';
 import { renderCalendario, calPrev, calNext } from './calendario.js';
@@ -195,6 +195,7 @@ function wireEvents() {
     // Eventos filtro fechas global
     const inputDesde = document.getElementById('filtro-global-desde');
     const inputHasta = document.getElementById('filtro-global-hasta');
+    const selectPeriodo = document.getElementById('filtro-global-periodo');
     const btnLimpiar = document.getElementById('btn-limpiar-fechas');
 
     const handleFechaChange = () => {
@@ -209,12 +210,56 @@ function wireEvents() {
         }, 150);
     };
 
-    if (inputDesde) inputDesde.onchange = handleFechaChange;
-    if (inputHasta) inputHasta.onchange = handleFechaChange;
+    const handlePeriodoChange = () => {
+        const val = selectPeriodo.value;
+        if (val === 'personalizado') return;
+
+        const hoy = new Date();
+        let desde = null;
+        let hasta = null;
+
+        if (val === 'hoy') {
+            desde = hoy;
+            hasta = hoy;
+        } else if (val === 'semana') {
+            const currentDay = hoy.getDay();
+            const diff = hoy.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
+            desde = new Date(hoy.setDate(diff));
+            hasta = new Date(hoy.setDate(diff + 6));
+        } else if (val === 'mes') {
+            desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+            hasta = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+        } else if (val === 'anio') {
+            desde = new Date(hoy.getFullYear(), 0, 1);
+            hasta = new Date(hoy.getFullYear(), 11, 31);
+        }
+
+        if (desde && hasta) {
+            const toISOStringLocalDate = (date) => {
+                const offset = date.getTimezoneOffset();
+                const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+                return localDate.toISOString().slice(0, 10);
+            };
+            if (inputDesde) inputDesde.value = toISOStringLocalDate(desde);
+            if (inputHasta) inputHasta.value = toISOStringLocalDate(hasta);
+            handleFechaChange();
+        }
+    };
+
+    if (selectPeriodo) selectPeriodo.onchange = handlePeriodoChange;
+
+    const resetPeriodoDropdown = () => {
+        if (selectPeriodo) selectPeriodo.value = 'personalizado';
+        handleFechaChange();
+    };
+
+    if (inputDesde) inputDesde.onchange = resetPeriodoDropdown;
+    if (inputHasta) inputHasta.onchange = resetPeriodoDropdown;
     if (btnLimpiar) {
         btnLimpiar.onclick = () => {
             if (inputDesde) inputDesde.value = '';
             if (inputHasta) inputHasta.value = '';
+            if (selectPeriodo) selectPeriodo.value = 'personalizado';
             handleFechaChange();
         };
     }

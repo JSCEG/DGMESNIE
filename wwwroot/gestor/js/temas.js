@@ -200,27 +200,68 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
     });
 }
 
+function getProgressBarEmoji(percent, sem) {
+    const total = 10;
+    const activeCount = Math.round(Math.max(0, Math.min(100, percent)) / 10);
+    const inactiveCount = total - activeCount;
+    let emoji = '🟩';
+    if (sem === 'rojo') emoji = '🟥';
+    else if (sem === 'amarillo') emoji = '🟨';
+    else if (sem === 'gris') emoji = '⬜';
+    return emoji.repeat(activeCount) + '⬜'.repeat(inactiveCount);
+}
+
+function getTemaStatusEmoji(t) {
+    if (t.estatus === 'Concluida') return '✅';
+    if (t.estatus === 'Vencida') return '🚨';
+    if (t.estatus === 'En proceso') return '⏳';
+    return '📌';
+}
+
 function buildActividadWhatsAppText(actividad, temas) {
     const av = avancePromedio(actividad, temas);
+    const sem = semaforoTema(actividad, temas);
     const portalUrl = `${window.location.origin}/Gestor/Index`;
     const corresponsables = actividad.corresponsables?.length
         ? actividad.corresponsables.map(c => c.nombre).join(', ')
         : 'Sin corresponsables';
 
+    const bar = getProgressBarEmoji(av, sem);
+    const fCompromiso = fmtDate(actividad.fechaCompromiso);
+    const fInicio = fmtDate(actividad.fechaInicio);
+
+    const childTemas = temas.filter(t => t.actividadId === actividad.id);
+    let temasListText = '';
+    if (childTemas.length > 0) {
+        temasListText = [
+            '',
+            `📋 *Temas asociados (${childTemas.length}):*`,
+            ...childTemas.map(t => {
+                const icon = getTemaStatusEmoji(t);
+                const tAvance = t.avance || 0;
+                return `${icon} _${t.tema}_ (${t.responsable || 'Sin responsable'}) - *${tAvance}%*`;
+            })
+        ].join('\n');
+    }
+
     return [
-        '*SENER | Gestor de Actividades DGMESNIE*',
-        '',
-        `*Actividad:* ${actividad.actividad}`,
-        `*Responsable:* ${actividad.responsablePrincipal || 'Sin responsable'}`,
-        `*Corresponsables:* ${corresponsables}`,
-        `*Compromiso:* ${actividad.fechaCompromiso || 'Sin fecha'}`,
-        `*Estatus:* ${actividad.estatus || '—'}`,
-        `*Prioridad:* ${actividad.prioridad || '—'}`,
-        `*Avance:* ${av}%`,
-        '',
-        'Ver en el Gestor:',
+        '🏛️ *SENER | Gestor de Actividades*',
+        '━━━━━━━━━━━━━━━━━━━━',
+        `📌 *Actividad:* ${actividad.actividad}`,
+        `👤 *Responsable:* ${actividad.responsablePrincipal || 'Sin responsable'}`,
+        `👥 *Corresponsables:* ${corresponsables}`,
+        `📅 *Inicio:* ${fInicio}`,
+        `📅 *Compromiso:* ${fCompromiso}`,
+        `⚡ *Prioridad:* ${actividad.prioridad || '—'}`,
+        `🔄 *Estatus:* ${actividad.estatus || '—'}`,
+        `📊 *Avance:* ${bar} (${av}%)`,
+        actividad.descripcion ? `📝 *Descripción:* ${actividad.descripcion}` : '',
+        actividad.comentariosEjecutivos ? `💬 *Comentarios:* ${actividad.comentariosEjecutivos}` : '',
+        temasListText,
+        '━━━━━━━━━━━━━━━━━━━━',
+        '🔗 *Ver en el Gestor:*',
         portalUrl
-    ].join('\n');
+    ].filter(x => x !== '').join('\n');
 }
 
 function downloadActividadShareImage(actividad, temas) {
@@ -470,6 +511,59 @@ export function openActividadDetalle(a, temas) {
         ? a.corresponsables.map(c => `<span style="display:inline-flex;align-items:center;gap:5px;background:rgba(30,91,79,.08);border-radius:6px;padding:2px 8px;font-size:0.78rem;color:#1e5b4f;font-weight:600;">${escape(c.nombre)}</span>`).join(' ')
         : '<span style="color:var(--texto-suave);font-size:0.82rem;">Sin corresponsables</span>';
 
+    // Cargar y ordenar los temas de la actividad
+    const childTemas = temas.filter(t => t.actividadId === a.id);
+    childTemas.sort((x, y) => (x.fechaInicio || '').localeCompare(y.fechaInicio || ''));
+
+    // Encontrar el primer tema activo (no concluido)
+    const activeTema = childTemas.find(t => t.estatus !== 'Concluida');
+
+    let timelineHtml = '';
+    if (childTemas.length > 0) {
+        timelineHtml = `
+            <div style="background:#f8fafc;border-radius:8px;padding:14px;border:1px solid rgba(138,0,49,0.06);margin-top:5px;margin-bottom:5px;">
+                <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+                    <i class="fa-solid fa-route"></i> Línea del Tiempo / Secuencia de Temas
+                </div>
+                <div style="position:relative;padding-left:22px;display:flex;flex-direction:column;gap:16px;">
+                    <!-- Línea vertical -->
+                    <div style="position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:rgba(138,0,49,0.12);"></div>
+                    
+                    ${childTemas.map((t, idx) => {
+                        const tSem = t.estatus === 'Concluida' ? 'verde' : t.estatus === 'Vencida' ? 'rojo' : t.estatus === 'En proceso' ? 'amarillo' : 'gris';
+                        const dotColor = tSem === 'verde' ? '#027a48' : tSem === 'amarillo' ? '#d97706' : tSem === 'rojo' ? '#c0222a' : '#667085';
+                        const isCurrentActive = activeTema && t.id === activeTema.id;
+                        
+                        const dateText = t.fechaInicio && t.fechaCompromiso
+                            ? `${fmtDate(t.fechaInicio)} al ${fmtDate(t.fechaCompromiso)}`
+                            : t.fechaCompromiso ? `Fecha compromiso: ${fmtDate(t.fechaCompromiso)}` : 'Sin fechas registradas';
+                            
+                        return `
+                            <div style="position:relative;display:flex;flex-direction:column;gap:3px;${isCurrentActive ? 'background:rgba(138,0,49,0.03);padding:6px 10px;border-radius:6px;border-left:3px solid #8a0031;margin-left:-10px;' : ''}">
+                                <!-- Dot -->
+                                <div style="position:absolute;left:${isCurrentActive ? '-20px' : '-22px'};top:4px;width:10px;height:10px;border-radius:50%;background:${dotColor};border:2px solid #fff;box-shadow:0 0 0 1px ${dotColor};z-index:1;"></div>
+                                
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <span style="font-weight:700;font-size:0.82rem;color:#0f172a;">${escape(t.tema)}</span>
+                                    <span style="font-size:0.65rem;font-weight:700;padding:1px 5px;border-radius:4px;background:${t.estatus==='Concluida'?'rgba(2,122,72,0.1)':t.estatus==='En proceso'?'rgba(217,119,6,0.1)':t.estatus==='Vencida'?'rgba(192,34,42,0.1)':'rgba(102,112,133,0.1)'};color:${dotColor};">${escape(t.estatus)}</span>
+                                    ${isCurrentActive ? '<span style="font-size:0.62rem;font-weight:800;background:#8a0031;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;letter-spacing:0.05em;display:inline-flex;align-items:center;gap:3px;"><i class="fa-solid fa-play"></i> Tema Vigente</span>' : ''}
+                                </div>
+                                
+                                <div style="font-size:0.75rem;color:var(--texto-suave);font-weight:500;">
+                                    <span>👤 Asignado a: <strong>${escape(t.responsable || 'Sin responsable')}</strong></span>
+                                    <span style="margin:0 6px;color:#cbd5e1;">|</span>
+                                    <span>📅 ${dateText}</span>
+                                    <span style="margin:0 6px;color:#cbd5e1;">|</span>
+                                    <span>📊 Avance: <strong>${t.avance || 0}%</strong></span>
+                                </div>
+                                ${t.descripcion ? `<div style="font-size:0.72rem;color:#475569;font-style:italic;margin-top:2px;">${escape(t.descripcion)}</div>` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>`;
+    }
+
     const html = `
         <div style="display:flex;flex-direction:column;gap:1rem;">
             <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(138,0,49,0.04);border-left:4px solid #8a0031;">
@@ -525,6 +619,8 @@ export function openActividadDetalle(a, temas) {
                 <div style="display:flex;flex-wrap:wrap;gap:5px;">${corrList}</div>
             </div>
 
+            ${timelineHtml}
+
             ${a.comentariosEjecutivos ? `
             <div style="background:#fffbeb;border-radius:8px;padding:10px 14px;border-left:3px solid #d97706;">
                 <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#d97706;margin-bottom:4px;">Comentarios</div>
@@ -567,6 +663,39 @@ export async function openActividadModal(actividad) {
     ].join('');
 
     const isNew = !actividad;
+    let etapasHtml = '';
+    if (!isNew) {
+        const childTemas = _temasState.filter(t => t.actividadId === a.id);
+        childTemas.sort((x, y) => (x.fechaInicio || '').localeCompare(y.fechaInicio || ''));
+        
+        etapasHtml = `
+            <div class="form-field full" style="margin-top: 15px; border-top: 1px solid rgba(138,0,49,.1); padding-top: 15px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <label style="font-weight: 700; color: var(--texto); margin: 0;">Secuencia de Temas de la Actividad</label>
+                    <span style="font-size:0.75rem; color:var(--texto-suave);">Administrable desde la pestaña de Temas</span>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    ${childTemas.map(t => {
+                        const tSem = t.estatus === 'Concluida' ? 'verde' : t.estatus === 'Vencida' ? 'rojo' : t.estatus === 'En proceso' ? 'amarillo' : 'gris';
+                        const dotColor = tSem === 'verde' ? '#027a48' : tSem === 'amarillo' ? '#d97706' : tSem === 'rojo' ? '#c0222a' : '#667085';
+                        return `
+                            <div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; border:1px solid var(--borde); border-radius:8px; padding:8px 12px; font-size:0.8rem;">
+                                <div>
+                                    <strong style="color:#0f172a;">${escape(t.tema)}</strong>
+                                    <span style="font-size:0.72rem; color:var(--texto-suave); margin-left:8px;">(${escape(t.responsable || 'Sin responsable')} - <strong>${t.avance || 0}%</strong>)</span>
+                                </div>
+                                <span style="font-size:0.7rem; font-weight:700; color:${dotColor}; padding:1px 6px; border-radius:4px; background:${
+                                    t.estatus === 'Concluida' ? 'rgba(2, 122, 72, 0.08)' :
+                                    t.estatus === 'En proceso' ? 'rgba(217, 119, 6, 0.08)' :
+                                    t.estatus === 'Vencida' ? 'rgba(192, 34, 42, 0.08)' : 'rgba(102, 112, 133, 0.08)'
+                                };">${escape(t.estatus)}</span>
+                            </div>
+                        `;
+                    }).join('') || '<p style="font-size:0.8rem; color:var(--texto-suave); margin:0;">Sin temas registrados para esta actividad.</p>'}
+                </div>
+            </div>`;
+    }
+
     const html = `
         <form>
             <div class="form-row">
@@ -596,6 +725,12 @@ export async function openActividadModal(actividad) {
                 </div>
                 <div class="form-field full"><label>Liga SharePoint</label><input type="url" name="ligaSharePoint" value="${escape(a.ligaSharePoint || '')}"></div>
                 <div class="form-field full"><label>Comentarios</label><textarea name="comentariosEjecutivos">${escape(a.comentariosEjecutivos || '')}</textarea></div>
+                ${etapasHtml}
+            </div>
+            <!-- Error Alert Area -->
+            <div id="actividad-error-alert" style="display:none; color:var(--riesgo); background:rgba(192,34,42,0.06); border:1px solid rgba(192,34,42,0.15); border-radius:8px; padding:10px 14px; font-size:0.82rem; font-weight:600; margin-top:15px; margin-bottom:5px; align-items:center; gap:8px;">
+                <i class="fa-solid fa-triangle-exclamation" style="color:var(--riesgo);"></i>
+                <span class="error-msg"></span>
             </div>
             <div class="form-actions">
                 ${!isNew ? `<button type="button" class="internal-button" style="color:var(--riesgo);border-color:rgba(180,35,24,.3)" id="btn-del-act">Eliminar</button>` : ''}
@@ -610,6 +745,10 @@ export async function openActividadModal(actividad) {
             submitBtn.textContent = isNew ? 'Creando...' : 'Guardando...';
         }
         try {
+            const errorAlert = document.getElementById('actividad-error-alert');
+            if (errorAlert) {
+                errorAlert.style.display = 'none';
+            }
             data.responsablePrincipalId = Number(data.responsablePrincipalId);
             data.fechaUltimaActualizacion = new Date().toISOString().slice(0, 10);
             
@@ -637,7 +776,21 @@ export async function openActividadModal(actividad) {
                     if (parsed.message) userMsg = parsed.message;
                 } catch (_) {}
             }
-            toast(userMsg, 'err');
+            
+            const errorAlert = document.getElementById('actividad-error-alert');
+            if (errorAlert) {
+                errorAlert.querySelector('.error-msg').textContent = userMsg;
+                errorAlert.style.display = 'flex';
+                const container = errorAlert.closest('.modal-card');
+                if (container) {
+                    setTimeout(() => {
+                        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+                    }, 50);
+                }
+            } else {
+                toast(userMsg, 'err');
+            }
+
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = isNew ? 'Crear' : 'Guardar';
@@ -646,8 +799,19 @@ export async function openActividadModal(actividad) {
     });
 
     const respSelect = document.querySelector('#modal-body form select[name="responsablePrincipalId"]');
+    let previousResponsibleId = respSelect ? respSelect.value : '';
     const updateCorresponsablesChecklist = () => {
         const selectedId = respSelect ? respSelect.value : '';
+        
+        // Si el responsable anterior cambia y es válido, se marca automáticamente como corresponsable
+        if (previousResponsibleId && previousResponsibleId !== selectedId) {
+            const prevLabel = document.querySelector(`#modal-body form .corresponsable-label[data-id="${previousResponsibleId}"]`);
+            if (prevLabel) {
+                const cb = prevLabel.querySelector('input[type="checkbox"]');
+                if (cb) cb.checked = true;
+            }
+        }
+        
         const labels = document.querySelectorAll('#modal-body form .corresponsable-label');
         labels.forEach(label => {
             const labelId = label.dataset.id;
@@ -659,6 +823,8 @@ export async function openActividadModal(actividad) {
                 label.style.display = 'flex';
             }
         });
+
+        previousResponsibleId = selectedId;
     };
     
     if (respSelect) {

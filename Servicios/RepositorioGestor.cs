@@ -136,6 +136,219 @@ namespace NSIE.Servicios
             }
         }
 
+        private async Task<List<GestorEtapa>> CargarEtapasAsync(SqlConnection cn, int temaId)
+        {
+            const string sql = @"
+                SELECT e.EtapaId, e.TemaId, e.Nombre, e.ResponsableId,
+                       u.Nombre AS ResponsableNombre,
+                       e.FechaInicio, e.FechaCompromiso, e.Avance, e.Estatus, e.Orden
+                FROM [dgmesnie].[Gestor_Temas_Etapas] e
+                LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = e.ResponsableId
+                WHERE e.TemaId = @temaId AND e.Activo = 1
+                ORDER BY e.Orden, e.EtapaId";
+
+            var result = new List<GestorEtapa>();
+            await using var cmd = new SqlCommand(sql, cn);
+            cmd.Parameters.AddWithValue("@temaId", temaId);
+            await using var rd = await cmd.ExecuteReaderAsync();
+            while (await rd.ReadAsync())
+            {
+                result.Add(new GestorEtapa
+                {
+                    EtapaId = rd.GetInt32(0),
+                    TemaId = rd.GetInt32(1),
+                    Nombre = rd.GetString(2),
+                    ResponsableId = rd.GetInt32(3),
+                    ResponsableNombre = rd.IsDBNull(4) ? null : rd.GetString(4),
+                    FechaInicio = rd.IsDBNull(5) ? null : rd.GetDateTime(5),
+                    FechaCompromiso = rd.IsDBNull(6) ? null : rd.GetDateTime(6),
+                    Avance = rd.GetInt32(7),
+                    Estatus = rd.GetString(8),
+                    Orden = rd.GetInt32(9)
+                });
+            }
+            return result;
+        }
+
+        private async Task SincronizarEtapasAsync(SqlConnection cn, SqlTransaction tx, int temaId, List<GestorEtapaForm> stages)
+        {
+            var existingIds = new List<int>();
+            if (stages != null)
+            {
+                existingIds = stages.Where(e => e.EtapaId.HasValue).Select(e => e.EtapaId!.Value).ToList();
+            }
+
+            if (existingIds.Any())
+            {
+                const string del = "UPDATE [dgmesnie].[Gestor_Temas_Etapas] SET Activo = 0 WHERE TemaId = @temaId AND EtapaId NOT IN ({0})";
+                var inClause = string.Join(",", existingIds);
+                var formattedDel = string.Format(del, inClause);
+                await using var cmdDel = new SqlCommand(formattedDel, cn, tx);
+                cmdDel.Parameters.AddWithValue("@temaId", temaId);
+                await cmdDel.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                const string delAll = "UPDATE [dgmesnie].[Gestor_Temas_Etapas] SET Activo = 0 WHERE TemaId = @temaId";
+                await using var cmdDel = new SqlCommand(delAll, cn, tx);
+                cmdDel.Parameters.AddWithValue("@temaId", temaId);
+                await cmdDel.ExecuteNonQueryAsync();
+            }
+
+            if (stages == null || !stages.Any())
+            {
+                return;
+            }
+
+            var orderedStages = stages.OrderBy(s => s.Orden).ToList();
+            for (int i = 0; i < orderedStages.Count; i++)
+            {
+                var stg = orderedStages[i];
+                if (string.IsNullOrWhiteSpace(stg.Nombre))
+                    throw new ArgumentException($"La Etapa {i + 1} debe tener un nombre.");
+                if (stg.ResponsableId <= 0)
+                    throw new ArgumentException($"La Etapa {i + 1} ({stg.Nombre}) debe tener un responsable asignado.");
+                if (!stg.FechaCompromiso.HasValue)
+                    throw new ArgumentException($"La Etapa {i + 1} ({stg.Nombre}) debe tener una fecha compromiso.");
+
+                if (stg.FechaInicio.HasValue && stg.FechaCompromiso.HasValue && stg.FechaInicio.Value.Date > stg.FechaCompromiso.Value.Date)
+                {
+                    throw new ArgumentException($"La fecha de inicio de la Etapa {i + 1} ({stg.Nombre}) no puede ser posterior a su propia fecha compromiso.");
+                }
+
+                if (i > 0)
+                {
+                    var prev = orderedStages[i - 1];
+                    if (stg.FechaInicio.HasValue && prev.FechaCompromiso.HasValue && stg.FechaInicio.Value.Date < prev.FechaCompromiso.Value.Date)
+                    {
+                        throw new InvalidOperationException($"La fecha de inicio de la Etapa {i + 1} ({stg.Nombre}) no puede ser anterior a la fecha compromiso de la Etapa {i} ({prev.Nombre}).");
+                    }
+                    if (stg.Estatus != "Pendiente" && prev.Estatus != "Concluida")
+                    {
+                        throw new InvalidOperationException($"La Etapa {i + 1} ({stg.Nombre}) no puede iniciar (en proceso/concluida) si la Etapa {i} ({prev.Nombre}) no está Concluida.");
+                    }
+                }
+            }
+
+            int orden = 1;
+            foreach (var stg in stages)
+            {
+                if (stg.EtapaId.HasValue && stg.EtapaId.Value > 0)
+                {
+                    const string upd = @"
+                        UPDATE [dgmesnie].[Gestor_Temas_Etapas] SET
+                            Nombre = @nombre, ResponsableId = @respId,
+                            FechaInicio = @inicio, FechaCompromiso = @comp,
+                            Avance = @avance, Estatus = @estatus, Orden = @orden, Activo = 1
+                        WHERE EtapaId = @etapaId AND TemaId = @temaId";
+                    await using var cmdUpd = new SqlCommand(upd, cn, tx);
+                    cmdUpd.Parameters.AddWithValue("@nombre", stg.Nombre);
+                    cmdUpd.Parameters.AddWithValue("@respId", stg.ResponsableId);
+                    cmdUpd.Parameters.AddWithValue("@inicio", (object?)stg.FechaInicio ?? DBNull.Value);
+                    cmdUpd.Parameters.AddWithValue("@comp", (object?)stg.FechaCompromiso ?? DBNull.Value);
+                    cmdUpd.Parameters.AddWithValue("@avance", stg.Avance);
+                    cmdUpd.Parameters.AddWithValue("@estatus", stg.Estatus);
+                    cmdUpd.Parameters.AddWithValue("@orden", orden++);
+                    cmdUpd.Parameters.AddWithValue("@etapaId", stg.EtapaId.Value);
+                    cmdUpd.Parameters.AddWithValue("@temaId", temaId);
+                    await cmdUpd.ExecuteNonQueryAsync();
+                }
+                else
+                {
+                    const string ins = @"
+                        INSERT INTO [dgmesnie].[Gestor_Temas_Etapas]
+                            (TemaId, Nombre, ResponsableId, FechaInicio, FechaCompromiso, Avance, Estatus, Orden, Activo)
+                        VALUES
+                            (@temaId, @nombre, @respId, @inicio, @comp, @avance, @estatus, @orden, 1)";
+                    await using var cmdIns = new SqlCommand(ins, cn, tx);
+                    cmdIns.Parameters.AddWithValue("@temaId", temaId);
+                    cmdIns.Parameters.AddWithValue("@nombre", stg.Nombre);
+                    cmdIns.Parameters.AddWithValue("@respId", stg.ResponsableId);
+                    cmdIns.Parameters.AddWithValue("@inicio", (object?)stg.FechaInicio ?? DBNull.Value);
+                    cmdIns.Parameters.AddWithValue("@comp", (object?)stg.FechaCompromiso ?? DBNull.Value);
+                    cmdIns.Parameters.AddWithValue("@avance", stg.Avance);
+                    cmdIns.Parameters.AddWithValue("@estatus", stg.Estatus);
+                    cmdIns.Parameters.AddWithValue("@orden", orden++);
+                    await cmdIns.ExecuteNonQueryAsync();
+                }
+            }
+        }
+
+        private async Task RecalcularTemaAgregadosAsync(SqlConnection cn, SqlTransaction tx, int temaId)
+        {
+            const string sqlStg = @"
+                SELECT ResponsableId, FechaInicio, FechaCompromiso, Avance, Estatus, Orden
+                FROM [dgmesnie].[Gestor_Temas_Etapas]
+                WHERE TemaId = @temaId AND Activo = 1
+                ORDER BY Orden, EtapaId";
+
+            var stages = new List<GestorEtapa>();
+            await using (var cmd = new SqlCommand(sqlStg, cn, tx))
+            {
+                cmd.Parameters.AddWithValue("@temaId", temaId);
+                await using var rd = await cmd.ExecuteReaderAsync();
+                while (await rd.ReadAsync())
+                {
+                    stages.Add(new GestorEtapa
+                    {
+                        ResponsableId = rd.GetInt32(0),
+                        FechaInicio = rd.IsDBNull(1) ? null : rd.GetDateTime(1),
+                        FechaCompromiso = rd.IsDBNull(2) ? null : rd.GetDateTime(2),
+                        Avance = rd.GetInt32(3),
+                        Estatus = rd.GetString(4),
+                        Orden = rd.GetInt32(5)
+                    });
+                }
+            }
+
+            if (!stages.Any()) return;
+
+            double sumAvance = stages.Sum(s => s.Avance);
+            int overallAvance = (int)Math.Round(sumAvance / stages.Count);
+
+            DateTime? overallInicio = stages.Where(s => s.FechaInicio.HasValue).Min(s => s.FechaInicio);
+            DateTime? overallCompromiso = stages.Where(s => s.FechaCompromiso.HasValue).Max(s => s.FechaCompromiso);
+
+            var activeStage = stages.FirstOrDefault(s => s.Avance < 100) ?? stages.Last();
+            int overallResponsableId = activeStage.ResponsableId;
+
+            string overallEstatus = "En proceso";
+            if (stages.All(s => s.Avance == 100 || s.Estatus == "Concluida"))
+            {
+                overallEstatus = "Concluida";
+            }
+            else if (stages.All(s => s.Avance == 0 && s.Estatus == "Pendiente"))
+            {
+                overallEstatus = "Pendiente";
+            }
+            else
+            {
+                if (activeStage.FechaCompromiso.HasValue && activeStage.FechaCompromiso.Value.Date < DateTime.Today)
+                {
+                    overallEstatus = "Vencida";
+                }
+            }
+
+            const string updTema = @"
+                UPDATE [dgmesnie].[Gestor_Temas] SET
+                    ResponsableId = @respId,
+                    FechaInicio = @inicio,
+                    FechaCompromiso = @comp,
+                    Avance = @avance,
+                    Estatus = @estatus,
+                    FechaUltimaActualizacion = GETDATE()
+                WHERE TemaId = @temaId";
+
+            await using var cmdUpdTema = new SqlCommand(updTema, cn, tx);
+            cmdUpdTema.Parameters.AddWithValue("@respId", overallResponsableId);
+            cmdUpdTema.Parameters.AddWithValue("@inicio", (object?)overallInicio ?? DBNull.Value);
+            cmdUpdTema.Parameters.AddWithValue("@comp", (object?)overallCompromiso ?? DBNull.Value);
+            cmdUpdTema.Parameters.AddWithValue("@avance", overallAvance);
+            cmdUpdTema.Parameters.AddWithValue("@estatus", overallEstatus);
+            cmdUpdTema.Parameters.AddWithValue("@temaId", temaId);
+            await cmdUpdTema.ExecuteNonQueryAsync();
+        }
+
         // ── Actividades (Padre) ──────────────────────────────────────────────
         public async Task<List<GestorActividad>> ObtenerActividadesAsync()
         {
@@ -309,7 +522,10 @@ namespace NSIE.Servicios
             rd.Close();
 
             foreach (var t in temas)
+            {
                 t.Corresponsables = await CargarCorresponsablesAsync(cn, t.TemaId, null);
+                t.Etapas = await CargarEtapasAsync(cn, t.TemaId);
+            }
 
             return temas;
         }
@@ -338,6 +554,7 @@ namespace NSIE.Servicios
             var t = MapTema(rd);
             rd.Close();
             t.Corresponsables = await CargarCorresponsablesAsync(cn, temaId, null);
+            t.Etapas = await CargarEtapasAsync(cn, temaId);
             t.Semaforo = CalcularSemaforo(t.Estatus, t.FechaCompromiso, t.Bloqueada, t.FechaUltimaActualizacion);
             return t;
         }
@@ -369,6 +586,26 @@ namespace NSIE.Servicios
                 cmd.Parameters.AddWithValue("@creador", (object?)usuarioId ?? DBNull.Value);
                 var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
                 await SincronizarCorresponsablesAsync(cn, tx, id, null, form.CorresponsablesIds);
+
+                var stages = form.Etapas;
+                if (stages == null || !stages.Any())
+                {
+                    stages = new List<GestorEtapaForm>
+                    {
+                        new GestorEtapaForm
+                        {
+                            Nombre = "Etapa Inicial",
+                            ResponsableId = form.ResponsableId ?? 0,
+                            FechaInicio = form.FechaInicio,
+                            FechaCompromiso = form.FechaCompromiso,
+                            Avance = form.Avance,
+                            Estatus = form.Estatus
+                        }
+                    };
+                }
+                await SincronizarEtapasAsync(cn, tx, id, stages);
+                await RecalcularTemaAgregadosAsync(cn, tx, id);
+
                 await tx.CommitAsync();
                 return id;
             }
@@ -401,6 +638,40 @@ namespace NSIE.Servicios
                 cmd.Parameters.AddWithValue("@temaId", form.TemaId!.Value);
                 await cmd.ExecuteNonQueryAsync();
                 await SincronizarCorresponsablesAsync(cn, tx, form.TemaId.Value, null, form.CorresponsablesIds);
+
+                if (form.Etapas != null && form.Etapas.Any())
+                {
+                    await SincronizarEtapasAsync(cn, tx, form.TemaId.Value, form.Etapas);
+                    await RecalcularTemaAgregadosAsync(cn, tx, form.TemaId.Value);
+                }
+                else
+                {
+                    const string checkStg = "SELECT COUNT(*) FROM [dgmesnie].[Gestor_Temas_Etapas] WHERE TemaId = @temaId AND Activo = 1";
+                    int count = 0;
+                    await using (var cmdCheck = new SqlCommand(checkStg, cn, tx))
+                    {
+                        cmdCheck.Parameters.AddWithValue("@temaId", form.TemaId.Value);
+                        count = Convert.ToInt32(await cmdCheck.ExecuteScalarAsync());
+                    }
+                    if (count == 0)
+                    {
+                        var defaultStages = new List<GestorEtapaForm>
+                        {
+                            new GestorEtapaForm
+                            {
+                                Nombre = "Etapa Inicial",
+                                ResponsableId = form.ResponsableId ?? 0,
+                                FechaInicio = form.FechaInicio,
+                                FechaCompromiso = form.FechaCompromiso,
+                                Avance = form.Avance,
+                                Estatus = form.Estatus
+                            }
+                        };
+                        await SincronizarEtapasAsync(cn, tx, form.TemaId.Value, defaultStages);
+                        await RecalcularTemaAgregadosAsync(cn, tx, form.TemaId.Value);
+                    }
+                }
+
                 await tx.CommitAsync();
             }
             catch

@@ -1,4 +1,4 @@
-import { escape, fmtDate, semaforo } from './utils.js';
+import { escape, fmtDate, semaforo, toast } from './utils.js';
 import { dataService } from './data-service.js';
 import { openTemaModal } from './actividades.js';
 
@@ -18,9 +18,15 @@ export function renderKanban(actividades, temas, actividadIdFilter = '') {
                     const coLabel = t.corresponsables && t.corresponsables.length
                         ? ` (+${t.corresponsables.length})`
                         : '';
+                    const stagesCount = t.etapas && t.etapas.length > 0
+                        ? `<span class="badge-etapas" style="font-size:0.68rem;font-weight:700;color:var(--guinda);background:rgba(138,0,49,0.06);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;margin-left:auto;" title="Este tema tiene ${t.etapas.length} etapas"><i class="fa-solid fa-route" style="font-size:0.62rem;"></i> ${t.etapas.length} etapas</span>`
+                        : '';
                     return `
                         <div class="kanban-card" draggable="true" data-id="${t.id}">
-                            <h5>${escape(t.tema)}</h5>
+                            <h5 style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin:0 0 6px 0;">
+                                <span style="flex-grow:1;">${escape(t.tema)}</span>
+                                ${stagesCount}
+                            </h5>
                             <div style="font-size:.72rem;color:var(--g-text-soft)">${escape(actividad?.actividad || '')}</div>
                             <div class="meta">
                                 <span>${escape(t.responsable)}${coLabel}</span>
@@ -50,16 +56,44 @@ export function renderKanban(actividades, temas, actividadIdFilter = '') {
             if (!dragging) return;
             const nuevoEstatus = col.dataset.col;
             const id = dragging.dataset.id;
-            const patch = { estatus: nuevoEstatus, fechaUltimaActualizacion: new Date().toISOString().slice(0, 10) };
-            if (nuevoEstatus === 'Concluida') {
-                patch.avance = 100;
-            } else if (nuevoEstatus === 'En proceso') {
-                patch.avance = 50;
+            
+            const t = temas.find(x => String(x.id) === String(id));
+            if (!t) return;
+
+            const patch = {};
+            if (t.etapas && t.etapas.length > 0) {
+                const activeStg = t.etapas.find(st => st.avance < 100) || t.etapas[t.etapas.length - 1];
+                if (nuevoEstatus === 'Concluida') {
+                    activeStg.avance = 100;
+                    activeStg.estatus = 'Concluida';
+                } else if (nuevoEstatus === 'En proceso') {
+                    activeStg.avance = 50;
+                    activeStg.estatus = 'En proceso';
+                } else {
+                    activeStg.avance = 0;
+                    activeStg.estatus = nuevoEstatus;
+                }
+                patch.etapas = t.etapas;
             } else {
-                patch.avance = 0;
+                patch.estatus = nuevoEstatus;
+                if (nuevoEstatus === 'Concluida') {
+                    patch.avance = 100;
+                } else if (nuevoEstatus === 'En proceso') {
+                    patch.avance = 50;
+                } else {
+                    patch.avance = 0;
+                }
             }
-            await dataService.update('temas', id, patch);
-            window.dispatchEvent(new CustomEvent('gestor:refresh'));
+
+            patch.fechaUltimaActualizacion = new Date().toISOString().slice(0, 10);
+            try {
+                await dataService.update('temas', id, patch);
+                window.dispatchEvent(new CustomEvent('gestor:refresh'));
+            } catch (err) {
+                console.error(err);
+                toast(err.message || 'No fue posible actualizar el tema.', 'err');
+                window.dispatchEvent(new CustomEvent('gestor:refresh'));
+            }
         });
     });
 }
