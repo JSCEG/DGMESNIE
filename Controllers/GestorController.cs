@@ -20,6 +20,12 @@ namespace NSIE.Controllers
         public List<int> UsuarioIds { get; set; } = [];
     }
 
+    public class CompartirActividadRequest
+    {
+        public List<int> UsuarioIds  { get; set; } = [];
+        public string?   CorreoLibre { get; set; }   // correo extra no registrado en el sistema
+    }
+
     [ServiceFilter(typeof(ValidacionInputFiltro))]
     [AutorizacionFiltro]
     public class GestorController : Controller
@@ -153,6 +159,56 @@ namespace NSIE.Controllers
             {
                 _logger.LogError(ex, "Error eliminando actividad {Id}.", id);
                 return StatusCode(500, new { error = "No fue posible eliminar la actividad." });
+            }
+        }
+
+        [HttpPost("Gestor/Api/Actividades/{id:int}/Compartir")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApiCompartirActividad(int id, [FromBody] CompartirActividadRequest? request = null)
+        {
+            try
+            {
+                var actividad = await _repo.ObtenerActividadPorIdAsync(id);
+                if (actividad == null)
+                    return NotFound(new { error = "No se encontró la actividad especificada." });
+
+                var portalUrl = Url.Action("Index", "Gestor", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
+                int enviados = 0;
+
+                // ── Enviar a usuarios registrados ──────────────────────────────
+                var ids = request?.UsuarioIds?.Distinct().ToList() ?? [];
+                foreach (var uid in ids)
+                {
+                    var dest = await _repo.ObtenerUsuarioVigentePorIdAsync(uid);
+                    if (dest == null) continue;
+                    var correo = dest.Correo?.Trim();
+                    if (string.IsNullOrWhiteSpace(correo)) continue;
+
+                    var asunto = $"📋 Actividad compartida: {actividad.Actividad}";
+                    var cuerpo = ConstruirCorreoCompartirActividad(dest.Nombre, actividad, portalUrl);
+                    await _servicioEmailSMTP.EnviarCorreo(correo, asunto, cuerpo);
+                    enviados++;
+                }
+
+                // ── Enviar a correo libre ──────────────────────────────────────
+                var correoLibre = request?.CorreoLibre?.Trim();
+                if (!string.IsNullOrWhiteSpace(correoLibre))
+                {
+                    var asunto = $"📋 Actividad compartida: {actividad.Actividad}";
+                    var cuerpo = ConstruirCorreoCompartirActividad(correoLibre, actividad, portalUrl);
+                    await _servicioEmailSMTP.EnviarCorreo(correoLibre, asunto, cuerpo);
+                    enviados++;
+                }
+
+                if (enviados == 0)
+                    return BadRequest(new { error = "No se especificaron destinatarios válidos." });
+
+                return Ok(new { success = true, mensaje = $"Correo enviado a {enviados} destinatario(s)." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error compartiendo actividad {Id}.", id);
+                return StatusCode(500, new { error = "No fue posible enviar el correo." });
             }
         }
 
@@ -857,6 +913,58 @@ namespace NSIE.Controllers
                                 </a>
                             </div>
                             <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía automáticamente cuando eres asignado como corresponsable de un tema.</p>
+                        </div>
+                    </div>
+                </body>
+                </html>";
+        }
+
+        private static string ConstruirCorreoCompartirActividad(string nombreDestinatario, GestorActividad actividad, string portalUrl)
+        {
+            var fechaCompromiso = actividad.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+            var fechaInicio     = actividad.FechaInicio?.ToString("dd/MM/yyyy")     ?? "Sin fecha definida";
+            var descripcion     = string.IsNullOrWhiteSpace(actividad.Descripcion) ? "Sin descripción registrada." : actividad.Descripcion;
+            var coResps         = actividad.Corresponsables != null && actividad.Corresponsables.Any()
+                ? string.Join(", ", actividad.Corresponsables.Select(c => c.Nombre))
+                : "Ninguno";
+
+            return $@"
+                <html lang='es'>
+                <head>
+                    <meta charset='UTF-8'>
+                    <title>Actividad compartida</title>
+                </head>
+                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
+                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
+                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
+                                <tr>
+                                    <td style='width:50%;'><img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'></td>
+                                    <td style='width:50%; text-align:right;'><img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'></td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>📋 Actividad Compartida — Gestor DGMESNIE</div>
+                        <div style='padding:22px 20px;'>
+                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Estimado(a) {nombreDestinatario},</p>
+                            <p>Le compartimos los detalles de la siguiente actividad registrada en el Gestor de Actividades DGMESNIE:</p>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Clave}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4; font-weight:700;'>{actividad.Actividad}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Responsable</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.ResponsableNombre ?? "Sin responsable"}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Corresponsables</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{coResps}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha de inicio</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaInicio}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #e5c7d4; font-weight:700; color:#8a0031;'>{fechaCompromiso}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Estatus}</td></tr>
+                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Prioridad}</td></tr>
+                            </table>
+                            <div style='margin:18px 0 16px; text-align:center;'>
+                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
+                                    Abrir Gestor de Actividades
+                                </a>
+                            </div>
+                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este correo se envió automáticamente a través del Gestor de Actividades DGMESNIE.</p>
                         </div>
                     </div>
                 </body>

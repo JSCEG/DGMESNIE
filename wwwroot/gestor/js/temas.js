@@ -77,17 +77,6 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
                 ? ' + ' + a.corresponsables.map(c => c.nombre.split(' ')[0]).join(', ')
                 : '';
 
-            // WhatsApp & Email share text
-            const shareText = encodeURIComponent(
-                `📋 Actividad: ${a.actividad}\n` +
-                `👤 Responsable: ${a.responsablePrincipal || '—'}\n` +
-                `📅 Compromiso: ${a.fechaCompromiso || '—'}\n` +
-                `📊 Avance: ${av}%\n` +
-                `🔴🟡🟢 Estatus: ${a.estatus || '—'}`
-            );
-            const waUrl  = `https://wa.me/?text=${shareText}`;
-            const mailUrl = `mailto:?subject=${encodeURIComponent('Actividad: ' + a.actividad)}&body=${shareText.replace(/%0A/g, '%0D%0A')}`;
-            
             return `
                 <article class="tema-card s-${sem}" data-id="${a.id}">
                     <div class="tema-card__head">
@@ -135,16 +124,16 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(192,34,42,.08);color:#c0222a;">
                             <i class="fa-solid fa-trash"></i> Eliminar
                         </button>
-                        <a href="${mailUrl}" class="tca-btn"
-                            title="Compartir por correo"
-                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(71,85,105,.08);color:#475569;text-decoration:none;">
+                        <button type="button" class="tca-btn tca-email" data-id="${a.id}"
+                            title="Compartir por correo institucional"
+                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(71,85,105,.08);color:#475569;">
                             <i class="fa-solid fa-envelope"></i>
-                        </a>
-                        <a href="${waUrl}" target="_blank" rel="noopener" class="tca-btn"
-                            title="Compartir por WhatsApp"
-                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(37,211,102,.1);color:#128C7E;text-decoration:none;">
+                        </button>
+                        <button type="button" class="tca-btn tca-whatsapp" data-id="${a.id}"
+                            title="Compartir por WhatsApp (incluye enlace al Gestor)"
+                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(37,211,102,.1);color:#128C7E;">
                             <i class="fa-brands fa-whatsapp"></i>
-                        </a>
+                        </button>
                     </div>
                 </article>`;
         }).join('')
@@ -185,13 +174,290 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
         };
     });
 
-    // Click en la tarjeta (fuera de botones) → editar
+    cont.querySelectorAll('.tca-email').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const act = actividades.find(x => x.id === btn.dataset.id);
+            if (act) openCompartirCorreoModal(act);
+        };
+    });
+
+    cont.querySelectorAll('.tca-whatsapp').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const act = actividades.find(x => x.id === btn.dataset.id);
+            if (act) openCompartirWhatsAppModal(act, temas);
+        };
+    });
+
+    // Click en la tarjeta (fuera de botones) → ver detalle
     cont.querySelectorAll('.tema-card').forEach(card => {
         card.onclick = (e) => {
             if (e.target.closest('.tca-btn, .tema-card__link-btn, a')) return;
-            openActividadModal(actividades.find(x => x.id === card.dataset.id));
+            const act = actividades.find(x => x.id === card.dataset.id);
+            if (act) openActividadDetalle(act, temas);
         };
     });
+}
+
+function buildActividadWhatsAppText(actividad, temas) {
+    const av = avancePromedio(actividad, temas);
+    const portalUrl = `${window.location.origin}/Gestor/Index`;
+    const corresponsables = actividad.corresponsables?.length
+        ? actividad.corresponsables.map(c => c.nombre).join(', ')
+        : 'Sin corresponsables';
+
+    return [
+        '*SENER | Gestor de Actividades DGMESNIE*',
+        '',
+        `*Actividad:* ${actividad.actividad}`,
+        `*Responsable:* ${actividad.responsablePrincipal || 'Sin responsable'}`,
+        `*Corresponsables:* ${corresponsables}`,
+        `*Compromiso:* ${actividad.fechaCompromiso || 'Sin fecha'}`,
+        `*Estatus:* ${actividad.estatus || '—'}`,
+        `*Prioridad:* ${actividad.prioridad || '—'}`,
+        `*Avance:* ${av}%`,
+        '',
+        'Ver en el Gestor:',
+        portalUrl
+    ].join('\n');
+}
+
+function downloadActividadShareImage(actividad, temas) {
+    const av = avancePromedio(actividad, temas);
+    const corresponsables = actividad.corresponsables?.length
+        ? actividad.corresponsables.map(c => c.nombre).join(', ')
+        : 'Sin corresponsables';
+    const rows = [
+        ['Actividad', actividad.actividad],
+        ['Responsable', actividad.responsablePrincipal || 'Sin responsable'],
+        ['Corresponsables', corresponsables],
+        ['Compromiso', actividad.fechaCompromiso || 'Sin fecha'],
+        ['Estatus', actividad.estatus || '—'],
+        ['Prioridad', actividad.prioridad || '—'],
+        ['Avance', `${av}%`]
+    ];
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 760;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#f5f1ea';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(56, 56, 1088, 648);
+    ctx.fillStyle = '#8a0031';
+    ctx.fillRect(56, 56, 1088, 104);
+    ctx.fillStyle = '#b48934';
+    ctx.fillRect(56, 160, 1088, 8);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 30px Arial';
+    ctx.fillText('SENER | Gestor de Actividades DGMESNIE', 92, 116);
+    ctx.font = '600 18px Arial';
+    ctx.fillText('Ficha institucional para seguimiento', 92, 144);
+
+    ctx.fillStyle = '#111827';
+    ctx.font = '700 28px Arial';
+    wrapCanvasText(ctx, actividad.actividad || 'Actividad sin nombre', 92, 220, 1016, 34, 2);
+
+    let y = 310;
+    rows.slice(1).forEach(([label, value]) => {
+        ctx.fillStyle = '#f7ecf1';
+        ctx.fillRect(92, y - 26, 300, 42);
+        ctx.fillStyle = '#6b1034';
+        ctx.font = '700 20px Arial';
+        ctx.fillText(label, 112, y);
+        ctx.fillStyle = '#1f2937';
+        ctx.font = '500 20px Arial';
+        wrapCanvasText(ctx, String(value || '—'), 420, y, 660, 24, 2);
+        y += 70;
+    });
+
+    ctx.fillStyle = '#8a0031';
+    ctx.font = '700 19px Arial';
+    ctx.fillText(`${window.location.origin}/Gestor/Index`, 92, 668);
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '500 16px Arial';
+    ctx.fillText('Generado automáticamente desde el Gestor de Actividades', 92, 694);
+
+    downloadCanvasAsPng(canvas, `actividad-${actividad.id || 'gestor'}.png`);
+}
+
+function downloadCanvasAsPng(canvas, filename) {
+    canvas.toBlob((blob) => {
+        if (!blob) {
+            toast('No fue posible generar la imagen.', 'err');
+            return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
+        link.type = 'image/png';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+}
+
+function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 3) {
+    const words = String(text || '').split(/\s+/);
+    let line = '';
+    let lines = 0;
+    for (const word of words) {
+        const testLine = line ? `${line} ${word}` : word;
+        if (ctx.measureText(testLine).width > maxWidth && line) {
+            ctx.fillText(line, x, y);
+            y += lineHeight;
+            lines++;
+            line = word;
+            if (lines >= maxLines - 1) break;
+        } else {
+            line = testLine;
+        }
+    }
+    if (line && lines < maxLines) ctx.fillText(line, x, y);
+}
+
+function openCompartirWhatsAppModal(actividad, temas) {
+    const text = buildActividadWhatsAppText(actividad, temas);
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    const av = avancePromedio(actividad, temas);
+    const corresponsables = actividad.corresponsables?.length
+        ? actividad.corresponsables.map(c => c.nombre).join(', ')
+        : 'Sin corresponsables';
+
+    const html = `
+        <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="border:1px solid rgba(138,0,49,.16);border-radius:10px;overflow:hidden;background:#fff;">
+                <div style="background:#8a0031;color:#fff;padding:12px 14px;font-weight:800;">SENER | Gestor de Actividades DGMESNIE</div>
+                <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
+                    <tbody>
+                        <tr><th style="width:34%;text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Actividad</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;font-weight:700;">${escape(actividad.actividad)}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Responsable</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(actividad.responsablePrincipal || 'Sin responsable')}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Corresponsables</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(corresponsables)}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Compromiso</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(actividad.fechaCompromiso || 'Sin fecha')}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Estatus</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(actividad.estatus || '—')}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;">Avance</th><td style="padding:8px 10px;">${av}%</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <textarea readonly style="width:100%;min-height:150px;border:1px solid rgba(138,0,49,.18);border-radius:8px;padding:10px;font-size:.82rem;resize:vertical;box-sizing:border-box;">${escape(text)}</textarea>
+            <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+                <button type="button" id="btn-descargar-wa-img" class="internal-button">Descargar imagen</button>
+                <a href="${waUrl}" target="_blank" rel="noopener" class="internal-button internal-button--primary" style="text-decoration:none;">Abrir WhatsApp</a>
+            </div>
+        </div>`;
+
+    openModal('Compartir por WhatsApp', html, null);
+    document.getElementById('btn-descargar-wa-img').onclick = () => downloadActividadShareImage(actividad, temas);
+}
+
+/* ── Modal de compartir por correo ── */
+async function openCompartirCorreoModal(actividad) {
+    function normalizeUserName(value) {
+        return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    }
+
+    const users = await dataService.list('usuarios');
+    const filteredUsers = users
+        .filter(u => normalizeUserName(u.nombre) !== 'consulta publica')
+        .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es-MX', { sensitivity: 'base' }));
+
+    const av = avancePromedio(actividad, _temasState);
+    const corresponsables = actividad.corresponsables?.length
+        ? actividad.corresponsables.map(c => c.nombre).join(', ')
+        : 'Sin corresponsables';
+
+    const html = `
+        <form id="compartir-form" style="margin:0;">
+            <p style="margin-bottom:12px; font-size:0.88rem; color:var(--texto-suave);">
+                Selecciona uno o más usuarios <strong>y/o</strong> escribe un correo externo para compartir el reporte de esta actividad.
+            </p>
+
+            <div class="usuarios-check-list" style="max-height:180px;overflow-y:auto;border:1px solid rgba(138,0,49,.15);border-radius:10px;padding:10px;background:#fff;display:flex;flex-direction:column;gap:8px;box-shadow:inset 0 2px 4px rgba(0,0,0,.02);margin-bottom:14px;">
+                ${filteredUsers.map(u => `
+                    <label style="display:flex;align-items:center;gap:8px;font-weight:500;font-size:0.85rem;color:var(--texto);cursor:pointer;margin:0;">
+                        <input type="checkbox" name="usuariosIds" value="${u.idUsuario}" style="width:16px;height:16px;accent-color:var(--guinda);cursor:pointer;">
+                        <span>${escape(u.nombre)}${u.correo ? ` <span style="font-size:0.77rem;color:var(--texto-suave);">(${escape(u.correo)})</span>` : ''}</span>
+                    </label>
+                `).join('')}
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="font-size:0.82rem;font-weight:700;color:var(--texto);display:block;margin-bottom:5px;">Correo externo (opcional):</label>
+                <input type="email" id="correo-libre" placeholder="ejemplo@dominio.gob.mx"
+                    style="width:100%;padding:8px 12px;border:1px solid rgba(138,0,49,.2);border-radius:8px;font-size:0.85rem;box-sizing:border-box;">
+            </div>
+
+            <div style="margin-bottom:1.2rem;">
+                <div style="font-size:0.72rem;text-transform:uppercase;color:#8a0031;font-weight:700;margin-bottom:7px;">Detalle que se enviará</div>
+                <div style="overflow-x:auto;border:1px solid rgba(138,0,49,.16);border-radius:9px;background:#fff;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                        <tbody>
+                            <tr><th style="width:34%;text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Actividad</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;font-weight:700;">${escape(actividad.actividad)}</td></tr>
+                            <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Responsable</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(actividad.responsablePrincipal || 'Sin responsable')}</td></tr>
+                            <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Corresponsables</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(corresponsables)}</td></tr>
+                            <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Compromiso</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(actividad.fechaCompromiso || 'Sin fecha')}</td></tr>
+                            <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Estatus</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(actividad.estatus || '—')}</td></tr>
+                            <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;">Avance</th><td style="padding:8px 10px;">${av}%</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:10px;">
+                <button type="button" id="btn-cancelar-compartir" class="internal-button" style="min-height:36px;padding:.5rem 1rem;">Cancelar</button>
+                <button type="submit" id="btn-enviar-compartir" class="internal-button internal-button--primary" style="min-height:36px;padding:.5rem 1rem;display:inline-flex;align-items:center;gap:8px;">
+                    <i class="fa-solid fa-paper-plane"></i> Enviar correo
+                </button>
+            </div>
+        </form>`;
+
+    const close = openModal(`Compartir actividad por correo`, html, null);
+
+    document.getElementById('btn-cancelar-compartir').onclick = close;
+
+    document.getElementById('compartir-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const checks = document.querySelectorAll('#modal-body input[name="usuariosIds"]:checked');
+        const usuariosIds = Array.from(checks).map(cb => Number(cb.value));
+        const correoLibre = document.getElementById('correo-libre')?.value?.trim() || '';
+
+        if (!usuariosIds.length && !correoLibre) {
+            toast('Selecciona al menos un destinatario o escribe un correo.', 'err');
+            return;
+        }
+
+        const btnEnviar = document.getElementById('btn-enviar-compartir');
+        const btnCancel = document.getElementById('btn-cancelar-compartir');
+        if (btnEnviar) { btnEnviar.disabled = true; btnEnviar.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...'; }
+        if (btnCancel) btnCancel.disabled = true;
+
+        try {
+            const token = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+            const res = await fetch(`/Gestor/Api/Actividades/${actividad.id}/Compartir`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify({ usuarioIds: usuariosIds, correoLibre })
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => null);
+                throw new Error(body?.error || `Error ${res.status}`);
+            }
+            if (btnEnviar) btnEnviar.innerHTML = '<i class="fa-solid fa-check"></i> ¡Enviado!';
+            toast('Correo enviado correctamente.', 'ok');
+            setTimeout(close, 1200);
+        } catch (err) {
+            toast(err.message || 'Error al enviar el correo', 'err');
+            if (btnEnviar) { btnEnviar.disabled = false; btnEnviar.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar correo'; }
+            if (btnCancel) btnCancel.disabled = false;
+        }
+    };
 }
 
 /* ── Modal de detalle (solo lectura) ── */

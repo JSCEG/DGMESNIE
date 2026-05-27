@@ -183,6 +183,9 @@ export function renderTabla(temas, actividades, filters = {}) {
                             <button class="tabla-action-btn" data-email="${t.id}" title="Enviar por correo" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
                                 <i class="fa-solid fa-envelope" style="font-size: 1.15rem; color: #8a0031;"></i>
                             </button>
+                            <button class="tabla-action-btn" data-whatsapp="${t.id}" title="Enviar por WhatsApp" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
+                                <i class="fa-brands fa-whatsapp" style="font-size: 1.15rem; color: #128C7E;"></i>
+                            </button>
                             <button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem" data-edit="${t.id}">Editar</button>
                         </span>
                     </td>
@@ -199,6 +202,158 @@ export function renderTabla(temas, actividades, filters = {}) {
     tbody.querySelectorAll('[data-email]').forEach(btn => {
         btn.onclick = () => openSendEmailModal(temas.find(t => t.id === btn.dataset.email));
     });
+
+    tbody.querySelectorAll('[data-whatsapp]').forEach(btn => {
+        btn.onclick = () => {
+            const tema = temas.find(t => t.id === btn.dataset.whatsapp);
+            if (tema) openTemaWhatsAppModal(tema, actividades);
+        };
+    });
+}
+
+function buildTemaWhatsAppText(tema, actividad) {
+    const gestorUrl = `${window.location.origin}/Gestor/Index`;
+    return [
+        '*SENER | Gestor de Actividades DGMESNIE*',
+        '',
+        `*Tema:* ${tema.tema}`,
+        `*Actividad:* ${actividad?.actividad || '—'}`,
+        `*Responsable:* ${tema.responsable || 'Sin responsable'}`,
+        `*Compromiso:* ${tema.fechaCompromiso || 'Sin fecha'}`,
+        `*Estatus:* ${tema.estatus || '—'}`,
+        `*Prioridad:* ${tema.prioridad || '—'}`,
+        `*Avance:* ${tema.avance || 0}%`,
+        '',
+        'Ver en el Gestor:',
+        gestorUrl
+    ].join('\n');
+}
+
+function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 3) {
+    const words = String(text || '').split(/\s+/);
+    let line = '';
+    let lines = 0;
+    for (const word of words) {
+        const testLine = line ? `${line} ${word}` : word;
+        if (ctx.measureText(testLine).width > maxWidth && line) {
+            ctx.fillText(line, x, y);
+            y += lineHeight;
+            lines++;
+            line = word;
+            if (lines >= maxLines - 1) break;
+        } else {
+            line = testLine;
+        }
+    }
+    if (line && lines < maxLines) ctx.fillText(line, x, y);
+}
+
+function downloadTemaShareImage(tema, actividad) {
+    const rows = [
+        ['Actividad', actividad?.actividad || '—'],
+        ['Tema', tema.tema],
+        ['Responsable', tema.responsable || 'Sin responsable'],
+        ['Compromiso', tema.fechaCompromiso || 'Sin fecha'],
+        ['Estatus', tema.estatus || '—'],
+        ['Prioridad', tema.prioridad || '—'],
+        ['Avance', `${tema.avance || 0}%`]
+    ];
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 760;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#f5f1ea';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(56, 56, 1088, 648);
+    ctx.fillStyle = '#8a0031';
+    ctx.fillRect(56, 56, 1088, 104);
+    ctx.fillStyle = '#b48934';
+    ctx.fillRect(56, 160, 1088, 8);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 30px Arial';
+    ctx.fillText('SENER | Gestor de Actividades DGMESNIE', 92, 116);
+    ctx.font = '600 18px Arial';
+    ctx.fillText('Ficha institucional de tema', 92, 144);
+
+    ctx.fillStyle = '#111827';
+    ctx.font = '700 28px Arial';
+    wrapCanvasText(ctx, tema.tema || 'Tema sin nombre', 92, 220, 1016, 34, 2);
+
+    let y = 310;
+    rows.filter(([label]) => label !== 'Tema').forEach(([label, value]) => {
+        ctx.fillStyle = '#f7ecf1';
+        ctx.fillRect(92, y - 26, 300, 42);
+        ctx.fillStyle = '#6b1034';
+        ctx.font = '700 20px Arial';
+        ctx.fillText(label, 112, y);
+        ctx.fillStyle = '#1f2937';
+        ctx.font = '500 20px Arial';
+        wrapCanvasText(ctx, String(value || '—'), 420, y, 660, 24, 2);
+        y += 70;
+    });
+
+    ctx.fillStyle = '#8a0031';
+    ctx.font = '700 19px Arial';
+    ctx.fillText(`${window.location.origin}/Gestor/Index`, 92, 668);
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '500 16px Arial';
+    ctx.fillText('Generado automáticamente desde el Gestor de Actividades', 92, 694);
+
+    downloadCanvasAsPng(canvas, `tema-${tema.id || 'gestor'}.png`);
+}
+
+function downloadCanvasAsPng(canvas, filename) {
+    canvas.toBlob((blob) => {
+        if (!blob) {
+            toast('No fue posible generar la imagen.', 'err');
+            return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename.endsWith('.png') ? filename : `${filename}.png`;
+        link.type = 'image/png';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+}
+
+function openTemaWhatsAppModal(tema, actividades) {
+    const actividad = actividades.find(a => a.id === tema.actividadId);
+    const text = buildTemaWhatsAppText(tema, actividad);
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+
+    const html = `
+        <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="border:1px solid rgba(138,0,49,.16);border-radius:10px;overflow:hidden;background:#fff;">
+                <div style="background:#8a0031;color:#fff;padding:12px 14px;font-weight:800;">SENER | Gestor de Actividades DGMESNIE</div>
+                <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
+                    <tbody>
+                        <tr><th style="width:34%;text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Tema</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;font-weight:700;">${escape(tema.tema)}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Actividad</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(actividad?.actividad || '—')}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Responsable</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(tema.responsable || 'Sin responsable')}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Compromiso</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(tema.fechaCompromiso || 'Sin fecha')}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Estatus</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;">${escape(tema.estatus || '—')}</td></tr>
+                        <tr><th style="text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;">Avance</th><td style="padding:8px 10px;">${tema.avance || 0}%</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <textarea readonly style="width:100%;min-height:150px;border:1px solid rgba(138,0,49,.18);border-radius:8px;padding:10px;font-size:.82rem;resize:vertical;box-sizing:border-box;">${escape(text)}</textarea>
+            <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+                <button type="button" id="btn-descargar-wa-tema-img" class="internal-button">Descargar imagen</button>
+                <a href="${waUrl}" target="_blank" rel="noopener" class="internal-button internal-button--primary" style="text-decoration:none;">Abrir WhatsApp</a>
+            </div>
+        </div>`;
+
+    openModal('Compartir tema por WhatsApp', html, null);
+    document.getElementById('btn-descargar-wa-tema-img').onclick = () => downloadTemaShareImage(tema, actividad);
 }
 
 export function changeTablaPage(step) {
