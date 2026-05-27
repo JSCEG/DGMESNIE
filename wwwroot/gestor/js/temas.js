@@ -62,7 +62,7 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
             const numTemas = temas.filter(t => t.actividadId === a.id).length;
             const trackCls = sem === 'rojo' ? 'track--issue' : sem === 'amarillo' ? 'track--progress' : sem === 'verde' ? 'track--complete' : 'track--pending';
             
-            // Generate initials from responsible principal name
+            // Initials avatar
             const initials = (a.responsablePrincipal || '??')
                 .split(' ')
                 .filter(w => w.length > 0)
@@ -76,6 +76,17 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
             const corrNames = a.corresponsables && a.corresponsables.length
                 ? ' + ' + a.corresponsables.map(c => c.nombre.split(' ')[0]).join(', ')
                 : '';
+
+            // WhatsApp & Email share text
+            const shareText = encodeURIComponent(
+                `📋 Actividad: ${a.actividad}\n` +
+                `👤 Responsable: ${a.responsablePrincipal || '—'}\n` +
+                `📅 Compromiso: ${a.fechaCompromiso || '—'}\n` +
+                `📊 Avance: ${av}%\n` +
+                `🔴🟡🟢 Estatus: ${a.estatus || '—'}`
+            );
+            const waUrl  = `https://wa.me/?text=${shareText}`;
+            const mailUrl = `mailto:?subject=${encodeURIComponent('Actividad: ' + a.actividad)}&body=${shareText.replace(/%0A/g, '%0D%0A')}`;
             
             return `
                 <article class="tema-card s-${sem}" data-id="${a.id}">
@@ -106,17 +117,162 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
                             ${calSvg} ${fmtDate(a.fechaCompromiso)}
                         </span>
                     </div>
+
+                    <!-- ── Barra de acciones ── -->
+                    <div class="tema-card__actions" style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 8px 14px 10px; border-top: 1px solid rgba(138,0,49,0.07); margin-top: 6px;">
+                        <button type="button" class="tca-btn tca-view" data-id="${a.id}"
+                            title="Ver detalle"
+                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(10,94,149,.08);color:#0a5e95;">
+                            <i class="fa-solid fa-eye"></i> Ver
+                        </button>
+                        <button type="button" class="tca-btn tca-edit" data-id="${a.id}"
+                            title="Editar actividad"
+                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(138,0,49,.08);color:#8a0031;">
+                            <i class="fa-solid fa-pen-to-square"></i> Editar
+                        </button>
+                        <button type="button" class="tca-btn tca-delete" data-id="${a.id}"
+                            title="Eliminar actividad"
+                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(192,34,42,.08);color:#c0222a;">
+                            <i class="fa-solid fa-trash"></i> Eliminar
+                        </button>
+                        <a href="${mailUrl}" class="tca-btn"
+                            title="Compartir por correo"
+                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(71,85,105,.08);color:#475569;text-decoration:none;">
+                            <i class="fa-solid fa-envelope"></i>
+                        </a>
+                        <a href="${waUrl}" target="_blank" rel="noopener" class="tca-btn"
+                            title="Compartir por WhatsApp"
+                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(37,211,102,.1);color:#128C7E;text-decoration:none;">
+                            <i class="fa-brands fa-whatsapp"></i>
+                        </a>
+                    </div>
                 </article>`;
         }).join('')
         : '<p style="grid-column:1/-1;text-align:center;color:var(--g-text-soft);padding:2rem">Sin actividades que coincidan</p>';
 
-    // Bind card clicks (edit modal)
+    // ── Bind action buttons ──
+    cont.querySelectorAll('.tca-view').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const act = actividades.find(x => x.id === btn.dataset.id);
+            if (act) openActividadDetalle(act, temas);
+        };
+    });
+
+    cont.querySelectorAll('.tca-edit').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const act = actividades.find(x => x.id === btn.dataset.id);
+            if (act) openActividadModal(act);
+        };
+    });
+
+    cont.querySelectorAll('.tca-delete').forEach(btn => {
+        btn.onclick = async (e) => {
+            e.stopPropagation();
+            const act = actividades.find(x => x.id === btn.dataset.id);
+            if (!act) return;
+            if (!confirm(`¿Eliminar la actividad "${act.actividad}" y todos sus temas? Esta acción no se puede deshacer.`)) return;
+            try {
+                const childTemas = _temasState.filter(t => t.actividadId === act.id);
+                for (const t of childTemas) await dataService.remove('temas', t.id);
+                await dataService.remove('actividades', act.id);
+                toast('Actividad eliminada', 'ok');
+                window.dispatchEvent(new CustomEvent('gestor:refresh'));
+            } catch (err) {
+                toast(err.message || 'Error al eliminar', 'err');
+            }
+        };
+    });
+
+    // Click en la tarjeta (fuera de botones) → editar
     cont.querySelectorAll('.tema-card').forEach(card => {
         card.onclick = (e) => {
-            if (e.target.closest('.tema-card__link-btn')) return;
+            if (e.target.closest('.tca-btn, .tema-card__link-btn, a')) return;
             openActividadModal(actividades.find(x => x.id === card.dataset.id));
         };
     });
+}
+
+/* ── Modal de detalle (solo lectura) ── */
+export function openActividadDetalle(a, temas) {
+    const av = avancePromedio(a, temas);
+    const sem = semaforoTema(a, temas);
+    const semLabels = { verde: '🟢 A tiempo', amarillo: '🟡 Por vencer', rojo: '🔴 Vencido', gris: '⚫ Bloqueado/Sin fecha' };
+    const numTemas = temas.filter(t => t.actividadId === a.id).length;
+    const corrList = a.corresponsables && a.corresponsables.length
+        ? a.corresponsables.map(c => `<span style="display:inline-flex;align-items:center;gap:5px;background:rgba(30,91,79,.08);border-radius:6px;padding:2px 8px;font-size:0.78rem;color:#1e5b4f;font-weight:600;">${escape(c.nombre)}</span>`).join(' ')
+        : '<span style="color:var(--texto-suave);font-size:0.82rem;">Sin corresponsables</span>';
+
+    const html = `
+        <div style="display:flex;flex-direction:column;gap:1rem;">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(138,0,49,0.04);border-left:4px solid #8a0031;">
+                <span class="semaforo ${sem}" style="width:12px;height:12px;flex-shrink:0;margin-top:0;"></span>
+                <div>
+                    <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:#8a0031;letter-spacing:.05em;">Actividad</div>
+                    <div style="font-weight:700;font-size:1rem;color:#0f172a;">${escape(a.actividad)}</div>
+                </div>
+                <span style="margin-left:auto;font-size:0.78rem;font-weight:700;color:#8a0031;">${semLabels[sem] || sem}</span>
+            </div>
+
+            ${a.descripcion ? `<p style="margin:0;font-size:0.87rem;color:#475569;line-height:1.55;">${escape(a.descripcion)}</p>` : ''}
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Responsable</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${escape(a.responsablePrincipal || '—')}</div>
+                </div>
+                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Categoría</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${escape(a.categoria || '—')}</div>
+                </div>
+                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Inicio</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${fmtDate(a.fechaInicio)}</div>
+                </div>
+                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Compromiso</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${fmtDate(a.fechaCompromiso)}</div>
+                </div>
+                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Prioridad · Estatus</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${escape(a.prioridad)} · ${escape(a.estatus)}</div>
+                </div>
+                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Temas</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${numTemas} tema${numTemas !== 1 ? 's' : ''}</div>
+                </div>
+            </div>
+
+            <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
+                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:6px;">Avance</div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="flex:1;height:8px;border-radius:99px;background:rgba(138,0,49,.1);overflow:hidden;">
+                        <div style="height:100%;width:${av}%;border-radius:99px;background:${sem==='rojo'?'#c0222a':sem==='amarillo'?'#d97706':'#027a48'};transition:width .4s;"></div>
+                    </div>
+                    <span style="font-weight:700;font-size:0.9rem;color:#0f172a;">${av}%</span>
+                </div>
+            </div>
+
+            <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
+                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:6px;">Corresponsables</div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px;">${corrList}</div>
+            </div>
+
+            ${a.comentariosEjecutivos ? `
+            <div style="background:#fffbeb;border-radius:8px;padding:10px 14px;border-left:3px solid #d97706;">
+                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#d97706;margin-bottom:4px;">Comentarios</div>
+                <div style="font-size:0.85rem;color:#475569;line-height:1.5;">${escape(a.comentariosEjecutivos)}</div>
+            </div>` : ''}
+
+            ${a.ligaSharePoint ? `
+            <a href="${escape(a.ligaSharePoint)}" target="_blank" rel="noopener"
+               style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;background:rgba(180,137,52,.1);color:#b48934;font-size:0.82rem;font-weight:700;text-decoration:none;align-self:flex-start;">
+                <i class="fa-solid fa-folder-open"></i> Abrir en SharePoint
+            </a>` : ''}
+        </div>`;
+
+    openModal(`Detalle: ${a.actividad}`, html, null);
 }
 
 export async function openActividadModal(actividad) {
