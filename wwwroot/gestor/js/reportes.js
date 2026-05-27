@@ -408,7 +408,7 @@ function slideCover(s, reportDate, f) {
         <section class="internal-slide internal-slide--cover">
             ${renderSlideHeader('DGMESNIE · Seguimiento')}
             <div class="internal-cover-body">
-                <p class="eyebrow">Reporte ejecutivo</p>
+                <p class="eyebrow">Reporte de seguimiento</p>
                 <h2>Seguimiento de Actividades</h2>
                 <p class="unit">Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información Energética</p>
                 ${filterHtml}
@@ -427,7 +427,7 @@ function slideResumen(s, topTemas) {
         <section class="internal-slide internal-slide--content">
             ${renderSlideHeader('Resumen general')}
             <div class="internal-slide__body">
-                <h2>Panel ejecutivo</h2>
+                <h2>Resumen general</h2>
                 <div class="slide-kpis">
                     ${renderSlideKpi('Temas', s.total)}
                     ${renderSlideKpi('Avance promedio', s.average + '%')}
@@ -655,7 +655,7 @@ function slideDashboardGraficos(acts, f) {
     return `
         <section class="internal-slide internal-slide--content" style="background: #fafbfc;">
             <!-- Header -->
-            ${renderSlideHeader('Indicadores ejecutivos')}
+            ${renderSlideHeader('Indicadores clave')}
 
             <div class="internal-slide__body" style="padding: 10px 24px; gap: 12px; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
                 <!-- Narrative Paragraph -->

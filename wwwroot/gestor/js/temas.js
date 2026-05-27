@@ -141,7 +141,7 @@ export async function openActividadModal(actividad) {
                     </div>
                 </div>
                 <div class="form-field full"><label>Liga SharePoint</label><input type="url" name="ligaSharePoint" value="${escape(a.ligaSharePoint || '')}"></div>
-                <div class="form-field full"><label>Comentarios ejecutivos</label><textarea name="comentariosEjecutivos">${escape(a.comentariosEjecutivos || '')}</textarea></div>
+                <div class="form-field full"><label>Comentarios</label><textarea name="comentariosEjecutivos">${escape(a.comentariosEjecutivos || '')}</textarea></div>
             </div>
             <div class="form-actions">
                 ${!isNew ? `<button type="button" class="internal-button" style="color:var(--riesgo);border-color:rgba(180,35,24,.3)" id="btn-del-act">Eliminar</button>` : ''}

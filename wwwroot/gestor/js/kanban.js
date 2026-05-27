@@ -51,7 +51,13 @@ export function renderKanban(actividades, temas, actividadIdFilter = '') {
             const nuevoEstatus = col.dataset.col;
             const id = dragging.dataset.id;
             const patch = { estatus: nuevoEstatus, fechaUltimaActualizacion: new Date().toISOString().slice(0, 10) };
-            if (nuevoEstatus === 'Concluida') patch.avance = 100;
+            if (nuevoEstatus === 'Concluida') {
+                patch.avance = 100;
+            } else if (nuevoEstatus === 'En proceso') {
+                patch.avance = 50;
+            } else {
+                patch.avance = 0;
+            }
             await dataService.update('temas', id, patch);
             window.dispatchEvent(new CustomEvent('gestor:refresh'));
         });

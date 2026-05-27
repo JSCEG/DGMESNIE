@@ -262,7 +262,6 @@ export async function openTemaModal(tema, actividades) {
                 <div class="form-field"><label>Estatus</label>
                     <select name="estatus">${['Pendiente', 'En proceso', 'Concluida', 'Vencida'].map(p => `<option ${t.estatus === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
                 </div>
-                <div class="form-field"><label>Avance (%)</label><input type="number" min="0" max="100" name="avance" value="${t.avance || 0}"></div>
                 <div class="form-field"><label>Bloqueada</label>
                     <select name="bloqueada"><option value="false" ${!t.bloqueada ? 'selected' : ''}>No</option><option value="true" ${t.bloqueada ? 'selected' : ''}>Sí</option></select>
                 </div>
@@ -305,10 +304,19 @@ export async function openTemaModal(tema, actividades) {
             submitBtn.textContent = isNew ? 'Creando...' : 'Guardando...';
         }
         try {
-            data.avance = Number(data.avance);
+            // Auto-calculate progress (avance) based on Estatus
+            let calculatedAvance = 0;
+            if (data.estatus === 'Concluida') {
+                calculatedAvance = 100;
+            } else if (data.estatus === 'En proceso') {
+                calculatedAvance = isNew ? 50 : (t.avance === 100 || t.avance === 0 ? 50 : t.avance);
+            } else {
+                calculatedAvance = 0;
+            }
+            data.avance = calculatedAvance;
+
             data.bloqueada = data.bloqueada === 'true';
             data.fechaUltimaActualizacion = new Date().toISOString().slice(0, 10);
-            if (data.avance === 100) data.estatus = 'Concluida';
 
             const corresponsablesCbs = document.querySelectorAll('#modal-body form input[name="corresponsablesIds"]:checked');
             data.corresponsablesIds = Array.from(corresponsablesCbs).map(cb => Number(cb.value));
