@@ -49,6 +49,8 @@ public class ValidacionInputFiltro : ActionFilterAttribute
         "Acceso.ActualizarInicioSesion",
         "Gestor.ApiCrearActividad",
         "Gestor.ApiActualizarActividad",
+        "Gestor.ApiCrearTema",
+        "Gestor.ApiActualizarTema",
         "ProyectosPrivados.ApiProyectos",
         "ProyectosPrivados.ApiProyecto",
         "ProyectosPrivados.ApiAcciones",

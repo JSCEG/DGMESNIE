@@ -21,6 +21,7 @@ namespace NSIE.Servicios
         {
             if (bloqueada) return "gris";
             if (string.Equals(estatus, "Concluida", StringComparison.OrdinalIgnoreCase)) return "verde";
+            if (string.Equals(estatus, "Concluido", StringComparison.OrdinalIgnoreCase)) return "verde";
             var hoy = DateTime.Today;
             if (fechaCompromiso.HasValue && fechaCompromiso.Value.Date < hoy) return "rojo";
             if (fechaCompromiso.HasValue && (fechaCompromiso.Value.Date - hoy).TotalDays <= 7) return "amarillo";
@@ -135,178 +136,35 @@ namespace NSIE.Servicios
             }
         }
 
-        // ── Temas ─────────────────────────────────────────────────────────────
-        public async Task<List<GestorTema>> ObtenerTemasAsync()
+        // ── Actividades (Padre) ──────────────────────────────────────────────
+        public async Task<List<GestorActividad>> ObtenerActividadesAsync()
         {
             const string sql = @"
-                SELECT t.TemaId, t.Clave, t.Tema, t.Descripcion, t.Categoria,
-                       t.Prioridad, t.Estatus, t.ResponsablePrincipalId,
+                SELECT a.ActividadId, a.Clave, a.Actividad, a.Descripcion, a.Categoria,
+                       a.Prioridad, a.Estatus, a.ResponsablePrincipalId,
                        u.Nombre AS ResponsableNombre,
-                       t.FechaInicio, t.FechaCompromiso, t.AvanceGeneral,
-                       t.LigaSharePoint, t.ComentariosEjecutivos,
-                       t.FechaUltimaActualizacion, t.FechaCreacion
-                FROM [dgmesnie].[Gestor_Temas] t
-                LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = t.ResponsablePrincipalId
-                WHERE t.Activo = 1
-                ORDER BY t.TemaId";
-
-            var temas = new List<GestorTema>();
-            await using var cn = new SqlConnection(_conn);
-            await cn.OpenAsync();
-            await using var cmd = new SqlCommand(sql, cn);
-            await using var rd = await cmd.ExecuteReaderAsync();
-            while (await rd.ReadAsync())
-            {
-                var t = MapTema(rd);
-                t.Semaforo = CalcularSemaforo(t.Estatus, t.FechaCompromiso, false, t.FechaUltimaActualizacion);
-                temas.Add(t);
-            }
-            rd.Close();
-
-            // Corresponsables en bulk
-            foreach (var t in temas)
-                t.Corresponsables = await CargarCorresponsablesAsync(cn, t.TemaId, null);
-
-            return temas;
-        }
-
-        public async Task<GestorTema?> ObtenerTemaPorIdAsync(int temaId)
-        {
-            const string sql = @"
-                SELECT t.TemaId, t.Clave, t.Tema, t.Descripcion, t.Categoria,
-                       t.Prioridad, t.Estatus, t.ResponsablePrincipalId,
-                       u.Nombre AS ResponsableNombre,
-                       t.FechaInicio, t.FechaCompromiso, t.AvanceGeneral,
-                       t.LigaSharePoint, t.ComentariosEjecutivos,
-                       t.FechaUltimaActualizacion, t.FechaCreacion
-                FROM [dgmesnie].[Gestor_Temas] t
-                LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = t.ResponsablePrincipalId
-                WHERE t.TemaId = @temaId AND t.Activo = 1";
-
-            await using var cn = new SqlConnection(_conn);
-            await cn.OpenAsync();
-            await using var cmd = new SqlCommand(sql, cn);
-            cmd.Parameters.AddWithValue("@temaId", temaId);
-            await using var rd = await cmd.ExecuteReaderAsync();
-            if (!await rd.ReadAsync()) return null;
-            var t = MapTema(rd);
-            rd.Close();
-            t.Corresponsables = await CargarCorresponsablesAsync(cn, temaId, null);
-            t.Semaforo = CalcularSemaforo(t.Estatus, t.FechaCompromiso, false, t.FechaUltimaActualizacion);
-            return t;
-        }
-
-        public async Task<int> CrearTemaAsync(GestorTemaForm form, int? usuarioId)
-        {
-            const string sql = @"
-                DECLARE @n INT;
-                SELECT @n = ISNULL(MAX(TemaId),0)+1 FROM [dgmesnie].[Gestor_Temas];
-                INSERT INTO [dgmesnie].[Gestor_Temas]
-                    (Clave,Tema,Descripcion,Categoria,Prioridad,Estatus,
-                     ResponsablePrincipalId,FechaInicio,FechaCompromiso,AvanceGeneral,
-                     LigaSharePoint,ComentariosEjecutivos,CreadoPor,
-                     FechaUltimaActualizacion,FechaCreacion)
-                VALUES
-                    ('T-'+RIGHT('000'+CAST(@n AS NVARCHAR),3),@tema,@desc,@cat,@pri,@est,
-                     @resp,@inicio,@comp,0,@liga,@coment,@creador,
-                     GETDATE(),GETDATE());
-                SELECT SCOPE_IDENTITY();";
-
-            await using var cn = new SqlConnection(_conn);
-            await cn.OpenAsync();
-            await using var tx = (SqlTransaction)await cn.BeginTransactionAsync();
-            try
-            {
-                await using var cmd = new SqlCommand(sql, cn, tx);
-                AddTemaParams(cmd, form);
-                cmd.Parameters.AddWithValue("@creador", (object?)usuarioId ?? DBNull.Value);
-                var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-                await SincronizarCorresponsablesAsync(cn, tx, id, null, form.CorresponsablesIds);
-                await tx.CommitAsync();
-                return id;
-            }
-            catch
-            {
-                await tx.RollbackAsync();
-                throw;
-            }
-        }
-
-        public async Task ActualizarTemaAsync(GestorTemaForm form, int? usuarioId)
-        {
-            const string sql = @"
-                UPDATE [dgmesnie].[Gestor_Temas] SET
-                    Tema = @tema, Descripcion = @desc, Categoria = @cat,
-                    Prioridad = @pri, Estatus = @est,
-                    ResponsablePrincipalId = @resp,
-                    FechaInicio = @inicio, FechaCompromiso = @comp,
-                    LigaSharePoint = @liga, ComentariosEjecutivos = @coment,
-                    FechaUltimaActualizacion = GETDATE()
-                WHERE TemaId = @temaId AND Activo = 1";
-
-            await using var cn = new SqlConnection(_conn);
-            await cn.OpenAsync();
-            await using var tx = (SqlTransaction)await cn.BeginTransactionAsync();
-            try
-            {
-                await using var cmd = new SqlCommand(sql, cn, tx);
-                AddTemaParams(cmd, form);
-                cmd.Parameters.AddWithValue("@temaId", form.TemaId!.Value);
-                await cmd.ExecuteNonQueryAsync();
-                await SincronizarCorresponsablesAsync(cn, tx, form.TemaId.Value, null, form.CorresponsablesIds);
-                await tx.CommitAsync();
-            }
-            catch
-            {
-                await tx.RollbackAsync();
-                throw;
-            }
-        }
-
-        public async Task EliminarTemaAsync(int temaId)
-        {
-            const string sql = @"
-                UPDATE [dgmesnie].[Gestor_Temas] SET Activo = 0 WHERE TemaId = @temaId;
-                UPDATE [dgmesnie].[Gestor_Actividades] SET Activo = 0 WHERE TemaId = @temaId;";
-            await using var cn = new SqlConnection(_conn);
-            await cn.OpenAsync();
-            await using var cmd = new SqlCommand(sql, cn);
-            cmd.Parameters.AddWithValue("@temaId", temaId);
-            await cmd.ExecuteNonQueryAsync();
-        }
-
-        // ── Actividades ───────────────────────────────────────────────────────
-        public async Task<List<GestorActividad>> ObtenerActividadesAsync(int? temaId = null)
-        {
-            const string sql = @"
-                SELECT a.ActividadId, a.Clave, a.TemaId, t.Tema AS TemaNombre,
-                       a.Actividad, a.Descripcion, a.ResponsableId,
-                       u.Nombre AS ResponsableNombre,
-                       a.FechaInicio, a.FechaCompromiso,
-                       a.Estatus, a.Prioridad, a.Avance,
-                       a.Bloqueada, a.MotivoBloqueO, a.EvidenciaUrl, a.Comentarios,
+                       a.FechaInicio, a.FechaCompromiso, a.AvanceGeneral,
+                       a.LigaSharePoint, a.ComentariosEjecutivos,
                        a.FechaUltimaActualizacion, a.FechaCreacion
                 FROM [dgmesnie].[Gestor_Actividades] a
-                JOIN [dgmesnie].[Gestor_Temas] t ON t.TemaId = a.TemaId
-                LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = a.ResponsableId
+                LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = a.ResponsablePrincipalId
                 WHERE a.Activo = 1
-                  AND (@temaId IS NULL OR a.TemaId = @temaId)
-                ORDER BY a.TemaId, a.ActividadId";
+                ORDER BY a.ActividadId";
 
             var acts = new List<GestorActividad>();
             await using var cn = new SqlConnection(_conn);
             await cn.OpenAsync();
             await using var cmd = new SqlCommand(sql, cn);
-            cmd.Parameters.AddWithValue("@temaId", (object?)temaId ?? DBNull.Value);
             await using var rd = await cmd.ExecuteReaderAsync();
             while (await rd.ReadAsync())
             {
                 var a = MapActividad(rd);
-                a.Semaforo = CalcularSemaforo(a.Estatus, a.FechaCompromiso, a.Bloqueada, a.FechaUltimaActualizacion);
+                a.Semaforo = CalcularSemaforo(a.Estatus, a.FechaCompromiso, false, a.FechaUltimaActualizacion);
                 acts.Add(a);
             }
             rd.Close();
 
+            // Corresponsables
             foreach (var a in acts)
                 a.Corresponsables = await CargarCorresponsablesAsync(cn, null, a.ActividadId);
 
@@ -316,16 +174,14 @@ namespace NSIE.Servicios
         public async Task<GestorActividad?> ObtenerActividadPorIdAsync(int actividadId)
         {
             const string sql = @"
-                SELECT a.ActividadId, a.Clave, a.TemaId, t.Tema AS TemaNombre,
-                       a.Actividad, a.Descripcion, a.ResponsableId,
+                SELECT a.ActividadId, a.Clave, a.Actividad, a.Descripcion, a.Categoria,
+                       a.Prioridad, a.Estatus, a.ResponsablePrincipalId,
                        u.Nombre AS ResponsableNombre,
-                       a.FechaInicio, a.FechaCompromiso,
-                       a.Estatus, a.Prioridad, a.Avance,
-                       a.Bloqueada, a.MotivoBloqueO, a.EvidenciaUrl, a.Comentarios,
+                       a.FechaInicio, a.FechaCompromiso, a.AvanceGeneral,
+                       a.LigaSharePoint, a.ComentariosEjecutivos,
                        a.FechaUltimaActualizacion, a.FechaCreacion
                 FROM [dgmesnie].[Gestor_Actividades] a
-                JOIN [dgmesnie].[Gestor_Temas] t ON t.TemaId = a.TemaId
-                LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = a.ResponsableId
+                LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = a.ResponsablePrincipalId
                 WHERE a.ActividadId = @id AND a.Activo = 1";
 
             await using var cn = new SqlConnection(_conn);
@@ -337,7 +193,7 @@ namespace NSIE.Servicios
             var a = MapActividad(rd);
             rd.Close();
             a.Corresponsables = await CargarCorresponsablesAsync(cn, null, actividadId);
-            a.Semaforo = CalcularSemaforo(a.Estatus, a.FechaCompromiso, a.Bloqueada, a.FechaUltimaActualizacion);
+            a.Semaforo = CalcularSemaforo(a.Estatus, a.FechaCompromiso, false, a.FechaUltimaActualizacion);
             return a;
         }
 
@@ -347,14 +203,13 @@ namespace NSIE.Servicios
                 DECLARE @n INT;
                 SELECT @n = ISNULL(MAX(ActividadId),0)+1 FROM [dgmesnie].[Gestor_Actividades];
                 INSERT INTO [dgmesnie].[Gestor_Actividades]
-                    (Clave,TemaId,Actividad,Descripcion,ResponsableId,
-                     FechaInicio,FechaCompromiso,Estatus,Prioridad,Avance,
-                     Bloqueada,MotivoBloqueO,EvidenciaUrl,Comentarios,CreadoPor,
+                    (Clave,Actividad,Descripcion,Categoria,Prioridad,Estatus,
+                     ResponsablePrincipalId,FechaInicio,FechaCompromiso,AvanceGeneral,
+                     LigaSharePoint,ComentariosEjecutivos,CreadoPor,
                      FechaUltimaActualizacion,FechaCreacion)
                 VALUES
-                    ('A-'+RIGHT('000'+CAST(@n AS NVARCHAR),3),@temaId,@act,@desc,@resp,
-                     @inicio,@comp,@est,@pri,@avance,
-                     @bloq,@motivo,@evi,@coment,@creador,
+                    ('A-'+RIGHT('000'+CAST(@n AS NVARCHAR),3),@act,@desc,@cat,@pri,@est,
+                     @resp,@inicio,@comp,0,@liga,@coment,@creador,
                      GETDATE(),GETDATE());
                 SELECT SCOPE_IDENTITY();";
 
@@ -382,11 +237,11 @@ namespace NSIE.Servicios
         {
             const string sql = @"
                 UPDATE [dgmesnie].[Gestor_Actividades] SET
-                    TemaId = @temaId, Actividad = @act, Descripcion = @desc,
-                    ResponsableId = @resp, FechaInicio = @inicio, FechaCompromiso = @comp,
-                    Estatus = @est, Prioridad = @pri, Avance = @avance,
-                    Bloqueada = @bloq, MotivoBloqueO = @motivo,
-                    EvidenciaUrl = @evi, Comentarios = @coment,
+                    Actividad = @act, Descripcion = @desc, Categoria = @cat,
+                    Prioridad = @pri, Estatus = @est,
+                    ResponsablePrincipalId = @resp,
+                    FechaInicio = @inicio, FechaCompromiso = @comp,
+                    LigaSharePoint = @liga, ComentariosEjecutivos = @coment,
                     FechaUltimaActualizacion = GETDATE()
                 WHERE ActividadId = @actividadId AND Activo = 1";
 
@@ -411,7 +266,9 @@ namespace NSIE.Servicios
 
         public async Task EliminarActividadAsync(int actividadId)
         {
-            const string sql = "UPDATE [dgmesnie].[Gestor_Actividades] SET Activo = 0 WHERE ActividadId = @id";
+            const string sql = @"
+                UPDATE [dgmesnie].[Gestor_Actividades] SET Activo = 0 WHERE ActividadId = @id;
+                UPDATE [dgmesnie].[Gestor_Temas] SET Activo = 0 WHERE ActividadId = @id;";
             await using var cn = new SqlConnection(_conn);
             await cn.OpenAsync();
             await using var cmd = new SqlCommand(sql, cn);
@@ -419,12 +276,156 @@ namespace NSIE.Servicios
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // ── Mappers ───────────────────────────────────────────────────────────
-        private static GestorTema MapTema(SqlDataReader rd) => new()
+        // ── Temas (Hijo) ─────────────────────────────────────────────────────
+        public async Task<List<GestorTema>> ObtenerTemasAsync(int? actividadId = null)
         {
-            TemaId = rd.GetInt32(rd.GetOrdinal("TemaId")),
+            const string sql = @"
+                SELECT t.TemaId, t.Clave, t.ActividadId, a.Actividad AS ActividadNombre,
+                       t.Tema, t.Descripcion, t.ResponsableId,
+                       u.Nombre AS ResponsableNombre,
+                       t.FechaInicio, t.FechaCompromiso,
+                       t.Estatus, t.Prioridad, t.Avance,
+                       t.Bloqueada, t.MotivoBloqueO, t.EvidenciaUrl, t.Comentarios,
+                       t.FechaUltimaActualizacion, t.FechaCreacion
+                FROM [dgmesnie].[Gestor_Temas] t
+                JOIN [dgmesnie].[Gestor_Actividades] a ON a.ActividadId = t.ActividadId
+                LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = t.ResponsableId
+                WHERE t.Activo = 1
+                  AND (@actividadId IS NULL OR t.ActividadId = @actividadId)
+                ORDER BY t.ActividadId, t.TemaId";
+
+            var temas = new List<GestorTema>();
+            await using var cn = new SqlConnection(_conn);
+            await cn.OpenAsync();
+            await using var cmd = new SqlCommand(sql, cn);
+            cmd.Parameters.AddWithValue("@actividadId", (object?)actividadId ?? DBNull.Value);
+            await using var rd = await cmd.ExecuteReaderAsync();
+            while (await rd.ReadAsync())
+            {
+                var t = MapTema(rd);
+                t.Semaforo = CalcularSemaforo(t.Estatus, t.FechaCompromiso, t.Bloqueada, t.FechaUltimaActualizacion);
+                temas.Add(t);
+            }
+            rd.Close();
+
+            foreach (var t in temas)
+                t.Corresponsables = await CargarCorresponsablesAsync(cn, t.TemaId, null);
+
+            return temas;
+        }
+
+        public async Task<GestorTema?> ObtenerTemaPorIdAsync(int temaId)
+        {
+            const string sql = @"
+                SELECT t.TemaId, t.Clave, t.ActividadId, a.Actividad AS ActividadNombre,
+                       t.Tema, t.Descripcion, t.ResponsableId,
+                       u.Nombre AS ResponsableNombre,
+                       t.FechaInicio, t.FechaCompromiso,
+                       t.Estatus, t.Prioridad, t.Avance,
+                       t.Bloqueada, t.MotivoBloqueO, t.EvidenciaUrl, t.Comentarios,
+                       t.FechaUltimaActualizacion, t.FechaCreacion
+                FROM [dgmesnie].[Gestor_Temas] t
+                JOIN [dgmesnie].[Gestor_Actividades] a ON a.ActividadId = t.ActividadId
+                LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = t.ResponsableId
+                WHERE t.TemaId = @id AND t.Activo = 1";
+
+            await using var cn = new SqlConnection(_conn);
+            await cn.OpenAsync();
+            await using var cmd = new SqlCommand(sql, cn);
+            cmd.Parameters.AddWithValue("@id", temaId);
+            await using var rd = await cmd.ExecuteReaderAsync();
+            if (!await rd.ReadAsync()) return null;
+            var t = MapTema(rd);
+            rd.Close();
+            t.Corresponsables = await CargarCorresponsablesAsync(cn, temaId, null);
+            t.Semaforo = CalcularSemaforo(t.Estatus, t.FechaCompromiso, t.Bloqueada, t.FechaUltimaActualizacion);
+            return t;
+        }
+
+        public async Task<int> CrearTemaAsync(GestorTemaForm form, int? usuarioId)
+        {
+            const string sql = @"
+                DECLARE @n INT;
+                SELECT @n = ISNULL(MAX(TemaId),0)+1 FROM [dgmesnie].[Gestor_Temas];
+                INSERT INTO [dgmesnie].[Gestor_Temas]
+                    (Clave,ActividadId,Tema,Descripcion,ResponsableId,
+                     FechaInicio,FechaCompromiso,Estatus,Prioridad,Avance,
+                     Bloqueada,MotivoBloqueO,EvidenciaUrl,Comentarios,CreadoPor,
+                     FechaUltimaActualizacion,FechaCreacion)
+                VALUES
+                    ('T-'+RIGHT('000'+CAST(@n AS NVARCHAR),3),@actividadId,@tema,@desc,@resp,
+                     @inicio,@comp,@est,@pri,@avance,
+                     @bloq,@motivo,@evi,@coment,@creador,
+                     GETDATE(),GETDATE());
+                SELECT SCOPE_IDENTITY();";
+
+            await using var cn = new SqlConnection(_conn);
+            await cn.OpenAsync();
+            await using var tx = (SqlTransaction)await cn.BeginTransactionAsync();
+            try
+            {
+                await using var cmd = new SqlCommand(sql, cn, tx);
+                AddTemaParams(cmd, form);
+                cmd.Parameters.AddWithValue("@creador", (object?)usuarioId ?? DBNull.Value);
+                var id = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                await SincronizarCorresponsablesAsync(cn, tx, id, null, form.CorresponsablesIds);
+                await tx.CommitAsync();
+                return id;
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
+            }
+        }
+
+        public async Task ActualizarTemaAsync(GestorTemaForm form, int? usuarioId)
+        {
+            const string sql = @"
+                UPDATE [dgmesnie].[Gestor_Temas] SET
+                    ActividadId = @actividadId, Tema = @tema, Descripcion = @desc,
+                    ResponsableId = @resp, FechaInicio = @inicio, FechaCompromiso = @comp,
+                    Estatus = @est, Prioridad = @pri, Avance = @avance,
+                    Bloqueada = @bloq, MotivoBloqueO = @motivo,
+                    EvidenciaUrl = @evi, Comentarios = @coment,
+                    FechaUltimaActualizacion = GETDATE()
+                WHERE TemaId = @temaId AND Activo = 1";
+
+            await using var cn = new SqlConnection(_conn);
+            await cn.OpenAsync();
+            await using var tx = (SqlTransaction)await cn.BeginTransactionAsync();
+            try
+            {
+                await using var cmd = new SqlCommand(sql, cn, tx);
+                AddTemaParams(cmd, form);
+                cmd.Parameters.AddWithValue("@temaId", form.TemaId!.Value);
+                await cmd.ExecuteNonQueryAsync();
+                await SincronizarCorresponsablesAsync(cn, tx, form.TemaId.Value, null, form.CorresponsablesIds);
+                await tx.CommitAsync();
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
+            }
+        }
+
+        public async Task EliminarTemaAsync(int temaId)
+        {
+            const string sql = "UPDATE [dgmesnie].[Gestor_Temas] SET Activo = 0 WHERE TemaId = @id";
+            await using var cn = new SqlConnection(_conn);
+            await cn.OpenAsync();
+            await using var cmd = new SqlCommand(sql, cn);
+            cmd.Parameters.AddWithValue("@id", temaId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // ── Mappers ───────────────────────────────────────────────────────────
+        private static GestorActividad MapActividad(SqlDataReader rd) => new()
+        {
+            ActividadId = rd.GetInt32(rd.GetOrdinal("ActividadId")),
             Clave = rd.GetString(rd.GetOrdinal("Clave")),
-            Tema = rd.GetString(rd.GetOrdinal("Tema")),
+            Actividad = rd.GetString(rd.GetOrdinal("Actividad")),
             Descripcion = rd.IsDBNull(rd.GetOrdinal("Descripcion")) ? null : rd.GetString(rd.GetOrdinal("Descripcion")),
             Categoria = rd.IsDBNull(rd.GetOrdinal("Categoria")) ? null : rd.GetString(rd.GetOrdinal("Categoria")),
             Prioridad = rd.GetString(rd.GetOrdinal("Prioridad")),
@@ -440,13 +441,13 @@ namespace NSIE.Servicios
             FechaCreacion = rd.GetDateTime(rd.GetOrdinal("FechaCreacion"))
         };
 
-        private static GestorActividad MapActividad(SqlDataReader rd) => new()
+        private static GestorTema MapTema(SqlDataReader rd) => new()
         {
-            ActividadId = rd.GetInt32(rd.GetOrdinal("ActividadId")),
-            Clave = rd.GetString(rd.GetOrdinal("Clave")),
             TemaId = rd.GetInt32(rd.GetOrdinal("TemaId")),
-            TemaNombre = rd.IsDBNull(rd.GetOrdinal("TemaNombre")) ? null : rd.GetString(rd.GetOrdinal("TemaNombre")),
-            Actividad = rd.GetString(rd.GetOrdinal("Actividad")),
+            Clave = rd.GetString(rd.GetOrdinal("Clave")),
+            ActividadId = rd.GetInt32(rd.GetOrdinal("ActividadId")),
+            ActividadNombre = rd.IsDBNull(rd.GetOrdinal("ActividadNombre")) ? null : rd.GetString(rd.GetOrdinal("ActividadNombre")),
+            Tema = rd.GetString(rd.GetOrdinal("Tema")),
             Descripcion = rd.IsDBNull(rd.GetOrdinal("Descripcion")) ? null : rd.GetString(rd.GetOrdinal("Descripcion")),
             ResponsableId = rd.IsDBNull(rd.GetOrdinal("ResponsableId")) ? null : rd.GetInt32(rd.GetOrdinal("ResponsableId")),
             ResponsableNombre = rd.IsDBNull(rd.GetOrdinal("ResponsableNombre")) ? null : rd.GetString(rd.GetOrdinal("ResponsableNombre")),
@@ -464,9 +465,9 @@ namespace NSIE.Servicios
         };
 
         // ── Param helpers ─────────────────────────────────────────────────────
-        private static void AddTemaParams(SqlCommand cmd, GestorTemaForm f)
+        private static void AddActividadParams(SqlCommand cmd, GestorActividadForm f)
         {
-            cmd.Parameters.AddWithValue("@tema", f.Tema);
+            cmd.Parameters.AddWithValue("@act", f.Actividad);
             cmd.Parameters.AddWithValue("@desc", (object?)f.Descripcion ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@cat", (object?)f.Categoria ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@pri", f.Prioridad);
@@ -478,10 +479,10 @@ namespace NSIE.Servicios
             cmd.Parameters.AddWithValue("@coment", (object?)f.ComentariosEjecutivos ?? DBNull.Value);
         }
 
-        private static void AddActividadParams(SqlCommand cmd, GestorActividadForm f)
+        private static void AddTemaParams(SqlCommand cmd, GestorTemaForm f)
         {
-            cmd.Parameters.AddWithValue("@temaId", f.TemaId);
-            cmd.Parameters.AddWithValue("@act", f.Actividad);
+            cmd.Parameters.AddWithValue("@actividadId", f.ActividadId);
+            cmd.Parameters.AddWithValue("@tema", f.Tema);
             cmd.Parameters.AddWithValue("@desc", (object?)f.Descripcion ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@resp", (object?)f.ResponsableId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@inicio", (object?)f.FechaInicio ?? DBNull.Value);

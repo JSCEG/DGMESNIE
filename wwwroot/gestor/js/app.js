@@ -1,7 +1,7 @@
 // Orquestador principal.
 import { dataService, dataSource, isOnline } from './data-service.js';
 import { renderDashboard } from './dashboard.js?v=charts-v3';
-import { renderTemas, openTemaModal } from './temas.js';
+import { renderTemas, openActividadModal } from './temas.js';
 import * as actividadesModule from './actividades.js?v=tabla-v3';
 import { renderKanban, poblarFiltroKanban } from './kanban.js';
 import { renderGantt } from './gantt.js';
@@ -16,7 +16,7 @@ const state = { temas: [], actividades: [], view: 'dashboard' };
 function getTablaFilters() {
     return {
         search: document.getElementById('filtro-tabla')?.value || '',
-        temaId: document.getElementById('filtro-tabla-tema')?.value || '',
+        temaId: document.getElementById('filtro-tabla-tema')?.value || '', // Holds selected parent Activity ID
         estatus: document.getElementById('filtro-tabla-estatus')?.value || '',
         prioridad: document.getElementById('filtro-tabla-prioridad')?.value || '',
         responsable: document.getElementById('filtro-tabla-responsable')?.value || ''
@@ -54,9 +54,9 @@ function showPreloader() {
 async function loadAll() {
     setPreloader('Cargando seguimiento de actividades', `Sincronizando ${dataSource}…`);
     try {
-        state.temas = await dataService.list('temas');
-        state.actividades = await dataService.list('actividades');
-        setPreloader('Listo', `${state.temas.length} temas · ${state.actividades.length} actividades`);
+        state.temas = await dataService.list('temas'); // Child list
+        state.actividades = await dataService.list('actividades'); // Parent list
+        setPreloader('Listo', `${state.actividades.length} actividades · ${state.temas.length} temas`);
         renderCurrent();
         hidePreloader();
         setTimeout(() => {
@@ -71,39 +71,39 @@ async function loadAll() {
     }
 }
 
-function getFilteredActividades() {
-    const { actividades } = state;
+function getFilteredTemas() {
+    const { temas } = state;
     const desde = document.getElementById('filtro-global-desde')?.value || '';
     const hasta = document.getElementById('filtro-global-hasta')?.value || '';
     
-    let list = actividades;
+    let list = temas;
     if (desde) {
-        list = list.filter(a => a.fechaCompromiso && a.fechaCompromiso >= desde);
+        list = list.filter(t => t.fechaCompromiso && t.fechaCompromiso >= desde);
     }
     if (hasta) {
-        list = list.filter(a => a.fechaCompromiso && a.fechaCompromiso <= hasta);
+        list = list.filter(t => t.fechaCompromiso && t.fechaCompromiso <= hasta);
     }
     return list;
 }
 
 function renderCurrent() {
-    const { temas, view } = state;
-    const filteredActividades = getFilteredActividades();
+    const { temas, actividades, view } = state;
+    const filteredTemas = getFilteredTemas();
     
-    poblarFiltroKanban(temas);
+    poblarFiltroKanban(actividades);
     switch (view) {
-        case 'dashboard': renderDashboard(temas, filteredActividades); break;
-        case 'temas': renderTemas(temas, filteredActividades, document.getElementById('filtro-temas').value); break;
-        case 'kanban': renderKanban(temas, filteredActividades, document.getElementById('filtro-kanban-tema').value); break;
-        case 'tabla': actividadesModule.renderTabla(temas, filteredActividades, getTablaFilters()); break;
-        case 'gantt': renderGantt(temas, filteredActividades); break;
-        case 'calendario': renderCalendario(temas, filteredActividades); break;
-        case 'responsables': renderResponsables(temas, filteredActividades); break;
-        case 'alertas': renderAlertas(temas, filteredActividades); break;
-        case 'reportes': setReportesData(temas, filteredActividades); break;
+        case 'dashboard': renderDashboard(actividades, filteredTemas); break;
+        case 'temas': renderTemas(actividades, filteredTemas, document.getElementById('filtro-temas').value); break;
+        case 'kanban': renderKanban(actividades, filteredTemas, document.getElementById('filtro-kanban-tema').value); break;
+        case 'tabla': actividadesModule.renderTabla(filteredTemas, actividades, getTablaFilters()); break;
+        case 'gantt': renderGantt(actividades, filteredTemas); break;
+        case 'calendario': renderCalendario(actividades, filteredTemas); break;
+        case 'responsables': renderResponsables(actividades, filteredTemas); break;
+        case 'alertas': renderAlertas(actividades, filteredTemas); break;
+        case 'reportes': setReportesData(actividades, filteredTemas); break;
     }
     // Alertas badge siempre
-    renderAlertas(temas, filteredActividades);
+    renderAlertas(actividades, filteredTemas);
 }
 
 function switchView(view) {
@@ -136,14 +136,14 @@ function wireEvents() {
 
     wireChartFullscreenButtons();
 
-    document.getElementById('filtro-temas').oninput = () => renderTemas(state.temas, getFilteredActividades(), document.getElementById('filtro-temas').value);
-    document.getElementById('btn-nuevo-tema').onclick = () => openTemaModal(null);
+    document.getElementById('filtro-temas').oninput = () => renderTemas(state.actividades, getFilteredTemas(), document.getElementById('filtro-temas').value);
+    document.getElementById('btn-nuevo-tema').onclick = () => openActividadModal(null);
 
     const rerenderTabla = () => {
         if (typeof actividadesModule.resetTablaPage === 'function') {
             actividadesModule.resetTablaPage();
         }
-        actividadesModule.renderTabla(state.temas, getFilteredActividades(), getTablaFilters());
+        actividadesModule.renderTabla(getFilteredTemas(), state.actividades, getTablaFilters());
     };
 
     document.getElementById('filtro-tabla').oninput = rerenderTabla;
@@ -155,29 +155,29 @@ function wireEvents() {
         if (typeof actividadesModule.setTablaPageSize === 'function') {
             actividadesModule.setTablaPageSize(e.target.value);
         }
-        actividadesModule.renderTabla(state.temas, getFilteredActividades(), getTablaFilters());
+        actividadesModule.renderTabla(getFilteredTemas(), state.actividades, getTablaFilters());
     };
 
     document.getElementById('tabla-page-prev').onclick = () => {
         if (typeof actividadesModule.changeTablaPage === 'function') {
             actividadesModule.changeTablaPage(-1);
         }
-        actividadesModule.renderTabla(state.temas, getFilteredActividades(), getTablaFilters());
+        actividadesModule.renderTabla(getFilteredTemas(), state.actividades, getTablaFilters());
     };
 
     document.getElementById('tabla-page-next').onclick = () => {
         if (typeof actividadesModule.changeTablaPage === 'function') {
             actividadesModule.changeTablaPage(1);
         }
-        actividadesModule.renderTabla(state.temas, getFilteredActividades(), getTablaFilters());
+        actividadesModule.renderTabla(getFilteredTemas(), state.actividades, getTablaFilters());
     };
-    document.getElementById('btn-nueva-actividad').onclick = () => actividadesModule.openActividadModal(null, state.temas);
-    document.getElementById('btn-export-excel').onclick = () => actividadesModule.exportarCsv(state.temas, getFilteredActividades());
+    document.getElementById('btn-nueva-actividad').onclick = () => actividadesModule.openTemaModal(null, state.actividades);
+    document.getElementById('btn-export-excel').onclick = () => actividadesModule.exportarCsv(state.actividades, getFilteredTemas());
 
-    document.getElementById('filtro-kanban-tema').onchange = () => renderKanban(state.temas, getFilteredActividades(), document.getElementById('filtro-kanban-tema').value);
+    document.getElementById('filtro-kanban-tema').onchange = () => renderKanban(state.actividades, getFilteredTemas(), document.getElementById('filtro-kanban-tema').value);
 
-    document.getElementById('cal-prev').onclick = () => { calPrev(); renderCalendario(state.temas, getFilteredActividades()); };
-    document.getElementById('cal-next').onclick = () => { calNext(); renderCalendario(state.temas, getFilteredActividades()); };
+    document.getElementById('cal-prev').onclick = () => { calPrev(); renderCalendario(state.actividades, getFilteredTemas()); };
+    document.getElementById('cal-next').onclick = () => { calNext(); renderCalendario(state.actividades, getFilteredTemas()); };
 
     // Eventos filtro fechas global
     const inputDesde = document.getElementById('filtro-global-desde');

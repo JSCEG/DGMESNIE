@@ -1,28 +1,28 @@
-﻿import { escape, parseDate, fmtDate, semaforo } from './utils.js';
+import { escape, parseDate, fmtDate, semaforo } from './utils.js';
 
-export function renderGantt(temas, actividades) {
+export function renderGantt(actividades, temas) {
     const cont = document.getElementById('gantt-wrap');
     if (!cont) return;
-    const acts = actividades.filter(a => a.fechaInicio && a.fechaCompromiso);
-    if (!acts.length) {
-        cont.innerHTML = '<p style="padding:1rem;color:#667085">Sin actividades con fechas de inicio y compromiso</p>';
+    const ts = temas.filter(t => t.fechaInicio && t.fechaCompromiso);
+    if (!ts.length) {
+        cont.innerHTML = '<p style="padding:1rem;color:#667085">Sin temas con fechas de inicio y compromiso</p>';
         return;
     }
 
     const C = { ok: '#027a48', proceso: '#b54708', riesgo: '#b42318', pendiente: '#667085', guinda: '#9b2247' };
 
-    const data = acts.map(a => {
-        const tema = temas.find(t => t.id === a.temaId);
-        const sem = semaforo(a);
+    const data = ts.map(t => {
+        const actividad = actividades.find(a => a.id === t.actividadId);
+        const sem = semaforo(t);
         const color = sem === 'rojo' ? C.riesgo : sem === 'amarillo' ? C.proceso : sem === 'verde' ? C.ok : C.pendiente;
         return {
-            name: a.actividad,
-            id: String(a.id),
-            start: parseDate(a.fechaInicio)?.getTime(),
-            end: parseDate(a.fechaCompromiso)?.getTime(),
-            completed: { amount: (a.avance || 0) / 100 },
+            name: t.tema,
+            id: String(t.id),
+            start: parseDate(t.fechaInicio)?.getTime(),
+            end: parseDate(t.fechaCompromiso)?.getTime(),
+            completed: { amount: (t.avance || 0) / 100 },
             color,
-            custom: { tema: tema?.tema || '', responsable: a.responsable || '', estatus: a.estatus }
+            custom: { tema: actividad?.actividad || '', responsable: t.responsable || '', estatus: t.estatus }
         };
     }).filter(d => d.start && d.end);
 
@@ -78,6 +78,6 @@ export function renderGantt(temas, actividades) {
                 borderRadius: 4
             }
         },
-        series: [{ name: 'Actividades', data }]
+        series: [{ name: 'Temas', data }]
     });
 }

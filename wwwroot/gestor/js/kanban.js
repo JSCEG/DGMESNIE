@@ -1,27 +1,30 @@
 import { escape, fmtDate, semaforo } from './utils.js';
 import { dataService } from './data-service.js';
-import { openActividadModal } from './actividades.js';
+import { openTemaModal } from './actividades.js';
 
 const COLS = ['Pendiente', 'En proceso', 'Vencida', 'Concluida'];
 
-export function renderKanban(temas, actividades, temaIdFilter = '') {
+export function renderKanban(actividades, temas, actividadIdFilter = '') {
     const board = document.getElementById('kanban-board');
-    const acts = temaIdFilter ? actividades.filter(a => a.temaId === temaIdFilter) : actividades;
+    const ts = actividadIdFilter ? temas.filter(t => t.actividadId === actividadIdFilter) : temas;
 
     board.innerHTML = COLS.map(col => {
-        const items = acts.filter(a => a.estatus === col);
+        const items = ts.filter(t => t.estatus === col);
         return `
             <div class="kanban-col" data-col="${col}">
                 <h4>${col} <span class="count">${items.length}</span></h4>
-                ${items.map(a => {
-                    const tema = temas.find(t => t.id === a.temaId);
+                ${items.map(t => {
+                    const actividad = actividades.find(a => a.id === t.actividadId);
+                    const coLabel = t.corresponsables && t.corresponsables.length
+                        ? ` (+${t.corresponsables.length})`
+                        : '';
                     return `
-                        <div class="kanban-card" draggable="true" data-id="${a.id}">
-                            <h5>${escape(a.actividad)}</h5>
-                            <div style="font-size:.72rem;color:var(--g-text-soft)">${escape(tema?.tema || '')}</div>
+                        <div class="kanban-card" draggable="true" data-id="${t.id}">
+                            <h5>${escape(t.tema)}</h5>
+                            <div style="font-size:.72rem;color:var(--g-text-soft)">${escape(actividad?.actividad || '')}</div>
                             <div class="meta">
-                                <span>${escape(a.responsable)}</span>
-                                <span><span class="semaforo ${semaforo(a)}"></span> ${fmtDate(a.fechaCompromiso)}</span>
+                                <span>${escape(t.responsable)}${coLabel}</span>
+                                <span><span class="semaforo ${semaforo(t)}"></span> ${fmtDate(t.fechaCompromiso)}</span>
                             </div>
                         </div>`;
                 }).join('')}
@@ -34,8 +37,8 @@ export function renderKanban(temas, actividades, temaIdFilter = '') {
         card.addEventListener('dragstart', () => { dragging = card; card.classList.add('dragging'); });
         card.addEventListener('dragend', () => { card.classList.remove('dragging'); dragging = null; });
         card.addEventListener('click', () => {
-            const a = actividades.find(x => x.id === card.dataset.id);
-            openActividadModal(a, temas);
+            const t = temas.find(x => x.id === card.dataset.id);
+            openTemaModal(t, actividades);
         });
     });
     board.querySelectorAll('.kanban-col').forEach(col => {
@@ -49,16 +52,17 @@ export function renderKanban(temas, actividades, temaIdFilter = '') {
             const id = dragging.dataset.id;
             const patch = { estatus: nuevoEstatus, fechaUltimaActualizacion: new Date().toISOString().slice(0, 10) };
             if (nuevoEstatus === 'Concluida') patch.avance = 100;
-            await dataService.update('actividades', id, patch);
+            await dataService.update('temas', id, patch);
             window.dispatchEvent(new CustomEvent('gestor:refresh'));
         });
     });
 }
 
-export function poblarFiltroKanban(temas) {
+export function poblarFiltroKanban(actividades) {
     const sel = document.getElementById('filtro-kanban-tema');
+    if (!sel) return;
     const current = sel.value;
-    sel.innerHTML = '<option value="">Todos los temas</option>' +
-        temas.map(t => `<option value="${t.id}">${escape(t.tema)}</option>`).join('');
+    sel.innerHTML = '<option value="">Todas las actividades</option>' +
+        actividades.map(a => `<option value="${a.id}">${escape(a.actividad)}</option>`).join('');
     sel.value = current;
 }

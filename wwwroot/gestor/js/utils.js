@@ -30,28 +30,28 @@ export function daysFromToday(s) {
     return Math.round((d - TODAY) / 86400000);
 }
 
-export function semaforo(actividad) {
-    if (actividad.estatus === 'Concluida') return 'verde';
-    if (actividad.bloqueada) return 'gris';
-    const dr = daysFromToday(actividad.fechaCompromiso);
+export function semaforo(tema) {
+    if (tema.estatus === 'Concluida') return 'verde';
+    if (tema.bloqueada) return 'gris';
+    const dr = daysFromToday(tema.fechaCompromiso);
     if (dr === null) return 'gris';
     if (dr < 0) return 'rojo';
     if (dr <= 7) return 'amarillo';
     return 'verde';
 }
 
-export function semaforoTema(tema, actividades) {
-    const acts = actividades.filter(a => a.temaId === tema.id);
-    if (!acts.length) return 'gris';
-    if (acts.some(a => a.estatus !== 'Concluida' && daysFromToday(a.fechaCompromiso) < 0)) return 'rojo';
-    if (acts.some(a => a.estatus !== 'Concluida' && daysFromToday(a.fechaCompromiso) <= 7)) return 'amarillo';
+export function semaforoTema(actividad, temas) {
+    const ts = temas.filter(t => t.actividadId === actividad.id);
+    if (!ts.length) return 'gris';
+    if (ts.some(t => t.estatus !== 'Concluida' && daysFromToday(t.fechaCompromiso) < 0)) return 'rojo';
+    if (ts.some(t => t.estatus !== 'Concluida' && daysFromToday(t.fechaCompromiso) <= 7)) return 'amarillo';
     return 'verde';
 }
 
-export function avancePromedio(tema, actividades) {
-    const acts = actividades.filter(a => a.temaId === tema.id);
-    if (!acts.length) return tema.avanceGeneral || 0;
-    return Math.round(acts.reduce((s, a) => s + (a.avance || 0), 0) / acts.length);
+export function avancePromedio(actividad, temas) {
+    const ts = temas.filter(t => t.actividadId === actividad.id);
+    if (!ts.length) return actividad.avanceGeneral || 0;
+    return Math.round(ts.reduce((s, t) => s + (t.avance || 0), 0) / ts.length);
 }
 
 export function priClass(p) {
@@ -99,9 +99,17 @@ export function openModal(title, html, onSubmit) {
 
 export function uniqueResponsables(actividades, temas) {
     const set = new Set();
-    actividades.forEach(a => { if (a.responsable) set.add(a.responsable); });
-    temas.forEach(t => { if (t.responsablePrincipal) set.add(t.responsablePrincipal); });
-    return [...set].sort();
+    actividades.forEach(a => {
+        const resp = a.responsablePrincipal || a.responsable;
+        if (resp) set.add(resp.trim());
+        if (a.corresponsables) a.corresponsables.forEach(c => { if (c.nombre) set.add(c.nombre.trim()); });
+    });
+    temas.forEach(t => {
+        const resp = t.responsablePrincipal || t.responsable;
+        if (resp) set.add(resp.trim());
+        if (t.corresponsables) t.corresponsables.forEach(c => { if (c.nombre) set.add(c.nombre.trim()); });
+    });
+    return [...set].filter(Boolean).sort((x, y) => x.localeCompare(y, 'es-MX', { sensitivity: 'base' }));
 }
 
 export function downloadCsv(filename, rows) {

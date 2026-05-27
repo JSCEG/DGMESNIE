@@ -110,9 +110,9 @@ async function waitForSlideAssets(slide) {
     }
 }
 
-export function setReportesData(temas, actividades) {
-    _state.temas = temas;
-    _state.actividades = actividades;
+export function setReportesData(actividades, temas) {
+    _state.temas = actividades;
+    _state.actividades = temas;
     populateFilterOptions();
     renderDeck();
 }
@@ -123,8 +123,13 @@ function populateFilterOptions() {
     if (!selTema || !selResp) return;
     const curT = selTema.value, curR = selResp.value;
     selTema.innerHTML = '<option value="">Todos</option>' +
-        _state.temas.map(t => `<option value="${t.id}">${escape(t.tema)}</option>`).join('');
-    const personas = [...new Set(_state.actividades.map(a => a.responsable).filter(Boolean))].sort();
+        _state.temas.map(t => `<option value="${t.id}">${escape(t.actividad)}</option>`).join('');
+    const set = new Set();
+    _state.actividades.forEach(a => {
+        if (a.responsable) set.add(a.responsable.trim());
+        if (a.corresponsables) a.corresponsables.forEach(c => { if (c.nombre) set.add(c.nombre.trim()); });
+    });
+    const personas = [...set].sort((a, b) => a.localeCompare(b, 'es-MX', { sensitivity: 'base' }));
     selResp.innerHTML = '<option value="">Todos</option>' +
         personas.map(p => `<option>${escape(p)}</option>`).join('');
     selTema.value = curT; selResp.value = curR;
@@ -189,8 +194,8 @@ function getPeriodRange(period) {
 
 function applyFilters(acts, f) {
     return acts.filter(a => {
-        if (f.tema && String(a.temaId) !== String(f.tema)) return false;
-        if (f.resp && a.responsable !== f.resp) return false;
+        if (f.tema && String(a.actividadId) !== String(f.tema)) return false;
+        if (f.resp && a.responsable !== f.resp && !(a.corresponsables && a.corresponsables.some(c => c.nombre === f.resp))) return false;
         if (f.estatus && a.estatus !== f.estatus) return false;
         if (f.prioridad && a.prioridad !== f.prioridad) return false;
 
@@ -213,7 +218,8 @@ function applyFilters(acts, f) {
             if (d === null || d >= 0) return false;
         }
         if (f.q) {
-            const hay = [a.actividad, a.responsable, a.estatus, a.comentarios, a.descripcion]
+            const corrNames = a.corresponsables ? a.corresponsables.map(c => c.nombre).join(' ') : '';
+            const hay = [a.tema, a.responsable, a.estatus, a.comentarios, a.descripcion, corrNames]
                 .map(x => (x || '').toLowerCase()).join(' ');
             if (!hay.includes(f.q)) return false;
         }
@@ -334,16 +340,16 @@ export function renderDeck() {
     const acts = applyFilters(_state.actividades, f);
     const temasFiltrados = f.tema
         ? _state.temas.filter(t => t.id === f.tema)
-        : _state.temas.filter(t => acts.some(a => a.temaId === t.id));
+        : _state.temas.filter(t => acts.some(a => a.actividadId === t.id));
 
     const s = summary(acts);
     const reportDate = new Date().toLocaleDateString('es-MX', { dateStyle: 'long' });
     document.getElementById('rep-summary').textContent =
-        `${acts.length} actividades · ${temasFiltrados.length} temas · ${s.average}% avance promedio`;
+        `${acts.length} temas · ${temasFiltrados.length} actividades · ${s.average}% avance promedio`;
 
     // Top temas con menor avance (de los filtrados)
     const topTemas = temasFiltrados.map(t => {
-        const sub = acts.filter(a => a.temaId === t.id);
+        const sub = acts.filter(a => a.actividadId === t.id);
         const av = sub.length ? Math.round(sub.reduce((x, a) => x + (a.avance || 0), 0) / sub.length) : 0;
         return { t, av, total: sub.length, completos: sub.filter(a => a.estatus === 'Concluida').length };
     }).sort((a, b) => a.av - b.av).slice(0, 6);
@@ -359,7 +365,7 @@ export function renderDeck() {
         ${slideResponsables(acts)}
         ${slideTemasDashboard(temasFiltrados, acts)}
         ${slideTreemap(temasFiltrados, acts)}
-        ${temasFiltrados.map(t => slideTema(t, acts.filter(a => a.temaId === t.id))).join('')}
+        ${temasFiltrados.map(t => slideTema(t, acts.filter(a => a.actividadId === t.id))).join('')}
     `;
 
     initSlideDashboard(acts);
@@ -371,7 +377,7 @@ function slideCover(s, reportDate, f) {
     if (f) {
         if (f.tema) {
             const found = _state.temas.find(t => String(t.id) === String(f.tema));
-            if (found) filterDetails.push(`Tema: <strong>${escape(found.tema)}</strong>`);
+            if (found) filterDetails.push(`Actividad: <strong>${escape(found.actividad)}</strong>`);
         }
         if (f.resp) filterDetails.push(`Responsable: <strong>${escape(f.resp)}</strong>`);
         if (f.estatus) filterDetails.push(`Estatus: <strong>${escape(f.estatus)}</strong>`);
@@ -423,24 +429,24 @@ function slideResumen(s, topTemas) {
             <div class="internal-slide__body">
                 <h2>Panel ejecutivo</h2>
                 <div class="slide-kpis">
-                    ${renderSlideKpi('Actividades', s.total)}
+                    ${renderSlideKpi('Temas', s.total)}
                     ${renderSlideKpi('Avance promedio', s.average + '%')}
-                    ${renderSlideKpi('Concluidas', s.complete, 'complete')}
+                    ${renderSlideKpi('Concluidos', s.complete, 'complete')}
                     ${renderSlideKpi('Atención', s.progress + s.issue, 'issue')}
                 </div>
                 <div class="slide-grid">
                     <div>
-                        <h3>Temas con menor avance</h3>
+                        <h3>Actividades con menor avance</h3>
                         ${topTemas.length
-            ? topTemas.map(x => renderSlideBar(x.t.tema, x.av, `${x.av}% · ${x.completos}/${x.total}`, percentTone(x.av))).join('')
+            ? topTemas.map(x => renderSlideBar(x.t.actividad, x.av, `${x.av}% · ${x.completos}/${x.total}`, percentTone(x.av))).join('')
             : '<p class="muted">Sin datos.</p>'}
                     </div>
                     <div>
                         <h3>Distribución por estatus</h3>
                         ${[
-            ['Concluidas', s.complete, s.total, 'complete'],
+            ['Concluidos', s.complete, s.total, 'complete'],
             ['En proceso', s.progress, s.total, 'progress'],
-            ['Vencidas', s.issue, s.total, 'issue'],
+            ['Vencidos', s.issue, s.total, 'issue'],
             ['Pendientes', s.pending, s.total, 'pending']
         ].map(([label, value, total, tone]) =>
             renderSlideBar(label, total ? Math.round(value / total * 100) : 0, value, tone)
@@ -457,17 +463,17 @@ function slideAtencion(rows) {
         <section class="internal-slide internal-slide--content">
             ${renderSlideHeader('Detalle de atención')}
             <div class="internal-slide__body">
-                <h2>Actividades en atención</h2>
+                <h2>Temas en atención</h2>
                 <table class="slide-table">
-                    <thead><tr><th>Tema</th><th>Actividad</th><th>Responsable</th><th>Compromiso</th><th>Tiempo</th><th>Estatus</th></tr></thead>
+                    <thead><tr><th>Actividad</th><th>Tema</th><th>Responsable</th><th>Compromiso</th><th>Tiempo</th><th>Estatus</th></tr></thead>
                     <tbody>
                         ${rows.length ? rows.slice(0, 18).map(a => {
-        const tema = _state.temas.find(t => t.id === a.temaId);
+        const tema = _state.temas.find(t => t.id === a.actividadId);
         return `
                                 <tr>
-                                    <td>${escape(tema?.tema || '')}</td>
+                                    <td>${escape(tema?.actividad || '')}</td>
                                     <td>
-                                        <strong>${escape(a.actividad)}</strong>
+                                        <strong>${escape(a.tema)}</strong>
                                         ${a.evidenciaUrl ? `
                                             <a href="${escape(a.evidenciaUrl)}" target="_blank" rel="noopener" class="slide-evidencia-link" title="Ver evidencia en SharePoint" style="margin-left: 6px; color: #b48934; display: inline-flex; align-items: center; text-decoration: none;">
                                                 <i class="fa-solid fa-folder-open"></i>
@@ -479,7 +485,7 @@ function slideAtencion(rows) {
                                     <td><span style="font-size: 0.72rem; font-weight: 600; color: ${a.estatus === 'Vencida' ? C_SLIDE.riesgo : C_SLIDE.pendiente}">${getTiempoTexto(a)}</span></td>
                                     <td><span class="status-pill status-pill--${statusMode(a.estatus)}">${escape(a.estatus)}</span></td>
                                 </tr>`;
-    }).join('') : '<tr><td colspan="6" class="muted" style="text-align:center">Sin actividades en atención</td></tr>'}
+    }).join('') : '<tr><td colspan="6" class="muted" style="text-align:center">Sin temas en atención</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -488,13 +494,13 @@ function slideAtencion(rows) {
 }
 
 function slideResponsables(acts) {
-    const map = new Map();
+    const setPersonas = new Set();
     acts.forEach(a => {
-        const responsable = a.responsable || 'Sin responsable';
-        if (!map.has(responsable)) map.set(responsable, []);
-        map.get(responsable).push(a);
+        if (a.responsable) setPersonas.add(a.responsable.trim());
+        if (a.corresponsables) a.corresponsables.forEach(c => { if (c.nombre) setPersonas.add(c.nombre.trim()); });
     });
-    const rows = [...map.entries()].map(([p, list]) => {
+    const rows = [...setPersonas].map(p => {
+        const list = acts.filter(a => a.responsable === p || (a.corresponsables && a.corresponsables.some(c => c.nombre === p)));
         const total = list.length;
         const c = list.filter(a => a.estatus === 'Concluida').length;
         const prog = list.filter(a => a.estatus === 'En proceso').length;
@@ -508,16 +514,16 @@ function slideResponsables(acts) {
         <section class="internal-slide internal-slide--content">
             ${renderSlideHeader('Carga por responsable')}
             <div class="internal-slide__body">
-                <h2>Carga de trabajo y estatus de actividades por responsable</h2>
+                <h2>Carga de trabajo y estatus de temas por responsable</h2>
                 <table class="slide-table">
                     <thead>
                         <tr>
                             <th>Responsable</th>
-                            <th>Total Actividades</th>
-                            <th>Concluidas</th>
+                            <th>Total Temas</th>
+                            <th>Concluidos</th>
                             <th>En proceso</th>
                             <th>Pendientes</th>
-                            <th>Vencidas</th>
+                            <th>Vencidos</th>
                             <th>Avance Promedio</th>
                         </tr>
                     </thead>
@@ -541,7 +547,7 @@ function slideResponsables(acts) {
 
 function slideTemasDashboard(temas, acts) {
     const rows = temas.map(t => {
-        const sub = acts.filter(a => a.temaId === t.id);
+        const sub = acts.filter(a => a.actividadId === t.id);
         const total = sub.length;
         const c = sub.filter(a => a.estatus === 'Concluida').length;
         const p = sub.filter(a => a.estatus === 'En proceso').length;
@@ -554,28 +560,33 @@ function slideTemasDashboard(temas, acts) {
 
     return `
         <section class="internal-slide internal-slide--content">
-            ${renderSlideHeader('Dashboard general de Temas')}
+            ${renderSlideHeader('Dashboard general de Actividades')}
             <div class="internal-slide__body">
-                <h2>Resumen general y avance de Temas</h2>
+                <h2>Resumen general y avance de Actividades</h2>
                 <table class="slide-table slide-table--themes-dashboard">
                     <thead>
                         <tr>
-                            <th>Tema</th>
+                            <th>Actividad</th>
                             <th>Responsable Principal</th>
                             <th>Semáforo</th>
-                            <th>Actividades</th>
-                            <th>Concluidas</th>
+                            <th>Temas</th>
+                            <th>Concluidos</th>
                             <th>En proceso</th>
                             <th>Pendientes</th>
-                            <th>Vencidas</th>
+                            <th>Vencidos</th>
                             <th>Avance General</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${rows.length ? rows.slice(0, 15).map(r => `
                             <tr>
-                                <td><strong>${escape(r.t.tema)}</strong></td>
-                                <td>${escape(r.t.responsablePrincipal || 'Sin responsable')}</td>
+                                <td><strong>${escape(r.t.actividad)}</strong></td>
+                                <td>
+                                    ${escape(r.t.responsablePrincipal || 'Sin responsable')}
+                                    ${r.t.corresponsables && r.t.corresponsables.length 
+                                        ? `<br><small style="font-size:0.68rem; color:var(--texto-suave); font-weight:500;">Co: ${escape(r.t.corresponsables.map(c => c.nombre.split(' ')[0]).join(', '))}</small>` 
+                                        : ''}
+                                </td>
                                 <td><span class="semaforo ${r.sem}"></span></td>
                                 <td>${r.total}</td>
                                 <td><span style="font-weight:600; color:#027a48">${r.c}</span></td>
@@ -601,7 +612,7 @@ function slideDashboardGraficos(acts, f) {
     if (f) {
         if (f.tema) {
             const found = _state.temas.find(t => String(t.id) === String(f.tema));
-            if (found) filterName = found.tema;
+            if (found) filterName = found.actividad;
         } else if (f.resp) {
             filterName = f.resp;
         }
@@ -609,7 +620,7 @@ function slideDashboardGraficos(acts, f) {
 
     const s = summary(acts);
     const pctComplete = s.total ? Math.round((s.complete / s.total) * 100) : 0;
-    const temasCount = [...new Set(acts.map(a => a.temaId))].length;
+    const temasCount = [...new Set(acts.map(a => a.actividadId))].length;
 
     // Calc priority counts and dominant
     const priCounts = acts.reduce((m, a) => { m[a.prioridad || 'Baja'] = (m[a.prioridad || 'Baja'] || 0) + 1; return m; }, {});
@@ -649,7 +660,7 @@ function slideDashboardGraficos(acts, f) {
             <div class="internal-slide__body" style="padding: 10px 24px; gap: 12px; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
                 <!-- Narrative Paragraph -->
                 <div class="slide-narrative" style="font-family: var(--font-h), Montserrat, sans-serif; font-size: 0.82rem; line-height: 1.5; color: #2d3748; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                    Para <span style="font-weight: 700; color: #8a0031;">${escape(filterName === 'NACIONAL' ? 'el portafolio nacional' : filterName)}</span>, coordinamos <span style="font-weight: 700; color: #8a0031;">${s.total} compromisos</span> de <span style="font-weight: 700; color: #8a0031;">${temasCount} temas</span>, alcanzando <span style="font-weight: 700; color: #8a0031;">${pctComplete}% de avance</span> (${s.complete} concluidos). La mayor carga se concentra en prioridad <span style="font-weight: 700; color: #8a0031;">${topPrioridad}</span> (${topPrioridadCount} tareas), con la mayoría de las actividades <span style="font-weight: 700; color: #8a0031;">${formattedEstatus === 'Concluida' ? 'concluidas' : formattedEstatus === 'En proceso' ? 'en proceso' : formattedEstatus === 'Vencida' ? 'vencidas' : 'pendientes'}</span> (${topEstatusCount}).
+                    Para <span style="font-weight: 700; color: #8a0031;">${escape(filterName === 'NACIONAL' ? 'el portafolio nacional' : filterName)}</span>, coordinamos <span style="font-weight: 700; color: #8a0031;">${s.total} temas</span> de <span style="font-weight: 700; color: #8a0031;">${temasCount} actividades</span>, alcanzando <span style="font-weight: 700; color: #8a0031;">${pctComplete}% de avance</span> (${s.complete} concluidos). La mayor carga se concentra en prioridad <span style="font-weight: 700; color: #8a0031;">${topPrioridad}</span> (${topPrioridadCount} tareas), con la mayoría de los temas <span style="font-weight: 700; color: #8a0031;">${formattedEstatus === 'Concluida' ? 'concluidos' : formattedEstatus === 'En proceso' ? 'en proceso' : formattedEstatus === 'Vencida' ? 'vencidos' : 'pendientes'}</span> (${topEstatusCount}).
                 </div>
 
                 <!-- KPI Cards Row -->
@@ -658,14 +669,14 @@ function slideDashboardGraficos(acts, f) {
                     <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #8a0031; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
                         <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #8a0031; line-height: 1;">${s.total}</span>
                         <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
-                            TOTAL DE<br>ACTIVIDADES
+                            TOTAL DE<br>TEMAS
                         </div>
                     </div>
                     <!-- Card 2 -->
                     <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #027a48; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
                         <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #027a48; line-height: 1;">${s.complete}</span>
                         <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
-                            ACTIVIDADES<br>CONCLUIDAS
+                            TEMAS<br>CONCLUIDOS
                         </div>
                     </div>
                     <!-- Card 3 -->
@@ -679,7 +690,7 @@ function slideDashboardGraficos(acts, f) {
                     <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #667085; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
                         <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #667085; line-height: 1;">${s.progress + s.issue}</span>
                         <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
-                            ACTIVIDADES<br>EN ATENCIÓN
+                            TEMAS<br>EN ATENCIÓN
                         </div>
                     </div>
                 </div>
@@ -744,13 +755,13 @@ function slideDashboardGraficos(acts, f) {
                     <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 392px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); min-height: 0;">
                         <h3 style="font-size: 10px; margin: 0 0 8px; color: #1e5b4f; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px; border-bottom: 2px solid #1e5b4f; padding-bottom: 4px;">
                             <span style="display: inline-block; width: 5px; height: 5px; background-color: #1e5b4f; border-radius: 50%;"></span>
-                            Top 10 Actividades en Atención
+                            Top 10 Temas en Atención
                         </h3>
                         <div style="flex: 1; overflow-y: auto; min-height: 0;">
                             <table style="width: 100%; border-collapse: collapse; font-family: Montserrat, sans-serif; font-size: 0.68rem; line-height: 1.3;">
                                 <thead style="position: sticky; top: 0; background: #fff; z-index: 2;">
                                     <tr style="border-bottom: 1px solid #edf2f7; text-align: left;">
-                                        <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem;">Actividad</th>
+                                        <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem;">Tema</th>
                                         <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem; width: 68px;">Compromiso</th>
                                         <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem; width: 75px;">Tiempo</th>
                                         <th style="padding: 5px 8px; font-weight: 700; color: #4a5568; font-size: 0.65rem; width: 90px;">Responsable</th>
@@ -764,10 +775,13 @@ function slideDashboardGraficos(acts, f) {
                 .filter(a => a.estatus !== 'Concluida')
                 .sort((a, b) => (a.fechaCompromiso || '').localeCompare(b.fechaCompromiso || ''))
                 .slice(0, 10);
-            return topActs.length ? topActs.map(a => `
+            return topActs.length ? topActs.map(a => {
+                const parentAct = _state.temas.find(x => x.id === a.actividadId);
+                return `
                                             <tr style="border-bottom: 1px solid #f7fafc;">
-                                                <td style="padding: 6px 8px; vertical-align: top; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escape(a.actividad)}">
-                                                    <strong style="color: #2d3748;">${escape(a.actividad)}</strong>
+                                                <td style="padding: 6px 8px; vertical-align: top; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escape(a.tema)}">
+                                                    <strong style="color: #2d3748;">${escape(a.tema)}</strong>
+                                                    <br><small style="font-size:0.6rem; color:var(--texto-suave); font-weight:500;">${escape(parentAct?.actividad || '')}</small>
                                                     ${a.evidenciaUrl ? `
                                                         <a href="${escape(a.evidenciaUrl)}" target="_blank" rel="noopener" style="color: #b48934; margin-left: 3px; display: inline-flex; align-items: center; text-decoration: none;">
                                                             <i class="fa-solid fa-folder-open" style="font-size: 0.65rem;"></i>
@@ -783,8 +797,8 @@ function slideDashboardGraficos(acts, f) {
                                                         ${escape(a.estatus)}
                                                     </span>
                                                 </td>
-                                            </tr>
-                                        `).join('') : `<tr><td colspan="5" style="padding: 20px; text-align: center; color: #a0aec0; font-style: italic;">Sin actividades pendientes en atención</td></tr>`;
+                                            </tr>`;
+            }).join('') : `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #a0aec0; font-style: italic;">Sin temas pendientes en atención</td></tr>`;
         })()}
                                 </tbody>
                             </table>
@@ -806,7 +820,7 @@ function slideDashboardGraficos(acts, f) {
                         <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                             <h3 style="font-size: 10px; margin: 0 0 5px; color: #667085; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
                                 <span style="display: inline-block; width: 5px; height: 5px; background-color: #667085; border-radius: 50%;"></span>
-                                Actividades por Responsable
+                                Temas por Responsable
                             </h3>
                             <div id="slide-dash-workload-bar" style="flex: 1; min-height: 0; width: 100%;"></div>
                         </div>
@@ -945,7 +959,7 @@ function initSlideDashboard(actividades) {
             margin: 5,
             padding: 0
         },
-        series: [{ name: 'Actividades', data: donutData }]
+        series: [{ name: 'Temas', data: donutData }]
     });
 
     // 3. Stacked Horizontal Bar for Workload by Responsible
@@ -1015,9 +1029,9 @@ function initSlideDashboard(actividades) {
 function slideTreemap(temas, acts) {
     return `
         <section class="internal-slide internal-slide--content">
-            ${renderSlideHeader('Estructura jerárquica de temas y avance')}
+            ${renderSlideHeader('Estructura jerárquica de actividades y temas')}
             <div class="internal-slide__body" style="gap: 0.5rem;">
-                <h2>Mapa de calor de actividades (Treemap)</h2>
+                <h2>Mapa de calor general (Treemap)</h2>
                 <div id="slide-treemap-container" style="width: 100%; height: 500px; background: #fff; border-radius: 8px; border: 1px solid rgba(15, 23, 42, 0.08); overflow: hidden;"></div>
             </div>
             ${renderSlideFooter()}
@@ -1028,26 +1042,26 @@ function initSlideTreemap(temas, actividades) {
     const cont = document.getElementById('slide-treemap-container');
     if (!cont) return;
 
-    const activeTemaIds = new Set(temas.map(t => t.id));
-    const filteredActs = actividades.filter(a => activeTemaIds.has(a.temaId));
+    const activeActividadIds = new Set(temas.map(t => t.id));
+    const filteredTemas = actividades.filter(a => activeActividadIds.has(a.actividadId));
 
     const data = [];
 
     temas.forEach(t => {
-        const subActs = filteredActs.filter(a => a.temaId === t.id);
+        const subTemas = filteredTemas.filter(a => a.actividadId === t.id);
         data.push({
-            id: `t_${t.id}`,
-            name: t.tema,
+            id: `a_${t.id}`,
+            name: t.actividad,
             color: 'rgba(138, 0, 49, 0.06)',
-            value: subActs.length || 1
+            value: subTemas.length || 1
         });
     });
 
-    filteredActs.forEach(a => {
+    filteredTemas.forEach(a => {
         data.push({
-            id: `a_${a.id}`,
-            name: a.actividad,
-            parent: `t_${a.temaId}`,
+            id: `t_${a.id}`,
+            name: a.tema,
+            parent: `a_${a.actividadId}`,
             value: 1,
             colorValue: a.avance || 0,
             responsable: a.responsable || 'Sin responsable',
@@ -1085,7 +1099,7 @@ function initSlideTreemap(temas, actividades) {
                             Progreso: <b>{point.colorValue}%</b><br/>
                             Estatus: <b>{point.estatus}</b>
                         {else}
-                            Actividades: <b>{point.value}</b>
+                            Temas: <b>{point.value}</b>
                         {/if}
                     </div>
                 `
@@ -1148,30 +1162,30 @@ function slideTema(tema, rows) {
 
     return `
         <section class="internal-slide internal-slide--content internal-slide--project">
-            ${renderSlideHeader(`Tema · ${tema.tema}`)}
+            ${renderSlideHeader(`Actividad · ${tema.actividad}`)}
             <div class="internal-slide__body">
                 <div class="project-slide-head">
                     <div>
-                        <p>Tema · ${escape(tema.categoria || 'Sin categoría')}</p>
-                        <h2>${escape(tema.tema)}</h2>
+                        <p>Actividad · ${escape(tema.categoria || 'Sin categoría')}</p>
+                        <h2>${escape(tema.actividad)}</h2>
                         <span>${escape(tema.responsablePrincipal)} · Compromiso ${fmtDate(tema.fechaCompromiso)} · Semáforo <span class="semaforo ${sem}"></span></span>
                         ${renderStatusStackedBar(c, p, i, pen)}
                     </div>
                     ${renderDonut(percent)}
                 </div>
                 <div class="slide-kpis slide-kpis--project">
-                    ${renderSlideKpi('Actividades', total)}
-                    ${renderSlideKpi('Concluidas', c, 'complete')}
+                    ${renderSlideKpi('Temas', total)}
+                    ${renderSlideKpi('Concluidos', c, 'complete')}
                     ${renderSlideKpi('En proceso', p, 'progress')}
                     ${renderSlideKpi('Atención', i, 'issue')}
                 </div>
                 <table class="slide-table slide-table--detail">
-                    <thead><tr><th>Actividad</th><th>Responsable</th><th>Compromiso</th><th>Tiempo</th><th>Avance</th><th>Estatus</th></tr></thead>
+                    <thead><tr><th>Tema</th><th>Responsable</th><th>Compromiso</th><th>Tiempo</th><th>Avance</th><th>Estatus</th></tr></thead>
                     <tbody>
                         ${rows.length ? rows.slice(0, 12).map(r => `
                             <tr>
                                 <td>
-                                    <strong>${escape(r.actividad)}</strong>
+                                    <strong>${escape(r.tema)}</strong>
                                     ${r.evidenciaUrl ? `
                                         <a href="${escape(r.evidenciaUrl)}" target="_blank" rel="noopener" class="slide-evidencia-link" title="Ver evidencia en SharePoint" style="margin-left: 6px; color: #b48934; display: inline-flex; align-items: center; text-decoration: none;">
                                             <i class="fa-solid fa-folder-open"></i>
@@ -1183,7 +1197,7 @@ function slideTema(tema, rows) {
                                 <td><span style="font-size: 0.72rem; font-weight: 600; color: ${r.estatus === 'Vencida' ? C_SLIDE.riesgo : r.estatus === 'Concluida' ? C_SLIDE.ok : C_SLIDE.pendiente}">${getTiempoTexto(r)}</span></td>
                                 <td>${r.avance || 0}%</td>
                                 <td><span class="status-pill status-pill--${statusMode(r.estatus)}">${escape(r.estatus)}</span></td>
-                            </tr>`).join('') : '<tr><td colspan="6" class="muted" style="text-align:center">Sin actividades</td></tr>'}
+                            </tr>`).join('') : '<tr><td colspan="6" class="muted" style="text-align:center">Sin temas</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -1262,7 +1276,7 @@ export async function descargarExcel() {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Gestor DG'; wb.created = new Date();
 
-    const ws = wb.addWorksheet('Actividades');
+    const ws = wb.addWorksheet('Temas');
     ws.columns = [
         { header: 'Tema', key: 'tema', width: 36 },
         { header: 'Actividad', key: 'actividad', width: 40 },
@@ -1280,9 +1294,9 @@ export async function descargarExcel() {
     ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF9B2247' } };
 
     acts.forEach(a => {
-        const t = _state.temas.find(x => x.id === a.temaId);
+        const t = _state.temas.find(x => x.id === a.actividadId);
         ws.addRow({
-            tema: t?.tema, actividad: a.actividad, resp: a.responsable,
+            tema: a.tema, actividad: t?.actividad, resp: a.responsable,
             inicio: a.fechaInicio, comp: a.fechaCompromiso, estatus: a.estatus,
             avance: (a.avance || 0) / 100, prioridad: a.prioridad,
             bloq: a.bloqueada ? 'Sí' : 'No', evid: a.evidenciaUrl, com: a.comentarios
@@ -1291,9 +1305,9 @@ export async function descargarExcel() {
     ws.getColumn('avance').numFmt = '0%';
 
     // Worksheet temas
-    const wsT = wb.addWorksheet('Temas');
+    const wsT = wb.addWorksheet('Actividades');
     wsT.columns = [
-        { header: 'Tema', key: 'tema', width: 40 },
+        { header: 'Actividad', key: 'actividad', width: 40 },
         { header: 'Responsable', key: 'resp', width: 22 },
         { header: 'Categoría', key: 'cat', width: 16 },
         { header: 'Prioridad', key: 'pri', width: 10 },
@@ -1304,10 +1318,10 @@ export async function descargarExcel() {
     wsT.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     wsT.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E5B4F' } };
     _state.temas.forEach(t => {
-        const sub = acts.filter(a => a.temaId === t.id);
+        const sub = acts.filter(a => a.actividadId === t.id);
         const av = sub.length ? Math.round(sub.reduce((s, a) => s + (a.avance || 0), 0) / sub.length) : (t.avanceGeneral || 0);
         wsT.addRow({
-            tema: t.tema, resp: t.responsablePrincipal, cat: t.categoria,
+            actividad: t.actividad, resp: t.responsablePrincipal, cat: t.categoria,
             pri: t.prioridad, est: t.estatus, comp: t.fechaCompromiso, avance: av / 100
         });
     });

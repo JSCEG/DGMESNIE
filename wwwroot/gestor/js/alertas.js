@@ -1,33 +1,33 @@
 import { escape, fmtDate, daysFromToday, openModal, toast } from './utils.js';
 import { dataService } from './data-service.js';
 
-export function generarAlertas(temas, actividades) {
+export function generarAlertas(actividades, temas) {
     const alertas = [];
-    actividades.forEach(a => {
-        if (a.estatus === 'Concluida') return;
-        const dr = daysFromToday(a.fechaCompromiso);
-        const tema = temas.find(t => t.id === a.temaId);
-        const ctx = `${tema?.tema || ''} · ${a.responsable}`;
+    temas.forEach(t => {
+        if (t.estatus === 'Concluida') return;
+        const dr = daysFromToday(t.fechaCompromiso);
+        const actividad = actividades.find(a => a.id === t.actividadId);
+        const ctx = `${actividad?.actividad || ''} · ${t.responsable}`;
         if (dr < 0) {
-            alertas.push({ tipo: 'vencida', titulo: `Vencida: ${a.actividad}`, msg: `${ctx} · venció ${fmtDate(a.fechaCompromiso)} (hace ${Math.abs(dr)} d)`, act: a });
+            alertas.push({ tipo: 'vencida', titulo: `Vencida: ${t.tema}`, msg: `${ctx} · venció ${fmtDate(t.fechaCompromiso)} (hace ${Math.abs(dr)} d)`, act: t });
         } else if (dr <= 7) {
-            alertas.push({ tipo: 'por-vencer', titulo: `Por vencer: ${a.actividad}`, msg: `${ctx} · vence ${fmtDate(a.fechaCompromiso)} (en ${dr} d)`, act: a });
+            alertas.push({ tipo: 'por-vencer', titulo: `Por vencer: ${t.tema}`, msg: `${ctx} · vence ${fmtDate(t.fechaCompromiso)} (en ${dr} d)`, act: t });
         }
-        if (a.bloqueada) {
-            alertas.push({ tipo: 'bloqueada', titulo: `Bloqueada: ${a.actividad}`, msg: `${ctx} · ${a.motivoBloqueo || 'Sin motivo'}`, act: a });
+        if (t.bloqueada) {
+            alertas.push({ tipo: 'bloqueada', titulo: `Bloqueada: ${t.tema}`, msg: `${ctx} · ${t.motivoBloqueo || 'Sin motivo'}`, act: t });
         }
-        if (a.fechaUltimaActualizacion) {
-            const sinAct = daysFromToday(a.fechaUltimaActualizacion);
+        if (t.fechaUltimaActualizacion) {
+            const sinAct = daysFromToday(t.fechaUltimaActualizacion);
             if (sinAct !== null && sinAct < -14) {
-                alertas.push({ tipo: 'sin-actualizar', titulo: `Sin actualizar: ${a.actividad}`, msg: `${ctx} · última actualización ${fmtDate(a.fechaUltimaActualizacion)}`, act: a });
+                alertas.push({ tipo: 'sin-actualizar', titulo: `Sin actualizar: ${t.tema}`, msg: `${ctx} · última actualización ${fmtDate(t.fechaUltimaActualizacion)}`, act: t });
             }
         }
     });
     return alertas;
 }
 
-export function renderAlertas(temas, actividades) {
-    const alertas = generarAlertas(temas, actividades);
+export function renderAlertas(actividades, temas) {
+    const alertas = generarAlertas(actividades, temas);
     const cont = document.getElementById('alertas-list');
     if (!cont) return;
     document.getElementById('badge-alertas').textContent = alertas.length;
@@ -57,15 +57,15 @@ export function renderAlertas(temas, actividades) {
     cont.querySelectorAll('.btn-recordatorio').forEach(btn => {
         btn.onclick = () => {
             const actId = btn.dataset.actId;
-            const act = actividades.find(a => String(a.id) === actId);
-            if (act) {
-                confirmarYEnviarRecordatorio(act);
+            const t = temas.find(x => String(x.id) === actId);
+            if (t) {
+                confirmarYEnviarRecordatorio(t, actividades);
             }
         };
     });
 }
 
-async function confirmarYEnviarRecordatorio(act) {
+async function confirmarYEnviarRecordatorio(tema, actividades) {
     function normalizeUserName(value) {
         return String(value || '')
             .normalize('NFD')
@@ -79,17 +79,17 @@ async function confirmarYEnviarRecordatorio(act) {
         .filter(u => normalizeUserName(u.nombre) !== 'consulta publica')
         .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es-MX', { sensitivity: 'base' }));
 
-    const selectedById = Number(act.responsableId);
+    const selectedById = Number(tema.responsableId);
     const currentById = Number.isFinite(selectedById) && selectedById > 0
         ? filteredUsers.find(u => u.idUsuario === selectedById)
         : null;
-    const currentByName = filteredUsers.find(u => u.nombre === act.responsable);
+    const currentByName = filteredUsers.find(u => u.nombre === tema.responsable);
     const selectedUserId = (currentById?.idUsuario ?? currentByName?.idUsuario ?? null);
 
     const html = `
         <form id="recordatorio-form" style="margin: 0;">
             <p style="margin-bottom: 12px; font-size: 0.9rem; color: var(--texto-suave);">
-                Seleccione uno o más usuarios para enviar el recordatorio de la actividad por correo electrónico:
+                Seleccione uno o más usuarios para enviar el recordatorio del tema por correo electrónico:
             </p>
             
             <div class="usuarios-check-list" style="max-height: 180px; overflow-y: auto; border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); margin-bottom: 15px;">
@@ -102,10 +102,10 @@ async function confirmarYEnviarRecordatorio(act) {
             </div>
 
             <div style="background: rgba(138, 0, 49, 0.04); border-left: 4px solid var(--guinda); padding: 12px; margin-bottom: 1.5rem; border-radius: 4px;">
-                <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--guinda); font-weight: 700; margin-bottom: 4px;">Actividad</div>
-                <div style="font-weight: 700; color: var(--texto); font-size: 0.95rem;">${escape(act.actividad)}</div>
+                <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--guinda); font-weight: 700; margin-bottom: 4px;">Tema</div>
+                <div style="font-weight: 700; color: var(--texto); font-size: 0.95rem;">${escape(tema.tema)}</div>
                 <div style="font-size: 0.85rem; color: var(--texto-suave); margin-top: 4px;">
-                    Fecha Compromiso: ${fmtDate(act.fechaCompromiso)}
+                    Fecha Compromiso: ${fmtDate(tema.fechaCompromiso)}
                 </div>
             </div>
             
@@ -147,7 +147,7 @@ async function confirmarYEnviarRecordatorio(act) {
 
             try {
                 const token = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
-                const res = await fetch(`/Gestor/Api/Actividades/${act.id}/Recordatorio`, {
+                const res = await fetch(`/Gestor/Api/Temas/${tema.id}/Recordatorio`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

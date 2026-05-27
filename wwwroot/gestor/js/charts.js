@@ -98,13 +98,13 @@ function applyInstitutionalTheme() {
 }
 
 // ============ DONUT — Estatus actividades ============
-export function donutEstatus(actividades) {
+export function donutEstatus(temas) {
     applyInstitutionalTheme();
     const cont = document.getElementById('chart-donut-estatus');
     if (!cont) return;
-    const counts = actividades.reduce((m, a) => { m[a.estatus] = (m[a.estatus] || 0) + 1; return m; }, {});
+    const counts = temas.reduce((m, t) => { m[t.estatus] = (m[t.estatus] || 0) + 1; return m; }, {});
     const data = Object.entries(counts).map(([name, y]) => ({ name, y, color: ESTATUS_COLOR[name] || C.guinda }));
-    const total = actividades.length;
+    const total = temas.length;
 
     Highcharts.chart(cont, {
         chart: { ...BASE_CHART, type: 'pie', height: 260 },
@@ -112,7 +112,7 @@ export function donutEstatus(actividades) {
         title: {
             text: `<div style="text-align:center;margin-top:14px;">
                 <span style="font-size:2.2rem;font-weight:800;color:${C.guinda};font-family:Montserrat,sans-serif;line-height:1;">${total}</span><br>
-                <span style="font-size:.65rem;font-weight:700;color:${C.textoSuave};letter-spacing:.08em;line-height:1.2;">ACTIVIDADES</span>
+                <span style="font-size:.65rem;font-weight:700;color:${C.textoSuave};letter-spacing:.08em;line-height:1.2;">TEMAS</span>
             </div>`,
             align: 'center',
             verticalAlign: 'middle',
@@ -126,17 +126,17 @@ export function donutEstatus(actividades) {
             enabled: true, align: 'center', verticalAlign: 'bottom',
             itemStyle: { fontWeight: '600', fontSize: '11px' }
         },
-        series: [{ name: 'Actividades', data }]
+        series: [{ name: 'Temas', data }]
     });
 }
 
 // ============ GAUGE — Avance global ============
-export function gaugeAvance(actividades) {
+export function gaugeAvance(temas) {
     applyInstitutionalTheme();
     const cont = document.getElementById('chart-gauge-avance');
     if (!cont) return;
-    const avance = actividades.length
-        ? Math.round(actividades.reduce((s, a) => s + (a.avance || 0), 0) / actividades.length) : 0;
+    const avance = temas.length
+        ? Math.round(temas.reduce((s, t) => s + (t.avance || 0), 0) / temas.length) : 0;
     const color = avance >= 75 ? C.ok : avance >= 40 ? C.proceso : C.riesgo;
 
     Highcharts.chart(cont, {
@@ -177,11 +177,11 @@ export function gaugeAvance(actividades) {
 }
 
 // ============ PIE — Prioridad ============
-export function piePrioridad(actividades) {
+export function piePrioridad(temas) {
     applyInstitutionalTheme();
     const cont = document.getElementById('chart-pie-prioridad');
     if (!cont) return;
-    const counts = actividades.reduce((m, a) => { m[a.prioridad || 'Baja'] = (m[a.prioridad || 'Baja'] || 0) + 1; return m; }, {});
+    const counts = temas.reduce((m, t) => { m[t.prioridad || 'Baja'] = (m[t.prioridad || 'Baja'] || 0) + 1; return m; }, {});
     const data = Object.entries(counts).map(([name, y]) => ({ name, y, color: PRIORIDAD_COLOR[name] || C.guinda }));
 
     Highcharts.chart(cont, {
@@ -200,17 +200,28 @@ export function piePrioridad(actividades) {
             enabled: true, align: 'center', verticalAlign: 'bottom',
             itemStyle: { fontWeight: '600', fontSize: '11px' }
         },
-        series: [{ name: 'Actividades', data }]
+        series: [{ name: 'Temas', data }]
     });
 }
 
 // ============ BARRAS HORIZONTALES — Carga por responsable ============
-export function barrasResponsables(actividades) {
+export function barrasResponsables(temas) {
     applyInstitutionalTheme();
     const cont = document.getElementById('chart-barras-responsables');
     if (!cont) return;
-    const counts = actividades.filter(a => a.estatus !== 'Concluida')
-        .reduce((m, a) => { if (a.responsable) m[a.responsable] = (m[a.responsable] || 0) + 1; return m; }, {});
+    const counts = {};
+    temas.filter(t => t.estatus !== 'Concluida').forEach(t => {
+        if (t.responsable) {
+            counts[t.responsable] = (counts[t.responsable] || 0) + 1;
+        }
+        if (t.corresponsables) {
+            t.corresponsables.forEach(c => {
+                if (c.nombre) {
+                    counts[c.nombre] = (counts[c.nombre] || 0) + 1;
+                }
+            });
+        }
+    });
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     const palette = [C.guinda, C.verde, C.dorado, C.proceso, C.pendiente, C.ok, C.riesgo];
     const isMobile = window.innerWidth < 600;
@@ -226,7 +237,7 @@ export function barrasResponsables(actividades) {
             labels: { style: { fontWeight: '600', fontSize: isMobile ? '10px' : '12px' } }
         },
         yAxis: { title: { text: '' }, allowDecimals: false },
-        tooltip: { valueSuffix: ' actividades pendientes' },
+        tooltip: { valueSuffix: ' temas pendientes' },
         legend: { enabled: false },
         series: [{
             name: 'Pendientes',
@@ -237,24 +248,24 @@ export function barrasResponsables(actividades) {
     });
 }
 
-// ============ BARRAS APILADAS — Por tema ============
-export function barrasApiladasTemas(temas, actividades) {
+// ============ BARRAS APILADAS — Por actividad ============
+export function barrasApiladasTemas(actividades, temas) {
     applyInstitutionalTheme();
     const cont = document.getElementById('chart-stacked-temas');
     if (!cont) return;
     const claves = ['Concluida', 'En proceso', 'Pendiente', 'Vencida'];
     const isMobile = window.innerWidth < 600;
-    const cats = temas.map(t => {
+    const cats = actividades.map(a => {
         const maxLen = isMobile ? 15 : 30;
-        return t.tema.length > maxLen ? t.tema.slice(0, maxLen - 2) + '…' : t.tema;
+        return a.actividad.length > maxLen ? a.actividad.slice(0, maxLen - 2) + '…' : a.actividad;
     });
     const series = claves.map(k => ({
         name: k, color: ESTATUS_COLOR[k],
-        data: temas.map(t => actividades.filter(a => a.temaId === t.id && a.estatus === k).length)
+        data: actividades.map(a => temas.filter(t => t.actividadId === a.id && t.estatus === k).length)
     }));
 
     Highcharts.chart(cont, {
-        chart: { ...BASE_CHART, type: 'bar', height: Math.max(180, temas.length * 44 + 80) },
+        chart: { ...BASE_CHART, type: 'bar', height: Math.max(180, actividades.length * 44 + 80) },
         credits: { enabled: false }, title: { text: '' }, exporting: { enabled: false },
         xAxis: {
             categories: cats,
@@ -262,7 +273,7 @@ export function barrasApiladasTemas(temas, actividades) {
         },
         yAxis: { title: { text: '' }, allowDecimals: false },
         plotOptions: { bar: { stacking: 'normal', borderRadius: 8, dataLabels: { enabled: false } } },
-        tooltip: { shared: false, valueSuffix: ' actividades' },
+        tooltip: { shared: false, valueSuffix: ' temas' },
         legend: {
             enabled: true, align: 'center', verticalAlign: 'bottom',
             itemStyle: { fontWeight: '600', fontSize: '12px' }
@@ -361,35 +372,35 @@ export function wireChartFullscreenButtons() {
     fullscreenWired = true;
 }
 
-export function treemapTemas(temas, actividades) {
+export function treemapTemas(actividades, temas) {
     applyInstitutionalTheme();
     const cont = document.getElementById('chart-treemap-temas');
     if (!cont) return;
 
-    const activeTemaIds = new Set(temas.map(t => t.id));
-    const filteredActs = actividades.filter(a => activeTemaIds.has(a.temaId));
+    const activeActividadIds = new Set(actividades.map(a => a.id));
+    const filteredTemas = temas.filter(t => activeActividadIds.has(t.actividadId));
 
     const data = [];
 
-    temas.forEach(t => {
-        const subActs = filteredActs.filter(a => a.temaId === t.id);
-        data.push({
-            id: `t_${t.id}`,
-            name: t.tema,
-            color: Highcharts.color(C.guinda).setOpacity(0.08).get(),
-            value: subActs.length || 1
-        });
-    });
-
-    filteredActs.forEach(a => {
+    actividades.forEach(a => {
+        const subTemas = filteredTemas.filter(t => t.actividadId === a.id);
         data.push({
             id: `a_${a.id}`,
             name: a.actividad,
-            parent: `t_${a.temaId}`,
+            color: Highcharts.color(C.guinda).setOpacity(0.08).get(),
+            value: subTemas.length || 1
+        });
+    });
+
+    filteredTemas.forEach(t => {
+        data.push({
+            id: `t_${t.id}`,
+            name: t.tema,
+            parent: `a_${t.actividadId}`,
             value: 1,
-            colorValue: a.avance || 0,
-            responsable: a.responsable || 'Sin responsable',
-            estatus: a.estatus || 'Pendiente'
+            colorValue: t.avance || 0,
+            responsable: t.responsable || 'Sin responsable',
+            estatus: t.estatus || 'Pendiente'
         });
     });
 
@@ -420,7 +431,7 @@ export function treemapTemas(temas, actividades) {
                         Progreso: <b>{point.colorValue}%</b><br/>
                         Estatus: <b>{point.estatus}</b>
                     {else}
-                        Actividades: <b>{point.value}</b>
+                        Temas: <b>{point.value}</b>
                     {/if}
                 </div>
             `
@@ -471,11 +482,11 @@ export function treemapTemas(temas, actividades) {
     });
 }
 
-export function renderAllCharts(temas, actividades) {
-    donutEstatus(actividades);
-    gaugeAvance(actividades);
-    piePrioridad(actividades);
-    barrasResponsables(actividades);
-    barrasApiladasTemas(temas, actividades);
-    treemapTemas(temas, actividades);
+export function renderAllCharts(actividades, temas) {
+    donutEstatus(temas);
+    gaugeAvance(temas);
+    piePrioridad(temas);
+    barrasResponsables(temas);
+    barrasApiladasTemas(actividades, temas);
+    treemapTemas(actividades, temas);
 }

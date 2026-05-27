@@ -1,10 +1,10 @@
 namespace NSIE.Models.Gestor
 {
-    public class GestorTema
+    public class GestorActividad
     {
-        public int TemaId { get; set; }
+        public int ActividadId { get; set; }
         public string Clave { get; set; } = string.Empty;
-        public string Tema { get; set; } = string.Empty;
+        public string Actividad { get; set; } = string.Empty;
         public string? Descripcion { get; set; }
         public string? Categoria { get; set; }
         public string Prioridad { get; set; } = "Media";
@@ -23,21 +23,21 @@ namespace NSIE.Models.Gestor
         // Corresponsables (JOIN from Gestor_Corresponsables)
         public List<GestorUsuarioDto> Corresponsables { get; set; } = [];
 
-        // Semáforo calculado en repositorio/controller
+        // Semáforo calculado
         public string Semaforo { get; set; } = "gris";
 
-        // Actividades relacionadas (calculado)
-        public int TotalActividades { get; set; }
-        public int ActividadesConcluidas { get; set; }
+        // Temas relacionados (calculado)
+        public int TotalTemas { get; set; }
+        public int TemasConcluidos { get; set; }
     }
 
-    public class GestorActividad
+    public class GestorTema
     {
-        public int ActividadId { get; set; }
-        public string Clave { get; set; } = string.Empty;
         public int TemaId { get; set; }
-        public string? TemaNombre { get; set; }
-        public string Actividad { get; set; } = string.Empty;
+        public string Clave { get; set; } = string.Empty;
+        public int ActividadId { get; set; }
+        public string? ActividadNombre { get; set; }
+        public string Tema { get; set; } = string.Empty;
         public string? Descripcion { get; set; }
         public int? ResponsableId { get; set; }
         public string? ResponsableNombre { get; set; }
@@ -71,21 +71,21 @@ namespace NSIE.Models.Gestor
 
     public class GestorDashboardVM
     {
-        public int TotalTemas { get; set; }
         public int TotalActividades { get; set; }
-        public int TotalConcluidas { get; set; }
+        public int TotalTemas { get; set; }
+        public int TotalConcluidos { get; set; }
         public int TotalPorVencer { get; set; }
-        public int TotalVencidas { get; set; }
-        public int TotalBloqueadas { get; set; }
+        public int TotalVencidos { get; set; }
+        public int TotalBloqueados { get; set; }
         public double AvanceGlobal { get; set; }
-        public List<GestorTema> Temas { get; set; } = [];
         public List<GestorActividad> Actividades { get; set; } = [];
+        public List<GestorTema> Temas { get; set; } = [];
     }
 
-    public class GestorTemaForm
+    public class GestorActividadForm
     {
-        public int? TemaId { get; set; }
-        public string Tema { get; set; } = string.Empty;
+        public int? ActividadId { get; set; }
+        public string Actividad { get; set; } = string.Empty;
         public string? Descripcion { get; set; }
         public string? Categoria { get; set; }
         public string Prioridad { get; set; } = "Media";
@@ -98,11 +98,11 @@ namespace NSIE.Models.Gestor
         public List<int> CorresponsablesIds { get; set; } = [];
     }
 
-    public class GestorActividadForm
+    public class GestorTemaForm
     {
-        public int? ActividadId { get; set; }
-        public int TemaId { get; set; }
-        public string Actividad { get; set; } = string.Empty;
+        public int? TemaId { get; set; }
+        public int ActividadId { get; set; }
+        public string Tema { get; set; } = string.Empty;
         public string? Descripcion { get; set; }
         public int? ResponsableId { get; set; }
         public DateTime? FechaInicio { get; set; }
