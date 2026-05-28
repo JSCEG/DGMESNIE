@@ -41,14 +41,14 @@
 
 <nav class="gestor-nav">
     <div class="gestor-shell gestor-nav__inner" role="tablist">
-        <button class="gestor-tab active" data-view="dashboard">Dashboard</button>
-        <button class="gestor-tab" data-view="temas">Actividades</button>
-        <button class="gestor-tab" data-view="tabla">Temas por Actividad</button>
+        <button class="gestor-tab active" data-view="dashboard">Inicio</button>
+        <button class="gestor-tab" data-view="temas">Histórico de actividades</button>
+        <button class="gestor-tab" data-view="tabla">Histórico de temas</button>
         <button class="gestor-tab" data-view="calendario">Calendario</button>
         <button class="gestor-tab" data-view="gantt">Gantt</button>
         <button class="gestor-tab" data-view="kanban">Kanban</button>
         <button class="gestor-tab" data-view="responsables">Responsables</button>
-        <button class="gestor-tab" data-view="alertas">Alertas <span class="badge" id="badge-alertas">0</span></button>
+        <button class="gestor-tab" data-view="alertas">Por vencer <span class="badge" id="badge-alertas">0</span></button>
         <button class="gestor-tab" data-view="reportes-presentar">Para presentar</button>
         <button class="gestor-tab" data-view="reportes">Reporte general</button>
     </div>
@@ -91,37 +91,67 @@
 
     <section id="view-dashboard" class="gestor-view active gestor-dashboard">
         <div class="dashboard-kpis">
-            <article class="dashboard-kpi-card">
+            <article class="dashboard-kpi-card" data-dashboard-filter="actividades" role="button" tabindex="0" aria-label="Ver actividades activas">
                 <span>Actividades activas</span>
                 <strong id="kpi-temas">0</strong>
-                <small>de la Dirección</small>
+                <small>Ver detalle</small>
             </article>
-            <article class="dashboard-kpi-card">
-                <span>Temas</span>
+            <article class="dashboard-kpi-card" data-dashboard-filter="todos" role="button" tabindex="0" aria-label="Ver todos los temas">
+                <span>Temas registrados</span>
                 <strong id="kpi-actividades">0</strong>
-                <small>registrados</small>
+                <small>Ver detalle</small>
             </article>
-            <article class="dashboard-kpi-card dashboard-kpi-card--ok">
-                <span>Concluidas</span>
+            <article class="dashboard-kpi-card dashboard-kpi-card--ok" data-dashboard-filter="concluidas" role="button" tabindex="0" aria-label="Ver temas concluidos">
+                <span>Temas concluidos</span>
                 <strong id="kpi-concluidas">0</strong>
-                <small>cerradas</small>
+                <small>Ver detalle</small>
             </article>
-            <article class="dashboard-kpi-card dashboard-kpi-card--warning">
-                <span>Por vencer (7d)</span>
+            <article class="dashboard-kpi-card dashboard-kpi-card--warning" data-dashboard-filter="por-vencer" role="button" tabindex="0" aria-label="Ver temas por vencer">
+                <span>Temas por vencer</span>
                 <strong id="kpi-por-vencer">0</strong>
-                <small>próximas</small>
+                <small>Ver detalle</small>
             </article>
-            <article class="dashboard-kpi-card dashboard-kpi-card--risk">
-                <span>Vencidas</span>
+            <article class="dashboard-kpi-card dashboard-kpi-card--risk" data-dashboard-filter="vencidas" role="button" tabindex="0" aria-label="Ver temas vencidos">
+                <span>Temas vencidos</span>
                 <strong id="kpi-vencidas">0</strong>
-                <small>requieren atención</small>
+                <small>Ver detalle</small>
             </article>
-            <article class="dashboard-kpi-card dashboard-kpi-card--gold">
+            <article class="dashboard-kpi-card dashboard-kpi-card--gold" data-dashboard-filter="avance" role="button" tabindex="0" aria-label="Ver avance de temas">
                 <span>Avance global</span>
                 <strong id="kpi-avance">0%</strong>
-                <small>promedio</small>
+                <small>Ver detalle</small>
             </article>
         </div>
+
+        <section class="panel dashboard-critical-panel dashboard-detail-panel" id="dashboard-detail-panel" hidden>
+            <header class="dashboard-critical-panel__header">
+                <div>
+                    <h2 id="dashboard-detail-title">Detalle</h2>
+                    <span id="dashboard-detail-summary">Temas ordenados por fecha de compromiso</span>
+                </div>
+                <div class="dashboard-panel__actions">
+                    <button type="button" class="internal-button" id="dashboard-detail-open">Ver en Temas</button>
+                    <button type="button" class="internal-button" id="dashboard-detail-clear">Limpiar</button>
+                </div>
+            </header>
+            <div class="dashboard-critical-table">
+                <table id="tbl-dashboard-detail">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Actividad</th>
+                            <th>Tema</th>
+                            <th>Responsable</th>
+                            <th>Compromiso</th>
+                            <th>Estado</th>
+                            <th>Avance</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
 
         <div class="dashboard-charts dashboard-charts--primary charts-grid">
             <section class="panel dashboard-panel dashboard-panel--chart">
@@ -256,7 +286,7 @@
         <div class="internal-title">
             <div>
                 <p>Detalle</p>
-                <h1>Temas por Actividad</h1>
+                <h1>Histórico de temas</h1>
             </div>
             <div class="internal-actions tabla-actions">
                 <button class="internal-button" id="btn-export-excel">Exportar CSV</button>
@@ -293,15 +323,16 @@
                         <table id="tbl-actividades">
                             <thead>
                                 <tr>
-                                    <th>Actividad</th>
-                                    <th>Tema</th>
-                                    <th>Responsable</th>
-                                    <th>Inicio</th>
-                                    <th>Compromiso</th>
-                                    <th>Estatus</th>
-                                    <th>Tiempo</th>
-                                    <th>Avance</th>
-                                    <th>Prioridad</th>
+                                    <th>#</th>
+                                    <th><button type="button" class="tabla-sort-btn" data-tabla-sort="actividad">Actividad</button></th>
+                                    <th><button type="button" class="tabla-sort-btn" data-tabla-sort="tema">Tema</button></th>
+                                    <th><button type="button" class="tabla-sort-btn" data-tabla-sort="responsable">Responsable</button></th>
+                                    <th><button type="button" class="tabla-sort-btn" data-tabla-sort="inicio">Inicio</button></th>
+                                    <th><button type="button" class="tabla-sort-btn" data-tabla-sort="compromiso">Compromiso</button></th>
+                                    <th><button type="button" class="tabla-sort-btn" data-tabla-sort="estatus">Estatus</button></th>
+                                    <th><button type="button" class="tabla-sort-btn is-active" data-tabla-sort="urgencia">Tiempo</button></th>
+                                    <th><button type="button" class="tabla-sort-btn" data-tabla-sort="avance">Avance</button></th>
+                                    <th><button type="button" class="tabla-sort-btn" data-tabla-sort="prioridad">Prioridad</button></th>
                                     <th>Estado</th>
                                     <th>Acciones</th>
                                 </tr>

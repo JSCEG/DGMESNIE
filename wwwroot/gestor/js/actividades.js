@@ -1,9 +1,11 @@
 import { escape, fmtDate, semaforo, daysBetween, daysFromToday, openModal, toast, downloadCsv } from './utils.js';
 import { dataService } from './data-service.js';
+import { confirmarYEnviarRecordatorio } from './alertas.js?v=recordatorio-v1';
 
 const DEFAULT_PAGE_SIZE = 8;
 let tablaPage = 1;
 let tablaPageSize = DEFAULT_PAGE_SIZE;
+let tablaSort = { key: 'urgencia', direction: 'asc' };
 
 function normalizeUserName(value) {
     return String(value || '')
@@ -256,12 +258,95 @@ function resumenParticipantesEtapas(t) {
     return parts.join(' · ');
 }
 
+function ordenarPorVencimiento(a, b) {
+    const aDone = a.estatus === 'Concluida';
+    const bDone = b.estatus === 'Concluida';
+    if (aDone !== bDone) return aDone ? 1 : -1;
+
+    const aDays = daysFromToday(a.fechaCompromiso);
+    const bDays = daysFromToday(b.fechaCompromiso);
+    const aValue = typeof aDays === 'number' ? aDays : Number.MAX_SAFE_INTEGER;
+    const bValue = typeof bDays === 'number' ? bDays : Number.MAX_SAFE_INTEGER;
+    if (aValue !== bValue) return aValue - bValue;
+
+    return String(a.tema || '').localeCompare(String(b.tema || ''), 'es-MX', { sensitivity: 'base' });
+}
+
+function compareText(a, b) {
+    return String(a || '').localeCompare(String(b || ''), 'es-MX', { sensitivity: 'base' });
+}
+
+function compareDate(a, b) {
+    const aValue = a ? new Date(`${a}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
+    const bValue = b ? new Date(`${b}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
+    return aValue - bValue;
+}
+
+function prioridadValue(value) {
+    if (value === 'Alta') return 1;
+    if (value === 'Media') return 2;
+    if (value === 'Baja') return 3;
+    return 4;
+}
+
+function sortTemas(list, actividades) {
+    const direction = tablaSort.direction === 'desc' ? -1 : 1;
+    const activityById = new Map(actividades.map(a => [a.id, a]));
+
+    return list.sort((a, b) => {
+        let result = 0;
+        if (tablaSort.key === 'actividad') {
+            result = compareText(activityById.get(a.actividadId)?.actividad, activityById.get(b.actividadId)?.actividad);
+        } else if (tablaSort.key === 'tema') {
+            result = compareText(a.tema, b.tema);
+        } else if (tablaSort.key === 'responsable') {
+            result = compareText(a.responsable, b.responsable);
+        } else if (tablaSort.key === 'inicio') {
+            result = compareDate(a.fechaInicio, b.fechaInicio);
+        } else if (tablaSort.key === 'compromiso') {
+            result = compareDate(a.fechaCompromiso, b.fechaCompromiso);
+        } else if (tablaSort.key === 'estatus') {
+            result = compareText(a.estatus, b.estatus);
+        } else if (tablaSort.key === 'avance') {
+            result = (a.avance || 0) - (b.avance || 0);
+        } else if (tablaSort.key === 'prioridad') {
+            result = prioridadValue(a.prioridad) - prioridadValue(b.prioridad);
+        } else {
+            result = ordenarPorVencimiento(a, b);
+        }
+
+        return result === 0 ? ordenarPorVencimiento(a, b) : result * direction;
+    });
+}
+
+function wireTablaSort(temas, actividades, filters) {
+    document.querySelectorAll('[data-tabla-sort]').forEach(btn => {
+        const active = btn.dataset.tablaSort === tablaSort.key;
+        btn.classList.toggle('is-active', active);
+        btn.dataset.direction = active ? tablaSort.direction : '';
+        btn.setAttribute('aria-label', active
+            ? `Orden actual ${tablaSort.direction === 'asc' ? 'ascendente' : 'descendente'}`
+            : `Ordenar por ${btn.textContent.trim()}`);
+
+        btn.onclick = () => {
+            const key = btn.dataset.tablaSort;
+            if (tablaSort.key === key) {
+                tablaSort.direction = tablaSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                tablaSort = { key, direction: key === 'avance' ? 'desc' : 'asc' };
+            }
+            tablaPage = 1;
+            renderTabla(temas, actividades, filters);
+        };
+    });
+}
+
 export function renderTabla(temas, actividades, filters = {}) {
     // Note: We swap the arguments inside app.js call as well
     populateTemasFilter(actividades);
     populateResponsablesFilter(temas);
 
-    const filtered = filterActividades(actividades, temas, filters);
+    const filtered = sortTemas(filterActividades(actividades, temas, filters), actividades);
     const totalPages = Math.max(1, Math.ceil(filtered.length / tablaPageSize));
     tablaPage = Math.min(Math.max(1, tablaPage), totalPages);
 
@@ -269,11 +354,14 @@ export function renderTabla(temas, actividades, filters = {}) {
     const pageItems = filtered.slice(startIndex, startIndex + tablaPageSize);
 
     const tbody = document.querySelector('#tbl-actividades tbody');
+    wireTablaSort(temas, actividades, filters);
     tbody.innerHTML = pageItems.length
-        ? pageItems.map(t => {
+        ? pageItems.map((t, idx) => {
             const actividad = actividades.find(a => a.id === t.actividadId);
             const sem = semaforo(t);
             const tiempo = tiempoSemaforoData(t);
+            const rest = daysFromToday(t.fechaCompromiso);
+            const showReminder = t.estatus !== 'Concluida' && t.responsableId && typeof rest === 'number' && rest <= 7;
             const coEtapas = resumenParticipantesEtapas(t);
             const coText = coEtapas
                 ? `<br><small class="muted" title="${escape(coEtapas)}" style="font-size: 0.72rem; display: block; margin-top: 2px; color:#1e5b4f;"><i class="fa-solid fa-users" style="color:#b48934;"></i> Participan por etapa</small>`
@@ -286,6 +374,7 @@ export function renderTabla(temas, actividades, filters = {}) {
 
             const mainRow = `
                 <tr data-id="${t.id}">
+                    <td class="tabla-row-id">${startIndex + idx + 1}</td>
                     <td>${escape(actividad?.actividad || '—')}</td>
                     <td>${expandBtn} <span>${escape(t.tema)}</span></td>
                     <td>${escape(t.responsable)}${coText}</td>
@@ -307,6 +396,10 @@ export function renderTabla(temas, actividades, filters = {}) {
                             <button class="tabla-action-btn" data-email="${t.id}" title="Enviar por correo" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
                                 <i class="fa-solid fa-envelope" style="font-size: 1.15rem; color: #8a0031;"></i>
                             </button>
+                            ${showReminder ? `
+                            <button class="tabla-action-btn" data-reminder="${t.id}" title="Enviar recordatorio por correo" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
+                                <i class="fa-solid fa-paper-plane" style="font-size: 1.1rem; color: #8a0031;"></i>
+                            </button>` : ''}
                             <button class="tabla-action-btn" data-whatsapp="${t.id}" title="Enviar por WhatsApp" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
                                 <i class="fa-brands fa-whatsapp" style="font-size: 1.15rem; color: #128C7E;"></i>
                             </button>
@@ -316,9 +409,9 @@ export function renderTabla(temas, actividades, filters = {}) {
                     </td>
                 </tr>`;
             
-            return mainRow + renderEtapasDetailRow(t, 11);
+            return mainRow + renderEtapasDetailRow(t, 12);
         }).join('')
-        : '<tr><td colspan="11" style="text-align:center;color:var(--g-text-soft);padding:1.5rem">Sin temas</td></tr>';
+        : '<tr><td colspan="12" style="text-align:center;color:var(--g-text-soft);padding:1.5rem">Sin temas</td></tr>';
 
     tablaPage = renderPagination(filtered.length, tablaPage, tablaPageSize);
 
@@ -332,6 +425,13 @@ export function renderTabla(temas, actividades, filters = {}) {
 
     tbody.querySelectorAll('[data-email]').forEach(btn => {
         btn.onclick = () => openSendEmailModal(temas.find(t => t.id === btn.dataset.email));
+    });
+
+    tbody.querySelectorAll('[data-reminder]').forEach(btn => {
+        btn.onclick = () => {
+            const tema = temas.find(t => t.id === btn.dataset.reminder);
+            if (tema) confirmarYEnviarRecordatorio(tema, actividades);
+        };
     });
 
     tbody.querySelectorAll('[data-whatsapp]').forEach(btn => {

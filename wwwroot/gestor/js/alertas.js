@@ -177,7 +177,7 @@ export function renderAlertas(actividades, temas) {
     });
 }
 
-async function confirmarYEnviarRecordatorio(tema, actividades) {
+export async function confirmarYEnviarRecordatorio(tema, actividades) {
     function normalizeUserName(value) {
         return String(value || '')
             .normalize('NFD')

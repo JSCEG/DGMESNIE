@@ -621,7 +621,7 @@ namespace NSIE.Controllers
                 return Redirect(primerModuloExterno.Action);
             }
 
-            return RedirectToAction("Index", "Home");
+            return RedirectToAction("Index", "Gestor");
         }
 
         private List<SeccionSNIER> ObtenerSeccionesUsuario(SqlConnection cn, int idUsuario)
