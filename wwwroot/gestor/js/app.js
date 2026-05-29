@@ -152,7 +152,10 @@ function wireEvents() {
     if (document.getElementById('filtro-temas-responsable')) {
         document.getElementById('filtro-temas-responsable').onchange = rerenderTemas;
     }
-    document.getElementById('btn-nuevo-tema').onclick = () => openActividadModal(null);
+    const btnNuevoTema = document.getElementById('btn-nuevo-tema');
+    if (btnNuevoTema) {
+        btnNuevoTema.onclick = () => openActividadModal(null);
+    }
 
     const rerenderTabla = () => {
         if (typeof actividadesModule.resetTablaPage === 'function') {

@@ -51,6 +51,7 @@ public class ValidacionInputFiltro : ActionFilterAttribute
         "Gestor.ApiActualizarActividad",
         "Gestor.ApiCrearTema",
         "Gestor.ApiActualizarTema",
+        "Gestor.ApiEnviarReporteSemanal",
         "ProyectosPrivados.ApiProyectos",
         "ProyectosPrivados.ApiProyecto",
         "ProyectosPrivados.ApiAcciones",

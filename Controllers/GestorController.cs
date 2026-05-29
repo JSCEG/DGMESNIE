@@ -26,6 +26,40 @@ namespace NSIE.Controllers
         public string?   CorreoLibre { get; set; }   // correo extra no registrado en el sistema
     }
 
+    public class ReporteFilaActividad
+    {
+        public string Actividad { get; set; } = "";
+        public string Responsable { get; set; } = "";
+        public int Total { get; set; }
+        public int Concluidos { get; set; }
+        public int PorVencer { get; set; }
+        public int Vencidos { get; set; }
+        public int Avance { get; set; }
+    }
+
+    public class ReporteFilaResponsable
+    {
+        public string Responsable { get; set; } = "";
+        public int Total { get; set; }
+        public int Concluidos { get; set; }
+        public int PorVencer { get; set; }
+        public int Vencidos { get; set; }
+        public int Avance { get; set; }
+    }
+
+    public class GestorReporteSemanalRequest
+    {
+        public string EstatusSvg { get; set; } = "";
+        public string AvanceSvg { get; set; } = "";
+        public string PrioridadSvg { get; set; } = "";
+        public string ResponsablesSvg { get; set; } = "";
+        public string TemasSvg { get; set; } = "";
+        public string TreemapSvg { get; set; } = "";
+        public Dictionary<string, string> Kpis { get; set; } = new();
+        public List<ReporteFilaActividad> Actividades { get; set; } = new();
+        public List<ReporteFilaResponsable> Responsables { get; set; } = new();
+    }
+
     [ServiceFilter(typeof(ValidacionInputFiltro))]
     [AutorizacionFiltro]
     public class GestorController : Controller
@@ -108,6 +142,11 @@ namespace NSIE.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ApiCrearActividad([FromBody] GestorActividadForm form)
         {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId != 1)
+            {
+                return StatusCode(403, new { error = "Solo el administrador de desarrollo puede crear, editar o eliminar actividades." });
+            }
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
             try
@@ -134,6 +173,11 @@ namespace NSIE.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ApiActualizarActividad(int id, [FromBody] GestorActividadForm form)
         {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId != 1)
+            {
+                return StatusCode(403, new { error = "Solo el administrador de desarrollo puede crear, editar o eliminar actividades." });
+            }
             form.ActividadId = id;
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
@@ -165,6 +209,11 @@ namespace NSIE.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ApiEliminarActividad(int id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId != 1)
+            {
+                return StatusCode(403, new { error = "Solo el administrador de desarrollo puede crear, editar o eliminar actividades." });
+            }
             try
             {
                 await _repo.EliminarActividadAsync(id);
@@ -330,12 +379,32 @@ namespace NSIE.Controllers
             if (form == null)
                 return BadRequest(new { error = "Payload de tema vacío." });
 
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+            {
+                return Unauthorized(new { error = "Sesión no iniciada." });
+            }
+
+            var temaAnterior = await _repo.ObtenerTemaPorIdAsync(id);
+            if (temaAnterior == null)
+            {
+                return NotFound(new { error = "No se encontró el tema especificado." });
+            }
+
+            var isAuthorized = currentUserId.Value == 1 ||
+                               temaAnterior.ResponsableId == currentUserId.Value ||
+                               (temaAnterior.Corresponsables != null && temaAnterior.Corresponsables.Any(c => c.IdUsuario == currentUserId.Value));
+
+            if (!isAuthorized)
+            {
+                return StatusCode(403, new { error = "No tiene permisos para modificar este tema." });
+            }
+
             form.TemaId = id;
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
             try
             {
-                var temaAnterior = await _repo.ObtenerTemaPorIdAsync(id);
                 await _repo.ActualizarTemaAsync(form, GetCurrentUserId());
                 var tema = await _repo.ObtenerTemaPorIdAsync(id);
                 if (tema != null)
@@ -429,6 +498,27 @@ namespace NSIE.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ApiEliminarTema(int id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (!currentUserId.HasValue)
+            {
+                return Unauthorized(new { error = "Sesión no iniciada." });
+            }
+
+            var tema = await _repo.ObtenerTemaPorIdAsync(id);
+            if (tema == null)
+            {
+                return NotFound(new { error = "No se encontró el tema especificado." });
+            }
+
+            var isAuthorized = currentUserId.Value == 1 ||
+                               tema.ResponsableId == currentUserId.Value ||
+                               (tema.Corresponsables != null && tema.Corresponsables.Any(c => c.IdUsuario == currentUserId.Value));
+
+            if (!isAuthorized)
+            {
+                return StatusCode(403, new { error = "No tiene permisos para eliminar este tema." });
+            }
+
             try
             {
                 await _repo.EliminarTemaAsync(id);
@@ -528,6 +618,239 @@ namespace NSIE.Controllers
                 _logger.LogError(ex, "Error notificando tema {Id} a usuarios.", id);
                 return StatusCode(500, new { error = "No fue posible enviar la notificación." });
             }
+        }
+
+        [HttpPost("Gestor/Api/EnviarReporteSemanal")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApiEnviarReporteSemanal([FromBody] GestorReporteSemanalRequest request)
+        {
+            try
+            {
+                var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
+                if (string.IsNullOrEmpty(perfilJson))
+                    return Unauthorized("Sesión no iniciada.");
+
+                var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+                // De momento, forzar a que el correo le llegue únicamente a Javier Sasso
+                var correo = "jsasso@energia.gob.mx";
+
+                // Solo permitir a los usuarios autorizados (por ejemplo ID 1 y 86)
+                if (perfil.IdUsuario != "1" && perfil.IdUsuario != "86")
+                {
+                    return Forbid("No tiene permisos para enviar este reporte.");
+                }
+
+                var asunto = $"📊 Reporte Semanal Gestor DGMESNIE - {DateTime.Now:dd/MM/yyyy}";
+                var cuerpo = ConstruirCorreoReporteSemanal(perfil.Nombre, request);
+
+                await _servicioEmailSMTP.EnviarCorreo(correo, asunto, cuerpo);
+
+                return Ok(new { success = true, mensaje = $"Reporte semanal enviado con éxito a {correo}." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error enviando reporte semanal por correo.");
+                return StatusCode(500, new { error = "No fue posible enviar el reporte: " + ex.Message });
+            }
+        }
+
+        private static string ConstruirCorreoReporteSemanal(string nombreUsuario, GestorReporteSemanalRequest request)
+        {
+            var today = DateTime.Today;
+            int daysToMonday = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+            var lunes = today.AddDays(-daysToMonday);
+            var domingo = lunes.AddDays(6);
+            var culture = new System.Globalization.CultureInfo("es-MX");
+            var rangoSemana = $"{lunes.ToString("dd 'de' MMMM", culture)} al {domingo.ToString("dd 'de' MMMM 'de' yyyy", culture)}";
+
+            var kpis = request.Kpis;
+            var total = kpis.GetValueOrDefault("temasRegistrados", "0");
+            var concluidas = kpis.GetValueOrDefault("temasConcluidos", "0");
+            var porVencer = kpis.GetValueOrDefault("temasPorVencer", "0");
+            var vencidas = kpis.GetValueOrDefault("temasVencidos", "0");
+            var avance = kpis.GetValueOrDefault("avanceGlobal", "0%");
+            var activas = kpis.GetValueOrDefault("actividadesActivas", "0");
+
+            string SanitizarSvg(string base64OrSvg) {
+                if (string.IsNullOrWhiteSpace(base64OrSvg)) return "<div style='color:#667085;text-align:center;padding:10px;border:1px dashed #ddd;'>Gráfico no disponible</div>";
+                if (base64OrSvg.StartsWith("data:image/")) {
+                    return $"<img src='{base64OrSvg}' style='max-width:100%; height:auto; border:none; display:inline-block;' alt='Gráfico' />";
+                }
+                return base64OrSvg.Replace("<svg", "<svg style='max-width:100%; height:auto;'");
+            }
+
+            return $@"
+                <html lang='es'>
+                <head>
+                    <meta charset='UTF-8'>
+                    <title>Reporte Semanal Gestor</title>
+                </head>
+                <body style='margin:0; padding:20px; background-color:#f9fafb; font-family:Arial, Helvetica, sans-serif; color:#1f2937;'>
+                    <div style='max-width:800px; margin:0 auto; background-color:#ffffff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.05);'>
+                        
+                        <div style='padding:16px 24px; border-bottom:1px solid #f3f4f6;'>
+                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
+                                <tr>
+                                    <td style='width:50%;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:36px; width:auto;'>
+                                    </td>
+                                    <td style='width:50%; text-align:right;'>
+                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:38px; width:auto;'>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <div style='background-color:#8a0031; background:linear-gradient(135deg, #8a0031 0%, #6b0024 100%); color:#ffffff; padding:24px; text-align:center;'>
+                            <h1 style='margin:0; font-size:22px; font-weight:700; letter-spacing:0.02em;'>Reporte de Avance Semanal</h1>
+                            <p style='margin:6px 0 0; font-size:14px; font-weight:bold; color:rgba(255,255,255,0.95);'>Semana del {rangoSemana}</p>
+                            <p style='margin:4px 0 0; font-size:12px; color:rgba(255,255,255,0.8);'>Gestor de Actividades y Temas Críticos — DGMESNIE</p>
+                        </div>
+
+                        <div style='padding:24px;'>
+                            <p style='margin:0 0 16px; font-size:16px; font-weight:700;'>Estimado Equipo,</p>
+
+                            <div style='margin-bottom:28px;'>
+                                <table role='presentation' cellpadding='0' cellspacing='10' border='0' style='width:100%; margin:-10px;'>
+                                    <tr>
+                                        <td style='width:33%; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; text-align:center;'>
+                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;'>Actividades Activas</span>
+                                            <strong style='display:block; font-size:24px; color:#0f172a; margin-top:4px;'>{activas}</strong>
+                                        </td>
+                                        <td style='width:33%; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; text-align:center;'>
+                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;'>Temas Registrados</span>
+                                            <strong style='display:block; font-size:24px; color:#0f172a; margin-top:4px;'>{total}</strong>
+                                        </td>
+                                        <td style='width:33%; background:#ecfdf5; border:1px solid #d1fae5; border-radius:8px; padding:12px; text-align:center;'>
+                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#065f46; font-weight:700;'>Temas Concluidos</span>
+                                            <strong style='display:block; font-size:24px; color:#047857; margin-top:4px;'>{concluidas}</strong>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style='background:#fffbeb; border:1px solid #fef3c7; border-radius:8px; padding:12px; text-align:center;'>
+                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#92400e; font-weight:700;'>Por Vencer</span>
+                                            <strong style='display:block; font-size:24px; color:#d97706; margin-top:4px;'>{porVencer}</strong>
+                                        </td>
+                                        <td style='background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:12px; text-align:center;'>
+                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#991b1b; font-weight:700;'>Vencidos</span>
+                                            <strong style='display:block; font-size:24px; color:#b91c1c; margin-top:4px;'>{vencidas}</strong>
+                                        </td>
+                                        <td style='background:#f5f3ff; border:1px solid #ede9fe; border-radius:8px; padding:12px; text-align:center;'>
+                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#5b21b6; font-weight:700;'>Avance Promedio</span>
+                                            <strong style='display:block; font-size:24px; color:#6d28d9; margin-top:4px;'>{avance}</strong>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <h2 style='font-size:16px; font-weight:700; border-bottom:2px solid #8a0031; padding-bottom:6px; margin:24px 0 12px 0; color:#8a0031;'>
+                                Avance por Actividad
+                            </h2>
+                            <div style='margin-bottom:24px; overflow-x:auto;'>
+                                <table cellpadding='6' cellspacing='0' style='width:100%; border-collapse:collapse; font-size:12px; text-align:left; border:1px solid #e5e7eb;'>
+                                    <thead>
+                                        <tr style='background-color:#8a0031; color:#ffffff;'>
+                                            <th style='padding:8px; border:1px solid #e5e7eb;'>Actividad</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb;'>Responsable</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Total</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Concluidos</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Por Vencer</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Vencidos</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center; width:80px;'>Avance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {string.Join("", request.Actividades.Select(a => $@"
+                                            <tr style='border-bottom:1px solid #e5e7eb;'>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; font-weight:bold; color:#1f2937;'>{System.Net.WebUtility.HtmlEncode(a.Actividad)}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; color:#4b5563;'>{System.Net.WebUtility.HtmlEncode(a.Responsable)}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; font-weight:bold;'>{a.Total}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#047857; font-weight:bold;'>{a.Concluidos}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#d97706; font-weight:bold;'>{a.PorVencer}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#b91c1c; font-weight:bold;'>{a.Vencidos}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; font-weight:bold; color:#8a0031;'>{a.Avance}%</td>
+                                            </tr>
+                                        "))}
+                                        {(!request.Actividades.Any() ? "<tr><td colspan='7' style='text-align:center; padding:12px; color:#6b7280;'>No hay actividades registradas en este periodo.</td></tr>" : "")}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <h2 style='font-size:16px; font-weight:700; border-bottom:2px solid #8a0031; padding-bottom:6px; margin:24px 0 12px 0; color:#8a0031;'>
+                                Avance por Responsable
+                            </h2>
+                            <div style='margin-bottom:24px; overflow-x:auto;'>
+                                <table cellpadding='6' cellspacing='0' style='width:100%; border-collapse:collapse; font-size:12px; text-align:left; border:1px solid #e5e7eb;'>
+                                    <thead>
+                                        <tr style='background-color:#1e5b4f; color:#ffffff;'>
+                                            <th style='padding:8px; border:1px solid #e5e7eb;'>Responsable</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Total Temas</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Concluidos</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Por Vencer</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Vencidos</th>
+                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center; width:80px;'>Avance</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {string.Join("", request.Responsables.Select(r => $@"
+                                            <tr style='border-bottom:1px solid #e5e7eb;'>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; font-weight:bold; color:#1f2937;'>{System.Net.WebUtility.HtmlEncode(r.Responsable)}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; font-weight:bold;'>{r.Total}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#047857; font-weight:bold;'>{r.Concluidos}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#d97706; font-weight:bold;'>{r.PorVencer}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#b91c1c; font-weight:bold;'>{r.Vencidos}</td>
+                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; font-weight:bold; color:#1e5b4f;'>{r.Avance}%</td>
+                                            </tr>
+                                        "))}
+                                        {(!request.Responsables.Any() ? "<tr><td colspan='6' style='text-align:center; padding:12px; color:#6b7280;'>No hay responsables registrados en este periodo.</td></tr>" : "")}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <h2 style='font-size:16px; font-weight:700; border-bottom:2px solid #8a0031; padding-bottom:6px; margin:24px 0 16px 0; color:#8a0031;'>
+                                Gráficos Analíticos
+                            </h2>
+
+                            <table role='presentation' cellpadding='0' cellspacing='12' border='0' style='width:100%;'>
+                                <tr>
+                                    <td style='width:50%; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; text-align:center;'>
+                                        <h3 style='margin:0 0 10px 0; font-size:13px; font-weight:700; color:#4b5563;'>Estatus General</h3>
+                                        <div style='display:inline-block; text-align:center;'>
+                                            {SanitizarSvg(request.EstatusSvg)}
+                                        </div>
+                                    </td>
+                                    <td style='width:50%; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; text-align:center;'>
+                                        <h3 style='margin:0 0 10px 0; font-size:13px; font-weight:700; color:#4b5563;'>Distribución de Prioridad</h3>
+                                        <div style='display:inline-block; text-align:center;'>
+                                            {SanitizarSvg(request.PrioridadSvg)}
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style='width:50%; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; text-align:center;'>
+                                        <h3 style='margin:0 0 10px 0; font-size:13px; font-weight:700; color:#4b5563;'>Avance Global</h3>
+                                        <div style='display:inline-block; text-align:center;'>
+                                            {SanitizarSvg(request.AvanceSvg)}
+                                        </div>
+                                    </td>
+                                    <td style='width:50%; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; text-align:center;'>
+                                        <h3 style='margin:0 0 10px 0; font-size:13px; font-weight:700; color:#4b5563;'>Carga por Responsable</h3>
+                                        <div style='display:inline-block; text-align:center;'>
+                                            {SanitizarSvg(request.ResponsablesSvg)}
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                        </div>
+
+                        <div style='background-color:#f9fafb; border-top:1px solid #e5e7eb; padding:16px; text-align:center; font-size:11px; color:#6b7280;'>
+                            Este correo ha sido generado y enviado de manera automatizada a solicitud del administrador del sistema.<br>
+                            <strong>DGMESNIE — Secretaría de Energía — Gobierno de México</strong>
+                        </div>
+                    </div>
+                </body>
+                </html>";
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────

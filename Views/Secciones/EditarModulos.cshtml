@@ -48,6 +48,14 @@
 @await Html.PartialAsync("_ViewHeader", header)
 
 <div class="pe-5 ps-5">
+    <!-- Miga de pan (Breadcrumbs) -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")"><i class="fas fa-home me-1"></i>Inicio</a></li>
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Secciones")">Gestión de Secciones</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Módulos de @Model.Titulo</li>
+        </ol>
+    </nav>
 
 <!-- Información de la sección y botón nuevo módulo -->
 <div class="row mb-4">
@@ -97,38 +105,39 @@
                         <span class="badge bg-secondary">@modulo.Orden</span>
                     </td>
                     <td>
-                        <!-- NUEVO: Mostrar número de vistas directamente -->
+                        @{
+                            var vistasCount = modulo.Vistas.Count;
+                            var badgeClass = vistasCount == 0 ? "bg-secondary" :
+                                             vistasCount <= 3 ? "bg-info" :
+                                             vistasCount <= 6 ? "bg-success" : "bg-warning";
+                        }
                         <div class="d-flex align-items-center">
-                            <span class="badge bg-info me-2" id="contador-@modulo.Id">
-                                <i class="fas fa-spinner fa-spin"></i>
+                            <span class="badge @badgeClass me-2">
+                                @vistasCount vista@(vistasCount == 1 ? "" : "s")
                             </span>
-                            <a asp-action="EditarVistas" asp-route-moduloId="@modulo.Id" class="btn btn-sm btn-outline-primary"
-                                title="Ver y editar vistas del módulo">
-                                <i class="fas fa-eye"></i> Ver
-                            </a>
                         </div>
                     </td>
                     <td>
-                        <span class="badge @(modulo.Activo ? "bg-success" : "bg-danger")">
-                            @(modulo.Activo ? "Sí" : "No")
+                        <span class="badge @(modulo.Activo ? "badge-state-active" : "badge-state-inactive")">
+                            @(modulo.Activo ? "Activo" : "Inactivo")
                         </span>
                     </td>
                     <td>
-                        <div class="btn-group" role="group">
+                        <div class="d-flex gap-1 justify-content-center" role="group">
                             <!-- Botón Editar Módulo -->
-                            <button class="btn btn-sm btn-outline-warning" onclick="abrirModalEditarModulo(@modulo.Id)"
+                            <button class="btn btn-sm btn-outline-warning btn-icon-sm" onclick="abrirModalEditarModulo(@modulo.Id)"
                                 title="Editar módulo">
                                 <i class="fas fa-edit"></i>
                             </button>
 
                             <!-- Botón Ver/Editar Vistas -->
-                            <a asp-action="EditarVistas" asp-route-moduloId="@modulo.Id" class="btn btn-sm btn-outline-primary"
+                            <a asp-action="EditarVistas" asp-route-moduloId="@modulo.Id" class="btn btn-sm btn-outline-primary btn-icon-sm"
                                 title="Gestionar vistas del módulo">
-                                <i class="fas fa-list"></i> Vistas
+                                <i class="fas fa-list"></i>
                             </a>
 
                             <!-- Botón Eliminar -->
-                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="eliminarModuloAjax(@modulo.Id)"
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-icon-sm" onclick="eliminarModuloAjax(@modulo.Id)"
                                 title="Eliminar módulo">
                                 <i class="fas fa-trash-alt"></i>
                             </button>
@@ -191,61 +200,7 @@ else
                 ]
             });
 
-            // Cargar contador de vistas para cada módulo
-            cargarContadoresVistas();
         });
-
-        function cargarContadoresVistas() {
-                                        @foreach (var modulo in Model.Modulos)
-                {
-                    <text>
-                        cargarContadorVistas(@modulo.Id);
-                    </text>
-            }
-                                    }
-
-        function cargarContadorVistas(moduloId) {
-            $.ajax({
-                url: '@Url.Action("ContarVistas", "Secciones")',
-                data: { moduloId: moduloId },
-                method: 'GET',
-                timeout: 5000,
-                success: function (count) {
-                    console.log('✅ Contador para módulo ' + moduloId + ': ' + count);
-
-                    const $badge = $("#contador-" + moduloId);
-                    if ($badge.length) {
-                        // Actualizar contenido del badge
-                        $badge.html(count + ' vista' + (count === 1 ? '' : 's'));
-
-                        // Cambiar color según cantidad
-                        $badge.removeClass('bg-info bg-success bg-secondary bg-warning');
-                        if (count === 0) {
-                            $badge.addClass('bg-secondary');
-                        } else if (count <= 3) {
-                            $badge.addClass('bg-info');
-                        } else if (count <= 6) {
-                            $badge.addClass('bg-success');
-                        } else {
-                            $badge.addClass('bg-warning');
-                        }
-                    }
-                },
-                error: function (xhr, status, error) {
-                    console.error('❌ Error cargando contador para módulo ' + moduloId + ':', {
-                        status: status,
-                        error: error,
-                        response: xhr.responseText
-                    });
-
-                    const $badge = $("#contador-" + moduloId);
-                    if ($badge.length) {
-                        $badge.html('Error');
-                        $badge.removeClass('bg-info').addClass('bg-danger');
-                    }
-                }
-            });
-        }
 
         function abrirModalNuevoModulo() {
             const url = '@Url.Action("CrearModulo", "Secciones", new { seccionId = Model.Id })';

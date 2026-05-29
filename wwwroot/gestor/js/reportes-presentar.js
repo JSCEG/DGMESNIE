@@ -38,6 +38,7 @@ export function wirePresentacion() {
     });
     document.getElementById('pres-filtro-busqueda')?.addEventListener('input', renderPresentacionDeck);
     document.getElementById('pres-refresh')?.addEventListener('click', renderPresentacionDeck);
+    document.getElementById('pres-enviar-semanal')?.addEventListener('click', enviarReporteSemanal);
     document.getElementById('pres-presentar')?.addEventListener('click', () => enterPresentacion(0));
     document.getElementById('pres-pdf')?.addEventListener('click', descargarPresentacionPdf);
     document.getElementById('pres-ppt')?.addEventListener('click', descargarPresentacionPpt);
@@ -682,5 +683,137 @@ async function descargarPresentacionPpt() {
     } finally {
         setButtons(false);
         setTimeout(() => setPreloader(false), 500);
+    }
+}
+
+function svgToPngBase64(svgEl, width = 350, height = 260) {
+    return new Promise((resolve) => {
+        try {
+            const clone = svgEl.cloneNode(true);
+            clone.setAttribute('width', width);
+            clone.setAttribute('height', height);
+            clone.style.width = width + 'px';
+            clone.style.height = height + 'px';
+
+            const svgString = new XMLSerializer().serializeToString(clone);
+            const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            
+            const reader = new FileReader();
+            reader.onloadend = function () {
+                const base64Svg = reader.result;
+                const img = new Image();
+                img.onload = function () {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, width, height);
+                    
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/png'));
+                };
+                img.onerror = function () {
+                    resolve(base64Svg);
+                };
+                img.src = base64Svg;
+            };
+            reader.onerror = function () {
+                resolve('');
+            };
+            reader.readAsDataURL(svgBlob);
+        } catch (e) {
+            console.error('Error al convertir SVG a PNG:', e);
+            resolve('');
+        }
+    });
+}
+
+async function enviarReporteSemanal() {
+    const btn = document.getElementById('pres-enviar-semanal');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Enviando...';
+    }
+
+    try {
+        const kpis = {
+            actividadesActivas: document.getElementById('kpi-temas')?.textContent || '0',
+            temasRegistrados: document.getElementById('kpi-actividades')?.textContent || '0',
+            temasConcluidos: document.getElementById('kpi-concluidas')?.textContent || '0',
+            temasPorVencer: document.getElementById('kpi-por-vencer')?.textContent || '0',
+            temasVencidos: document.getElementById('kpi-vencidas')?.textContent || '0',
+            avanceGlobal: document.getElementById('kpi-avance')?.textContent || '0%'
+        };
+
+        const filters = readFilters();
+        const temasFiltrados = applyFilters(_temas, filters);
+
+        const actividadesData = byActividad(temasFiltrados).map(a => ({
+            actividad: a.actividad || 'Sin nombre',
+            responsable: a.responsable || 'Sin responsable',
+            total: Number(a.total || 0),
+            concluidos: Number(a.concluidas || 0),
+            porVencer: Number(a.porVencer || 0),
+            vencidos: Number(a.vencidas || 0),
+            avance: Number(a.avance || 0)
+        }));
+
+        const responsablesData = byResponsable(temasFiltrados).map(r => ({
+            responsable: r.responsable || 'Sin responsable',
+            total: Number(r.total || 0),
+            concluidos: Number(r.concluidas || 0),
+            porVencer: Number(r.porVencer || 0),
+            vencidos: Number(r.vencidas || 0),
+            avance: Number(r.avance || 0)
+        }));
+
+        const getPng = async (selector) => {
+            const svgEl = document.querySelector(`${selector} svg`);
+            if (!svgEl) return '';
+            return await svgToPngBase64(svgEl, 350, 260);
+        };
+
+        const payload = {
+            estatusSvg: await getPng('#chart-donut-estatus'),
+            avanceSvg: await getPng('#chart-gauge-avance'),
+            prioridadSvg: await getPng('#chart-pie-prioridad'),
+            responsablesSvg: await getPng('#chart-barras-responsables'),
+            temasSvg: await getPng('#chart-stacked-temas'),
+            treemapSvg: await getPng('#chart-treemap-temas'),
+            kpis: kpis,
+            actividades: actividadesData,
+            responsables: responsablesData
+        };
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+        const res = await fetch('/Gestor/Api/EnviarReporteSemanal', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'RequestVerificationToken': csrfToken
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || `Error ${res.status}`);
+        }
+
+        const data = await res.json();
+        toast(data.mensaje || 'Reporte semanal enviado correctamente', 'ok');
+    } catch (err) {
+        console.error(err);
+        toast('Error al enviar: ' + err.message, 'err');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-envelope me-1"></i> Enviar reporte semanal';
+        }
     }
 }

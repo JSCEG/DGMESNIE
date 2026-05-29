@@ -400,11 +400,15 @@ export function renderTabla(temas, actividades, filters = {}) {
                             <button class="tabla-action-btn" data-reminder="${t.id}" title="Enviar recordatorio por correo" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
                                 <i class="fa-solid fa-paper-plane" style="font-size: 1.1rem; color: #8a0031;"></i>
                             </button>` : ''}
+                            <!--
                             <button class="tabla-action-btn" data-whatsapp="${t.id}" title="Enviar por WhatsApp" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
                                 <i class="fa-brands fa-whatsapp" style="font-size: 1.15rem; color: #128C7E;"></i>
                             </button>
+                            -->
                             <button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem;margin-right: 4px;" data-view="${t.id}">Ver</button>
-                            <button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem" data-edit="${t.id}">Editar</button>
+                             ${(!window.currentUser || window.currentUser.id === 1 || Number(t.responsableId) === window.currentUser.id || (t.corresponsablesIds && t.corresponsablesIds.map(Number).includes(window.currentUser.id))) ? `
+                             <button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem" data-edit="${t.id}">Editar</button>
+                             ` : ''}
                         </span>
                     </td>
                 </tr>`;
@@ -654,6 +658,9 @@ export async function openTemaModal(tema, actividades) {
     if (!t.corresponsablesIds) t.corresponsablesIds = [];
     if (!t.etapas) t.etapas = [];
 
+    const isNew = !tema;
+    const canEdit = isNew || !window.currentUser || window.currentUser.id === 1 || Number(t.responsableId) === window.currentUser.id || (t.corresponsablesIds && t.corresponsablesIds.map(Number).includes(window.currentUser.id));
+
     const users = await dataService.list('usuarios');
     const filteredUsers = users
         .filter(u => normalizeUserName(u.nombre) !== 'consulta publica')
@@ -670,8 +677,6 @@ export async function openTemaModal(tema, actividades) {
         '<option value="">Selecciona responsable</option>',
         ...filteredUsers.map(u => `<option value="${u.idUsuario}" ${String(u.idUsuario) === String(selectedUserId) ? 'selected' : ''}>${escape(u.nombre)}</option>`)
     ].join('');
-
-    const isNew = !tema;
 
     // Etapas state
     let currentEtapas = t.etapas ? JSON.parse(JSON.stringify(t.etapas)) : [];
@@ -692,25 +697,25 @@ export async function openTemaModal(tema, actividades) {
         <form>
             <div class="form-row">
                 <div class="form-field full"><label>Actividad *</label>
-                    <select name="actividadId" required>${actividades.map(a => `<option value="${a.id}" ${t.actividadId === a.id ? 'selected' : ''}>${escape(a.actividad)}</option>`).join('')}</select>
+                    <select name="actividadId" required ${canEdit ? '' : 'disabled'}>${actividades.map(a => `<option value="${a.id}" ${t.actividadId === a.id ? 'selected' : ''}>${escape(a.actividad)}</option>`).join('')}</select>
                 </div>
-                <div class="form-field full"><label>Tema *</label><input name="tema" required value="${escape(t.tema)}"></div>
-                <div class="form-field full"><label>Descripción</label><textarea name="descripcion">${escape(t.descripcion || '')}</textarea></div>
-                <div class="form-field"><label>Responsable *</label><select name="responsableId" required>${responsableOptions}</select></div>
+                <div class="form-field full"><label>Tema *</label><input name="tema" required value="${escape(t.tema)}" ${canEdit ? '' : 'disabled'}></div>
+                <div class="form-field full"><label>Descripción</label><textarea name="descripcion" ${canEdit ? '' : 'disabled'}>${escape(t.descripcion || '')}</textarea></div>
+                <div class="form-field"><label>Responsable *</label><select name="responsableId" required ${canEdit ? '' : 'disabled'}>${responsableOptions}</select></div>
                 <div class="form-field"><label>Prioridad</label>
-                    <select name="prioridad">${['Alta', 'Media', 'Baja'].map(p => `<option ${t.prioridad === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
+                    <select name="prioridad" ${canEdit ? '' : 'disabled'}>${['Alta', 'Media', 'Baja'].map(p => `<option ${t.prioridad === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
                 </div>
-                <div class="form-field"><label>Fecha inicio</label><input type="date" name="fechaInicio" value="${t.fechaInicio || ''}"></div>
-                <div class="form-field"><label>Fecha compromiso *</label><input type="date" name="fechaCompromiso" required value="${t.fechaCompromiso || ''}"></div>
+                <div class="form-field"><label>Fecha inicio</label><input type="date" name="fechaInicio" value="${t.fechaInicio || ''}" ${canEdit ? '' : 'disabled'}></div>
+                <div class="form-field"><label>Fecha compromiso *</label><input type="date" name="fechaCompromiso" required value="${t.fechaCompromiso || ''}" ${canEdit ? '' : 'disabled'}></div>
                 <div class="form-field"><label>Estatus</label>
-                    <select name="estatus">${['Pendiente', 'En proceso', 'Concluida', 'Vencida'].map(p => `<option ${t.estatus === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
+                    <select name="estatus" ${canEdit ? '' : 'disabled'}>${['Pendiente', 'En proceso', 'Concluida', 'Vencida'].map(p => `<option ${t.estatus === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
                 </div>
                 <div class="form-field"><label>Bloqueada</label>
-                    <select name="bloqueada"><option value="false" ${!t.bloqueada ? 'selected' : ''}>No</option><option value="true" ${t.bloqueada ? 'selected' : ''}>Sí</option></select>
+                    <select name="bloqueada" ${canEdit ? '' : 'disabled'}><option value="false" ${!t.bloqueada ? 'selected' : ''}>No</option><option value="true" ${t.bloqueada ? 'selected' : ''}>Sí</option></select>
                 </div>
-                <div class="form-field"><label>Motivo bloqueo</label><input name="motivoBloqueo" value="${escape(t.motivoBloqueo || '')}"></div>
-                <div class="form-field full"><label>Evidencia URL</label><input type="url" name="evidenciaUrl" value="${escape(t.evidenciaUrl || '')}"></div>
-                <div class="form-field full"><label>Comentarios</label><textarea name="comentarios">${escape(t.comentarios || '')}</textarea></div>
+                <div class="form-field"><label>Motivo bloqueo</label><input name="motivoBloqueo" value="${escape(t.motivoBloqueo || '')}" ${canEdit ? '' : 'disabled'}></div>
+                <div class="form-field full"><label>Evidencia URL</label><input type="url" name="evidenciaUrl" value="${escape(t.evidenciaUrl || '')}" ${canEdit ? '' : 'disabled'}></div>
+                <div class="form-field full"><label>Comentarios</label><textarea name="comentarios" ${canEdit ? '' : 'disabled'}>${escape(t.comentarios || '')}</textarea></div>
                 
                 <!-- Dynamic Stages Subform -->
                 <div class="form-field full" style="margin-top: 15px; border-top: 1px solid rgba(138, 0, 49, 0.15); padding-top: 15px;">
@@ -721,7 +726,7 @@ export async function openTemaModal(tema, actividades) {
                                 Opcional. Si no agregas etapas, el sistema usará los datos del tema como etapa inicial.
                             </p>
                         </div>
-                        <button type="button" class="internal-button" id="btn-add-etapa" style="padding: 2px 10px; min-height: 28px; font-size: 0.75rem;">+ Agregar etapa</button>
+                        <button type="button" class="internal-button" id="btn-add-etapa" style="padding: 2px 10px; min-height: 28px; font-size: 0.75rem; display: ${canEdit ? 'inline-block' : 'none'};">+ Agregar etapa</button>
                     </div>
                     <div id="etapas-list-container" style="display: flex; flex-direction: column; gap: 10px;">
                         <!-- Stages render dynamically here -->
@@ -736,7 +741,7 @@ export async function openTemaModal(tema, actividades) {
                     <div class="usuarios-check-list" style="max-height: 140px; overflow-y: auto; border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
                         ${filteredUsers.map(u => `
                             <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.85rem; color: var(--texto); cursor: pointer; margin: 0;">
-                                <input type="checkbox" name="notificarUsuariosIds" value="${u.idUsuario}" style="width: 16px; height: 16px; accent-color: var(--guinda); cursor: pointer;">
+                                <input type="checkbox" name="notificarUsuariosIds" value="${u.idUsuario}" ${canEdit ? '' : 'disabled'} style="width: 16px; height: 16px; accent-color: var(--guinda); cursor: pointer;">
                                 <span>${escape(u.nombre)}</span>
                             </label>
                         `).join('')}
@@ -749,12 +754,12 @@ export async function openTemaModal(tema, actividades) {
                 <span class="error-msg"></span>
             </div>
             <div class="form-actions">
-                ${!isNew ? `<button type="button" class="internal-button" style="color:var(--riesgo);border-color:rgba(180,35,24,.3)" id="btn-del-tema">Eliminar</button>` : ''}
-                <button type="submit" class="internal-button internal-button--primary">${isNew ? 'Crear' : 'Guardar'}</button>
+                ${(canEdit && !isNew) ? `<button type="button" class="internal-button" style="color:var(--riesgo);border-color:rgba(180,35,24,.3)" id="btn-del-tema">Eliminar</button>` : ''}
+                ${canEdit ? `<button type="submit" class="internal-button internal-button--primary">${isNew ? 'Crear' : 'Guardar'}</button>` : `<button type="button" class="internal-button" id="btn-cerrar-tema">Cerrar</button>`}
             </div>
         </form>`;
 
-    const close = openModal(isNew ? 'Nuevo tema' : 'Editar tema', html, async (data, close) => {
+    const close = openModal(isNew ? 'Nuevo tema' : (canEdit ? 'Editar tema' : 'Ver tema'), html, canEdit ? async (data, close) => {
         const submitBtn = document.querySelector('#modal-body form button[type="submit"]');
         if (submitBtn) {
             submitBtn.disabled = true;
@@ -865,7 +870,7 @@ export async function openTemaModal(tema, actividades) {
                 submitBtn.textContent = isNew ? 'Crear' : 'Guardar';
             }
         }
-    });
+    } : null);
 
     const respSelect = document.querySelector('#modal-body form select[name="responsableId"]');
     const fInicioInput = document.querySelector('#modal-body form input[name="fechaInicio"]');
@@ -1030,7 +1035,7 @@ export async function openTemaModal(tema, actividades) {
             const isResponsible = String(u.idUsuario) === selectedStageResponsible;
             return `
                 <label class="etapa-corresponsable-label" data-id="${u.idUsuario}" style="display:${isResponsible ? 'none' : 'flex'}; align-items:center; gap:7px; font-weight:500; font-size:.78rem; color:var(--texto); cursor:pointer; margin:0;">
-                    <input type="checkbox" name="etapaCorresponsablesIds" value="${u.idUsuario}" ${!isResponsible && etapaCorresponsables.includes(Number(u.idUsuario)) ? 'checked' : ''} style="width:14px;height:14px;accent-color:var(--guinda);cursor:pointer;">
+                    <input type="checkbox" name="etapaCorresponsablesIds" value="${u.idUsuario}" ${!isResponsible && etapaCorresponsables.includes(Number(u.idUsuario)) ? 'checked' : ''} ${canEdit ? '' : 'disabled'} style="width:14px;height:14px;accent-color:var(--guinda);cursor:pointer;">
                     <span>${escape(u.nombre)}</span>
                 </label>`;
         }).join('');
@@ -1040,34 +1045,36 @@ export async function openTemaModal(tema, actividades) {
                 <input type="hidden" name="etapaId" value="${etapa.etapaId || ''}">
                 <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between;">
                     <span style="font-weight: 700; font-size: 0.8rem; color: var(--guinda);">Etapa ${index + 1}</span>
+                    ${canEdit ? `
                     <div style="display: flex; gap: 6px; align-items: center;">
                         <button type="button" class="btn-move-up-etapa" title="Subir" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-arrow-up" style="font-size:0.8rem; color:#8a0031;"></i></button>
                         <button type="button" class="btn-move-down-etapa" title="Bajar" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-arrow-down" style="font-size:0.8rem; color:#8a0031;"></i></button>
                         <button type="button" class="btn-del-etapa" title="Eliminar" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-trash" style="font-size:0.8rem; color:var(--riesgo);"></i></button>
                     </div>
+                    ` : ''}
                 </div>
                 <div style="display: grid; grid-template-columns: 2fr 1.5fr; gap: 8px;">
                     <div class="form-field full" style="margin:0;"><label style="font-size:0.75rem; margin-bottom: 2px;">Nombre etapa *</label>
-                        <input type="text" name="etapaNombre" required style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;" value="${escape(etapa.nombre || '')}">
+                        <input type="text" name="etapaNombre" required ${canEdit ? '' : 'disabled'} style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;" value="${escape(etapa.nombre || '')}">
                     </div>
                     <div class="form-field full" style="margin:0;"><label style="font-size:0.75rem; margin-bottom: 2px;">Responsable *</label>
-                        <select name="etapaResponsableId" required style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;">
+                        <select name="etapaResponsableId" required ${canEdit ? '' : 'disabled'} style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;">
                             ${usersOptionsForEtapa}
                         </select>
                     </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 0.8fr 1.2fr; gap: 8px;">
                     <div class="form-field full" style="margin:0;"><label style="font-size:0.75rem; margin-bottom: 2px;">Inicio</label>
-                        <input type="date" name="etapaFechaInicio" style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;" value="${etapa.fechaInicio || ''}">
+                        <input type="date" name="etapaFechaInicio" ${canEdit ? '' : 'disabled'} style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;" value="${etapa.fechaInicio || ''}">
                     </div>
                     <div class="form-field full" style="margin:0;"><label style="font-size:0.75rem; margin-bottom: 2px;">Compromiso *</label>
-                        <input type="date" name="etapaFechaCompromiso" required style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;" value="${etapa.fechaCompromiso || ''}">
+                        <input type="date" name="etapaFechaCompromiso" required ${canEdit ? '' : 'disabled'} style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;" value="${etapa.fechaCompromiso || ''}">
                     </div>
                     <div class="form-field full" style="margin:0;"><label style="font-size:0.75rem; margin-bottom: 2px;">Avance (%)</label>
                         <input type="number" min="0" max="100" name="etapaAvance" readonly style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box; background-color:#f1f5f9; color:#64748b;" value="${etapa.avance ?? 0}">
                     </div>
                     <div class="form-field full" style="margin:0;"><label style="font-size:0.75rem; margin-bottom: 2px;">Estatus</label>
-                        <select name="etapaEstatus" style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;">
+                        <select name="etapaEstatus" ${canEdit ? '' : 'disabled'} style="height:32px; padding:4px 8px; font-size:0.8rem; border-radius:6px; border:1px solid #ccc; width:100%; box-sizing:border-box;">
                             <option value="Pendiente" ${etapa.estatus === 'Pendiente' ? 'selected' : ''}>Pendiente</option>
                             <option value="En proceso" ${etapa.estatus === 'En proceso' ? 'selected' : ''}>En proceso</option>
                             <option value="Concluida" ${etapa.estatus === 'Concluida' ? 'selected' : ''}>Concluida</option>
@@ -1210,14 +1217,22 @@ export async function openTemaModal(tema, actividades) {
 
     updateCorresponsablesChecklist();
 
-    if (!isNew) {
-        document.getElementById('btn-del-tema').onclick = async () => {
-            if (!confirm('¿Eliminar tema?')) return;
-            await dataService.remove('temas', tema.id);
-            toast('Tema eliminado', 'ok');
-            close();
-            window.dispatchEvent(new CustomEvent('gestor:refresh'));
-        };
+    const btnCerrar = document.getElementById('btn-cerrar-tema');
+    if (btnCerrar) {
+        btnCerrar.onclick = () => close();
+    }
+
+    if (canEdit && !isNew) {
+        const btnDel = document.getElementById('btn-del-tema');
+        if (btnDel) {
+            btnDel.onclick = async () => {
+                if (!confirm('¿Eliminar tema?')) return;
+                await dataService.remove('temas', tema.id);
+                toast('Tema eliminado', 'ok');
+                close();
+                window.dispatchEvent(new CustomEvent('gestor:refresh'));
+            };
+        }
     }
 }
 

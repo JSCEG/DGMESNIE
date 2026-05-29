@@ -89,7 +89,10 @@ export function renderAlertas(actividades, temas) {
     const alertas = generarAlertas(actividades, temas);
     const cont = document.getElementById('alertas-list');
     if (!cont) return;
-    document.getElementById('badge-alertas').textContent = alertas.length;
+    const badge = document.getElementById('badge-alertas');
+    if (badge) {
+        badge.textContent = alertas.length;
+    }
 
     const semLabels = { verde: 'A tiempo / Concluido', amarillo: 'Por vencer (≤ 7 días)', rojo: 'Vencido', gris: 'Bloqueado / Sin fecha' };
 

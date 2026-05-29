@@ -320,13 +320,16 @@ function renderAtencionResponsable(rows) {
                 </tr>
             </thead>
             <tbody>
-                ${focus.length ? focus.map(t => `
+                ${focus.length ? focus.map(t => {
+                    const statusCls = t.estatus === 'Concluida' ? 'status-pill--complete' : t.estatus === 'En proceso' ? 'status-pill--progress' : t.estatus === 'Vencida' ? 'status-pill--issue' : '';
+                    return `
                     <tr>
-                        <td>${escape(t.tema)}</td>
+                        <td><strong>${escape(t.tema)}</strong></td>
                         <td>${fmtDate(t.fechaCompromiso)}</td>
-                        <td>${escape(t.estatus || 'Pendiente')}</td>
-                        <td>${Number(t.avance || 0)}%</td>
-                    </tr>`).join('') : '<tr><td colspan="4">Sin temas pendientes en el periodo seleccionado</td></tr>'}
+                        <td><span class="status-pill ${statusCls}">${escape(t.estatus || 'Pendiente')}</span></td>
+                        <td><strong>${Number(t.avance || 0)}%</strong></td>
+                    </tr>`;
+                }).join('') : '<tr><td colspan="4">Sin temas pendientes en el periodo seleccionado</td></tr>'}
             </tbody>
         </table>`;
 }
@@ -370,6 +373,7 @@ function renderDetalleResponsableRow(t, responsableName, actividades) {
     const etapa = etapaActual(t);
     const papel = rolEnTema(t, responsableName);
     const etapas = etapasParticipacion(t, responsableName) || etapa?.nombre || 'Seguimiento simple';
+    const statusCls = t.estatus === 'Concluida' ? 'status-pill--complete' : t.estatus === 'En proceso' ? 'status-pill--progress' : t.estatus === 'Vencida' ? 'status-pill--issue' : '';
     return `
         <tr>
             <td>${escape(actividadNombre(actividades, t))}</td>
@@ -377,7 +381,7 @@ function renderDetalleResponsableRow(t, responsableName, actividades) {
             <td>${papel}</td>
             <td>${escape(etapas)}</td>
             <td>${fmtDate(t.fechaCompromiso)}</td>
-            <td>${escape(t.estatus || 'Pendiente')}</td>
+            <td><span class="status-pill ${statusCls}">${escape(t.estatus || 'Pendiente')}</span></td>
             <td><strong>${t.avance || 0}%</strong></td>
         </tr>`;
 }
@@ -389,10 +393,39 @@ function chunkArray(items, size) {
 }
 
 function miniKpi(label, value, color = '#1f2937') {
+    let bg = '#ffffff';
+    let borderLeft = '1px solid var(--borde)';
+    
+    const labelLower = label.toLowerCase();
+    if (labelLower.includes('concluido') || labelLower.includes('activa')) {
+        bg = 'rgba(2, 122, 72, 0.04)';
+        borderLeft = '4px solid #027a48';
+        color = '#027a48';
+    } else if (labelLower.includes('vencido')) {
+        bg = 'rgba(138, 0, 49, 0.04)';
+        borderLeft = '4px solid #8a0031';
+        color = '#8a0031';
+    } else if (labelLower.includes('vencer')) {
+        bg = 'rgba(180, 137, 52, 0.04)';
+        borderLeft = '4px solid #b48934';
+        color = '#b48934';
+    } else if (labelLower.includes('avance')) {
+        bg = 'rgba(30, 91, 79, 0.04)';
+        borderLeft = '4px solid #1e5b4f';
+        color = '#1e5b4f';
+    } else if (labelLower.includes('activo')) {
+        bg = 'rgba(102, 112, 133, 0.04)';
+        borderLeft = '4px solid #667085';
+        color = '#667085';
+    } else {
+        bg = '#ffffff';
+        borderLeft = '4px solid #b48934'; // Golden/primary brand left border
+    }
+
     return `
-        <article style="border:1px solid var(--borde);border-radius:10px;padding:9px 10px;background:#fff;">
-            <div style="font-size:.7rem;color:var(--texto-suave);font-weight:800;">${escape(label)}</div>
-            <div style="font-size:1.25rem;font-weight:900;color:${color};">${escape(value)}</div>
+        <article style="border:1px solid var(--borde); border-left:${borderLeft}; border-radius:10px; padding:9px 12px; background:${bg}; box-shadow: 0 1px 3px rgba(0,0,0,0.02); transition: all 0.2s ease;">
+            <div style="font-size:.7rem; color:var(--texto-suave); font-weight:800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">${escape(label)}</div>
+            <div style="font-size:1.4rem; font-weight:900; color:${color}; line-height: 1.2;">${escape(value)}</div>
         </article>`;
 }
 

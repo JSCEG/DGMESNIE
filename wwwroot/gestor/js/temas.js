@@ -114,6 +114,7 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(10,94,149,.08);color:#0a5e95;">
                             <i class="fa-solid fa-eye"></i> Ver
                         </button>
+                        ${(window.currentUser && window.currentUser.id === 1) ? `
                         <button type="button" class="tca-btn tca-edit" data-id="${a.id}"
                             title="Editar actividad"
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(138,0,49,.08);color:#8a0031;">
@@ -124,16 +125,19 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(192,34,42,.08);color:#c0222a;">
                             <i class="fa-solid fa-trash"></i> Eliminar
                         </button>
+                        ` : ''}
                         <button type="button" class="tca-btn tca-email" data-id="${a.id}"
                             title="Compartir por correo institucional"
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(71,85,105,.08);color:#475569;">
                             <i class="fa-solid fa-envelope"></i>
                         </button>
+                        <!--
                         <button type="button" class="tca-btn tca-whatsapp" data-id="${a.id}"
                             title="Compartir por WhatsApp (incluye enlace al Gestor)"
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(37,211,102,.1);color:#128C7E;">
                             <i class="fa-brands fa-whatsapp"></i>
                         </button>
+                        -->
                     </div>
                 </article>`;
         }).join('')

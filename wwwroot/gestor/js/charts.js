@@ -121,7 +121,18 @@ export function donutEstatus(temas) {
         },
         exporting: { enabled: false },
         tooltip: { pointFormat: '<b>{point.y}</b> ({point.percentage:.0f}%)' },
-        plotOptions: { pie: { innerSize: '62%', dataLabels: { enabled: false }, showInLegend: true } },
+        plotOptions: {
+            pie: {
+                innerSize: '62%',
+                dataLabels: {
+                    enabled: true,
+                    format: '{point.y} ({point.percentage:.0f}%)',
+                    distance: 8,
+                    style: { fontSize: '9px', fontWeight: '700', textOutline: 'none', color: C.texto }
+                },
+                showInLegend: true
+            }
+        },
         legend: {
             enabled: true, align: 'center', verticalAlign: 'bottom',
             itemStyle: { fontWeight: '600', fontSize: '11px' }
@@ -191,7 +202,10 @@ export function piePrioridad(temas) {
         plotOptions: {
             pie: {
                 dataLabels: {
-                    enabled: false
+                    enabled: true,
+                    format: '{point.y} ({point.percentage:.0f}%)',
+                    distance: 8,
+                    style: { fontSize: '9px', fontWeight: '700', textOutline: 'none', color: C.texto }
                 },
                 showInLegend: true
             }
@@ -272,7 +286,17 @@ export function barrasApiladasTemas(actividades, temas) {
             labels: { style: { fontWeight: '600', fontSize: isMobile ? '9px' : '11px' } }
         },
         yAxis: { title: { text: '' }, allowDecimals: false },
-        plotOptions: { bar: { stacking: 'normal', borderRadius: 8, dataLabels: { enabled: false } } },
+        plotOptions: {
+            bar: {
+                stacking: 'normal',
+                borderRadius: 8,
+                dataLabels: {
+                    enabled: true,
+                    formatter: function() { return this.y > 0 ? this.y : null; },
+                    style: { fontSize: '9px', fontWeight: '700', color: '#ffffff', textOutline: 'none' }
+                }
+            }
+        },
         tooltip: { shared: false, valueSuffix: ' temas' },
         legend: {
             enabled: true, align: 'center', verticalAlign: 'bottom',

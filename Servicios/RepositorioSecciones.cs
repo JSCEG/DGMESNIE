@@ -173,6 +173,14 @@ namespace NSIE.Servicios
                     SelectModuloCompat + " WHERE [SeccionId] = @SeccionId ORDER BY [Orden]",
                     new { SeccionId = seccion.Id });
                 seccion.Modulos = modulos.ToList();
+                
+                foreach (var modulo in seccion.Modulos)
+                {
+                    var vistas = await connection.QueryAsync<VistaSNIER>(
+                        "SELECT [VistaId], [ModuloId], [Titulo], [Controller], [Action], [Perfiles], [Orden], [Activa], [EsExterno] FROM [dgmesnie].[Vista] WHERE [ModuloId] = @ModuloId ORDER BY [Orden]",
+                        new { ModuloId = modulo.Id });
+                    modulo.Vistas = vistas.ToList();
+                }
             }
 
             return seccion;
