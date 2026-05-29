@@ -143,6 +143,21 @@ public class SeccionesController : Controller
     }
 
 
+    [HttpGet]
+    public async Task<IActionResult> GetUsuariosVigentes()
+    {
+        try
+        {
+            var usuarios = await _repositorio.ObtenerUsuariosVigentesAsync();
+            return Json(usuarios);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($">>> Error en GetUsuariosVigentes: {ex.Message}");
+            return StatusCode(500, "Error al obtener usuarios.");
+        }
+    }
+
     // ✅ NUEVO: Renderizar vista parcial del modal
     public async Task<IActionResult> ModalEditarModulo(int id)
     {
@@ -158,7 +173,12 @@ public class SeccionesController : Controller
     public async Task<IActionResult> GuardarEdicionModulo(Modulo modulo)
     {
         if (!ModelState.IsValid)
-            return BadRequest("Datos incompletos para actualizar el módulo.");
+        {
+            var errors = string.Join(" | ", ModelState.Keys
+                .SelectMany(key => ModelState[key].Errors.Select(x => $"{key}: {x.ErrorMessage}")));
+            Console.WriteLine($">>> ModelState inválido en GuardarEdicionModulo: {errors}");
+            return BadRequest($"Datos incompletos para actualizar el módulo. Errores: {errors}");
+        }
 
         await _repositorio.ActualizarModuloAsync(modulo);
         return Ok(new { mensaje = "Módulo actualizado correctamente." });
@@ -202,8 +222,10 @@ public class SeccionesController : Controller
 
         if (!ModelState.IsValid)
         {
-            Console.WriteLine(">>> ModelState inválido");
-            return BadRequest("Faltan datos para guardar el módulo.");
+            var errors = string.Join(" | ", ModelState.Keys
+                .SelectMany(key => ModelState[key].Errors.Select(x => $"{key}: {x.ErrorMessage}")));
+            Console.WriteLine($">>> ModelState inválido en GuardarNuevoModulo: {errors}");
+            return BadRequest($"Faltan datos para guardar el módulo. Errores: {errors}");
         }
 
         await _repositorio.AgregarModuloAsync(modulo);

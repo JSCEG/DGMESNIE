@@ -71,7 +71,7 @@ namespace NSIE.Controllers
         {
             try
             {
-                var acts = await _repo.ObtenerActividadesAsync();
+                var acts = await _repo.ObtenerActividadesAsync(GetCurrentUserId());
                 return Json(acts);
             }
             catch (Exception ex)
@@ -86,6 +86,17 @@ namespace NSIE.Controllers
         {
             var act = await _repo.ObtenerActividadPorIdAsync(id);
             if (act == null) return NotFound();
+
+            var userId = GetCurrentUserId();
+            if (userId.HasValue && userId.Value != 1 && userId.Value != 86)
+            {
+                var isAuthorized = act.ResponsablePrincipalId == userId.Value ||
+                                   (act.Corresponsables != null && act.Corresponsables.Any(c => c.IdUsuario == userId.Value));
+                if (!isAuthorized)
+                {
+                    return NotFound();
+                }
+            }
             return Json(act);
         }
 
@@ -218,7 +229,7 @@ namespace NSIE.Controllers
         {
             try
             {
-                var temas = await _repo.ObtenerTemasAsync(actividadId);
+                var temas = await _repo.ObtenerTemasAsync(actividadId, GetCurrentUserId());
                 return Json(temas);
             }
             catch (Exception ex)
@@ -233,6 +244,19 @@ namespace NSIE.Controllers
         {
             var tema = await _repo.ObtenerTemaPorIdAsync(id);
             if (tema == null) return NotFound();
+
+            var userId = GetCurrentUserId();
+            if (userId.HasValue && userId.Value != 1 && userId.Value != 86)
+            {
+                var isAuthorized = tema.ResponsableId == userId.Value ||
+                                   (tema.Corresponsables != null && tema.Corresponsables.Any(c => c.IdUsuario == userId.Value)) ||
+                                   (tema.Etapas != null && tema.Etapas.Any(e => e.ResponsableId == userId.Value ||
+                                                                                (e.Corresponsables != null && e.Corresponsables.Any(c => c.IdUsuario == userId.Value))));
+                if (!isAuthorized)
+                {
+                    return NotFound();
+                }
+            }
             return Json(tema);
         }
 

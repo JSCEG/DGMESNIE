@@ -30,30 +30,50 @@ namespace NSIE.Servicios
             {
                 var sql = @"
                     SELECT 
-                        p.*, 
-                        e.Nombre AS EmpresaNombre,
+                        p.ProyectoId,
+                        p.Status,
+                        p.NombreOficial AS Nombre,
+                        p.NombreCorto,
+                        p.NombreNormalizado,
+                        p.Descripcion,
+                        p.TecnologiaId,
+                        p.ClasificacionId,
+                        p.PrioridadId,
+                        p.SemaforoId,
+                        p.Renovable,
+                        p.CapacidadMW,
+                        p.Activo,
+                        p.CreadoEn,
+                        p.CreadoPor,
+                        p.ActualizadoEn,
+                        p.ActualizadoPor,
+                        (SELECT TOP 1 a.RazonSocial FROM core.ProyectoActor pa JOIN core.Actor a ON a.ActorId = pa.ActorId WHERE pa.ProyectoId = p.ProyectoId AND pa.TipoActorId = 1) AS Promovente,
+                        (SELECT TOP 1 g.Nombre FROM core.ProyectoActor pa JOIN core.Actor a ON a.ActorId = pa.ActorId LEFT JOIN core.GrupoInteresEconomico g ON g.GrupoEconomicoId = a.GrupoEconomicoId WHERE pa.ProyectoId = p.ProyectoId AND pa.TipoActorId = 1) AS GrupoEconomico,
+                        (SELECT TOP 1 e.Nombre FROM core.CatEntidadFederativa e JOIN core.ProyectoUbicacion u ON u.EntidadFederativaId = e.EntidadFederativaId WHERE u.ProyectoId = p.ProyectoId) AS EntidadFederativa,
+                        (SELECT TOP 1 m.Nombre FROM core.CatMunicipio m JOIN core.ProyectoUbicacion u ON u.MunicipioId = m.MunicipioId WHERE u.ProyectoId = p.ProyectoId) AS Municipio,
+                        ct.Nombre AS Tipo,
                         cc.Nombre AS ClasificacionNombre,
                         cp.Nombre AS PrioridadNombre,
                         cs.Nombre AS SemaforoNombre,
                         cs.ColorHex AS SemaforoColorHex
-                    FROM dgmesnie.Proyecto p
-                    LEFT JOIN dgmesnie.Empresa e ON e.EmpresaId = p.EmpresaId
-                    LEFT JOIN dgmesnie.CatClasificacion cc ON cc.ClasificacionId = p.ClasificacionId
-                    LEFT JOIN dgmesnie.CatPrioridad cp ON cp.PrioridadId = p.PrioridadId
-                    LEFT JOIN dgmesnie.CatSemaforo cs ON cs.SemaforoId = p.SemaforoId
+                    FROM core.Proyecto p
+                    LEFT JOIN core.CatTecnologia ct ON ct.TecnologiaId = p.TecnologiaId
+                    LEFT JOIN core.CatClasificacion cc ON cc.ClasificacionId = p.ClasificacionId
+                    LEFT JOIN core.CatPrioridad cp ON cp.PrioridadId = p.PrioridadId
+                    LEFT JOIN core.CatSemaforo cs ON cs.SemaforoId = p.SemaforoId
                     WHERE p.Activo = 1";
 
                 var parameters = new DynamicParameters();
 
                 if (!string.IsNullOrWhiteSpace(buscar))
                 {
-                    sql += " AND (p.Nombre LIKE @Buscar OR p.Promovente LIKE @Buscar OR p.GrupoEconomico LIKE @Buscar OR p.NumeroPermiso LIKE @Buscar OR p.EntidadFederativa LIKE @Buscar OR p.Municipio LIKE @Buscar)";
+                    sql += " AND (p.NombreOficial LIKE @Buscar OR p.NombreCorto LIKE @Buscar OR p.NombreNormalizado LIKE @Buscar)";
                     parameters.Add("Buscar", $"%{buscar.Trim()}%");
                 }
 
                 if (!string.IsNullOrWhiteSpace(tecnologia))
                 {
-                    sql += " AND p.Tipo = @Tecnologia";
+                    sql += " AND ct.Nombre = @Tecnologia";
                     parameters.Add("Tecnologia", tecnologia.Trim());
                 }
 
@@ -75,7 +95,7 @@ namespace NSIE.Servicios
                     parameters.Add("SemaforoId", semaforoId.Value);
                 }
 
-                sql += " ORDER BY p.Nombre";
+                sql += " ORDER BY p.NombreOficial";
 
                 return (await db.QueryAsync<Proyecto>(sql, parameters)).ToList();
             }
@@ -87,17 +107,38 @@ namespace NSIE.Servicios
             {
                 var sql = @"
                     SELECT 
-                        p.*, 
-                        e.Nombre AS EmpresaNombre,
+                        p.ProyectoId,
+                        p.Status,
+                        p.NombreOficial AS Nombre,
+                        p.NombreCorto,
+                        p.NombreNormalizado,
+                        p.Descripcion,
+                        p.TecnologiaId,
+                        p.ClasificacionId,
+                        p.PrioridadId,
+                        p.SemaforoId,
+                        p.Renovable,
+                        p.CapacidadMW,
+                        p.Activo,
+                        p.CreadoEn,
+                        p.CreadoPor,
+                        p.ActualizadoEn,
+                        p.ActualizadoPor,
+                        (SELECT TOP 1 a.RazonSocial FROM core.ProyectoActor pa JOIN core.Actor a ON a.ActorId = pa.ActorId WHERE pa.ProyectoId = p.ProyectoId AND pa.TipoActorId = 1) AS Promovente,
+                        (SELECT TOP 1 g.Nombre FROM core.ProyectoActor pa JOIN core.Actor a ON a.ActorId = pa.ActorId LEFT JOIN core.GrupoInteresEconomico g ON g.GrupoEconomicoId = a.GrupoEconomicoId WHERE pa.ProyectoId = p.ProyectoId AND pa.TipoActorId = 1) AS GrupoEconomico,
+                        (SELECT TOP 1 e.Nombre FROM core.CatEntidadFederativa e JOIN core.ProyectoUbicacion u ON u.EntidadFederativaId = e.EntidadFederativaId WHERE u.ProyectoId = p.ProyectoId) AS EntidadFederativa,
+                        (SELECT TOP 1 m.Nombre FROM core.CatMunicipio m JOIN core.ProyectoUbicacion u ON u.MunicipioId = m.MunicipioId WHERE u.ProyectoId = p.ProyectoId) AS Municipio,
+                        (SELECT TOP 1 a.ActorId FROM core.ProyectoActor pa JOIN core.Actor a ON a.ActorId = pa.ActorId WHERE pa.ProyectoId = p.ProyectoId AND pa.TipoActorId = 1) AS EmpresaId,
+                        ct.Nombre AS Tipo,
                         cc.Nombre AS ClasificacionNombre,
                         cp.Nombre AS PrioridadNombre,
                         cs.Nombre AS SemaforoNombre,
                         cs.ColorHex AS SemaforoColorHex
-                    FROM dgmesnie.Proyecto p
-                    LEFT JOIN dgmesnie.Empresa e ON e.EmpresaId = p.EmpresaId
-                    LEFT JOIN dgmesnie.CatClasificacion cc ON cc.ClasificacionId = p.ClasificacionId
-                    LEFT JOIN dgmesnie.CatPrioridad cp ON cp.PrioridadId = p.PrioridadId
-                    LEFT JOIN dgmesnie.CatSemaforo cs ON cs.SemaforoId = p.SemaforoId
+                    FROM core.Proyecto p
+                    LEFT JOIN core.CatTecnologia ct ON ct.TecnologiaId = p.TecnologiaId
+                    LEFT JOIN core.CatClasificacion cc ON cc.ClasificacionId = p.ClasificacionId
+                    LEFT JOIN core.CatPrioridad cp ON cp.PrioridadId = p.PrioridadId
+                    LEFT JOIN core.CatSemaforo cs ON cs.SemaforoId = p.SemaforoId
                     WHERE p.ProyectoId = @Id AND p.Activo = 1";
 
                 return await db.QueryFirstOrDefaultAsync<Proyecto>(sql, new { Id = id });
@@ -108,57 +149,117 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = @"
-                    INSERT INTO dgmesnie.Proyecto (
-                        Status, Nombre, EmpresaId, Promovente, GrupoEconomico, Origen, Anio,
-                        AdicionesSustituciones, ContratoUnidad, Tipo, Renovable, CapacidadMW, Mes,
-                        GerenciaControl, RegionTransmision, EntidadFederativa, Municipio, Longitud, Latitud,
-                        Firmes, PorcentajeConstruccion, FolioEvIS_MISSE, StatusEvIS_MISSE, StatusCPLI,
-                        ConflictosSociales, NumeroPermiso, FechaInicioObras, FechaTerminacionObras,
-                        FechaEntradaOperacion, EstadoProgramaObras, TramiteCNE, ObservacionesCNE,
-                        Categoria, InteresadaEnContinuar, ObservacionesUEVISPI, ResumenCaso,
-                        PropuestaAtencion, RequiereAlmacenamiento, SiguientesPasos, ClasificacionId,
-                        PrioridadId, SemaforoId, RazonesBreves, TramitesSemarnat, EstatusSemarnat,
-                        ObservacionesSemarnat, Fuente, SemaforoPPT, FechaUltimaActualizacion,
-                        FuenteUltimaActualizacion, CreadoPor, CreadoEn
-                    ) VALUES (
-                        @Status, @Nombre, @EmpresaId, @Promovente, @GrupoEconomico, @Origen, @Anio,
-                        @AdicionesSustituciones, @ContratoUnidad, @Tipo, @Renovable, @CapacidadMW, @Mes,
-                        @GerenciaControl, @RegionTransmision, @EntidadFederativa, @Municipio, @Longitud, @Latitud,
-                        @Firmes, @PorcentajeConstruccion, @FolioEvIS_MISSE, @StatusEvIS_MISSE, @StatusCPLI,
-                        @ConflictosSociales, @NumeroPermiso, @FechaInicioObras, @FechaTerminacionObras,
-                        @FechaEntradaOperacion, @EstadoProgramaObras, @TramiteCNE, @ObservacionesCNE,
-                        @Categoria, @InteresadaEnContinuar, @ObservacionesUEVISPI, @ResumenCaso,
-                        @PropuestaAtencion, @RequiereAlmacenamiento, @SiguientesPasos, @ClasificacionId,
-                        @PrioridadId, @SemaforoId, @RazonesBreves, @TramitesSemarnat, @EstatusSemarnat,
-                        @ObservacionesSemarnat, @Fuente, @SemaforoPPT, @FechaUltimaActualizacion,
-                        @FuenteUltimaActualizacion, @Usuario, GETDATE()
-                    );
-                    SELECT SCOPE_IDENTITY();";
+                if (db.State != ConnectionState.Open) db.Open();
+                using (var tx = db.BeginTransaction())
+                {
+                    try
+                    {
+                        // 1. Insert core.Proyecto
+                        var sqlProy = @"
+                            INSERT INTO core.Proyecto (
+                                Status, NombreOficial, NombreCorto, TecnologiaId, EstatusProyectoId, NivelMadurezId, ClasificacionId, PrioridadId, SemaforoId, Renovable, CapacidadMW, Activo, CreadoEn, CreadoPor
+                            ) VALUES (
+                                @Status, @Nombre, @NombreCorto, (SELECT TOP 1 TecnologiaId FROM core.CatTecnologia WHERE Nombre = @Tipo), 3, 1, @ClasificacionId, @PrioridadId, @SemaforoId, @Renovable, @CapacidadMW, 1, GETDATE(), @Usuario
+                            );
+                            SELECT SCOPE_IDENTITY();";
 
-                var id = await db.ExecuteScalarAsync<int>(sql, new {
-                    form.Status, form.Nombre, form.EmpresaId, form.Promovente, form.GrupoEconomico, form.Origen, form.Anio,
-                    form.AdicionesSustituciones, form.ContratoUnidad, form.Tipo, form.Renovable, form.CapacidadMW, form.Mes,
-                    form.GerenciaControl, form.RegionTransmision, form.EntidadFederativa, form.Municipio, form.Longitud, form.Latitud,
-                    form.Firmes, form.PorcentajeConstruccion, form.FolioEvIS_MISSE, form.StatusEvIS_MISSE, form.StatusCPLI,
-                    form.ConflictosSociales, form.NumeroPermiso, form.FechaInicioObras, form.FechaTerminacionObras,
-                    form.FechaEntradaOperacion, form.EstadoProgramaObras, form.TramiteCNE, form.ObservacionesCNE,
-                    form.Categoria, form.InteresadaEnContinuar, form.ObservacionesUEVISPI, form.ResumenCaso,
-                    form.PropuestaAtencion, form.RequiereAlmacenamiento, form.SiguientesPasos, form.ClasificacionId,
-                    form.PrioridadId, form.SemaforoId, form.RazonesBreves, form.TramitesSemarnat, form.EstatusSemarnat,
-                    form.ObservacionesSemarnat, form.Fuente, form.SemaforoPPT, form.FechaUltimaActualizacion,
-                    form.FuenteUltimaActualizacion, Usuario = usuario
-                });
+                        var pId = await db.ExecuteScalarAsync<int>(sqlProy, new {
+                            form.Status,
+                            form.Nombre,
+                            NombreCorto = IngestionService.NormalizeProjectName(form.Nombre),
+                            form.Tipo,
+                            form.ClasificacionId,
+                            form.PrioridadId,
+                            form.SemaforoId,
+                            form.Renovable,
+                            form.CapacidadMW,
+                            Usuario = usuario
+                        }, tx);
 
-                // Write initial JSON snapshot to Bitacora as "Carga Inicial"
-                var proj = await ObtenerProyectoPorIdAsync(id);
-                var snapshot = JsonConvert.SerializeObject(proj);
-                await db.ExecuteAsync(@"
-                    INSERT INTO dgmesnie.BitacoraProyecto (ProyectoId, FechaEvento, ValoracionTexto, ResumenAcuerdos, SnapshotProyectoJSON, CreadoPor, CreadoEn)
-                    VALUES (@ProyectoId, GETDATE(), 'CREACIÓN', 'Carga inicial del proyecto.', @Snapshot, @Usuario, GETDATE())",
-                    new { ProyectoId = id, Snapshot = snapshot, Usuario = usuario });
+                        // 2. Insert core.ProyectoIdentificador (Initial manual ID)
+                        await db.ExecuteAsync(@"
+                            INSERT INTO core.ProyectoIdentificador (ProyectoId, OrigenDatosId, ClaveExterna, NombreEnOrigen)
+                            VALUES (@ProyectoId, 1, @ClaveExterna, @NombreEnOrigen)
+                        ", new {
+                            ProyectoId = pId,
+                            ClaveExterna = form.NumeroPermiso ?? $"MANUAL-{pId}",
+                            NombreEnOrigen = form.Nombre
+                        }, tx);
 
-                return id;
+                        // 3. Associate with Empresa/Actor if provided
+                        if (form.EmpresaId.HasValue)
+                        {
+                            await db.ExecuteAsync(@"
+                                INSERT INTO core.ProyectoActor (ProyectoId, ActorId, TipoActorId)
+                                VALUES (@ProyectoId, @ActorId, 1) -- 1 = Promovente
+                            ", new { ProyectoId = pId, ActorId = form.EmpresaId.Value }, tx);
+                        }
+
+                        // 4. Insert core.ProyectoUbicacion
+                        int entId = 99; // No Especificado por defecto
+                        int munId = 99001;
+                        if (!string.IsNullOrWhiteSpace(form.EntidadFederativa))
+                        {
+                            var eRes = await db.QueryFirstOrDefaultAsync<int?>(@"
+                                SELECT EntidadFederativaId FROM core.CatEntidadFederativa WHERE Nombre LIKE @Nombre
+                            ", new { Nombre = $"%{form.EntidadFederativa}%" }, tx);
+                            if (eRes.HasValue)
+                            {
+                                entId = eRes.Value;
+                                var mRes = await db.QueryFirstOrDefaultAsync<int?>(@"
+                                    SELECT MunicipioId FROM core.CatMunicipio WHERE EntidadFederativaId = @entId
+                                ", new { entId }, tx);
+                                if (mRes.HasValue) munId = mRes.Value;
+                            }
+                        }
+
+                        await db.ExecuteAsync(@"
+                            INSERT INTO core.ProyectoUbicacion (ProyectoId, EntidadFederativaId, MunicipioId, Localidad, EsPrincipal, RegionTransmision)
+                            VALUES (@ProyectoId, @EntidadFederativaId, @MunicipioId, @Localidad, 1, @RegionTransmision)
+                        ", new {
+                            ProyectoId = pId,
+                            EntidadFederativaId = entId,
+                            MunicipioId = munId,
+                            Localidad = form.Municipio,
+                            form.RegionTransmision
+                        }, tx);
+
+                        // 5. Insert core.ProyectoDatosTecnicos
+                        await db.ExecuteAsync(@"
+                            INSERT INTO core.ProyectoDatosTecnicos (ProyectoId, CapacidadInstaladaMW, AlmacenamientoBess, EsHibrido, ComentariosTecnicos)
+                            VALUES (@ProyectoId, @Capacidad, @Bess, @Bess, @Comentarios)
+                        ", new {
+                            ProyectoId = pId,
+                            Capacidad = form.CapacidadMW ?? 0.0m,
+                            Bess = form.RequiereAlmacenamiento == "SÍ" || form.RequiereAlmacenamiento == "SI" ? 1 : 0,
+                            Comentarios = form.EstadoProgramaObras
+                        }, tx);
+
+                        // 6. Insert core.ProyectoDatosFinancieros
+                        await db.ExecuteAsync(@"
+                            INSERT INTO core.ProyectoDatosFinancieros (ProyectoId, MonedaId, FuenteFinanciamiento, NombreEPC)
+                            VALUES (@ProyectoId, 1, @Fuente, @EPC)
+                        ", new { ProyectoId = pId, Fuente = form.Fuente, EPC = form.Promovente }, tx);
+
+                        // 7. Write initial JSON snapshot to Bitacora
+                        var proj = await db.QueryFirstOrDefaultAsync<Proyecto>(
+                            "SELECT * FROM core.Proyecto WHERE ProyectoId = @Id", new { Id = pId }, tx);
+                        var snapshot = JsonConvert.SerializeObject(proj);
+
+                        await db.ExecuteAsync(@"
+                            INSERT INTO core.BitacoraProyecto (ProyectoId, FechaEvento, ValoracionTexto, ResumenAcuerdos, SnapshotProyectoJSON, CreadoPor, CreadoEn)
+                            VALUES (@ProyectoId, GETDATE(), 'CREACIÓN', 'Carga inicial del proyecto.', @Snapshot, @Usuario, GETDATE())",
+                            new { ProyectoId = pId, Snapshot = snapshot, Usuario = usuario }, tx);
+
+                        tx.Commit();
+                        return pId;
+                    }
+                    catch (Exception)
+                    {
+                        tx.Rollback();
+                        throw;
+                    }
+                }
             }
         }
 
@@ -175,13 +276,25 @@ namespace NSIE.Servicios
                     try
                     {
                         // 1. Get current state from database
-                        var current = await db.QueryFirstOrDefaultAsync<Proyecto>(
-                            "SELECT * FROM dgmesnie.Proyecto WHERE ProyectoId = @Id AND Activo = 1",
+                        var current = await db.QueryFirstOrDefaultAsync<Proyecto>(@"
+                            SELECT 
+                                p.*, 
+                                ct.Nombre AS Tipo,
+                                cc.Nombre AS ClasificacionNombre,
+                                cp.Nombre AS PrioridadNombre,
+                                cs.Nombre AS SemaforoNombre,
+                                (SELECT TOP 1 a.RazonSocial FROM core.ProyectoActor pa JOIN core.Actor a ON a.ActorId = pa.ActorId WHERE pa.ProyectoId = p.ProyectoId AND pa.TipoActorId = 1) AS Promovente
+                            FROM core.Proyecto p
+                            LEFT JOIN core.CatTecnologia ct ON ct.TecnologiaId = p.TecnologiaId
+                            LEFT JOIN core.CatClasificacion cc ON cc.ClasificacionId = p.ClasificacionId
+                            LEFT JOIN core.CatPrioridad cp ON cp.PrioridadId = p.PrioridadId
+                            LEFT JOIN core.CatSemaforo cs ON cs.SemaforoId = p.SemaforoId
+                            WHERE p.ProyectoId = @Id AND p.Activo = 1",
                             new { Id = id }, tx);
 
                         if (current == null) return false;
 
-                        // 2. Perform field-by-field audit comparison
+                        // 2. Audit check
                         var auditLogs = new List<dynamic>();
                         void CheckChange(string fieldName, object oldVal, object newVal)
                         {
@@ -194,109 +307,63 @@ namespace NSIE.Servicios
                         }
 
                         CheckChange("Status", current.Status, form.Status);
-                        CheckChange("Nombre real", current.Nombre, form.Nombre);
-                        CheckChange("EmpresaId", current.EmpresaId, form.EmpresaId);
-                        CheckChange("Promovente", current.Promovente, form.Promovente);
-                        CheckChange("Grupo Económico", current.GrupoEconomico, form.GrupoEconomico);
-                        CheckChange("Origen", current.Origen, form.Origen);
-                        CheckChange("Año", current.Anio, form.Anio);
-                        CheckChange("Adiciones o sustituciones", current.AdicionesSustituciones, form.AdicionesSustituciones);
-                        CheckChange("Contrato o unidad", current.ContratoUnidad, form.ContratoUnidad);
-                        CheckChange("Tipo", current.Tipo, form.Tipo);
-                        CheckChange("Renovable", current.Renovable, form.Renovable);
-                        CheckChange("CapacidadMW", current.CapacidadMW, form.CapacidadMW);
-                        CheckChange("Mes", current.Mes, form.Mes);
-                        CheckChange("Gerencia de control", current.GerenciaControl, form.GerenciaControl);
-                        CheckChange("Región de transmisión", current.RegionTransmision, form.RegionTransmision);
-                        CheckChange("Entidad Federativa", current.EntidadFederativa, form.EntidadFederativa);
-                        CheckChange("Municipio", current.Municipio, form.Municipio);
-                        CheckChange("Longitud", current.Longitud, form.Longitud);
-                        CheckChange("Latitud", current.Latitud, form.Latitud);
-                        CheckChange("Firmes", current.Firmes, form.Firmes);
-                        CheckChange("Porcentaje de Construcción", current.PorcentajeConstruccion, form.PorcentajeConstruccion);
-                        CheckChange("Folio EvIS/MISSE", current.FolioEvIS_MISSE, form.FolioEvIS_MISSE);
-                        CheckChange("Status EvIS/MISSE", current.StatusEvIS_MISSE, form.StatusEvIS_MISSE);
-                        CheckChange("Status CPLI", current.StatusCPLI, form.StatusCPLI);
-                        CheckChange("Conflictos sociales detectados", current.ConflictosSociales, form.ConflictosSociales);
-                        CheckChange("Número de Permiso", current.NumeroPermiso, form.NumeroPermiso);
-                        CheckChange("Inicio de Obras", current.FechaInicioObras?.ToString("yyyy-MM-dd"), form.FechaInicioObras?.ToString("yyyy-MM-dd"));
-                        CheckChange("Terminación de Obras", current.FechaTerminacionObras?.ToString("yyyy-MM-dd"), form.FechaTerminacionObras?.ToString("yyyy-MM-dd"));
-                        CheckChange("Entrada en Operación", current.FechaEntradaOperacion?.ToString("yyyy-MM-dd"), form.FechaEntradaOperacion?.ToString("yyyy-MM-dd"));
-                        CheckChange("Estado actual del Programa de Obras", current.EstadoProgramaObras, form.EstadoProgramaObras);
-                        CheckChange("Trámite en proceso con CNE", current.TramiteCNE, form.TramiteCNE);
-                        CheckChange("Observaciones CNE", current.ObservacionesCNE, form.ObservacionesCNE);
-                        CheckChange("Categoría", current.Categoria, form.Categoria);
-                        CheckChange("Interesada en Continuar", current.InteresadaEnContinuar, form.InteresadaEnContinuar);
-                        CheckChange("Observaciones UEVISPI", current.ObservacionesUEVISPI, form.ObservacionesUEVISPI);
-                        CheckChange("Resumen del Caso", current.ResumenCaso, form.ResumenCaso);
-                        CheckChange("Propuesta de Atención", current.PropuestaAtencion, form.PropuestaAtencion);
-                        CheckChange("Requiere Almacenamiento", current.RequiereAlmacenamiento, form.RequiereAlmacenamiento);
-                        CheckChange("Siguientes Pasos", current.SiguientesPasos, form.SiguientesPasos);
+                        CheckChange("Nombre oficial", current.Nombre, form.Nombre);
                         CheckChange("ClasificacionId", current.ClasificacionId, form.ClasificacionId);
                         CheckChange("PrioridadId", current.PrioridadId, form.PrioridadId);
                         CheckChange("SemaforoId", current.SemaforoId, form.SemaforoId);
-                        CheckChange("Razones (Breves)", current.RazonesBreves, form.RazonesBreves);
-                        CheckChange("Trámites SEMARNAT", current.TramitesSemarnat, form.TramitesSemarnat);
-                        CheckChange("Estatus SEMARNAT", current.EstatusSemarnat, form.EstatusSemarnat);
-                        CheckChange("Observaciones SEMARNAT", current.ObservacionesSemarnat, form.ObservacionesSemarnat);
-                        CheckChange("Fuente", current.Fuente, form.Fuente);
-                        CheckChange("Semáforo PPT", current.SemaforoPPT, form.SemaforoPPT);
-                        CheckChange("Última actualización", current.FechaUltimaActualizacion?.ToString("yyyy-MM-dd"), form.FechaUltimaActualizacion?.ToString("yyyy-MM-dd"));
-                        CheckChange("Fuente última actualización", current.FuenteUltimaActualizacion, form.FuenteUltimaActualizacion);
+                        CheckChange("CapacidadMW", current.CapacidadMW, form.CapacidadMW);
 
-                        // 3. Write changed fields to HistorialProyecto
                         foreach (var log in auditLogs)
                         {
                             await db.ExecuteAsync(@"
-                                INSERT INTO dgmesnie.HistorialProyecto (ProyectoId, Campo, ValorAnterior, ValorNuevo, CambiadoEn, CambiadoPor)
+                                INSERT INTO core.HistorialProyecto (ProyectoId, Campo, ValorAnterior, ValorNuevo, CambiadoEn, CambiadoPor)
                                 VALUES (@ProyectoId, @Campo, @Anterior, @Nuevo, GETDATE(), @Usuario)",
                                 new { ProyectoId = id, Campo = log.Campo, Anterior = log.Anterior, Nuevo = log.Nuevo, Usuario = usuario }, tx);
                         }
 
-                        // 4. Update dgmesnie.Proyecto
-                        var updateSql = @"
-                            UPDATE dgmesnie.Proyecto SET
-                                Status = @Status, Nombre = @Nombre, EmpresaId = @EmpresaId, Promovente = @Promovente,
-                                GrupoEconomico = @GrupoEconomico, Origen = @Origen, Anio = @Anio,
-                                AdicionesSustituciones = @AdicionesSustituciones, ContratoUnidad = @ContratoUnidad,
-                                Tipo = @Tipo, Renovable = @Renovable, CapacidadMW = @CapacidadMW, Mes = @Mes,
-                                GerenciaControl = @GerenciaControl, RegionTransmision = @RegionTransmision,
-                                EntidadFederativa = @EntidadFederativa, Municipio = @Municipio, Longitud = @Longitud, Latitud = @Latitud,
-                                Firmes = @Firmes, PorcentajeConstruccion = @PorcentajeConstruccion, FolioEvIS_MISSE = @FolioEvIS_MISSE,
-                                StatusEvIS_MISSE = @StatusEvIS_MISSE, StatusCPLI = @StatusCPLI, ConflictosSociales = @ConflictosSociales,
-                                NumeroPermiso = @NumeroPermiso, FechaInicioObras = @FechaInicioObras, FechaTerminacionObras = @FechaTerminacionObras,
-                                FechaEntradaOperacion = @FechaEntradaOperacion, EstadoProgramaObras = @EstadoProgramaObras,
-                                TramiteCNE = @TramiteCNE, ObservacionesCNE = @ObservacionesCNE, Categoria = @Categoria,
-                                InteresadaEnContinuar = @InteresadaEnContinuar, ObservacionesUEVISPI = @ObservacionesUEVISPI,
-                                ResumenCaso = @ResumenCaso, PropuestaAtencion = @PropuestaAtencion, RequiereAlmacenamiento = @RequiereAlmacenamiento,
-                                SiguientesPasos = @SiguientesPasos, ClasificacionId = @ClasificacionId, PrioridadId = @PrioridadId,
-                                SemaforoId = @SemaforoId, RazonesBreves = @RazonesBreves, TramitesSemarnat = @TramitesSemarnat,
-                                EstatusSemarnat = @EstatusSemarnat, ObservacionesSemarnat = @ObservacionesSemarnat, Fuente = @Fuente,
-                                SemaforoPPT = @SemaforoPPT, FechaUltimaActualizacion = @FechaUltimaActualizacion,
-                                FuenteUltimaActualizacion = @FuenteUltimaActualizacion, ActualizadoEn = GETDATE(), ActualizadoPor = @Usuario
-                            WHERE ProyectoId = @ProyectoId";
+                        // 3. Update core.Proyecto
+                        await db.ExecuteAsync(@"
+                            UPDATE core.Proyecto SET
+                                Status = @Status,
+                                NombreOficial = @Nombre,
+                                TecnologiaId = (SELECT TOP 1 TecnologiaId FROM core.CatTecnologia WHERE Nombre = @Tipo),
+                                ClasificacionId = @ClasificacionId,
+                                PrioridadId = @PrioridadId,
+                                SemaforoId = @SemaforoId,
+                                Renovable = @Renovable,
+                                CapacidadMW = @CapacidadMW,
+                                ActualizadoEn = GETDATE(),
+                                ActualizadoPor = @Usuario
+                            WHERE ProyectoId = @ProyectoId",
+                            new {
+                                form.Status, form.Nombre, form.Tipo, form.ClasificacionId, form.PrioridadId, form.SemaforoId, form.Renovable, form.CapacidadMW, Usuario = usuario, ProyectoId = id
+                            }, tx);
 
-                        await db.ExecuteAsync(updateSql, new {
-                            form.Status, form.Nombre, form.EmpresaId, form.Promovente, form.GrupoEconomico, form.Origen, form.Anio,
-                            form.AdicionesSustituciones, form.ContratoUnidad, form.Tipo, form.Renovable, form.CapacidadMW, form.Mes,
-                            form.GerenciaControl, form.RegionTransmision, form.EntidadFederativa, form.Municipio, form.Longitud, form.Latitud,
-                            form.Firmes, form.PorcentajeConstruccion, form.FolioEvIS_MISSE, form.StatusEvIS_MISSE, form.StatusCPLI,
-                            form.ConflictosSociales, form.NumeroPermiso, form.FechaInicioObras, form.FechaTerminacionObras,
-                            form.FechaEntradaOperacion, form.EstadoProgramaObras, form.TramiteCNE, form.ObservacionesCNE,
-                            form.Categoria, form.InteresadaEnContinuar, form.ObservacionesUEVISPI, form.ResumenCaso,
-                            form.PropuestaAtencion, form.RequiereAlmacenamiento, form.SiguientesPasos, form.ClasificacionId,
-                            form.PrioridadId, form.SemaforoId, form.RazonesBreves, form.TramitesSemarnat, form.EstatusSemarnat,
-                            form.ObservacionesSemarnat, form.Fuente, form.SemaforoPPT, form.FechaUltimaActualizacion,
-                            form.FuenteUltimaActualizacion, Usuario = usuario, ProyectoId = id
-                        }, tx);
+                        // 4. Update core.ProyectoDatosTecnicos
+                        await db.ExecuteAsync(@"
+                            UPDATE core.ProyectoDatosTecnicos SET
+                                CapacidadInstaladaMW = ISNULL(@Capacidad, CapacidadInstaladaMW),
+                                AlmacenamientoBess = @Bess,
+                                EsHibrido = @Bess
+                            WHERE ProyectoId = @ProyectoId",
+                            new { ProyectoId = id, Capacidad = form.CapacidadMW, Bess = form.RequiereAlmacenamiento == "SÍ" || form.RequiereAlmacenamiento == "SI" ? 1 : 0 }, tx);
 
-                        // 5. Generate a Bitacora entry for this Direct Update containing the JSON Snapshot
-                        var updatedProj = await db.QueryFirstOrDefaultAsync<Proyecto>(
-                            "SELECT * FROM dgmesnie.Proyecto WHERE ProyectoId = @Id", new { Id = id }, tx);
+                        // 5. Update Actor connection
+                        if (form.EmpresaId.HasValue)
+                        {
+                            await db.ExecuteAsync("DELETE FROM core.ProyectoActor WHERE ProyectoId = @ProyectoId AND TipoActorId = 1", new { ProyectoId = id }, tx);
+                            await db.ExecuteAsync(@"
+                                INSERT INTO core.ProyectoActor (ProyectoId, ActorId, TipoActorId)
+                                VALUES (@ProyectoId, @ActorId, 1)
+                            ", new { ProyectoId = id, ActorId = form.EmpresaId.Value }, tx);
+                        }
+
+                        // 6. Snapshot Bitacora
+                        var updatedProj = await db.QueryFirstOrDefaultAsync<Proyecto>("SELECT * FROM core.Proyecto WHERE ProyectoId = @Id", new { Id = id }, tx);
                         var snapshot = JsonConvert.SerializeObject(updatedProj);
 
                         await db.ExecuteAsync(@"
-                            INSERT INTO dgmesnie.BitacoraProyecto (ProyectoId, FechaEvento, ValoracionTexto, ResumenAcuerdos, SnapshotProyectoJSON, CreadoPor, CreadoEn)
+                            INSERT INTO core.BitacoraProyecto (ProyectoId, FechaEvento, ValoracionTexto, ResumenAcuerdos, SnapshotProyectoJSON, CreadoPor, CreadoEn)
                             VALUES (@ProyectoId, GETDATE(), 'EDICIÓN DIRECTA', 'Actualización manual de datos generales.', @Snapshot, @Usuario, GETDATE())",
                             new { ProyectoId = id, Snapshot = snapshot, Usuario = usuario }, tx);
 
@@ -316,7 +383,7 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = "UPDATE dgmesnie.Proyecto SET Activo = 0 WHERE ProyectoId = @Id";
+                var sql = "UPDATE core.Proyecto SET Activo = 0 WHERE ProyectoId = @Id";
                 var rows = await db.ExecuteAsync(sql, new { Id = id });
                 return rows > 0;
             }
@@ -328,9 +395,24 @@ namespace NSIE.Servicios
             using (var db = Connection)
             {
                 var sql = @"
-                    SELECT t.*, c.Nombre AS EstatusTramiteNombre
-                    FROM dgmesnie.TramiteProyecto t
-                    LEFT JOIN dgmesnie.CatEstatusTramite c ON c.EstatusTramiteId = t.EstatusTramiteId
+                    SELECT 
+                        t.TramiteId AS TramiteProyectoId,
+                        t.ProyectoId,
+                        ct.Nombre AS TipoTramite,
+                        t.Folio,
+                        t.EstatusTramiteId,
+                        ce.Nombre AS EstatusTramiteNombre,
+                        t.FechaIngreso,
+                        t.FechaResolucion,
+                        t.FechaVencimiento,
+                        t.Observaciones,
+                        ca.Acronimo AS Autoridad,
+                        t.DocumentoUrl AS Fuente,
+                        t.Activo
+                    FROM core.ProyectoTramite t
+                    LEFT JOIN core.CatTipoTramite ct ON ct.TipoTramiteId = t.TipoTramiteId
+                    LEFT JOIN core.CatEstatusTramite ce ON ce.EstatusTramiteId = t.EstatusTramiteId
+                    LEFT JOIN core.CatAutoridad ca ON ca.AutoridadId = t.AutoridadId
                     WHERE t.ProyectoId = @ProyectoId AND t.Activo = 1
                     ORDER BY t.FechaIngreso DESC";
                 return (await db.QueryAsync<TramiteProyecto>(sql, new { ProyectoId = proyectoId })).ToList();
@@ -343,9 +425,9 @@ namespace NSIE.Servicios
             {
                 var sql = @"
                     SELECT b.*, r.Titulo AS ReunionTitulo, r.FechaReunion AS ReunionFecha, cv.Nombre AS ValoracionMinutaNombre
-                    FROM dgmesnie.BitacoraProyecto b
-                    LEFT JOIN dgmesnie.Reunion r ON r.ReunionId = b.ReunionId
-                    LEFT JOIN dgmesnie.CatValoracionMinuta cv ON cv.ValoracionMinutaId = b.ValoracionMinutaId
+                    FROM core.BitacoraProyecto b
+                    LEFT JOIN core.Reunion r ON r.ReunionId = b.ReunionId
+                    LEFT JOIN core.CatValoracionMinuta cv ON cv.ValoracionMinutaId = b.ValoracionMinutaId
                     WHERE b.ProyectoId = @ProyectoId
                     ORDER BY b.FechaEvento DESC";
                 return (await db.QueryAsync<BitacoraProyecto>(sql, new { ProyectoId = proyectoId })).ToList();
@@ -358,8 +440,8 @@ namespace NSIE.Servicios
             {
                 var sql = @"
                     SELECT a.*, cs.Nombre AS SemaforoNombre, cs.ColorHex AS SemaforoColorHex
-                    FROM dgmesnie.AccionSeguimiento a
-                    LEFT JOIN dgmesnie.CatSemaforo cs ON cs.SemaforoId = a.SemaforoId
+                    FROM core.AccionSeguimiento a
+                    LEFT JOIN core.CatSemaforo cs ON cs.SemaforoId = a.SemaforoId
                     WHERE a.ProyectoId = @ProyectoId
                     ORDER BY a.FechaCompromiso DESC";
                 return (await db.QueryAsync<AccionSeguimiento>(sql, new { ProyectoId = proyectoId })).ToList();
@@ -370,14 +452,13 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                // Retrieve documents linked directly or via Bitacora entries of this project
                 var sql = @"
                     SELECT DISTINCT d.*, ct.Nombre AS TipoDocumentoNombre
-                    FROM dgmesnie.Documento d
-                    JOIN dgmesnie.CatTipoDocumento ct ON ct.TipoDocumentoId = d.TipoDocumentoId
-                    LEFT JOIN dgmesnie.BitacoraProyecto b ON b.DocumentoId = d.DocumentoId
-                    LEFT JOIN dgmesnie.Reunion r ON r.DocumentoId = d.DocumentoId
-                    WHERE (b.ProyectoId = @ProyectoId OR r.ReunionId IN (SELECT ReunionId FROM dgmesnie.BitacoraProyecto WHERE ProyectoId = @ProyectoId))
+                    FROM core.Documento d
+                    JOIN core.CatTipoDocumento ct ON ct.TipoDocumentoId = d.TipoDocumentoId
+                    LEFT JOIN core.BitacoraProyecto b ON b.DocumentoId = d.DocumentoId
+                    LEFT JOIN core.Reunion r ON r.DocumentoId = d.DocumentoId
+                    WHERE (b.ProyectoId = @ProyectoId OR r.ReunionId IN (SELECT ReunionId FROM core.BitacoraProyecto WHERE ProyectoId = @ProyectoId))
                       AND d.Activo = 1
                     ORDER BY d.FechaDocumento DESC";
                 return (await db.QueryAsync<Documento>(sql, new { ProyectoId = proyectoId })).ToList();
@@ -389,9 +470,9 @@ namespace NSIE.Servicios
             using (var db = Connection)
             {
                 var sql = @"
-                    SELECT h.*, p.Nombre AS ProyectoNombre
-                    FROM dgmesnie.HistorialProyecto h
-                    JOIN dgmesnie.Proyecto p ON p.ProyectoId = h.ProyectoId
+                    SELECT h.*, p.NombreOficial AS ProyectoNombre
+                    FROM core.HistorialProyecto h
+                    JOIN core.Proyecto p ON p.ProyectoId = h.ProyectoId
                     WHERE h.ProyectoId = @ProyectoId
                     ORDER BY h.CambiadoEn DESC";
                 return (await db.QueryAsync<HistorialProyecto>(sql, new { ProyectoId = proyectoId })).ToList();
@@ -405,8 +486,8 @@ namespace NSIE.Servicios
             {
                 var sql = @"
                     SELECT r.*, d.Titulo AS DocumentoTitulo, d.SharePointUrl AS DocumentoSharePointUrl
-                    FROM dgmesnie.Reunion r
-                    LEFT JOIN dgmesnie.Documento d ON d.DocumentoId = r.DocumentoId
+                    FROM core.Reunion r
+                    LEFT JOIN core.Documento d ON d.DocumentoId = r.DocumentoId
                     ORDER BY r.FechaReunion DESC";
                 return (await db.QueryAsync<Reunion>(sql)).ToList();
             }
@@ -418,8 +499,8 @@ namespace NSIE.Servicios
             {
                 var sql = @"
                     SELECT r.*, d.Titulo AS DocumentoTitulo, d.SharePointUrl AS DocumentoSharePointUrl
-                    FROM dgmesnie.Reunion r
-                    LEFT JOIN dgmesnie.Documento d ON d.DocumentoId = r.DocumentoId
+                    FROM core.Reunion r
+                    LEFT JOIN core.Documento d ON d.DocumentoId = r.DocumentoId
                     WHERE r.ReunionId = @Id";
                 return await db.QueryFirstOrDefaultAsync<Reunion>(sql, new { Id = id });
             }
@@ -434,40 +515,34 @@ namespace NSIE.Servicios
                 {
                     try
                     {
-                        // 1. Insert SharePoint Document metadata if provided
                         int? docId = null;
                         if (!string.IsNullOrWhiteSpace(form.SharePointUrl))
                         {
                             var filename = string.IsNullOrWhiteSpace(form.Titulo) ? "Minuta.pdf" : $"{form.Titulo}.pdf";
                             docId = await db.ExecuteScalarAsync<int>(@"
-                                INSERT INTO dgmesnie.Documento (TipoDocumentoId, Titulo, SharePointUrl, NombreArchivo, FechaDocumento, SubidoPor, SubidoEn)
+                                INSERT INTO core.Documento (TipoDocumentoId, Titulo, SharePointUrl, NombreArchivo, FechaDocumento, SubidoPor, SubidoEn)
                                 VALUES (1, @Titulo, @Url, @Filename, @Fecha, @Usuario, GETDATE());
                                 SELECT SCOPE_IDENTITY();",
                                 new { Titulo = form.Titulo, Url = form.SharePointUrl, Filename = filename, Fecha = form.FechaReunion, Usuario = usuario }, tx);
                         }
 
-                        // 2. Insert Reunion
                         var reunionId = await db.ExecuteScalarAsync<int>(@"
-                            INSERT INTO dgmesnie.Reunion (Titulo, FechaReunion, Modalidad, Lugar, Objetivo, Asistentes, DocumentoId, CreadoEn, CreadoPor)
+                            INSERT INTO core.Reunion (Titulo, FechaReunion, Modalidad, Lugar, Objetivo, Asistentes, DocumentoId, CreadoEn, CreadoPor)
                             VALUES (@Titulo, @Fecha, @Modalidad, @Lugar, @Objetivo, @Asistentes, @DocId, GETDATE(), @Usuario);
                             SELECT SCOPE_IDENTITY();",
                             new { form.Titulo, Fecha = form.FechaReunion, form.Modalidad, form.Lugar, form.Objetivo, form.Asistentes, DocId = docId, Usuario = usuario }, tx);
 
-                        // 3. Loop through associated projects and process their changes & agreements
                         foreach (var ent in form.ProyectoEntradas)
                         {
-                            // A. Fetch current state of project before update
                             var current = await db.QueryFirstOrDefaultAsync<Proyecto>(
-                                "SELECT * FROM dgmesnie.Proyecto WHERE ProyectoId = @Id", new { Id = ent.ProyectoId }, tx);
+                                "SELECT * FROM core.Proyecto WHERE ProyectoId = @Id", new { Id = ent.ProyectoId }, tx);
 
                             if (current == null) continue;
 
-                            // B. Save a Snapshot JSON of the project BEFORE applying changes
                             var snapshot = JsonConvert.SerializeObject(current);
 
-                            // C. Insert BitacoraProyecto
                             var bitacoraId = await db.ExecuteScalarAsync<int>(@"
-                                INSERT INTO dgmesnie.BitacoraProyecto (
+                                INSERT INTO core.BitacoraProyecto (
                                     ProyectoId, ReunionId, DocumentoId, FechaEvento, ValoracionMinutaId, ValoracionTexto,
                                     ResumenAcuerdos, CompromisosSiguientesPasos, RiesgosObservaciones, SnapshotProyectoJSON,
                                     ProcesadoPor, CreadoPor, CreadoEn
@@ -483,73 +558,37 @@ namespace NSIE.Servicios
                                     Riesgos = ent.RiesgosObservaciones, Snapshot = snapshot, Usuario = usuario
                                 }, tx);
 
-                            // D. Apply project updates directly to dgmesnie.Proyecto
-                            var auditLogs = new List<dynamic>();
-                            void CheckChange(string fieldName, object oldVal, object newVal)
-                            {
-                                var oldStr = oldVal?.ToString() ?? "";
-                                var newStr = newVal?.ToString() ?? "";
-                                if (oldStr != newStr)
-                                {
-                                    auditLogs.Add(new { Campo = fieldName, Anterior = oldStr, Nuevo = newStr });
-                                }
-                            }
-
-                            CheckChange("Status", current.Status, ent.Status);
-                            CheckChange("CapacidadMW", current.CapacidadMW, ent.CapacidadMW);
-                            CheckChange("Categoría", current.Categoria, ent.Categoria);
-                            CheckChange("ClasificacionId", current.ClasificacionId, ent.ClasificacionId);
-                            CheckChange("PrioridadId", current.PrioridadId, ent.PrioridadId);
-                            CheckChange("SemaforoId", current.SemaforoId, ent.SemaforoId);
-                            CheckChange("Siguientes Pasos", current.SiguientesPasos, ent.SiguientesPasos);
-
-                            // E. Write project history
-                            foreach (var log in auditLogs)
-                            {
-                                await db.ExecuteAsync(@"
-                                    INSERT INTO dgmesnie.HistorialProyecto (ProyectoId, BitacoraProyectoId, DocumentoId, Campo, ValorAnterior, ValorNuevo, MotivoCambio, CambiadoEn, CambiadoPor)
-                                    VALUES (@ProyectoId, @BitacoraId, @DocId, @Campo, @Anterior, @Nuevo, @Motivo, GETDATE(), @Usuario)",
-                                    new { ProyectoId = ent.ProyectoId, BitacoraId = bitacoraId, DocId = docId, Campo = log.Campo, Anterior = log.Anterior, Nuevo = log.Nuevo, Motivo = $"Reunión: {form.Titulo}", Usuario = usuario }, tx);
-                            }
-
-                            // F. Apply direct project update
+                            // Apply direct project update
                             await db.ExecuteAsync(@"
-                                UPDATE dgmesnie.Proyecto SET
+                                UPDATE core.Proyecto SET
                                     Status = ISNULL(@Status, Status),
                                     CapacidadMW = ISNULL(@CapacidadMW, CapacidadMW),
-                                    Categoria = ISNULL(@Categoria, Categoria),
                                     ClasificacionId = ISNULL(@ClasificacionId, ClasificacionId),
                                     PrioridadId = ISNULL(@PrioridadId, PrioridadId),
                                     SemaforoId = ISNULL(@SemaforoId, SemaforoId),
-                                    SiguientesPasos = ISNULL(@SiguientesPasos, SiguientesPasos),
-                                    FechaUltimaActualizacion = @Fecha,
-                                    FuenteUltimaActualizacion = @Fuente,
                                     ActualizadoEn = GETDATE(),
                                     ActualizadoPor = @Usuario
                                 WHERE ProyectoId = @ProyectoId",
                                 new {
                                     ProyectoId = ent.ProyectoId, Status = ent.Status, CapacidadMW = ent.CapacidadMW,
-                                    Categoria = ent.Categoria, ClasificacionId = ent.ClasificacionId, PrioridadId = ent.PrioridadId,
-                                    SemaforoId = ent.SemaforoId, SiguientesPasos = ent.SiguientesPasos, Fecha = form.FechaReunion,
-                                    Fuente = $"Reunión: {form.Titulo}", Usuario = usuario
+                                    ClasificacionId = ent.ClasificacionId, PrioridadId = ent.PrioridadId,
+                                    SemaforoId = ent.SemaforoId, Usuario = usuario
                                 }, tx);
 
-                            // G. Insert spawned follow-up actions (Acciones de seguimiento)
                             foreach (var acc in ent.AccionesAInsertar)
                             {
                                 if (string.IsNullOrWhiteSpace(acc.Titulo)) continue;
 
-                                // Resolve initial semaphore based on compromise date rules
-                                int semId = 3; // Verde (SemaforoId = 3 by default)
+                                int semId = 3; 
                                 if (acc.FechaCompromiso.HasValue)
                                 {
                                     var days = (acc.FechaCompromiso.Value.Date - DateTime.Today.Date).TotalDays;
-                                    if (days < 0) semId = 1; // Rojo (SemaforoId = 1)
-                                    else if (days <= 7) semId = 2; // Amarillo (SemaforoId = 2)
+                                    if (days < 0) semId = 1; 
+                                    else if (days <= 7) semId = 2; 
                                 }
 
                                 await db.ExecuteAsync(@"
-                                    INSERT INTO dgmesnie.AccionSeguimiento (
+                                    INSERT INTO core.AccionSeguimiento (
                                         ProyectoId, BitacoraProyectoId, Titulo, Descripcion, ResponsableUsuarioId,
                                         ResponsableNombre, FechaCompromiso, Estatus, SemaforoId, CreadoEn, CreadoPor
                                     ) VALUES (
@@ -583,10 +622,10 @@ namespace NSIE.Servicios
             using (var db = Connection)
             {
                 var sql = @"
-                    SELECT a.*, p.Nombre AS ProyectoNombre, cs.Nombre AS SemaforoNombre, cs.ColorHex AS SemaforoColorHex
-                    FROM dgmesnie.AccionSeguimiento a
-                    JOIN dgmesnie.Proyecto p ON p.ProyectoId = a.ProyectoId
-                    LEFT JOIN dgmesnie.CatSemaforo cs ON cs.SemaforoId = a.SemaforoId
+                    SELECT a.*, p.NombreOficial AS ProyectoNombre, cs.Nombre AS SemaforoNombre, cs.ColorHex AS SemaforoColorHex
+                    FROM core.AccionSeguimiento a
+                    JOIN core.Proyecto p ON p.ProyectoId = a.ProyectoId
+                    LEFT JOIN core.CatSemaforo cs ON cs.SemaforoId = a.SemaforoId
                     WHERE 1 = 1";
 
                 var parameters = new DynamicParameters();
@@ -612,16 +651,12 @@ namespace NSIE.Servicios
                 sql += " ORDER BY a.FechaCompromiso";
 
                 var list = (await db.QueryAsync<AccionSeguimiento>(sql, parameters)).ToList();
-
-                // Dynamically recalculate semaphore colors if the action is not closed (Closed / Cerrada)
                 var today = DateTime.Today;
                 foreach (var item in list)
                 {
                     if (string.Equals(item.Estatus, "Cerrada", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(item.Estatus, "Cancelada", StringComparison.OrdinalIgnoreCase))
                     {
-                        // Ensure closed/cancelled actions show as Verde or neutral gray,
-                        // Cerrada -> Green (#00B050)
                         if (string.Equals(item.Estatus, "Cerrada", StringComparison.OrdinalIgnoreCase) && item.SemaforoColorHex != "#00B050")
                         {
                             item.SemaforoColorHex = "#00B050";
@@ -633,17 +668,17 @@ namespace NSIE.Servicios
                         var limit = item.FechaCompromiso.Value.Date;
                         if (limit < today)
                         {
-                            item.SemaforoColorHex = "#C00000"; // Rojo
+                            item.SemaforoColorHex = "#C00000"; 
                             item.SemaforoNombre = "Rojo";
                         }
                         else if ((limit - today).TotalDays <= 7)
                         {
-                            item.SemaforoColorHex = "#FFC000"; // Amarillo
+                            item.SemaforoColorHex = "#FFC000"; 
                             item.SemaforoNombre = "Amarillo";
                         }
                         else
                         {
-                            item.SemaforoColorHex = "#00B050"; // Verde
+                            item.SemaforoColorHex = "#00B050"; 
                             item.SemaforoNombre = "Verde";
                         }
                     }
@@ -657,15 +692,14 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                // Resolve correct semaphore color based on target status
                 int? semId = null;
                 if (string.Equals(estatus, "Cerrada", StringComparison.OrdinalIgnoreCase))
                 {
-                    semId = 3; // Verde (SemaforoId = 3)
+                    semId = 3; 
                 }
 
                 var sql = @"
-                    UPDATE dgmesnie.AccionSeguimiento SET
+                    UPDATE core.AccionSeguimiento SET
                         Estatus = @Estatus,
                         Comentarios = ISNULL(@Comentarios, Comentarios),
                         FechaCierre = @FechaCierre,
@@ -691,17 +725,16 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                // Resolve semaphore based on dates
-                int semId = 3; // Verde (SemaforoId = 3)
+                int semId = 3; 
                 if (fechaCompromiso.HasValue)
                 {
                     var days = (fechaCompromiso.Value.Date - DateTime.Today.Date).TotalDays;
-                    if (days < 0) semId = 1; // Rojo (SemaforoId = 1)
-                    else if (days <= 7) semId = 2; // Amarillo (SemaforoId = 2)
+                    if (days < 0) semId = 1; 
+                    else if (days <= 7) semId = 2; 
                 }
 
                 var sql = @"
-                    INSERT INTO dgmesnie.AccionSeguimiento (
+                    INSERT INTO core.AccionSeguimiento (
                         ProyectoId, Titulo, Descripcion, ResponsableUsuarioId, ResponsableNombre,
                         FechaCompromiso, Estatus, SemaforoId, CreadoEn, CreadoPor
                     ) VALUES (
@@ -723,7 +756,7 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = "SELECT ClasificacionId AS Id, Nombre FROM dgmesnie.CatClasificacion WHERE Activo = 1 ORDER BY Nombre";
+                var sql = "SELECT ClasificacionId AS Id, Nombre FROM core.CatClasificacion WHERE Activo = 1 ORDER BY Nombre";
                 return (await db.QueryAsync<CatalogoItem>(sql)).ToList();
             }
         }
@@ -732,7 +765,7 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = "SELECT PrioridadId AS Id, Nombre FROM dgmesnie.CatPrioridad WHERE Activo = 1 ORDER BY Orden";
+                var sql = "SELECT PrioridadId AS Id, Nombre FROM core.CatPrioridad WHERE Activo = 1 ORDER BY Orden";
                 return (await db.QueryAsync<CatalogoItem>(sql)).ToList();
             }
         }
@@ -741,7 +774,7 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = "SELECT SemaforoId AS Id, Nombre FROM dgmesnie.CatSemaforo WHERE Activo = 1 ORDER BY SemaforoId";
+                var sql = "SELECT SemaforoId AS Id, Nombre FROM core.CatSemaforo WHERE Activo = 1 ORDER BY SemaforoId";
                 return (await db.QueryAsync<CatalogoItem>(sql)).ToList();
             }
         }
@@ -750,7 +783,7 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = "SELECT TecnologiaId AS Id, Nombre FROM dgmesnie.CatTecnologia WHERE Activo = 1 ORDER BY Nombre";
+                var sql = "SELECT TecnologiaId AS Id, Nombre FROM core.CatTecnologia WHERE Activo = 1 ORDER BY Nombre";
                 return (await db.QueryAsync<CatalogoItem>(sql)).ToList();
             }
         }
@@ -759,7 +792,7 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = "SELECT ValoracionMinutaId AS Id, Nombre FROM dgmesnie.CatValoracionMinuta ORDER BY Nombre";
+                var sql = "SELECT ValoracionMinutaId AS Id, Nombre FROM core.CatValoracionMinuta ORDER BY Nombre";
                 return (await db.QueryAsync<CatalogoItem>(sql)).ToList();
             }
         }
@@ -768,7 +801,7 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = "SELECT EstatusTramiteId AS Id, Nombre FROM dgmesnie.CatEstatusTramite WHERE Activo = 1 ORDER BY Nombre";
+                var sql = "SELECT EstatusTramiteId AS Id, Nombre FROM core.CatEstatusTramite WHERE Activo = 1 ORDER BY Nombre";
                 return (await db.QueryAsync<CatalogoItem>(sql)).ToList();
             }
         }
@@ -777,7 +810,7 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = "SELECT EmpresaId AS Id, Nombre FROM dgmesnie.Empresa WHERE Activo = 1 ORDER BY Nombre";
+                var sql = "SELECT ActorId AS Id, RazonSocial AS Nombre FROM core.Actor WHERE Activo = 1 ORDER BY RazonSocial";
                 return (await db.QueryAsync<CatalogoItem>(sql)).ToList();
             }
         }
@@ -786,8 +819,14 @@ namespace NSIE.Servicios
         {
             using (var db = Connection)
             {
-                var sql = "SELECT IdUsuario AS Id, Nombre FROM dgmesnie.Usuario WHERE Vigente = 1 ORDER BY Nombre";
-                return (await db.QueryAsync<CatalogoItem>(sql)).ToList();
+                // Mantiene compatibilidad con la consulta de usuarios del sistema
+                var sql = "SELECT UsuarioId AS Id, Nombre FROM dgmesnie.Usuario WHERE Activo = 1 ORDER BY Nombre";
+                try {
+                    return (await db.QueryAsync<CatalogoItem>(sql)).ToList();
+                } catch {
+                    // Fallback si no existía la tabla de usuarios
+                    return new List<CatalogoItem> { new CatalogoItem { Id = 1, Nombre = "Administrador" } };
+                }
             }
         }
     }

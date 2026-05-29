@@ -1,0 +1,120 @@
+@model NSIE.Models.ProyectosPrivados.IngestionResultDto
+@{
+    ViewData["Title"] = "Importar Consolidado Excel";
+    var header = ViewData["HeaderViewModel"] as NSIE.Models.HeaderViewModel;
+}
+
+@section Styles {
+    <style>
+        .upload-card {
+            background: #FFFFFF;
+            border: 2px dashed var(--color-gobmx-dorado, #A57F2C);
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: var(--box-shadow-card, 0 4px 6px rgba(0, 0, 0, 0.1));
+            transition: all 0.3s;
+            cursor: pointer;
+            margin-bottom: 24px;
+        }
+        .upload-card:hover {
+            border-color: var(--color-gobmx-guinda, #9B2247);
+            background-color: var(--color-gobmx-dorado-light, rgba(165, 127, 44, 0.05));
+        }
+        .upload-card i {
+            color: var(--color-gobmx-dorado, #A57F2C);
+            margin-bottom: 16px;
+        }
+        .upload-card p {
+            font-family: var(--font-family-body);
+            font-size: 16px;
+            color: var(--color-text-primary, #333333);
+        }
+        .card-important {
+            background-color: var(--color-gobmx-guinda-light, rgba(155, 34, 71, 0.05));
+            border-left: 5px solid var(--color-gobmx-guinda, #9B2247);
+            border-radius: var(--border-radius-md, 8px);
+            padding: var(--spacing-md, 24px);
+            margin-bottom: var(--spacing-md, 24px);
+        }
+        .card-important h4 {
+            color: var(--color-gobmx-guinda, #9B2247);
+            font-family: var(--font-family-headings, serif);
+            margin-top: 0;
+        }
+    </style>
+}
+
+@if (header != null)
+{
+    @await Html.PartialAsync("_ViewHeader", header)
+}
+
+<div class="container ps-5 pe-5 mb-5">
+    <!-- Breadcrumbs -->
+    <div class="alert alert-light mb-3" role="alert" style="padding-left: 15px;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb lp-5 mb-0">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "ProyectosPrivados")">Proyectos Privados Firmes</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Importar Excel</li>
+            </ol>
+        </nav>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            
+            <!-- Recuadro LaTeX Nota Importante -->
+            <div class="card-important">
+                <h4><i class="fas fa-exclamation-triangle"></i> Instrucciones de Ingestión</h4>
+                <p class="mb-0">
+                    Suba el archivo consolidado oficial (como <code>26052026_base_1800.xlsx</code> o <code>BD_Consolidadov2.xlsx</code>). El sistema cargará los registros en una tabla temporal de <em>staging</em> y ejecutará automáticamente el motor de deduplicación con el algoritmo <strong>Jaro-Winkler</strong> y el cruce geográfico.
+                </p>
+            </div>
+
+            <!-- Formulario de Carga -->
+            <form action="@Url.Action("Importar", "ProyectosPrivados")" method="post" enctype="multipart/form-data" id="frm-importar">
+                @Html.AntiForgeryToken()
+                
+                @if (!ViewData.ModelState.IsValid)
+                {
+                    <div class="alert alert-danger" role="alert">
+                        @Html.ValidationSummary(false, "")
+                    </div>
+                }
+
+                <div class="upload-card" onclick="document.getElementById('file-input').click()">
+                    <i class="fas fa-file-excel fa-4x"></i>
+                    <p>Arrastre el archivo Excel consolidado aquí o haga clic para examinar</p>
+                    <small class="text-muted">Formatos permitidos: .xlsx, .xls</small>
+                    <input type="file" name="file" id="file-input" style="display: none;" onchange="updateFileName(this)">
+                    <div id="file-name" class="mt-2 font-weight-bold text-success" style="display: none;"></div>
+                </div>
+
+                <div class="text-center">
+                    <a href="@Url.Action("Index", "ProyectosPrivados")" class="btn btn-secondary" style="background-color: var(--color-gobmx-gris, #98989A); border: none; font-weight: 600; padding: 10px 24px;">
+                        Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-primary" style="background-color: var(--color-gobmx-guinda, #9B2247); border: none; font-weight: 600; padding: 10px 24px; margin-left: 8px;">
+                        <i class="fas fa-cloud-upload-alt"></i> Procesar Archivo
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function updateFileName(input) {
+            var fileNameDiv = document.getElementById('file-name');
+            if (input.files && input.files.length > 0) {
+                fileNameDiv.innerText = "Archivo seleccionado: " + input.files[0].name;
+                fileNameDiv.style.display = 'block';
+            } else {
+                fileNameDiv.style.display = 'none';
+            }
+        }
+    </script>
+}

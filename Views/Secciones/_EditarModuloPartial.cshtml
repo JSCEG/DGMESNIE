@@ -36,23 +36,16 @@
         </div>
 
         <div class="mb-3">
-            <label asp-for="Perfiles" class="form-label">Perfiles</label>
-            <input asp-for="Perfiles" class="form-control" />
-        </div>
-
-        <div class="mb-3">
-            <label asp-for="Etapa" class="form-label">Etapa</label>
-            <input asp-for="Etapa" class="form-control" />
-        </div>
-
-        <div class="mb-3">
-            <label asp-for="JustificacionOrden" class="form-label">Justificación de Orden</label>
-            <textarea asp-for="JustificacionOrden" class="form-control"></textarea>
-        </div>
-
-        <div class="mb-3">
-            <label asp-for="AyudaContextual" class="form-label">Ayuda Contextual</label>
-            <textarea asp-for="AyudaContextual" class="form-control"></textarea>
+            <label class="form-label fw-bold">Usuarios con acceso</label>
+            <div class="input-group mb-2">
+                <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                <input type="text" id="buscarUsuarioEditarModulo" class="form-control form-control-sm" placeholder="Buscar usuario..." />
+            </div>
+            <div id="usuariosCheckboxContainerEditarModulo" class="border rounded p-2 bg-light mb-1" style="max-height: 150px; overflow-y: auto;">
+                <div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i> Cargando usuarios...</div>
+            </div>
+            <input type="hidden" asp-for="Perfiles" id="inputPerfilesHiddenEditarModulo" />
+            <small class="form-text text-muted">Selecciona los usuarios individuales autorizados para ver este módulo.</small>
         </div>
 
         <div class="row">
@@ -64,26 +57,6 @@
                 <label asp-for="Action" class="form-label">Action</label>
                 <input asp-for="Action" class="form-control" />
             </div>
-        </div>
-
-        <div class="mb-3">
-            <label asp-for="Btn" class="form-label">Texto del Botón</label>
-            <input asp-for="Btn" class="form-control" />
-        </div>
-
-        <div class="mb-3">
-            <label asp-for="Img" class="form-label">Ruta de Imagen</label>
-            <input asp-for="Img" class="form-control" />
-        </div>
-
-        <div class="mb-3">
-            <label asp-for="ElementosUI" class="form-label">Elementos UI</label>
-            <input asp-for="ElementosUI" class="form-control" />
-        </div>
-
-        <div class="mb-3">
-            <label asp-for="AyudaVista" class="form-label">Ayuda en Vista</label>
-            <textarea asp-for="AyudaVista" class="form-control"></textarea>
         </div>
 
         <div class="mb-3">
@@ -106,6 +79,61 @@
 </form>
 
 <script>
+    $(document).ready(function () {
+        const hiddenInput = $("#inputPerfilesHiddenEditarModulo");
+        const container = $("#usuariosCheckboxContainerEditarModulo");
+        const initialValues = (hiddenInput.val() || "").split(",").map(v => v.trim()).filter(v => v !== "");
+
+        $.getJSON("/Secciones/GetUsuariosVigentes", function (users) {
+            container.empty();
+            if (!users || users.length === 0) {
+                container.html('<div class="text-muted small">No hay usuarios vigentes disponibles.</div>');
+                return;
+            }
+
+            users.forEach(function (user) {
+                const userId = (user.idUsuario !== undefined ? user.idUsuario : user.IdUsuario).toString();
+                const userName = user.nombre !== undefined ? user.nombre : user.Nombre;
+                const isChecked = initialValues.includes(userId);
+                const checkedAttr = isChecked ? "checked" : "";
+
+                const itemHtml = `
+                    <div class="form-check usuario-row-item py-1">
+                        <input class="form-check-input chk-usuario-acceso-edit-modulo" type="checkbox" value="${userId}" id="chk_user_edit_mod_${userId}" ${checkedAttr}>
+                        <label class="form-check-label text-truncate w-100 cursor-pointer" for="chk_user_edit_mod_${userId}">
+                            ${userName}
+                        </label>
+                    </div>
+                `;
+                container.append(itemHtml);
+            });
+
+            // Registrar evento change
+            container.on("change", ".chk-usuario-acceso-edit-modulo", function () {
+                const checkedIds = [];
+                container.find(".chk-usuario-acceso-edit-modulo:checked").each(function () {
+                    checkedIds.push($(this).val());
+                });
+                hiddenInput.val(checkedIds.join(","));
+            });
+        }).fail(function () {
+            container.html('<div class="text-danger small"><i class="fas fa-exclamation-triangle me-1"></i> Error al cargar usuarios.</div>');
+        });
+
+        // Búsqueda interactiva
+        $("#buscarUsuarioEditarModulo").on("keyup", function () {
+            const searchVal = $(this).val().toLowerCase();
+            container.find(".usuario-row-item").each(function () {
+                const labelText = $(this).find("label").text().toLowerCase();
+                if (labelText.includes(searchVal)) {
+                    $(this).show();
+                } else {
+                    $(this).hide();
+                }
+            });
+        });
+    });
+
     function guardarCambiosModulo() {
         const form = $("#formEditarModulo");
         $.ajax({

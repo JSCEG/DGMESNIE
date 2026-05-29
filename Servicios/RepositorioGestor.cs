@@ -395,9 +395,9 @@ namespace NSIE.Servicios
         }
 
         // ── Actividades (Padre) ──────────────────────────────────────────────
-        public async Task<List<GestorActividad>> ObtenerActividadesAsync()
+        public async Task<List<GestorActividad>> ObtenerActividadesAsync(int? usuarioId = null)
         {
-            const string sql = @"
+            var sql = @"
                 SELECT a.ActividadId, a.Clave, a.Actividad, a.Descripcion, a.Categoria,
                        a.Prioridad, a.Estatus, a.ResponsablePrincipalId,
                        u.Nombre AS ResponsableNombre,
@@ -406,13 +406,27 @@ namespace NSIE.Servicios
                        a.FechaUltimaActualizacion, a.FechaCreacion
                 FROM [dgmesnie].[Gestor_Actividades] a
                 LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = a.ResponsablePrincipalId
-                WHERE a.Activo = 1
-                ORDER BY a.ActividadId";
+                WHERE a.Activo = 1";
+
+            if (usuarioId.HasValue && usuarioId.Value != 1 && usuarioId.Value != 86)
+            {
+                sql += @" AND (a.ResponsablePrincipalId = @usuarioId 
+                            OR EXISTS (
+                                SELECT 1 FROM [dgmesnie].[Gestor_Corresponsables] gc 
+                                WHERE gc.ActividadId = a.ActividadId AND gc.IdUsuario = @usuarioId
+                            ))";
+            }
+
+            sql += " ORDER BY a.ActividadId";
 
             var acts = new List<GestorActividad>();
             await using var cn = new SqlConnection(_conn);
             await cn.OpenAsync();
             await using var cmd = new SqlCommand(sql, cn);
+            if (usuarioId.HasValue && usuarioId.Value != 1 && usuarioId.Value != 86)
+            {
+                cmd.Parameters.AddWithValue("@usuarioId", usuarioId.Value);
+            }
             await using var rd = await cmd.ExecuteReaderAsync();
             while (await rd.ReadAsync())
             {
@@ -535,9 +549,9 @@ namespace NSIE.Servicios
         }
 
         // ── Temas (Hijo) ─────────────────────────────────────────────────────
-        public async Task<List<GestorTema>> ObtenerTemasAsync(int? actividadId = null)
+        public async Task<List<GestorTema>> ObtenerTemasAsync(int? actividadId = null, int? usuarioId = null)
         {
-            const string sql = @"
+            var sql = @"
                 SELECT t.TemaId, t.Clave, t.ActividadId, a.Actividad AS ActividadNombre,
                        t.Tema, t.Descripcion, t.ResponsableId,
                        u.Nombre AS ResponsableNombre,
@@ -549,14 +563,35 @@ namespace NSIE.Servicios
                 JOIN [dgmesnie].[Gestor_Actividades] a ON a.ActividadId = t.ActividadId
                 LEFT JOIN [dgmesnie].[Usuario] u ON u.IdUsuario = t.ResponsableId
                 WHERE t.Activo = 1
-                  AND (@actividadId IS NULL OR t.ActividadId = @actividadId)
-                ORDER BY t.ActividadId, t.TemaId";
+                  AND (@actividadId IS NULL OR t.ActividadId = @actividadId)";
+
+            if (usuarioId.HasValue && usuarioId.Value != 1 && usuarioId.Value != 86)
+            {
+                sql += @" AND (t.ResponsableId = @usuarioId 
+                            OR EXISTS (
+                                SELECT 1 FROM [dgmesnie].[Gestor_Corresponsables] gc 
+                                WHERE gc.TemaId = t.TemaId AND gc.IdUsuario = @usuarioId
+                            )
+                            OR EXISTS (
+                                SELECT 1 FROM [dgmesnie].[Gestor_Temas_Etapas] e
+                                LEFT JOIN [dgmesnie].[Gestor_Corresponsables] gc ON gc.EtapaId = e.EtapaId
+                                WHERE e.TemaId = t.TemaId AND e.Activo = 1
+                                  AND (e.ResponsableId = @usuarioId OR gc.IdUsuario = @usuarioId)
+                            )
+                        )";
+            }
+
+            sql += " ORDER BY t.ActividadId, t.TemaId";
 
             var temas = new List<GestorTema>();
             await using var cn = new SqlConnection(_conn);
             await cn.OpenAsync();
             await using var cmd = new SqlCommand(sql, cn);
             cmd.Parameters.AddWithValue("@actividadId", (object?)actividadId ?? DBNull.Value);
+            if (usuarioId.HasValue && usuarioId.Value != 1 && usuarioId.Value != 86)
+            {
+                cmd.Parameters.AddWithValue("@usuarioId", usuarioId.Value);
+            }
             await using var rd = await cmd.ExecuteReaderAsync();
             while (await rd.ReadAsync())
             {

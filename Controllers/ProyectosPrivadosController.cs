@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using NSIE.Models;
 using NSIE.Models.ProyectosPrivados;
 using NSIE.Servicios.Interfaces;
+using NSIE.Servicios;
 
 namespace NSIE.Controllers
 {
@@ -16,11 +17,13 @@ namespace NSIE.Controllers
     public class ProyectosPrivadosController : Controller
     {
         private readonly IRepositorioProyectosPrivados _repo;
+        private readonly IngestionService _ingestService;
         private readonly ILogger<ProyectosPrivadosController> _logger;
 
-        public ProyectosPrivadosController(IRepositorioProyectosPrivados repo, ILogger<ProyectosPrivadosController> logger)
+        public ProyectosPrivadosController(IRepositorioProyectosPrivados repo, IngestionService ingestService, ILogger<ProyectosPrivadosController> logger)
         {
             _repo = repo;
+            _ingestService = ingestService;
             _logger = logger;
         }
 
@@ -350,6 +353,77 @@ namespace NSIE.Controllers
                 return perfil?.Nombre ?? "Sistema";
             }
             return User.Identity?.Name ?? "Sistema";
+        }
+
+        // ── View: Resolución de Conflictos ───────────────────────────────────
+        [HttpGet]
+        public async Task<IActionResult> Conflictos()
+        {
+            ViewData["HeaderViewModel"] = BuildHeader("Bandeja de Resolución de Conflictos", "proyecto.png", "Revisar y resolver manualmente las coincidencias dudosas de proyectos detectadas durante la importación.");
+            var list = await _ingestService.ObtenerConflictosVUPEAsync();
+            return View(list);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ResolverConflicto([FromBody] ConflictResolutionActionDto model)
+        {
+            if (model == null) return BadRequest("Datos inválidos.");
+
+            try
+            {
+                if (string.Equals(model.Accion, "FUSIONAR", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!model.ProyectoCanonicoId.HasValue) return BadRequest("Debe especificar el proyecto canónico.");
+                    await _ingestService.ResolverConflictoFusionarAsync(model.StagingId, model.ProyectoCanonicoId.Value, GetCurrentUserName());
+                }
+                else if (string.Equals(model.Accion, "NUEVO", StringComparison.OrdinalIgnoreCase))
+                {
+                    await _ingestService.ResolverConflictoNuevoAsync(model.StagingId, GetCurrentUserName());
+                }
+                else
+                {
+                    return BadRequest("Acción no válida.");
+                }
+
+                return Json(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al resolver conflicto {StagingId}.", model.StagingId);
+                return StatusCode(500, new { error = $"Error al resolver conflicto: {ex.Message}" });
+            }
+        }
+
+        // ── View: Importar Excel ─────────────────────────────────────────────
+        [HttpGet]
+        public IActionResult Importar()
+        {
+            ViewData["HeaderViewModel"] = BuildHeader("Importar Consolidado Excel", "proyecto.png", "Cargar hojas del archivo Excel consolidado y ejecutar reglas de deduplicación y homologación.");
+            return View();
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Importar(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                ModelState.AddModelError("", "Por favor, seleccione un archivo Excel válido.");
+                return View();
+            }
+
+            try
+            {
+                var result = await _ingestService.IngestarVUPEWorksheetAsync(file.OpenReadStream(), file.FileName, GetCurrentUserName());
+                return View("ResultadoImportacion", result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al importar Excel.");
+                ModelState.AddModelError("", $"Error al procesar el archivo: {ex.Message}");
+                return View();
+            }
         }
 
         private async Task CargarCatalogosParaEdicion()

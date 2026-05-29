@@ -1,0 +1,297 @@
+@model List<NSIE.Models.ProyectosPrivados.ConflictResolutionDto>
+@{
+    ViewData["Title"] = "Resolución de Conflictos";
+    var header = ViewData["HeaderViewModel"] as NSIE.Models.HeaderViewModel;
+}
+
+@section Styles {
+    <style>
+        .conflict-card {
+            background: #FFFFFF;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            margin-bottom: 24px;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .conflict-card:hover {
+            border-color: var(--color-gobmx-dorado, #A57F2C);
+        }
+        .conflict-header {
+            background: #FAFAFA;
+            border-bottom: 1px solid #E0E0E0;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .conflict-body {
+            padding: 24px;
+        }
+        .conflict-section {
+            flex: 1;
+        }
+        .conflict-section h5 {
+            font-family: var(--font-family-headings, serif);
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        .conflict-section-inbound h5 {
+            color: var(--color-gobmx-guinda, #9B2247);
+        }
+        .conflict-section-canonical h5 {
+            color: var(--color-gobmx-verde, #1E5B4F);
+        }
+        .conflict-divider {
+            text-align: center;
+            padding: 0 10px;
+        }
+        .score-badge {
+            background: var(--color-gobmx-dorado-light, rgba(165, 127, 44, 0.1));
+            color: var(--color-gobmx-dorado, #A57F2C);
+            border: 1px solid var(--color-gobmx-dorado, #A57F2C);
+            border-radius: 50%;
+            width: 70px;
+            height: 70px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            margin: 0 auto;
+        }
+        .score-badge span {
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .conflict-footer {
+            background: #FAFAFA;
+            border-top: 1px solid #E0E0E0;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .data-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            font-size: 13px;
+        }
+        .data-list li {
+            margin-bottom: 6px;
+        }
+        .data-list li strong {
+            color: #555;
+        }
+    </style>
+}
+
+@if (header != null)
+{
+    @await Html.PartialAsync("_ViewHeader", header)
+}
+
+<div class="container ps-5 pe-5 mb-5">
+    <!-- Breadcrumbs -->
+    <div class="alert alert-light mb-3" role="alert" style="padding-left: 15px;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb lp-5 mb-0">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "ProyectosPrivados")">Proyectos Privados Firmes</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Resolución de Conflictos</li>
+            </ol>
+        </nav>
+    </div>
+
+    @Html.AntiForgeryToken()
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h4 mb-0" style="color: #333; font-weight: 700;">Dudas y Conflictos Pendientes</h2>
+            <p class="text-muted mb-0" style="font-size: 13px;">Registros que coinciden parcialmente con proyectos existentes en la base canónica.</p>
+        </div>
+        <a href="@Url.Action("Index", "ProyectosPrivados")" class="btn btn-secondary" style="background-color: var(--color-gobmx-gris, #98989A); border: none; font-weight: 600;">
+            <i class="fas fa-arrow-left"></i> Volver a la Cartera
+        </a>
+    </div>
+
+    @if (Model == null || !Model.Any())
+    {
+        <div class="card p-5 text-center shadow-sm">
+            <i class="fas fa-check-circle fa-4x text-success mb-3"></i>
+            <h3 class="h4" style="font-family: var(--font-family-headings, serif);">¡No hay conflictos pendientes!</h3>
+            <p class="text-muted mb-0">Todos los proyectos se han consolidado exitosamente.</p>
+        </div>
+    }
+    else
+    {
+        <div id="conflicts-container">
+            @foreach (var item in Model)
+            {
+                <div class="conflict-card" id="card-@item.TempRecordId">
+                    <div class="conflict-header">
+                        <i class="fas fa-exclamation-circle text-warning"></i> Coincidencia Dudosa Detectada (ID Registro: #@item.TempRecordId)
+                    </div>
+                    <div class="conflict-body">
+                        <!-- Alerta/Resumen del Conflicto -->
+                        <div class="d-flex align-items-center mb-4 bg-light p-3 rounded" style="border-left: 4px solid var(--color-gobmx-dorado, #A57F2C);">
+                            <div class="score-badge me-4 flex-shrink-0" style="margin: 0;">
+                                @item.MatchScore%
+                                <span>Similitud</span>
+                            </div>
+                            <div class="ms-3">
+                                <h5 class="mb-1" style="font-size: 15px; font-weight: 700; color: #333;">Coincidencia potencial con proyecto existente</h5>
+                                <p class="text-muted mb-0" style="font-size: 13px;">
+                                    El sistema ha detectado una similitud del <strong>@item.MatchScore%</strong> con el proyecto <strong>#@item.ProyectoCanonicoId - @item.NombreCanonico</strong>.
+                                    Compare los datos a continuación para revisar qué cambiaría y resolver el conflicto.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Tabla Comparativa Detallada -->
+                        <div class="table-responsive">
+                            <table class="table table-hover table-bordered align-middle mb-0" style="font-size: 13px;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 25%; font-weight: 600; background-color: #F5F5F5;">Dato / Campo</th>
+                                        <th style="width: 35%; font-weight: 600; color: var(--color-gobmx-guinda, #9B2247); background-color: #FCF8F9;"><i class="fas fa-file-excel"></i> Excel (Entrante)</th>
+                                        <th style="width: 25%; font-weight: 600; color: var(--color-gobmx-verde, #1E5B4F); background-color: #F8FAF9;"><i class="fas fa-database"></i> Sistema (Sugerido)</th>
+                                        <th style="width: 15%; font-weight: 600; text-align: center; background-color: #F5F5F5;">Acción / Efecto al Fusionar</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Nombre del Proyecto</strong></td>
+                                        <td>@item.NombreProyectoOrigen</td>
+                                        <td>
+                                            <a href="@Url.Action("Detalle", "ProyectosPrivados", new { id = item.ProyectoCanonicoId })" target="_blank" style="font-weight: 600; color: var(--color-gobmx-verde, #1E5B4F); text-decoration: underline;">
+                                                @item.NombreCanonico
+                                            </a>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge" style="background-color: var(--color-gobmx-gris, #98989A); color: white; font-weight: 500; font-size: 11px;">Conserva Sistema</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Promovente / Actor</strong></td>
+                                        <td>@(string.IsNullOrWhiteSpace(item.RazonSocialOrigen) ? "No especificado" : item.RazonSocialOrigen)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(item.RazonSocialCanonico) ? "No especificado en Sistema" : item.RazonSocialCanonico)</td>
+                                        <td class="text-center">
+                                            <span class="badge" style="background-color: var(--color-gobmx-gris, #98989A); color: white; font-weight: 500; font-size: 11px;">Conserva Sistema</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Tecnología</strong></td>
+                                        <td>@(string.IsNullOrWhiteSpace(item.TecnologiaOrigen) ? "No especificada" : item.TecnologiaOrigen)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(item.TecnologiaCanonica) ? "No especificada" : item.TecnologiaCanonica)</td>
+                                        <td class="text-center">
+                                            <span class="badge" style="background-color: var(--color-gobmx-gris, #98989A); color: white; font-weight: 500; font-size: 11px;">Conserva Sistema</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Capacidad Instalada</strong></td>
+                                        <td class="text-muted" style="font-style: italic;">No especificada (No viene en Excel)</td>
+                                        <td>@(item.CapacidadCanonica?.ToString("F2") ?? "0.00") MW</td>
+                                        <td class="text-center">
+                                            <span class="badge" style="background-color: var(--color-gobmx-gris, #98989A); color: white; font-weight: 500; font-size: 11px;">Conserva Sistema</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Folio / Clave Proyecto</strong></td>
+                                        <td class="table-warning" style="background-color: rgba(165, 127, 44, 0.1);">
+                                            <span class="badge" style="background-color: var(--color-gobmx-dorado, #A57F2C); color: white; font-weight: 600; font-size: 11px;">@item.ClaveExternaOrigen</span>
+                                        </td>
+                                        <td>
+                                            @if (string.IsNullOrWhiteSpace(item.FoliosCanonicos))
+                                            {
+                                                <span class="text-muted" style="font-style: italic;">Sin folios asociados</span>
+                                            }
+                                            else
+                                            {
+                                                <span style="font-family: monospace; font-size: 11px;">@item.FoliosCanonicos</span>
+                                            }
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge" style="background-color: var(--color-gobmx-verde, #1E5B4F); color: white; font-weight: 500; font-size: 11px;">Asocia Folio</span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Híbrido / Almacenamiento (BESS)</strong></td>
+                                        <td>@(string.Equals(item.EsHibridoOrigen, "SI", StringComparison.OrdinalIgnoreCase) ? "Sí" : "No")</td>
+                                        <td>@(item.EsHibridoCanonico == true ? "Sí" : "No")</td>
+                                        <td class="text-center">
+                                            <span class="badge" style="background-color: var(--color-gobmx-gris, #98989A); color: white; font-weight: 500; font-size: 11px;">Conserva Sistema</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Nota explicativa -->
+                        <div class="mt-3 p-3 bg-light rounded" style="font-size: 12px; border: 1px solid #EAEAEA;">
+                            <i class="fas fa-info-circle text-info me-1"></i>
+                            <strong>Detalle de la Fusión:</strong> Al presionar <em>Fusionar con Sugerido</em>, se **conservarán intactos** los datos actuales del sistema. La única modificación será asociar la clave entrante del Excel (<strong>@item.ClaveExternaOrigen</strong>) como un folio secundario de este proyecto, permitiendo que futuras importaciones se vinculen automáticamente sin generar duplicidad.
+                        </div>
+                    </div>
+                    <div class="conflict-footer">
+                        <button class="btn btn-secondary" onclick="resolveConflict(@item.TempRecordId, 'NUEVO', null)" style="background-color: var(--color-gobmx-gris, #98989A); border: none; font-weight: 600; font-size: 13px;">
+                            <i class="fas fa-plus"></i> Registrar como Proyecto Nuevo
+                        </button>
+                        <button class="btn btn-primary" onclick="resolveConflict(@item.TempRecordId, 'FUSIONAR', @item.ProyectoCanonicoId)" style="background-color: var(--color-gobmx-dorado, #A57F2C); border: none; font-weight: 600; font-size: 13px;">
+                            <i class="fas fa-compress-alt"></i> Fusionar con Sugerido
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        async function resolveConflict(stagingId, accion, canonId) {
+            if (!confirm(`¿Está seguro de que desea ${accion.toLowerCase()} este registro?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('@Url.Action("ResolverConflicto", "ProyectosPrivados")', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
+                    },
+                    body: JSON.stringify({
+                        StagingId: stagingId,
+                        Accion: accion,
+                        ProyectoCanonicoId: canonId
+                    })
+                });
+
+                if (response.ok) {
+                    const card = document.getElementById(`card-${stagingId}`);
+                    if (card) {
+                        card.style.transition = 'all 0.5s ease-out';
+                        card.style.opacity = '0';
+                        card.style.transform = 'scale(0.9)';
+                        setTimeout(() => {
+                            card.remove();
+                            if (document.querySelectorAll('.conflict-card').length === 0) {
+                                location.reload();
+                            }
+                        }, 500);
+                    }
+                } else {
+                    const errText = await response.text();
+                    alert("Error: " + errText);
+                }
+            } catch (err) {
+                alert("Error de comunicación: " + err.message);
+            }
+        }
+    </script>
+}

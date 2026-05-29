@@ -84,6 +84,7 @@ builder.Services.AddTransient<IRepositorioPODECOBIS, RepositorioPODECOBIS>();
 builder.Services.AddTransient<IRepositorioInformePormenorizado, RepositorioInformePormenorizado>();
 builder.Services.AddTransient<IRepositorioInversionDesarrolloEnergetico, RepositorioInversionDesarrolloEnergetico>();
 builder.Services.AddTransient<PvirseImportService>();
+builder.Services.AddTransient<IngestionService>();
 builder.Services.AddTransient<IRepositorioReuniones, RepositorioReuniones>();
 builder.Services.AddTransient<IRepositorioSNIER, RepositorioSNIER>();
 builder.Services.AddTransient<VisitasViewComponent>();

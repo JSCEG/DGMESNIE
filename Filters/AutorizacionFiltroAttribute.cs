@@ -21,7 +21,8 @@ public class AutorizacionFiltro : ActionFilterAttribute
         "ActividadSospechosa",
         "Logout",
         "Heartbeat",
-        "ActualizarInicioSesion"
+        "ActualizarInicioSesion",
+        "DevBypass"
     };
 
     public override void OnActionExecuting(ActionExecutingContext context)
@@ -41,7 +42,8 @@ public class AutorizacionFiltro : ActionFilterAttribute
              || requestPath.StartsWith("/Acceso/GoogleResponse", StringComparison.OrdinalIgnoreCase)
              || requestPath.StartsWith("/Acceso/FacebookResponse", StringComparison.OrdinalIgnoreCase)
              || requestPath.StartsWith("/Acceso/LoginGoogle", StringComparison.OrdinalIgnoreCase)
-             || requestPath.StartsWith("/Acceso/LoginFacebook", StringComparison.OrdinalIgnoreCase)))
+             || requestPath.StartsWith("/Acceso/LoginFacebook", StringComparison.OrdinalIgnoreCase)
+             || requestPath.StartsWith("/Acceso/DevBypass", StringComparison.OrdinalIgnoreCase)))
         {
             base.OnActionExecuting(context);
             return;
@@ -77,7 +79,75 @@ public class AutorizacionFiltro : ActionFilterAttribute
             // Opcional: verificar roles o permisos adicionales según sea necesario
             Console.WriteLine($"Usuario logueado: {perfilUsuario.Nombre}");
 
-            // Continuar con la ejecución normal de la acción
+            if (perfilUsuario != null && int.TryParse(perfilUsuario.IdUsuario, out int idUsuario))
+            {
+                var restrictedControllers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "InformePormenorizado",
+                    "ProyectosPrivados",
+                    "PermisosPV",
+                    "PODECOBIS",
+                    "PlanMexico"
+                };
+
+                if (restrictedControllers.Contains(controller))
+                {
+                    if (idUsuario != 1 && idUsuario != 86)
+                    {
+                        var seccionesUsuarioJson = session.GetString("SeccionesUsuario");
+                        if (string.IsNullOrEmpty(seccionesUsuarioJson))
+                        {
+                            Console.WriteLine($"Acceso denegado: menú de sesión vacío para {perfilUsuario.Nombre} ({idUsuario}) al intentar entrar a {controller}/{action}");
+                            context.Result = new RedirectToActionResult("Index", "Gestor", null);
+                            return;
+                        }
+
+                        var seccionesUsuario = JsonConvert.DeserializeObject<List<SeccionSNIER>>(seccionesUsuarioJson) ?? new List<SeccionSNIER>();
+                        bool tieneAcceso = false;
+
+                        foreach (var seccion in seccionesUsuario)
+                        {
+                            if (seccion.Modulos == null) continue;
+                            foreach (var mod in seccion.Modulos)
+                            {
+                                if (string.Equals(mod.Controller, controller, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    if (string.Equals(controller, "PlanMexico", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        if (string.Equals(action, "Plan_Polos", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            if (string.Equals(mod.Action, "Plan_Polos", StringComparison.OrdinalIgnoreCase) ||
+                                                (mod.Vistas != null && mod.Vistas.Any(v => string.Equals(v.VistaAction ?? v.Action, "Plan_Polos", StringComparison.OrdinalIgnoreCase))))
+                                            {
+                                                tieneAcceso = true;
+                                                break;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            tieneAcceso = true;
+                                            break;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        tieneAcceso = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (tieneAcceso) break;
+                        }
+
+                        if (!tieneAcceso)
+                        {
+                            Console.WriteLine($"Acceso denegado dinámicamente: {perfilUsuario.Nombre} ({idUsuario}) no tiene el módulo {controller} (o acción {action}) en su menú.");
+                            context.Result = new RedirectToActionResult("Index", "Gestor", null);
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 }

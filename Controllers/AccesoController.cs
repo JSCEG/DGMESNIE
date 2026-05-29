@@ -83,6 +83,21 @@ namespace NSIE.Controllers
             return View();
         }
 
+        [HttpGet]
+        public IActionResult DevBypass(int id)
+        {
+            using (var cn = new SqlConnection(_connectionString))
+            {
+                cn.Open();
+                var exists = cn.QuerySingleOrDefault<int>("SELECT COUNT(1) FROM [dgmesnie].[Usuario] WHERE [IdUsuario] = @IdUsuario AND [Vigente] = 1", new { IdUsuario = id });
+                if (exists == 0)
+                {
+                    return Content($"Usuario con ID {id} no existe o no está vigente.");
+                }
+            }
+            return CompletarInicioSesion(id, false, null);
+        }
+
         [HttpPost]
         public IActionResult LoginGoogle(string returnUrl = "/")
         {

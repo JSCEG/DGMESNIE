@@ -44,6 +44,7 @@ namespace NSIE.Servicios
 
         // ✅ AGREGAR ESTE MÉTODO QUE FALTA
         Task<List<ModuloSNIER>> ObtenerModulosPorSeccionAsync(int seccionId);
+        Task<List<Usuario>> ObtenerUsuariosVigentesAsync();
     }
     // DTOs para mapeo de Dapper en ObtenerSeccionesConModulosAsync
     public class SeccionDto
@@ -770,8 +771,15 @@ namespace NSIE.Servicios
             var sql = "UPDATE [dgmesnie].[Seccion] SET [Orden] = @Orden WHERE [SeccionId] = @Id";
             await connection.ExecuteAsync(sql, new { Id = seccionId, Orden = nuevoOrden });
         }
-    }
 
+        public async Task<List<Usuario>> ObtenerUsuariosVigentesAsync()
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "SELECT IdUsuario, Nombre FROM [dgmesnie].[Usuario] WHERE Vigente = 1 ORDER BY Nombre";
+            var usuarios = await connection.QueryAsync<Usuario>(sql);
+            return usuarios.ToList();
+        }
+    }
 }
 
 
