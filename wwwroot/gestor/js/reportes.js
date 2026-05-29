@@ -121,6 +121,14 @@ function populateFilterOptions() {
     const selTema = document.getElementById('rep-filtro-tema');
     const selResp = document.getElementById('rep-filtro-resp');
     if (!selTema || !selResp) return;
+
+    const labelResp = selResp.closest('label');
+    if (window.currentUser && !window.currentUser.esAdmin) {
+        if (labelResp) labelResp.style.display = 'none';
+    } else {
+        if (labelResp) labelResp.style.display = '';
+    }
+
     const curT = selTema.value, curR = selResp.value;
     selTema.innerHTML = '<option value="">Todos</option>' +
         _state.temas.map(t => `<option value="${t.id}">${escape(t.actividad)}</option>`).join('');

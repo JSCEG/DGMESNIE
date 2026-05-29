@@ -1,10 +1,21 @@
 @using NSIE.Models
 @using Microsoft.AspNetCore.Antiforgery
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
 @inject IAntiforgery AntiforgeryService
 @{
     ViewData["Title"] = "Gestor de Actividades";
     var header = ViewData["HeaderViewModel"] as HeaderViewModel;
     var csrfToken = AntiforgeryService.GetAndStoreTokens(Context).RequestToken;
+
+    var perfilJson = Context.Session.GetString("PerfilUsuario");
+    PerfilUsuario perfil = null;
+    if (!string.IsNullOrEmpty(perfilJson))
+    {
+        perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+    }
+    var currentUserId = perfil?.IdUsuario;
+    var esAdmin = currentUserId == "1" || currentUserId == "86";
 }
 
 @section Styles {
@@ -47,7 +58,14 @@
         <button class="gestor-tab" data-view="calendario">Calendario</button>
         <button class="gestor-tab" data-view="gantt">Gantt</button>
         <button class="gestor-tab" data-view="kanban">Kanban</button>
-        <button class="gestor-tab" data-view="responsables">Responsables</button>
+        @if (esAdmin)
+        {
+            <button class="gestor-tab" data-view="responsables">Responsables</button>
+        }
+        else
+        {
+            <button class="gestor-tab" data-view="responsables">Mi reporte</button>
+        }
         <button class="gestor-tab" data-view="alertas">Por vencer <span class="badge" id="badge-alertas">0</span></button>
         <button class="gestor-tab" data-view="reportes-presentar">Para presentar</button>
         <button class="gestor-tab" data-view="reportes">Reporte general</button>
@@ -628,6 +646,13 @@
         </div>
 
         @section Scripts {
+            <script>
+                window.currentUser = {
+                    id: @(perfil?.IdUsuario != null ? perfil.IdUsuario : "null"),
+                    nombre: @Html.Raw(perfil?.Nombre != null ? Newtonsoft.Json.JsonConvert.SerializeObject(perfil.Nombre) : "null"),
+                    esAdmin: @(esAdmin ? "true" : "false")
+                };
+            </script>
             <script src="https://d3js.org/d3.v7.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/html2canvas@@1.4.1/dist/html2canvas.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/jspdf@@2.5.1/dist/jspdf.umd.min.js"></script>

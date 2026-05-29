@@ -68,6 +68,13 @@ function populatePresentacionFilters() {
     const respSel = document.getElementById('pres-filtro-responsable');
     if (!actSel || !respSel) return;
 
+    const labelResp = respSel.closest('label');
+    if (window.currentUser && !window.currentUser.esAdmin) {
+        if (labelResp) labelResp.style.display = 'none';
+    } else {
+        if (labelResp) labelResp.style.display = '';
+    }
+
     const currentAct = actSel.value;
     const currentResp = respSel.value;
 

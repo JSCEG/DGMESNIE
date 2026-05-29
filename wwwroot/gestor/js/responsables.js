@@ -12,6 +12,19 @@ export function renderResponsables(actividades, temas) {
     if (!cont) return;
     const personas = uniqueResponsables(actividades, temas);
 
+    if (window.currentUser && !window.currentUser.esAdmin) {
+        const currentName = (window.currentUser.nombre || '').trim();
+        let targetPersona = personas.find(p => p.toLowerCase() === currentName.toLowerCase());
+        if (!targetPersona) {
+            targetPersona = personas[0] || currentName;
+        }
+        if (targetPersona) {
+            const ts = temas.filter(t => participaEnTema(t, targetPersona));
+            mostrarReporteResponsable(targetPersona, ts, actividades);
+            return;
+        }
+    }
+
     cont.innerHTML = personas.map(p => {
         const ts = temas.filter(t => participaEnTema(t, p));
         const activas = ts.filter(t => t.estatus !== 'Concluida');
@@ -428,8 +441,16 @@ function mostrarReporteResponsable(responsableName, ts, actividades) {
     const volverResponsables = () => {
         document.querySelector('.gestor-tab[data-view="responsables"]')?.click();
     };
-    document.getElementById('resp-reporte-volver').onclick = volverResponsables;
-    document.getElementById('resp-reporte-volver-top').onclick = volverResponsables;
+    const volverBtn = document.getElementById('resp-reporte-volver');
+    const volverTopBtn = document.getElementById('resp-reporte-volver-top');
+    if (volverBtn) {
+        volverBtn.onclick = volverResponsables;
+        volverBtn.style.display = (window.currentUser && !window.currentUser.esAdmin) ? 'none' : '';
+    }
+    if (volverTopBtn) {
+        volverTopBtn.onclick = volverResponsables;
+        volverTopBtn.style.display = (window.currentUser && !window.currentUser.esAdmin) ? 'none' : '';
+    }
     document.getElementById('resp-reporte-presentar').onclick = () => presentarReporteResponsable();
     document.getElementById('resp-reporte-pdf').onclick = () => descargarReporteResponsablePdf(responsableName);
     document.getElementById('resp-reporte-ppt').onclick = () => descargarReporteResponsablePpt(responsableName);
