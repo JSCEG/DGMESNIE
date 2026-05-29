@@ -260,8 +260,17 @@ namespace NSIE.Controllers
         // ── Helpers privados ──────────────────────────────────────────────────
         private int? GetCurrentUserId()
         {
-            var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            return int.TryParse(claim, out var id) ? id : null;
+            var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrEmpty(perfilJson)) return null;
+            try
+            {
+                var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+                return perfil != null && int.TryParse(perfil.IdUsuario, out var id) ? id : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static List<string> NormalizarDestinatarios(IEnumerable<string>? destinatarios)

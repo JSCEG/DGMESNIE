@@ -414,6 +414,22 @@ namespace NSIE.Servicios
                             OR EXISTS (
                                 SELECT 1 FROM [dgmesnie].[Gestor_Corresponsables] gc 
                                 WHERE gc.ActividadId = a.ActividadId AND gc.IdUsuario = @usuarioId
+                            )
+                            OR EXISTS (
+                                SELECT 1 FROM [dgmesnie].[Gestor_Temas] t 
+                                WHERE t.ActividadId = a.ActividadId AND t.Activo = 1 
+                                  AND (t.ResponsableId = @usuarioId 
+                                       OR EXISTS (
+                                           SELECT 1 FROM [dgmesnie].[Gestor_Corresponsables] gc2 
+                                           WHERE gc2.TemaId = t.TemaId AND gc2.IdUsuario = @usuarioId
+                                       )
+                                       OR EXISTS (
+                                           SELECT 1 FROM [dgmesnie].[Gestor_Temas_Etapas] e 
+                                           LEFT JOIN [dgmesnie].[Gestor_Corresponsables] gc3 ON gc3.EtapaId = e.EtapaId 
+                                           WHERE e.TemaId = t.TemaId AND e.Activo = 1 
+                                             AND (e.ResponsableId = @usuarioId OR gc3.IdUsuario = @usuarioId)
+                                       )
+                                  )
                             ))";
             }
 
@@ -574,9 +590,14 @@ namespace NSIE.Servicios
                             )
                             OR EXISTS (
                                 SELECT 1 FROM [dgmesnie].[Gestor_Temas_Etapas] e
-                                LEFT JOIN [dgmesnie].[Gestor_Corresponsables] gc ON gc.EtapaId = e.EtapaId
+                                LEFT JOIN [dgmesnie].[Gestor_Corresponsables] gc2 ON gc2.EtapaId = e.EtapaId
                                 WHERE e.TemaId = t.TemaId AND e.Activo = 1
-                                  AND (e.ResponsableId = @usuarioId OR gc.IdUsuario = @usuarioId)
+                                  AND (e.ResponsableId = @usuarioId OR gc2.IdUsuario = @usuarioId)
+                            )
+                            OR a.ResponsablePrincipalId = @usuarioId
+                            OR EXISTS (
+                                SELECT 1 FROM [dgmesnie].[Gestor_Corresponsables] gc3
+                                WHERE gc3.ActividadId = t.ActividadId AND gc3.IdUsuario = @usuarioId
                             )
                         )";
             }

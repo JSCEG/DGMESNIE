@@ -322,13 +322,32 @@ namespace NSIE.Controllers
 
         private int? GetCurrentUserId()
         {
-            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            return int.TryParse(userIdClaim, out var userId) ? userId : null;
+            var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrEmpty(perfilJson)) return null;
+            try
+            {
+                var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+                return perfil != null && int.TryParse(perfil.IdUsuario, out var id) ? id : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private string GetCurrentUserName()
         {
-            return User.Identity?.Name ?? "Usuario portal";
+            var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrEmpty(perfilJson)) return "Usuario portal";
+            try
+            {
+                var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+                return perfil?.Nombre ?? "Usuario portal";
+            }
+            catch
+            {
+                return "Usuario portal";
+            }
         }
     }
 }

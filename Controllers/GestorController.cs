@@ -94,7 +94,11 @@ namespace NSIE.Controllers
                                    (act.Corresponsables != null && act.Corresponsables.Any(c => c.IdUsuario == userId.Value));
                 if (!isAuthorized)
                 {
-                    return NotFound();
+                    var userTemas = await _repo.ObtenerTemasAsync(id, userId.Value);
+                    if (userTemas == null || !userTemas.Any())
+                    {
+                        return NotFound();
+                    }
                 }
             }
             return Json(act);
@@ -252,6 +256,20 @@ namespace NSIE.Controllers
                                    (tema.Corresponsables != null && tema.Corresponsables.Any(c => c.IdUsuario == userId.Value)) ||
                                    (tema.Etapas != null && tema.Etapas.Any(e => e.ResponsableId == userId.Value ||
                                                                                 (e.Corresponsables != null && e.Corresponsables.Any(c => c.IdUsuario == userId.Value))));
+                if (!isAuthorized)
+                {
+                    var act = await _repo.ObtenerActividadPorIdAsync(tema.ActividadId);
+                    if (act != null)
+                    {
+                        var isActAuthorized = act.ResponsablePrincipalId == userId.Value ||
+                                              (act.Corresponsables != null && act.Corresponsables.Any(c => c.IdUsuario == userId.Value));
+                        if (isActAuthorized)
+                        {
+                            isAuthorized = true;
+                        }
+                    }
+                }
+
                 if (!isAuthorized)
                 {
                     return NotFound();
@@ -515,8 +533,17 @@ namespace NSIE.Controllers
         // ── Helpers ───────────────────────────────────────────────────────────
         private int? GetCurrentUserId()
         {
-            var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            return int.TryParse(claim, out var id) ? id : null;
+            var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrEmpty(perfilJson)) return null;
+            try
+            {
+                var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+                return perfil != null && int.TryParse(perfil.IdUsuario, out var id) ? id : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private async Task NotificarAsignacionActividadAsync(GestorActividad actividad, int? responsableIdOverride = null)
