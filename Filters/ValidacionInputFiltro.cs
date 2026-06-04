@@ -10,7 +10,7 @@ public class ValidacionInputFiltro : ActionFilterAttribute
 {
     private readonly ILogger<ValidacionInputFiltro> _logger;
     private static readonly Regex UnsafePattern = new(
-        @"(--|/\*|\*/|\bUNION\b\s+\bSELECT\b|\bDROP\b\s+\bTABLE\b|\bINSERT\b\s+\bINTO\b|\bDELETE\b\s+\bFROM\b|\bUPDATE\b\s+\w+\s+\bSET\b|\bEXEC(?:UTE)?\b\s+\w+|\b(OR|AND)\b\s+1\s*=\s*1|<\s*script\b|<\s*/\s*script\s*>|javascript\s*:|on\w+\s*=)",
+        @"(--|/\*|\*/|\bUNION\b\s+\bSELECT\b|\bDROP\b\s+\bTABLE\b|\bINSERT\b\s+\bINTO\b|\bDELETE\b\s+\bFROM\b|\bUPDATE\b\s+\w+\s+\bSET\b|\bEXEC(?:UTE)?\b\s+\w+|\b(OR|AND)\b\s+1\s*=\s*1|<\s*script\b|<\s*/\s*script\s*>|javascript\s*:|\bon\w+\s*=)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly HashSet<string> SafeHeaders = new(StringComparer.OrdinalIgnoreCase)

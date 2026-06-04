@@ -1,0 +1,369 @@
+@model List<NSIE.Controllers.TransparenciaAsunto>
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+@using Microsoft.AspNetCore.Http
+
+@{
+    ViewData["Title"] = "Repositorio de Transparencia";
+    
+    var isUserAdmin = false;
+    var perfilJson = HttpContextAccessor.HttpContext?.Session.GetString("PerfilUsuario");
+    if (!string.IsNullOrEmpty(perfilJson))
+    {
+        var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+        isUserAdmin = perfil != null && (perfil.IdUsuario == "1" || perfil.IdUsuario == "86" || perfil.Rol == "Administrador" || perfil.Rol_Nombre == "Administrador");
+    }
+    var header = new HeaderViewModel
+    {
+        Title = "Repositorio de Transparencia",
+        IconPath = "mexico.png",
+        Description = "Repositorio centralizado de expedientes, acuerdos e hitos de transparencia del SNIE.",
+        Section = "🌐 Portal Público y Transparencia",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Repositorio de Transparencia",
+            description = "Repositorio centralizado de expedientes, acuerdos e hitos de transparencia del SNIE.",
+            functionality = "Consulta y visualización del estatus de solicitudes de información, recursos de revisión, líneas de tiempo e hitos, podcast de audio e infografías explicativas del SNIE.",
+            stage = "Consulta Pública",
+            roles = new[] {
+                new { icon = "globe", text = "Consulta Pública: Acceso y visualización general" },
+                new { icon = "user-shield", text = "Unidad de Transparencia: Control y carga de expedientes" }
+            },
+            order = new { step = 5, description = "Acceso y consulta de expedientes de transparencia" }
+        })
+    };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/transparencia.css" asp-append-version="true" />
+    <style>
+        .btn-admin-panel {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            background-color: var(--color-gobmx-guinda);
+            color: #fff !important;
+            border: none;
+            padding: 0.6rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-decoration: none;
+            transition: all 0.2s;
+            width: 100%;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 6px rgba(138, 0, 49, 0.15);
+        }
+        .btn-admin-panel:hover {
+            background-color: #6b0024;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 10px rgba(138, 0, 49, 0.25);
+        }
+    </style>
+}
+
+<div class="gestor-page__view-header">
+    @if (header != null)
+    {
+        @await Html.PartialAsync("_ViewHeader", header)
+    }
+</div>
+
+<div class="transparencia-container">
+    <!-- Miga de Pan Homologada -->
+    <div class="gestor-breadcrumbs">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+            </ol>
+        </nav>
+    </div>
+
+    <!-- Contenedor Principal Master-Detail -->
+    <div class="transparencia-wrapper">
+        
+        <!-- Panel Izquierdo: Lista de Asuntos -->
+        <aside class="sidebar-asuntos">
+            @if (isUserAdmin)
+            {
+                <div class="admin-quick-access">
+                    <a href="@Url.Action("Administrar", "Transparencia")" class="btn-admin-panel">
+                        <i class="bi bi-shield-lock-fill"></i> Administrar Repositorio
+                    </a>
+                </div>
+            }
+            <div class="sidebar-search-box">
+                <i class="bi bi-search"></i>
+                <input type="text" id="searchAsuntos" placeholder="Buscar asunto por título..." oninput="filterAsuntos()">
+            </div>
+            
+            <div class="sidebar-list-container" id="listAsuntos">
+                @if (Model != null && Model.Any())
+                {
+                    @foreach (var asunto in Model)
+                    {
+                        var statusClass = "status-" + (asunto.Estatus?.ToLower().Replace(" ", "-") ?? "pendiente");
+                        var badgeClass = asunto.Estatus?.ToLower().Replace(" ", "-") ?? "pendiente";
+                        <div class="asunto-card-item @statusClass" id="card-@asunto.Id" onclick="selectAsunto('@asunto.Id')">
+                            <h5>@asunto.Titulo</h5>
+                            <div class="asunto-card-meta">
+                                <span><i class="bi bi-calendar3 me-1"></i>@asunto.Fecha</span>
+                                <span class="badge-estatus @badgeClass">@asunto.Estatus</span>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p class="text-muted text-center py-4">No hay asuntos registrados.</p>
+                }
+            </div>
+        </aside>
+
+        <!-- Panel Derecho: Detalle y Embebidos -->
+        <main class="detail-asunto-panel">
+            <!-- Estado Inicial: Ningún Asunto Seleccionado -->
+            <div id="emptyState" class="empty-detail-state">
+                <i class="bi bi-info-circle-fill"></i>
+                <h3>Visualizador de Expedientes</h3>
+                <p>Selecciona un asunto de la lista de la izquierda para acceder a sus audios, infografías, presentaciones y líneas de tiempo.</p>
+            </div>
+
+            <!-- Panel de Detalle Dinámico (Oculto al inicio) -->
+            <div id="detailContent" style="display: none;">
+                <!-- Cabecera de Detalle -->
+                <div class="detail-header">
+                    <h2 id="detailTitle">Título del Asunto</h2>
+                    <div class="detail-header-actions">
+                        <span class="detail-date-badge">
+                            <i class="bi bi-calendar3 me-1"></i>Fecha de publicación: <strong id="detailDate">--</strong>
+                        </span>
+                        <a href="#" id="detailSharePointBtn" target="_blank" class="btn-sharepoint">
+                            <i class="bi bi-folder-fill"></i> Expediente en SharePoint
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Pestañas (Tabs) de Contenido Homologadas -->
+                <nav class="gestor-nav">
+                    <div class="gestor-nav__inner" role="tablist">
+                        <button class="gestor-tab active" id="tab-btn-resumen" onclick="switchTab('resumen')">
+                            <i class="bi bi-file-earmark-text me-1"></i> Resumen y Hitos
+                        </button>
+                        <button class="gestor-tab" id="tab-btn-audio" onclick="switchTab('audio')">
+                            <i class="bi bi-headphones me-1"></i> Resumen de Audio (Podcast)
+                        </button>
+                        <button class="gestor-tab" id="tab-btn-infografia" onclick="switchTab('infografia')">
+                            <i class="bi bi-image me-1"></i> Infografía
+                        </button>
+                        <button class="gestor-tab" id="tab-btn-presentacion" onclick="switchTab('presentacion')">
+                            <i class="bi bi-projector me-1"></i> Presentación
+                        </button>
+                    </div>
+                </nav>
+
+                <!-- Panel 1: Resumen y Línea del Tiempo -->
+                <div id="tab-resumen" class="tab-pane-content active">
+                    <div class="card-institutional card-important mb-4">
+                        <h4>📌 Resumen del Asunto</h4>
+                        <p id="detailDescription">Descripción del asunto...</p>
+                    </div>
+                    
+                    <h3 class="fw-bold mt-4" style="color: var(--color-gobmx-guinda); border-bottom: 2px solid var(--color-gobmx-guinda); padding-bottom: 8px;">
+                        ⏳ Línea del Tiempo y Hitos
+                    </h3>
+                    <div class="timeline-container" id="detailTimeline">
+                        <!-- Hitos dinámicos -->
+                    </div>
+                </div>
+
+                <!-- Panel 2: Audio (Podcast Embebido) -->
+                <div id="tab-audio" class="tab-pane-content">
+                    <div class="audio-embed-box">
+                        <h4>🎵 Podcast Explicativo (NotebookLM)</h4>
+                        <p class="small text-muted">Haz clic en reproducir para escuchar el análisis automatizado de este expediente.</p>
+                        <div id="audioPlayerContainer">
+                            <!-- Inyectado dinámicamente -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel 3: Infografía -->
+                <div id="tab-infografia" class="tab-pane-content">
+                    <div class="iframe-wrapper" id="infografiaContainer">
+                        <!-- Inyectado dinámicamente -->
+                    </div>
+                </div>
+
+                <!-- Panel 4: Presentación -->
+                <div id="tab-presentacion" class="tab-pane-content">
+                    <div class="iframe-wrapper" id="presentacionContainer">
+                        <!-- Inyectado dinámicamente -->
+                    </div>
+                </div>
+
+
+            </div>
+        </main>
+        
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Cargar los datos serializados desde el servidor
+        const asuntosList = @Html.Raw(JsonConvert.SerializeObject(Model));
+        let selectedAsuntoId = null;
+        let activeTab = 'resumen';
+
+        // Inicializador
+        function selectAsunto(id) {
+            // Limpiar embebidos del asunto anterior para liberar memoria
+            clearEmbeds();
+
+            selectedAsuntoId = id;
+            const asunto = asuntosList.find(a => a.Id.toString() === id.toString());
+            if (!asunto) return;
+
+            // Cambiar clase active en la lista
+            document.querySelectorAll('.asunto-card-item').forEach(card => {
+                card.classList.remove('active');
+            });
+            document.getElementById(`card-${id}`).classList.add('active');
+
+            // Mostrar/Ocultar pestañas dinámicamente según disponibilidad de recursos
+            const btnAudio = document.getElementById('tab-btn-audio');
+            btnAudio.style.display = asunto.AudioEmbedUrl ? 'inline-flex' : 'none';
+
+            const btnInfografia = document.getElementById('tab-btn-infografia');
+            btnInfografia.style.display = asunto.InfografiaEmbedUrl ? 'inline-flex' : 'none';
+
+            const btnPresentacion = document.getElementById('tab-btn-presentacion');
+            btnPresentacion.style.display = asunto.PresentacionEmbedUrl ? 'inline-flex' : 'none';
+
+            // Mostrar el contenedor de detalle y ocultar el vacío
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('detailContent').style.display = 'block';
+
+            // Actualizar datos de texto
+            document.getElementById('detailTitle').textContent = asunto.Titulo;
+            document.getElementById('detailDate').textContent = asunto.Fecha;
+            document.getElementById('detailDescription').textContent = asunto.Descripcion;
+            document.getElementById('detailSharePointBtn').href = asunto.SharePointUrl || '#';
+
+            // Construir la línea del tiempo
+            buildTimeline(asunto.Timeline);
+
+            // Regresar a la pestaña de resumen por defecto
+            switchTab('resumen');
+        }
+
+        // Cambiar entre pestañas
+        function switchTab(tabId) {
+            activeTab = tabId;
+
+            // Cambiar botones activos
+            document.querySelectorAll('.gestor-tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const activeBtn = Array.from(document.querySelectorAll('.gestor-tab'))
+                .find(btn => btn.getAttribute('onclick').includes(tabId));
+            if (activeBtn) activeBtn.classList.add('active');
+
+            // Ocultar todas las secciones
+            document.querySelectorAll('.tab-pane-content').forEach(pane => {
+                pane.classList.remove('active');
+            });
+            
+            // Mostrar pestaña activa
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+
+            // Cargar perezosamente (lazy load) los embebidos según corresponda
+            loadEmbedForTab(tabId);
+        }
+
+        // Carga perezosa del contenido de la pestaña seleccionada
+        function loadEmbedForTab(tabId) {
+            const asunto = asuntosList.find(a => a.Id.toString() === selectedAsuntoId.toString());
+            if (!asunto) return;
+
+            if (tabId === 'audio') {
+                const container = document.getElementById('audioPlayerContainer');
+                if (container.children.length === 0 && asunto.AudioEmbedUrl) {
+                    container.innerHTML = `<audio controls src="${asunto.AudioEmbedUrl}"></audio>`;
+                }
+            } else if (tabId === 'infografia') {
+                const container = document.getElementById('infografiaContainer');
+                if (container.children.length === 0 && asunto.InfografiaEmbedUrl) {
+                    const url = asunto.InfografiaEmbedUrl;
+                    const isImage = /\.(jpeg|jpg|gif|png|webp|svg)($|\?)/i.test(url);
+                    if (isImage) {
+                        container.innerHTML = `<img src="${url}" alt="Infografía" style="display: block; width: 100%; width: -webkit-fill-available; height: 100%; object-fit: contain;" />`;
+                    } else {
+                        container.innerHTML = `<iframe src="${url}" scrolling="no" allowfullscreen="true" mozallowfullscreen="true" webkitallowfullscreen="true" style="display: block; width: 100%; width: -webkit-fill-available; height: 100%; border: none;"></iframe>`;
+                    }
+                }
+            } else if (tabId === 'presentacion') {
+                const container = document.getElementById('presentacionContainer');
+                if (container.children.length === 0 && asunto.PresentacionEmbedUrl) {
+                    const url = asunto.PresentacionEmbedUrl;
+                    const isImage = /\.(jpeg|jpg|gif|png|webp|svg)($|\?)/i.test(url);
+                    if (isImage) {
+                        container.innerHTML = `<img src="${url}" alt="Presentación" style="display: block; width: 100%; width: -webkit-fill-available; height: 100%; object-fit: contain;" />`;
+                    } else {
+                        container.innerHTML = `<iframe src="${url}" scrolling="no" allowfullscreen="true" mozallowfullscreen="true" webkitallowfullscreen="true" style="display: block; width: 100%; width: -webkit-fill-available; height: 100%; border: none;"></iframe>`;
+                    }
+                }
+            }
+        }
+
+        // Limpia los iframes y audios activos para no sobrecargar el navegador
+        function clearEmbeds() {
+            document.getElementById('audioPlayerContainer').innerHTML = '';
+            document.getElementById('infografiaContainer').innerHTML = '';
+            document.getElementById('presentacionContainer').innerHTML = '';
+        }
+
+        // Construir HTML de la línea del tiempo
+        function buildTimeline(events) {
+            const container = document.getElementById('detailTimeline');
+            container.innerHTML = '';
+
+            if (!events || events.length === 0) {
+                container.innerHTML = '<p class="text-muted italic">No hay hitos registrados en la línea del tiempo para este asunto.</p>';
+                return;
+            }
+
+            events.forEach(evt => {
+                const divEvent = document.createElement('div');
+                divEvent.className = 'timeline-event';
+                divEvent.innerHTML = `
+                    <div class="timeline-event-marker"></div>
+                    <div class="timeline-event-card">
+                        <span class="timeline-event-date"><i class="bi bi-clock me-1"></i>${evt.Fecha}</span>
+                        <h4>${evt.Titulo}</h4>
+                        <p>${evt.Descripcion}</p>
+                    </div>
+                `;
+                container.appendChild(divEvent);
+            });
+        }
+
+        // Filtrador del buscador reactivo en el sidebar
+        function filterAsuntos() {
+            const query = document.getElementById('searchAsuntos').value.toLowerCase().trim();
+            
+            document.querySelectorAll('.asunto-card-item').forEach(card => {
+                const title = card.querySelector('h5').textContent.toLowerCase();
+                if (title.includes(query)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+    </script>
+}
