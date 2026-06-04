@@ -115,7 +115,187 @@ namespace NSIE.Controllers
         [HttpGet]
         public IActionResult SegundaConvocatoria()
         {
-            ViewData["HeaderViewModel"] = BuildHeader("Segunda Convocatoria", "proyecto.png", "Visualización del reporte de la segunda convocatoria de proyectos particulares.");
+            ViewData["HeaderViewModel"] = new HeaderViewModel
+            {
+                Title = "Segunda Convocatoria",
+                IconPath = "proyecto.png",
+                Description = "Seguimiento a proyectos registrados para la segunda convocatoria.",
+                Section = "Seguimiento de proyectos",
+                ModuleInfo = JsonConvert.SerializeObject(new
+                {
+                    title = "Segunda Convocatoria - Proyectos Particulares",
+                    description = "Módulo para el seguimiento a proyectos registrados para la segunda convocatoria.",
+                    functionality = "Visualización del reporte dinámico e interactivo de la segunda convocatoria de proyectos particulares.",
+                    stage = "Consulta y Seguimiento",
+                    highlights = new[]
+                    {
+                        "Reporte interactivo de proyectos particulares.",
+                        "Monitoreo de estado de registros y documentación.",
+                        "Acceso directo a la información cargada en el portal."
+                    },
+                    roles = new[]
+                    {
+                        new { icon = "eye", text = "Usuarios Autorizados: Consulta y visualización del reporte general." }
+                    },
+                    order = new { step = 3, description = "Consulta de reporte de segunda convocatoria" },
+                    context = "Visualizador integrado con el repositorio de datos de proyectos particulares de la segunda convocatoria.",
+                    manualUrl = string.Empty
+                })
+            };
+            return View();
+        }
+
+        // ── View: Programa Vinculante 2026 — 2040 ──────────────────────────
+        [HttpGet]
+        public IActionResult ProgramaVinculante()
+        {
+            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrEmpty(perfilUsuarioJson))
+            {
+                return RedirectToAction("SesionExpirada", "Acceso");
+            }
+
+            var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+            if (perfil == null)
+            {
+                return RedirectToAction("SesionExpirada", "Acceso");
+            }
+
+            // Authorization: Rol_ID == 1 OR IdUsuario in (1, 86, 87, 89)
+            // 1: Javier, 86: Claudia, 87: Raúl, 89: Nahúm
+            bool hasAccess = perfil.Rol_ID == "1" ||
+                             perfil.IdUsuario == "1" ||
+                             perfil.IdUsuario == "86" ||
+                             perfil.IdUsuario == "87" ||
+                             perfil.IdUsuario == "89";
+
+            if (!hasAccess)
+            {
+                var seccionesUsuarioJson = HttpContext.Session.GetString("SeccionesUsuario");
+                bool tieneGestor = false;
+                if (!string.IsNullOrEmpty(seccionesUsuarioJson))
+                {
+                    try
+                    {
+                        var seccionesUsuario = JsonConvert.DeserializeObject<List<SeccionSNIER>>(seccionesUsuarioJson);
+                        tieneGestor = seccionesUsuario?
+                            .SelectMany(s => s.Modulos)
+                            .Any(m => string.Equals(m.Controller, "Gestor", StringComparison.OrdinalIgnoreCase)) ?? false;
+                    }
+                    catch (Exception)
+                    {
+                        // Fallback in case of deserialization issues
+                    }
+                }
+                return RedirectToAction("Index", tieneGestor ? "Gestor" : "Home");
+            }
+
+            ViewData["HeaderViewModel"] = new HeaderViewModel
+            {
+                Title = "Programa Vinculante 2026 — 2040",
+                IconPath = "proyecto.png",
+                Description = "Programa Vinculante 2026 — 2040 - Instalación y Retiro de Centrales Eléctricas.",
+                Section = "Seguimiento de proyectos",
+                ModuleInfo = JsonConvert.SerializeObject(new
+                {
+                    title = "Programa Vinculante 2026 — 2040",
+                    description = "Visualización del Programa Vinculante 2026 — 2040: Instalación y Retiro de Centrales Eléctricas.",
+                    functionality = "Reporte interactivo para el monitoreo de la planeación y retiro de centrales de generación del Sistema Eléctrico Nacional.",
+                    stage = "Planeación y Seguimiento",
+                    highlights = new[]
+                    {
+                        "Seguimiento vinculante de adiciones de capacidad.",
+                        "Programación de retiros de centrales obsoletas o ineficientes.",
+                        "Monitoreo estratégico de la matriz de generación."
+                    },
+                    roles = new[]
+                    {
+                        new { icon = "shield-check", text = "Administradores y Directivos: Consulta estratégica y toma de decisiones." },
+                        new { icon = "user-shield", text = "Usuarios Especiales: Acceso para consulta técnica del programa." }
+                    },
+                    order = new { step = 4, description = "Programa Vinculante 2026-2040" },
+                    context = "Integración con el visualizador oficial del Programa Vinculante.",
+                    manualUrl = string.Empty
+                })
+            };
+
+            return View();
+        }
+
+        // ── View: Grupo de Atención Técnica de Proyectos Mixtos ─────────────
+        [HttpGet]
+        public IActionResult GrupoAtencionTecnica()
+        {
+            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrEmpty(perfilUsuarioJson))
+            {
+                return RedirectToAction("SesionExpirada", "Acceso");
+            }
+
+            var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+            if (perfil == null)
+            {
+                return RedirectToAction("SesionExpirada", "Acceso");
+            }
+
+            // Authorization: Rol_ID == 1 OR IdUsuario in (1, 86, 87, 89)
+            // 1: Javier, 86: Claudia, 87: Raúl, 89: Nahúm
+            bool hasAccess = perfil.Rol_ID == "1" ||
+                             perfil.IdUsuario == "1" ||
+                             perfil.IdUsuario == "86" ||
+                             perfil.IdUsuario == "87" ||
+                             perfil.IdUsuario == "89";
+
+            if (!hasAccess)
+            {
+                var seccionesUsuarioJson = HttpContext.Session.GetString("SeccionesUsuario");
+                bool tieneGestor = false;
+                if (!string.IsNullOrEmpty(seccionesUsuarioJson))
+                {
+                    try
+                    {
+                        var seccionesUsuario = JsonConvert.DeserializeObject<List<SeccionSNIER>>(seccionesUsuarioJson);
+                        tieneGestor = seccionesUsuario?
+                            .SelectMany(s => s.Modulos)
+                            .Any(m => string.Equals(m.Controller, "Gestor", StringComparison.OrdinalIgnoreCase)) ?? false;
+                    }
+                    catch (Exception)
+                    {
+                        // Fallback in case of deserialization issues
+                    }
+                }
+                return RedirectToAction("Index", tieneGestor ? "Gestor" : "Home");
+            }
+
+            ViewData["HeaderViewModel"] = new HeaderViewModel
+            {
+                Title = "Grupo de Atención Técnica de Proyectos Mixtos",
+                IconPath = "proyecto.png",
+                Description = "Grupo de Atención Técnica de Proyectos Mixtos - Seguimiento e Integración.",
+                Section = "Seguimiento de proyectos",
+                ModuleInfo = JsonConvert.SerializeObject(new
+                {
+                    title = "Grupo de Atención Técnica (GAT Mixto)",
+                    description = "Visualización de la bitácora y reporte de seguimiento del Grupo de Atención Técnica para proyectos mixtos.",
+                    functionality = "Reporte dinámico e interactivo de los acuerdos, avances y estatus del GAT Mixto de proyectos de infraestructura.",
+                    stage = "Reunión y Acuerdos",
+                    highlights = new[]
+                    {
+                        "Seguimiento técnico a proyectos de coinversión y desarrollo mixto.",
+                        "Estatus de acuerdos tomados en las sesiones del GAT.",
+                        "Trazabilidad de la documentación y compromisos vinculados."
+                    },
+                    roles = new[]
+                    {
+                        new { icon = "shield-check", text = "Administradores y Directivos: Consulta general del tablero y acuerdos." },
+                        new { icon = "users", text = "Integrantes del GAT: Consulta y seguimiento de compromisos técnicos." }
+                    },
+                    order = new { step = 5, description = "Grupo de Atención Técnica Mixtos" },
+                    context = "Integración con el visualizador del reporte general de seguimiento GAT Mixto.",
+                    manualUrl = string.Empty
+                })
+            };
+
             return View();
         }
 
