@@ -54,9 +54,9 @@ namespace NSIE.Models
 
         // Propiedades para las notificaciones
         public List<Notificacion> Notificaciones { get; set; } = new List<Notificacion>();
-
-
     }
+
+
 
 
 }

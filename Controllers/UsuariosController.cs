@@ -81,46 +81,71 @@ namespace NSIE.Controllers
             {
                 ViewData["Mensaje"] = "La contraseña no puede estar vacía.";
                 await PoblarDropdowns();
-                return View();
+                return View(nuevoUsuario);
             }
 
             if (nuevoUsuario.Clave != nuevoUsuario.ConfirmarClave)
             {
-                ViewData["Mensaje"] = "Las contraseñas no coinciden";
+                ViewData["Mensaje"] = "Las contraseñas no coinciden.";
                 await PoblarDropdowns();
-                return View();
+                return View(nuevoUsuario);
+            }
+
+            // Remover de la validación los campos que no se envían desde la vista
+            ModelState.Remove(nameof(nuevoUsuario.UltimaActualizacion));
+            ModelState.Remove(nameof(nuevoUsuario.HoraInicioSesion));
+            ModelState.Remove(nameof(nuevoUsuario.RolUsuario_QuienRegistro));
+            ModelState.Remove(nameof(nuevoUsuario.RolUsuario_FechaMod));
+            ModelState.Remove(nameof(nuevoUsuario.RolUsuario_Comentarios));
+            ModelState.Remove(nameof(nuevoUsuario.Rol_Nombre));
+            ModelState.Remove(nameof(nuevoUsuario.Rol_Clave));
+            ModelState.Remove(nameof(nuevoUsuario.Rol_Comentario));
+            ModelState.Remove(nameof(nuevoUsuario.Rol_FechaMod));
+            ModelState.Remove(nameof(nuevoUsuario.Mercado_Nombre));
+            ModelState.Remove(nameof(nuevoUsuario.Mercado_Comentario));
+            ModelState.Remove(nameof(nuevoUsuario.Mercado_FechaMod));
+            ModelState.Remove(nameof(nuevoUsuario.Notificaciones));
+
+            if (!ModelState.IsValid)
+            {
+                var errors = string.Join(" | ", ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => !string.IsNullOrEmpty(e.ErrorMessage) ? e.ErrorMessage : e.Exception?.Message));
+                ViewData["Mensaje"] = $"Datos de formulario inválidos: {errors}";
+                await PoblarDropdowns();
+                return View(nuevoUsuario);
             }
 
             // Encriptar contraseña
             nuevoUsuario.Clave = ConvertirSha256(nuevoUsuario.Clave);
 
-            if (ModelState.IsValid)
+            // Registrar usuario y rol
+            int newUserId = await repositorioUsuarios.RegistraUsuario(nuevoUsuario);
+            if (newUserId > 0)
             {
-                // Registrar usuario y rol
-                int newUserId = await repositorioUsuarios.RegistraUsuario(nuevoUsuario);
-                if (newUserId > 0)
+                var rolUsuario = new RolesUsuarioViewModel
                 {
-                    var rolUsuario = new RolesUsuarioViewModel
-                    {
-                        IdUsuario = newUserId,
-                        Rol_ID = nuevoUsuario.Rol_ID,
-                        Mercado_ID = nuevoUsuario.Mercado_ID,
-                        RolUsuario_Comentarios = nuevoUsuario.RolUsuario_Comentarios,
-                        RolUsuario_Vigente = 1,
-                        RolUsuario_QuienRegistro = IDUsuario,
-                        RolUsuario_FechaMod = DateTime.Now
-                    };
+                    IdUsuario = newUserId,
+                    Rol_ID = nuevoUsuario.Rol_ID,
+                    Mercado_ID = nuevoUsuario.Mercado_ID,
+                    RolUsuario_Comentarios = nuevoUsuario.RolUsuario_Comentarios,
+                    RolUsuario_Vigente = 1,
+                    RolUsuario_QuienRegistro = IDUsuario,
+                    RolUsuario_FechaMod = DateTime.Now
+                };
 
-                    bool isRolUsuarioCreated = await repositorioUsuarios.RegistraRolUsuario(rolUsuario);
-                    if (isRolUsuarioCreated)
-                        return RedirectToAction("AdministrarUsuarios");
+                bool isRolUsuarioCreated = await repositorioUsuarios.RegistraRolUsuario(rolUsuario);
+                if (isRolUsuarioCreated)
+                {
+                    return RedirectToAction("AdministrarUsuarios");
                 }
             }
 
-            ModelState.AddModelError(string.Empty, "Error al crear usuario y/o rol de usuario.");
+            ViewData["Mensaje"] = "Error al guardar el usuario o asociar su rol en la base de datos.";
             await PoblarDropdowns();
             return View(nuevoUsuario);
         }
+
 
         // ============================
         // 3. EDICIÓN DE USUARIOS
@@ -183,11 +208,29 @@ namespace NSIE.Controllers
             return View(model);
         }
 
-        // Procesa la edición de usuario
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Edit(EditUserViewModel model)
         {
+            // Remover de la validación los campos opcionales si están vacíos o no se envían
+            ModelState.Remove(nameof(model.Clave));
+            ModelState.Remove(nameof(model.UltimaActualizacion));
+            ModelState.Remove(nameof(model.HoraInicioSesion));
+            ModelState.Remove(nameof(model.RolUsuario_QuienRegistro));
+            ModelState.Remove(nameof(model.RolUsuario_FechaMod));
+            ModelState.Remove(nameof(model.RolUsuario_Comentarios));
+            ModelState.Remove(nameof(model.Rol_Nombre));
+            ModelState.Remove(nameof(model.Rol_Comentario));
+            ModelState.Remove(nameof(model.Rol_FechaMod));
+            ModelState.Remove(nameof(model.Mercado_Nombre));
+            ModelState.Remove(nameof(model.Mercado_Comentario));
+            ModelState.Remove(nameof(model.Mercado_FechaMod));
+
+            if (string.IsNullOrWhiteSpace(model.RFC)) ModelState.Remove(nameof(model.RFC));
+            if (string.IsNullOrWhiteSpace(model.Cargo)) ModelState.Remove(nameof(model.Cargo));
+            if (string.IsNullOrWhiteSpace(model.Unidad_de_Adscripcion)) ModelState.Remove(nameof(model.Unidad_de_Adscripcion));
+            if (string.IsNullOrWhiteSpace(model.ClaveEmpleado)) ModelState.Remove(nameof(model.ClaveEmpleado));
+
             if (ModelState.IsValid)
             {
                 var user = new UserViewModel

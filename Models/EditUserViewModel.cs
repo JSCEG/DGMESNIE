@@ -8,7 +8,7 @@ namespace NSIE.Models
     {
         public int IdUsuario { get; set; }
         [Required(ErrorMessage = "El correo es obligatorio.")]
-        [RegularExpression(@"^[a-zA-Z0-9._%+-]+@energia\.gob\.mx$", ErrorMessage = "El correo debe terminar con @energia.gob.mx")]
+        [EmailAddress(ErrorMessage = "El correo no es válido.")]
         public string Correo { get; set; }
         public string Clave { get; set; }
 

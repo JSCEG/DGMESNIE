@@ -636,7 +636,18 @@ namespace NSIE.Controllers
                 return Redirect(primerModuloExterno.Action);
             }
 
-            return RedirectToAction("Index", "Gestor");
+            bool tieneGestor = seccionesAgrupadas
+                .SelectMany(s => s.Modulos)
+                .Any(m => string.Equals(m.Controller, "Gestor", StringComparison.OrdinalIgnoreCase));
+
+            if (tieneGestor)
+            {
+                return RedirectToAction("Index", "Gestor");
+            }
+            else
+            {
+                return RedirectToAction("Index", "Home");
+            }
         }
 
         private List<SeccionSNIER> ObtenerSeccionesUsuario(SqlConnection cn, int idUsuario)

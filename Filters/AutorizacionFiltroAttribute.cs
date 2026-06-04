@@ -98,7 +98,7 @@ public class AutorizacionFiltro : ActionFilterAttribute
                         if (string.IsNullOrEmpty(seccionesUsuarioJson))
                         {
                             Console.WriteLine($"Acceso denegado: menú de sesión vacío para {perfilUsuario.Nombre} ({idUsuario}) al intentar entrar a {controller}/{action}");
-                            context.Result = new RedirectToActionResult("Index", "Gestor", null);
+                            context.Result = new RedirectToActionResult("Index", "Home", null);
                             return;
                         }
 
@@ -142,7 +142,13 @@ public class AutorizacionFiltro : ActionFilterAttribute
                         if (!tieneAcceso)
                         {
                             Console.WriteLine($"Acceso denegado dinámicamente: {perfilUsuario.Nombre} ({idUsuario}) no tiene el módulo {controller} (o acción {action}) en su menú.");
-                            context.Result = new RedirectToActionResult("Index", "Gestor", null);
+                            
+                            bool tieneGestor = seccionesUsuario
+                                .SelectMany(s => s.Modulos)
+                                .Any(m => string.Equals(m.Controller, "Gestor", StringComparison.OrdinalIgnoreCase));
+                            
+                            string redirectController = tieneGestor ? "Gestor" : "Home";
+                            context.Result = new RedirectToActionResult("Index", redirectController, null);
                             return;
                         }
                     }

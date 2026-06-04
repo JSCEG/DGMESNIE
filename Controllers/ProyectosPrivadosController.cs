@@ -111,6 +111,15 @@ namespace NSIE.Controllers
             return View();
         }
 
+        // ── View: Segunda Convocatoria ──────────────────────────────────────
+        [HttpGet]
+        public IActionResult SegundaConvocatoria()
+        {
+            ViewData["HeaderViewModel"] = BuildHeader("Segunda Convocatoria", "proyecto.png", "Visualización del reporte de la segunda convocatoria de proyectos particulares.");
+            return View();
+        }
+
+
         // ── CRUD Views ───────────────────────────────────────────────────────
         [HttpGet]
         public async Task<IActionResult> Crear()
