@@ -50,6 +50,11 @@ const ENDPOINTS = {
     usuarios: `${BASE}/Usuarios`,
 };
 
+// Endpoint especial: catálogo completo de actividades (sin filtro de usuario).
+// Usado en el modal de crear/editar tema para que cualquier usuario pueda
+// seleccionar cualquier actividad del catálogo institucional.
+const CATALOGO_ACTIVIDADES_URL = `${BASE}/Actividades/Catalogo`;
+
 // Suscriptores por colección
 const _subs = {};
 
@@ -251,6 +256,16 @@ export class ApiStore {
         if (col === 'actividades') return result.map(normalizeActividad);
         if (col === 'usuarios') return result.map(normalizeUsuario);
         return result;
+    }
+
+    // listCatalogo() — GET /Gestor/Api/Actividades/Catalogo (sin filtro de usuario)
+    // Devuelve TODAS las actividades activas del catálogo institucional.
+    // Usado exclusivamente en el dropdown de "Actividad" al crear/editar un Tema,
+    // para que cualquier usuario pueda asociar su tema a cualquier actividad.
+    async listCatalogo() {
+        const result = await apiFetch(CATALOGO_ACTIVIDADES_URL);
+        if (!Array.isArray(result)) return [];
+        return result.map(normalizeActividad);
     }
 
     // get(col, id)

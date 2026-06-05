@@ -666,6 +666,16 @@ export async function openTemaModal(tema, actividades) {
         .filter(u => normalizeUserName(u.nombre) !== 'consulta publica')
         .sort((x, y) => x.nombre.localeCompare(y.nombre, 'es-MX', { sensitivity: 'base' }));
 
+    // ── Catálogo completo de actividades para el selector del modal ──────────
+    // Se usa /Actividades/Catalogo (sin filtro de usuario) para que cualquier
+    // usuario pueda asociar su tema a cualquier actividad institucional.
+    let actividadesCatalogo = actividades; // fallback si falla el fetch
+    try {
+        actividadesCatalogo = await dataService.listCatalogo();
+    } catch (err) {
+        console.warn('No se pudo cargar el catálogo completo de actividades; usando lista del usuario.', err);
+    }
+
     const selectedById = Number(t.responsableId);
     const currentById = Number.isFinite(selectedById) && selectedById > 0
         ? filteredUsers.find(u => u.idUsuario === selectedById)
@@ -697,7 +707,7 @@ export async function openTemaModal(tema, actividades) {
         <form>
             <div class="form-row">
                 <div class="form-field full"><label>Actividad *</label>
-                    <select name="actividadId" required ${canEdit ? '' : 'disabled'}>${actividades.map(a => `<option value="${a.id}" ${t.actividadId === a.id ? 'selected' : ''}>${escape(a.actividad)}</option>`).join('')}</select>
+                    <select name="actividadId" required ${canEdit ? '' : 'disabled'}>${actividadesCatalogo.map(a => `<option value="${a.id}" ${String(t.actividadId) === String(a.id) ? 'selected' : ''}>${escape(a.actividad)}</option>`).join('')}</select>
                 </div>
                 <div class="form-field full"><label>Tema *</label><input name="tema" required value="${escape(t.tema)}" ${canEdit ? '' : 'disabled'}></div>
                 <div class="form-field full"><label>Descripción</label><textarea name="descripcion" ${canEdit ? '' : 'disabled'}>${escape(t.descripcion || '')}</textarea></div>

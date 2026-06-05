@@ -115,6 +115,28 @@ namespace NSIE.Controllers
             }
         }
 
+        // ── API: Catálogo completo de Actividades (para selección al crear/editar Tema) ──
+        /// <summary>
+        /// Devuelve todas las actividades activas sin filtro de usuario.
+        /// Solo se usa en el dropdown de "Actividad" al crear o editar un Tema,
+        /// para que cualquier usuario pueda asociar su tema a cualquier actividad del catálogo.
+        /// </summary>
+        [HttpGet("Gestor/Api/Actividades/Catalogo")]
+        public async Task<IActionResult> ApiActividadesCatalogo()
+        {
+            try
+            {
+                // Pasar null para omitir el filtro de usuario → devuelve todo el catálogo
+                var acts = await _repo.ObtenerActividadesAsync(usuarioId: null);
+                return Json(acts);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo catálogo de actividades.");
+                return StatusCode(500, new { error = "Error interno al obtener el catálogo de actividades." });
+            }
+        }
+
         [HttpGet("Gestor/Api/Actividades/{id:int}")]
         public async Task<IActionResult> ApiActividad(int id)
         {
