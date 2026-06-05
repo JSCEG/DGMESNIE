@@ -43,6 +43,8 @@ namespace NSIE.Controllers
                             Titulo,
                             CONVERT(VARCHAR(10), Fecha, 120) AS Fecha,
                             Estatus,
+                            FolioSolicitud,
+                            NumeroExpediente,
                             Descripcion,
                             SharePointUrl,
                             AudioEmbedUrl,
@@ -104,6 +106,8 @@ namespace NSIE.Controllers
                             Titulo,
                             CONVERT(VARCHAR(10), Fecha, 120) AS Fecha,
                             Estatus,
+                            FolioSolicitud,
+                            NumeroExpediente,
                             Descripcion,
                             SharePointUrl,
                             AudioEmbedUrl,
@@ -158,9 +162,9 @@ namespace NSIE.Controllers
                      {
                         var insertAsunto = @"
                             INSERT INTO dgmesnie.TransparenciaAsunto
-                            (Titulo, Fecha, Estatus, Descripcion, SharePointUrl, AudioEmbedUrl, InfografiaEmbedUrl, PresentacionEmbedUrl, Activo, CreadoEn, CreadoPor)
+                            (Titulo, Fecha, Estatus, FolioSolicitud, NumeroExpediente, Descripcion, SharePointUrl, AudioEmbedUrl, InfografiaEmbedUrl, PresentacionEmbedUrl, Activo, CreadoEn, CreadoPor)
                             VALUES
-                            (@Titulo, @Fecha, @Estatus, @Descripcion, @SharePointUrl, @AudioEmbedUrl, @InfografiaEmbedUrl, @PresentacionEmbedUrl, 1, SYSUTCDATETIME(), @CreadoPor);
+                            (@Titulo, @Fecha, @Estatus, @FolioSolicitud, @NumeroExpediente, @Descripcion, @SharePointUrl, @AudioEmbedUrl, @InfografiaEmbedUrl, @PresentacionEmbedUrl, 1, SYSUTCDATETIME(), @CreadoPor);
                             SELECT SCOPE_IDENTITY();";
                         
                         DateTime.TryParse(model.Fecha, out var parsedDate);
@@ -169,6 +173,8 @@ namespace NSIE.Controllers
                             model.Titulo,
                             Fecha = parsedDate,
                             model.Estatus,
+                            model.FolioSolicitud,
+                            model.NumeroExpediente,
                             model.Descripcion,
                             SharePointUrl = SanitizarUrlEmbebida(model.SharePointUrl),
                             AudioEmbedUrl = SanitizarUrlEmbebida(model.AudioEmbedUrl),
@@ -233,6 +239,8 @@ namespace NSIE.Controllers
                             Titulo,
                             CONVERT(VARCHAR(10), Fecha, 120) AS Fecha,
                             Estatus,
+                            FolioSolicitud,
+                            NumeroExpediente,
                             Descripcion,
                             SharePointUrl,
                             AudioEmbedUrl,
@@ -291,6 +299,8 @@ namespace NSIE.Controllers
                             SET Titulo = @Titulo,
                                 Fecha = @Fecha,
                                 Estatus = @Estatus,
+                                FolioSolicitud = @FolioSolicitud,
+                                NumeroExpediente = @NumeroExpediente,
                                 Descripcion = @Descripcion,
                                 SharePointUrl = @SharePointUrl,
                                 AudioEmbedUrl = @AudioEmbedUrl,
@@ -308,6 +318,8 @@ namespace NSIE.Controllers
                             model.Titulo,
                             Fecha = parsedDate,
                             model.Estatus,
+                            model.FolioSolicitud,
+                            model.NumeroExpediente,
                             model.Descripcion,
                             SharePointUrl = SanitizarUrlEmbebida(model.SharePointUrl),
                             AudioEmbedUrl = SanitizarUrlEmbebida(model.AudioEmbedUrl),
@@ -475,6 +487,8 @@ namespace NSIE.Controllers
         public string Titulo { get; set; }
         public string Fecha { get; set; }
         public string Estatus { get; set; }
+        public string FolioSolicitud { get; set; }
+        public string NumeroExpediente { get; set; }
         public string Descripcion { get; set; }
         public string SharePointUrl { get; set; }
         public string AudioEmbedUrl { get; set; }

@@ -95,23 +95,64 @@
                     </a>
                 </div>
             }
+            <div class="sidebar-top-actions mb-2">
+                <button class="btn-dashboard-toggle active" id="btnDashboardGeneral" onclick="showDashboard()">
+                    <i class="bi bi-speedometer2 me-1"></i> Ver Tablero General
+                </button>
+            </div>
             <div class="sidebar-search-box">
                 <i class="bi bi-search"></i>
-                <input type="text" id="searchAsuntos" placeholder="Buscar asunto por título..." oninput="filterAsuntos()">
+                <input type="text" id="searchAsuntos" placeholder="Buscar por título, folio o expediente..." oninput="filterAsuntos()">
             </div>
             
             <div class="sidebar-list-container" id="listAsuntos">
                 @if (Model != null && Model.Any())
                 {
-                    @foreach (var asunto in Model)
+                    var groupedAsuntos = Model
+                        .GroupBy(a => string.IsNullOrWhiteSpace(a.FolioSolicitud) ? "Sin Folio" : a.FolioSolicitud)
+                        .OrderByDescending(g => g.Max(a => a.Fecha));
+
+                    @foreach (var group in groupedAsuntos)
                     {
-                        var statusClass = "status-" + (asunto.Estatus?.ToLower().Replace(" ", "-") ?? "pendiente");
-                        var badgeClass = asunto.Estatus?.ToLower().Replace(" ", "-") ?? "pendiente";
-                        <div class="asunto-card-item @statusClass" id="card-@asunto.Id" onclick="selectAsunto('@asunto.Id')">
-                            <h5>@asunto.Titulo</h5>
-                            <div class="asunto-card-meta">
-                                <span><i class="bi bi-calendar3 me-1"></i>@asunto.Fecha</span>
-                                <span class="badge-estatus @badgeClass">@asunto.Estatus</span>
+                        var folio = group.Key;
+                        var matters = group.OrderByDescending(a => a.Fecha).ToList();
+                        var totalCount = matters.Count;
+                        var concluidosCount = matters.Count(m => m.Estatus == "Concluido");
+                        var enProcesoCount = matters.Count(m => m.Estatus == "En proceso");
+                        var enRevisionCount = matters.Count(m => m.Estatus == "En revisión");
+                        var pendienteCount = matters.Count(m => m.Estatus == "Pendiente");
+
+                        var summaryParts = new List<string>();
+                        if (concluidosCount > 0) summaryParts.Add($"{concluidosCount} concluidos");
+                        if (enProcesoCount > 0) summaryParts.Add($"{enProcesoCount} en proceso");
+                        if (enRevisionCount > 0) summaryParts.Add($"{enRevisionCount} en revisión");
+                        if (pendienteCount > 0) summaryParts.Add($"{pendienteCount} pendientes");
+                        var summaryText = string.Join(", ", summaryParts);
+
+                        <div class="folio-group" data-folio="@folio">
+                            <div class="folio-group-header" onclick="toggleFolioGroup(this)" style="cursor: pointer;">
+                                <div class="d-flex align-items-center w-100">
+                                    <span class="folio-label"><i class="bi bi-hash"></i> Folio: @folio</span>
+                                    <i class="bi bi-chevron-right chevron-icon ms-auto text-muted" style="transition: transform 0.2s;"></i>
+                                </div>
+                                <span class="folio-summary">(@totalCount expedientes@(string.IsNullOrEmpty(summaryText) ? "" : $": {summaryText}"))</span>
+                            </div>
+                            <div class="folio-group-items" style="display: none;">
+                                @foreach (var asunto in matters)
+                                {
+                                    var statusClass = "status-" + (asunto.Estatus?.ToLower().Replace(" ", "-") ?? "pendiente");
+                                    var badgeClass = asunto.Estatus?.ToLower().Replace(" ", "-") ?? "pendiente";
+                                    <div class="asunto-card-item @statusClass" id="card-@asunto.Id" onclick="selectAsunto('@asunto.Id')" data-searchable-text="@asunto.Titulo.ToLower() @(asunto.FolioSolicitud?.ToLower() ?? "") @(asunto.NumeroExpediente?.ToLower() ?? "")">
+                                        <div class="asunto-card-title-row">
+                                            <span class="asunto-card-expediente">@asunto.NumeroExpediente</span>
+                                        </div>
+                                        <h5>@asunto.Titulo</h5>
+                                        <div class="asunto-card-meta">
+                                            <span><i class="bi bi-calendar3 me-1"></i>@asunto.Fecha</span>
+                                            <span class="badge-estatus @badgeClass">@asunto.Estatus</span>
+                                        </div>
+                                    </div>
+                                }
                             </div>
                         </div>
                     }
@@ -125,86 +166,182 @@
 
         <!-- Panel Derecho: Detalle y Embebidos -->
         <main class="detail-asunto-panel">
-            <!-- Estado Inicial: Ningún Asunto Seleccionado -->
-            <div id="emptyState" class="empty-detail-state">
-                <i class="bi bi-info-circle-fill"></i>
-                <h3>Visualizador de Expedientes</h3>
-                <p>Selecciona un asunto de la lista de la izquierda para acceder a sus audios, infografías, presentaciones y líneas de tiempo.</p>
+            <!-- Estado Inicial / Dashboard (Visible al inicio) -->
+            <div id="emptyState" class="empty-detail-state dashboard-view flex-column p-4 align-items-start text-start" style="height: auto; border: 1px solid var(--color-gobmx-gris-claro); background-color: var(--color-surface); border-radius: var(--border-radius-lg); margin-top: var(--spacing-md); display: flex;">
+                <div class="dashboard-header mb-4 w-100 text-start">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-speedometer2 text-guinda fs-2" style="color: var(--color-gobmx-guinda) !important;"></i>
+                        <h2 class="m-0 fw-bold" style="font-family: var(--font-family-headings); color: var(--color-gobmx-guinda); font-size: 1.6rem;">Tablero de Control de Transparencia</h2>
+                    </div>
+                    <p class="text-muted m-0 mt-1" style="font-size: 0.9rem;">Resumen estadístico de las solicitudes de información pública y recursos de revisión del SNIE.</p>
+                </div>
+
+                <!-- KPI Grid -->
+                <div class="dashboard-kpi-grid w-100 mb-4">
+                    <div class="kpi-card border-guinda">
+                        <div class="kpi-icon"><i class="bi bi-hash"></i></div>
+                        <div class="kpi-num" id="statTotalFolios">--</div>
+                        <div class="kpi-label">Solicitudes (Folios)</div>
+                    </div>
+                    <div class="kpi-card border-dorado">
+                        <div class="kpi-icon"><i class="bi bi-file-earmark-medical-fill"></i></div>
+                        <div class="kpi-num" id="statTotalExpedientes">--</div>
+                        <div class="kpi-label">Total Expedientes</div>
+                    </div>
+                    <div class="kpi-card border-verde">
+                        <div class="kpi-icon"><i class="bi bi-check-circle-fill"></i></div>
+                        <div class="kpi-num" id="statConcluidos">--</div>
+                        <div class="kpi-label">Concluidos</div>
+                    </div>
+                    <div class="kpi-card border-gris">
+                        <div class="kpi-icon"><i class="bi bi-clock-history"></i></div>
+                        <div class="kpi-num" id="statActivos">--</div>
+                        <div class="kpi-label">En Proceso / Revisión</div>
+                    </div>
+                </div>
+
+                <div class="row w-100 mt-2 text-start">
+                    <!-- Column 1: Stats Chart and Legend -->
+                    <div class="col-md-6 mb-4">
+                        <div class="dashboard-section-card h-100 p-3" style="background: #fafbfc; border-radius: var(--border-radius-md); border: 1px solid var(--color-gobmx-gris-claro);">
+                            <h4 class="section-title mb-3" style="font-size: 1rem; font-weight: 700; color: var(--color-text-primary); border-bottom: 2px solid var(--color-gobmx-dorado); padding-bottom: 6px;"><i class="bi bi-pie-chart-fill me-2"></i>Distribución de Estatus</h4>
+                            <div class="status-chart-wrapper d-flex align-items-center justify-content-around flex-wrap gap-3" style="min-height: 180px;">
+                                <div class="chart-canvas-container" style="position: relative; width: 140px; height: 140px;">
+                                    <canvas id="statusChart"></canvas>
+                                </div>
+                                <div class="chart-legend-container" style="display: flex; flex-direction: column; gap: 8px; min-width: 150px; flex: 1;">
+                                    <div class="legend-item d-flex align-items-center justify-content-between pb-1" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
+                                        <span><i class="bi bi-circle-fill text-success me-2"></i>Concluidos</span>
+                                        <span class="fw-bold" id="legendConcluido">--</span>
+                                    </div>
+                                    <div class="legend-item d-flex align-items-center justify-content-between pb-1" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
+                                        <span><i class="bi bi-circle-fill text-warning me-2"></i>En proceso</span>
+                                        <span class="fw-bold" id="legendProceso">--</span>
+                                    </div>
+                                    <div class="legend-item d-flex align-items-center justify-content-between pb-1" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
+                                        <span><i class="bi bi-circle-fill me-2" style="color: var(--color-gobmx-guinda) !important;"></i>En revisión</span>
+                                        <span class="fw-bold" id="legendRevision">--</span>
+                                    </div>
+                                    <div class="legend-item d-flex align-items-center justify-content-between pb-1" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
+                                        <span><i class="bi bi-circle-fill text-secondary me-2"></i>Pendientes</span>
+                                        <span class="fw-bold" id="legendPendiente">--</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Recent Activity -->
+                    <div class="col-md-6 mb-4">
+                        <div class="dashboard-section-card h-100 p-3" style="background: #fafbfc; border-radius: var(--border-radius-md); border: 1px solid var(--color-gobmx-gris-claro);">
+                            <h4 class="section-title mb-3" style="font-size: 1rem; font-weight: 700; color: var(--color-text-primary); border-bottom: 2px solid var(--color-gobmx-dorado); padding-bottom: 6px;"><i class="bi bi-activity me-2"></i>Últimas Publicaciones</h4>
+                            <div class="recent-activity-list" id="recentActivityList" style="display: flex; flex-direction: column; gap: 8px;">
+                                <!-- Inyectado dinámicamente -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Panel de Detalle Dinámico (Oculto al inicio) -->
             <div id="detailContent" style="display: none;">
-                <!-- Cabecera de Detalle -->
-                <div class="detail-header">
-                    <h2 id="detailTitle">Título del Asunto</h2>
-                    <div class="detail-header-actions">
-                        <span class="detail-date-badge">
-                            <i class="bi bi-calendar3 me-1"></i>Fecha de publicación: <strong id="detailDate">--</strong>
-                        </span>
-                        <a href="#" id="detailSharePointBtn" target="_blank" class="btn-sharepoint">
-                            <i class="bi bi-folder-fill"></i> Expediente en SharePoint
-                        </a>
+                <!-- Secuencia del Folio (Expedientes Relacionados) siempre al inicio -->
+                <div class="folio-stepper-section mb-4">
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="folio-stepper-label"><i class="bi bi-hash text-muted"></i> <strong>Folio de Solicitud:</strong> <span id="detailFolioHeader" class="fw-bold text-guinda" style="color: var(--color-gobmx-guinda);">--</span></span>
+                    </div>
+                    <div class="trace-steps-container" id="traceSteps">
+                        <!-- Inyectado dinámicamente -->
                     </div>
                 </div>
 
-                <!-- Pestañas (Tabs) de Contenido Homologadas -->
-                <nav class="gestor-nav">
-                    <div class="gestor-nav__inner" role="tablist">
-                        <button class="gestor-tab active" id="tab-btn-resumen" onclick="switchTab('resumen')">
-                            <i class="bi bi-file-earmark-text me-1"></i> Resumen y Hitos
-                        </button>
-                        <button class="gestor-tab" id="tab-btn-audio" onclick="switchTab('audio')">
-                            <i class="bi bi-headphones me-1"></i> Resumen de Audio
-                        </button>
-                        <button class="gestor-tab" id="tab-btn-infografia" onclick="switchTab('infografia')">
-                            <i class="bi bi-image me-1"></i> Infografía
-                        </button>
-                        <button class="gestor-tab" id="tab-btn-presentacion" onclick="switchTab('presentacion')">
-                            <i class="bi bi-projector me-1"></i> Presentación
-                        </button>
-                    </div>
-                </nav>
+                <hr class="my-3" style="border-top: 1px solid var(--color-gobmx-gris-claro); opacity: 0.8; margin-bottom: 20px;" />
 
-                <!-- Panel 1: Resumen y Línea del Tiempo -->
-                <div id="tab-resumen" class="tab-pane-content active">
-                    <div class="card-institutional card-important mb-4">
-                        <h4>📌 Resumen del Asunto</h4>
-                        <p id="detailDescription">Descripción del asunto...</p>
+                <div id="activeExpedienteDetail">
+                    <!-- Cabecera de Detalle del Expediente Seleccionado -->
+                    <div class="detail-header">
+                        <h2 id="detailTitle">Título del Asunto</h2>
+                        
+                        <div class="detail-header-actions mt-2">
+                            <span class="detail-date-badge">
+                                <i class="bi bi-calendar3 me-1"></i>Fecha de publicación: <strong id="detailDate">--</strong>
+                            </span>
+                            <span class="meta-item ms-md-4">
+                                <i class="bi bi-file-earmark-medical-fill text-muted"></i> Expediente: <strong id="detailExpediente">--</strong>
+                            </span>
+                            <a href="#" id="detailSharePointBtn" target="_blank" class="btn-sharepoint ms-auto">
+                                <i class="bi bi-folder-fill"></i> Expediente en SharePoint
+                            </a>
+                        </div>
                     </div>
-                    
-                    <h3 class="fw-bold mt-4" style="color: var(--color-gobmx-guinda); border-bottom: 2px solid var(--color-gobmx-guinda); padding-bottom: 8px;">
-                        ⏳ Línea del Tiempo y Hitos
-                    </h3>
-                    <div class="timeline-container" id="detailTimeline">
-                        <!-- Hitos dinámicos -->
-                    </div>
-                </div>
 
-                <!-- Panel 2: Audio (Podcast Embebido) -->
-                <div id="tab-audio" class="tab-pane-content">
-                    <div class="audio-embed-box">
-                        <h4>🎵 Resumen de Audio</h4>
-                        <p class="small text-muted">Haz clic en reproducir para escuchar el análisis automatizado de este expediente.</p>
-                        <div id="audioPlayerContainer">
+                    <!-- Pestañas (Tabs) de Contenido Homologadas -->
+                    <nav class="gestor-nav">
+                        <div class="gestor-nav__inner" role="tablist">
+                            <button class="gestor-tab active" id="tab-btn-resumen" onclick="switchTab('resumen')">
+                                <i class="bi bi-file-earmark-text me-1"></i> Resumen y Hitos
+                            </button>
+                            <button class="gestor-tab" id="tab-btn-audio" onclick="switchTab('audio')">
+                                <i class="bi bi-headphones me-1"></i> Resumen de Audio
+                            </button>
+                            <button class="gestor-tab" id="tab-btn-infografia" onclick="switchTab('infografia')">
+                                <i class="bi bi-image me-1"></i> Infografía
+                            </button>
+                            <button class="gestor-tab" id="tab-btn-presentacion" onclick="switchTab('presentacion')">
+                                <i class="bi bi-projector me-1"></i> Presentación
+                            </button>
+                        </div>
+                    </nav>
+
+                    <!-- Panel 1: Resumen y Línea del Tiempo -->
+                    <div id="tab-resumen" class="tab-pane-content active">
+                        <div class="card-institutional card-important mb-4">
+                            <h4>📌 Resumen del Asunto</h4>
+                            <p id="detailDescription">Descripción del asunto...</p>
+                        </div>
+                        
+                        <h3 class="fw-bold mt-4" style="color: var(--color-gobmx-guinda); border-bottom: 2px solid var(--color-gobmx-guinda); padding-bottom: 8px;">
+                            ⏳ Línea del Tiempo e Hitos del Expediente
+                        </h3>
+                        <div class="timeline-container" id="detailTimeline">
+                            <!-- Hitos dinámicos -->
+                        </div>
+                    </div>
+
+                    <!-- Panel 2: Audio (Podcast Embebido) -->
+                    <div id="tab-audio" class="tab-pane-content">
+                        <div class="audio-embed-box">
+                            <h4>🎵 Resumen de Audio</h4>
+                            <p class="small text-muted">Haz clic en reproducir para escuchar el análisis automatizado de este expediente.</p>
+                            <div id="audioPlayerContainer">
+                                <!-- Inyectado dinámicamente -->
+                            </div>
+                            <div id="audioExternalLink" class="mt-2 text-start">
+                                <!-- Inyectado dinámicamente -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel 3: Infografía -->
+                    <div id="tab-infografia" class="tab-pane-content">
+                        <div class="iframe-wrapper" id="infografiaContainer">
+                            <!-- Inyectado dinámicamente -->
+                        </div>
+                        <div id="infografiaExternalLink" class="mt-2 text-start">
+                            <!-- Inyectado dinámicamente -->
+                        </div>
+                    </div>
+
+                    <!-- Panel 4: Presentación -->
+                    <div id="tab-presentacion" class="tab-pane-content">
+                        <div class="iframe-wrapper" id="presentacionContainer">
+                            <!-- Inyectado dinámicamente -->
+                        </div>
+                        <div id="presentacionExternalLink" class="mt-2 text-start">
                             <!-- Inyectado dinámicamente -->
                         </div>
                     </div>
                 </div>
-
-                <!-- Panel 3: Infografía -->
-                <div id="tab-infografia" class="tab-pane-content">
-                    <div class="iframe-wrapper" id="infografiaContainer">
-                        <!-- Inyectado dinámicamente -->
-                    </div>
-                </div>
-
-                <!-- Panel 4: Presentación -->
-                <div id="tab-presentacion" class="tab-pane-content">
-                    <div class="iframe-wrapper" id="presentacionContainer">
-                        <!-- Inyectado dinámicamente -->
-                    </div>
-                </div>
-
 
             </div>
         </main>
@@ -213,11 +350,13 @@
 </div>
 
 @section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // Cargar los datos serializados desde el servidor
         const asuntosList = @Html.Raw(JsonConvert.SerializeObject(Model));
         let selectedAsuntoId = null;
         let activeTab = 'resumen';
+        let myStatusChart = null;
 
         // Inicializador
         function selectAsunto(id) {
@@ -232,7 +371,28 @@
             document.querySelectorAll('.asunto-card-item').forEach(card => {
                 card.classList.remove('active');
             });
-            document.getElementById(`card-${id}`).classList.add('active');
+            const selectedCard = document.getElementById(`card-${id}`);
+            if (selectedCard) {
+                selectedCard.classList.add('active');
+                
+                // Asegurar que el acordeón padre esté expandido
+                const itemsContainer = selectedCard.closest('.folio-group-items');
+                if (itemsContainer) {
+                    const group = selectedCard.closest('.folio-group');
+                    const header = group.querySelector('.folio-group-header');
+                    const icon = header.querySelector('.chevron-icon');
+                    
+                    itemsContainer.style.display = 'flex';
+                    if (icon) {
+                        icon.classList.remove('bi-chevron-right');
+                        icon.classList.add('bi-chevron-down');
+                    }
+                    group.classList.add('expanded');
+                }
+            }
+
+            // Quitar clase active de botón de Tablero General
+            document.getElementById('btnDashboardGeneral').classList.remove('active');
 
             // Mostrar/Ocultar pestañas dinámicamente según disponibilidad de recursos
             const btnAudio = document.getElementById('tab-btn-audio');
@@ -248,17 +408,216 @@
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('detailContent').style.display = 'block';
 
-            // Actualizar datos de texto
+            // Actualizar datos de texto del folio
+            document.getElementById('detailFolioHeader').textContent = asunto.FolioSolicitud || 'Sin Folio';
+
+            // Actualizar datos del expediente seleccionado
             document.getElementById('detailTitle').textContent = asunto.Titulo;
             document.getElementById('detailDate').textContent = asunto.Fecha;
             document.getElementById('detailDescription').textContent = asunto.Descripcion;
             document.getElementById('detailSharePointBtn').href = asunto.SharePointUrl || '#';
+            document.getElementById('detailExpediente').textContent = asunto.NumeroExpediente || 'Sin Expediente';
 
             // Construir la línea del tiempo
             buildTimeline(asunto.Timeline);
 
+            // Construir traza de expedientes relacionados (secuencia en la parte superior)
+            buildRelatedTrace(asunto);
+
             // Regresar a la pestaña de resumen por defecto
             switchTab('resumen');
+        }
+
+        // Alternar colapso de acordeón
+        function toggleFolioGroup(headerEl) {
+            const group = headerEl.closest('.folio-group');
+            const itemsContainer = group.querySelector('.folio-group-items');
+            const icon = headerEl.querySelector('.chevron-icon');
+            
+            const isCollapsed = itemsContainer.style.display === 'none' || !itemsContainer.style.display;
+            
+            if (isCollapsed) {
+                // Expandir acordeón
+                itemsContainer.style.display = 'flex';
+                if (icon) {
+                    icon.classList.remove('bi-chevron-right');
+                    icon.classList.add('bi-chevron-down');
+                }
+                group.classList.add('expanded');
+
+                // Cargar el primer expediente de este Folio en el panel derecho al expandir
+                const folio = group.getAttribute('data-folio');
+                if (folio) {
+                    const matters = asuntosList.filter(a => (a.FolioSolicitud || 'Sin Folio') === folio);
+                    if (matters.length > 0) {
+                        // Ordenar cronológicamente para que cargue la ficha inicial de la secuencia
+                        matters.sort((a, b) => new Date(a.Fecha) - new Date(b.Fecha));
+                        selectAsunto(matters[0].Id.toString());
+                    }
+                }
+            } else {
+                // Colapsar acordeón (sólo ocultar la lista, no cambiar el panel derecho)
+                itemsContainer.style.display = 'none';
+                if (icon) {
+                    icon.classList.remove('bi-chevron-down');
+                    icon.classList.add('bi-chevron-right');
+                }
+                group.classList.remove('expanded');
+            }
+        }
+
+        // Mostrar Tablero General
+        function showDashboard() {
+            // Limpiar selección de asuntos
+            document.querySelectorAll('.asunto-card-item').forEach(card => {
+                card.classList.remove('active');
+            });
+            clearEmbeds();
+            selectedAsuntoId = null;
+
+            // Mostrar Dashboard y ocultar Detalle
+            document.getElementById('emptyState').style.display = 'flex';
+            document.getElementById('detailContent').style.display = 'none';
+
+            // Activar botón del Tablero
+            document.getElementById('btnDashboardGeneral').classList.add('active');
+
+            // Renderizar datos del Dashboard
+            renderDashboard();
+        }
+
+        // Calcular y renderizar datos del Dashboard reactivamente
+        function renderDashboard() {
+            const totalMatters = asuntosList.length;
+            
+            // Folios únicos
+            const folios = new Set(asuntosList.map(a => a.FolioSolicitud).filter(Boolean));
+            const totalFolios = folios.size;
+
+            const concluidos = asuntosList.filter(a => a.Estatus === 'Concluido').length;
+            const enProceso = asuntosList.filter(a => a.Estatus === 'En proceso').length;
+            const enRevision = asuntosList.filter(a => a.Estatus === 'En revisión').length;
+            const pendientes = asuntosList.filter(a => a.Estatus === 'Pendiente').length;
+            const activos = enProceso + enRevision;
+
+            // Inyectar KPI
+            document.getElementById('statTotalFolios').textContent = totalFolios;
+            document.getElementById('statTotalExpedientes').textContent = totalMatters;
+            document.getElementById('statConcluidos').textContent = concluidos;
+            document.getElementById('statActivos').textContent = activos;
+
+            // Porcentajes
+            const concluidosPct = totalMatters > 0 ? Math.round((concluidos / totalMatters) * 100) : 0;
+            const enProcesoPct = totalMatters > 0 ? Math.round((enProceso / totalMatters) * 100) : 0;
+            const enRevisionPct = totalMatters > 0 ? Math.round((enRevision / totalMatters) * 100) : 0;
+            const pendientesPct = totalMatters > 0 ? Math.round((pendientes / totalMatters) * 100) : 0;
+
+            // Rellenar leyenda
+            document.getElementById('legendConcluido').textContent = `${concluidos} (${concluidosPct}%)`;
+            document.getElementById('legendProceso').textContent = `${enProceso} (${enProcesoPct}%)`;
+            document.getElementById('legendRevision').textContent = `${enRevision} (${enRevisionPct}%)`;
+            document.getElementById('legendPendiente').textContent = `${pendientes} (${pendientesPct}%)`;
+
+            // Inicializar gráfico de dona Chart.js
+            const canvasEl = document.getElementById('statusChart');
+            if (canvasEl) {
+                const ctx = canvasEl.getContext('2d');
+                if (myStatusChart) {
+                    myStatusChart.destroy();
+                }
+                myStatusChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Concluido', 'En proceso', 'En revisión', 'Pendiente'],
+                        datasets: [{
+                            data: [concluidos, enProceso, enRevision, pendientes],
+                            backgroundColor: [
+                                '#027a48', // Verde
+                                '#b48934', // Dorado
+                                '#8a0031', // Guinda
+                                '#667085'  // Gris
+                            ],
+                            borderWidth: 2,
+                            borderColor: '#ffffff',
+                            hoverOffset: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const val = context.raw;
+                                        const pct = totalMatters > 0 ? Math.round((val / totalMatters) * 100) : 0;
+                                        return ` ${context.label}: ${val} (${pct}%)`;
+                                    }
+                                }
+                            }
+                        },
+                        cutout: '70%'
+                    }
+                });
+            }
+
+            // Actividad Reciente
+            const recentContainer = document.getElementById('recentActivityList');
+            recentContainer.innerHTML = '';
+            
+            // Clonar y ordenar por fecha descendente, tomar 4
+            const sorted = [...asuntosList].sort((a, b) => new Date(b.Fecha) - new Date(a.Fecha)).slice(0, 4);
+            sorted.forEach(asunto => {
+                const item = document.createElement('div');
+                item.className = 'recent-activity-item';
+                item.onclick = () => selectAsunto(asunto.Id.toString());
+                
+                const badgeClass = (asunto.Estatus || 'pendiente').toLowerCase().replace(' ', '-');
+                
+                item.innerHTML = `
+                    <div class="recent-item-meta" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.7rem; margin-bottom: 4px; color: var(--color-gobmx-gris);">
+                        <span><i class="bi bi-calendar3 me-1"></i>${asunto.Fecha}</span>
+                        <span class="badge-estatus ${badgeClass}">${asunto.Estatus}</span>
+                    </div>
+                    <div class="recent-item-title" style="font-weight: 700; font-size: 0.85rem; color: var(--color-text-primary); margin-bottom: 2px;">${asunto.Titulo}</div>
+                    <div class="recent-item-sub" style="font-size: 0.7rem; color: var(--color-gobmx-gris);">Folio: ${asunto.FolioSolicitud || '---'} | Exp: ${asunto.NumeroExpediente || '---'}</div>
+                `;
+                recentContainer.appendChild(item);
+            });
+        }
+
+        // Construir traza de expedientes del mismo folio
+        function buildRelatedTrace(currentAsunto) {
+            const stepsContainer = document.getElementById('traceSteps');
+            stepsContainer.innerHTML = '';
+
+            const folio = currentAsunto.FolioSolicitud || 'Sin Folio';
+            // Buscar todos los asuntos con el mismo folio
+            const related = asuntosList.filter(a => (a.FolioSolicitud || 'Sin Folio') === folio);
+            
+            // Ordenar por fecha cronológicamente
+            related.sort((a, b) => new Date(a.Fecha) - new Date(b.Fecha));
+
+            related.forEach(asunto => {
+                const step = document.createElement('div');
+                const isCurrent = asunto.Id.toString() === currentAsunto.Id.toString();
+                const statusLower = (asunto.Estatus || 'pendiente').toLowerCase().replace(' ', '-');
+                const badgeClass = (asunto.Estatus || 'pendiente').toLowerCase().replace(' ', '-');
+                
+                step.className = `trace-step status-${statusLower} ${isCurrent ? 'active' : ''}`;
+                step.onclick = () => selectAsunto(asunto.Id.toString());
+
+                step.innerHTML = `
+                    <span class="trace-step-date"><i class="bi bi-calendar3 me-1"></i>${asunto.Fecha}</span>
+                    <span class="trace-step-expediente">${asunto.NumeroExpediente || 'Sin Expediente'}</span>
+                    <span class="trace-step-title" title="${asunto.Titulo}">${asunto.Titulo}</span>
+                    <span class="badge-estatus ${badgeClass}">${asunto.Estatus}</span>
+                `;
+                stepsContainer.appendChild(step);
+            });
         }
 
         // Cambiar entre pestañas
@@ -292,11 +651,18 @@
 
             if (tabId === 'audio') {
                 const container = document.getElementById('audioPlayerContainer');
+                const linkContainer = document.getElementById('audioExternalLink');
                 if (container.children.length === 0 && asunto.AudioEmbedUrl) {
-                    container.innerHTML = `<audio controls src="${asunto.AudioEmbedUrl}"></audio>`;
+                    container.innerHTML = `<audio controls src="${asunto.AudioEmbedUrl}" style="width: 100%;"></audio>`;
+                    linkContainer.innerHTML = `
+                        <a href="${asunto.AudioEmbedUrl}" target="_blank" class="btn-external-link">
+                            <i class="bi bi-box-arrow-up-right me-1"></i> Abrir audio en nueva pestaña
+                        </a>
+                    `;
                 }
             } else if (tabId === 'infografia') {
                 const container = document.getElementById('infografiaContainer');
+                const linkContainer = document.getElementById('infografiaExternalLink');
                 if (container.children.length === 0 && asunto.InfografiaEmbedUrl) {
                     const url = asunto.InfografiaEmbedUrl;
                     const isImage = /\.(jpeg|jpg|gif|png|webp|svg)($|\?)/i.test(url);
@@ -305,9 +671,15 @@
                     } else {
                         container.innerHTML = `<iframe src="${url}" scrolling="no" allowfullscreen="true" mozallowfullscreen="true" webkitallowfullscreen="true" style="display: block; width: 100%; width: -webkit-fill-available; height: 100%; border: none;"></iframe>`;
                     }
+                    linkContainer.innerHTML = `
+                        <a href="${url}" target="_blank" class="btn-external-link">
+                            <i class="bi bi-box-arrow-up-right me-1"></i> Abrir Infografía en ventana completa
+                        </a>
+                    `;
                 }
             } else if (tabId === 'presentacion') {
                 const container = document.getElementById('presentacionContainer');
+                const linkContainer = document.getElementById('presentacionExternalLink');
                 if (container.children.length === 0 && asunto.PresentacionEmbedUrl) {
                     const url = asunto.PresentacionEmbedUrl;
                     const isImage = /\.(jpeg|jpg|gif|png|webp|svg)($|\?)/i.test(url);
@@ -316,6 +688,11 @@
                     } else {
                         container.innerHTML = `<iframe src="${url}" scrolling="no" allowfullscreen="true" mozallowfullscreen="true" webkitallowfullscreen="true" style="display: block; width: 100%; width: -webkit-fill-available; height: 100%; border: none;"></iframe>`;
                     }
+                    linkContainer.innerHTML = `
+                        <a href="${url}" target="_blank" class="btn-external-link">
+                            <i class="bi bi-box-arrow-up-right me-1"></i> Abrir Presentación en ventana completa
+                        </a>
+                    `;
                 }
             }
         }
@@ -325,6 +702,10 @@
             document.getElementById('audioPlayerContainer').innerHTML = '';
             document.getElementById('infografiaContainer').innerHTML = '';
             document.getElementById('presentacionContainer').innerHTML = '';
+            
+            document.getElementById('audioExternalLink').innerHTML = '';
+            document.getElementById('infografiaExternalLink').innerHTML = '';
+            document.getElementById('presentacionExternalLink').innerHTML = '';
         }
 
         // Construir HTML de la línea del tiempo
@@ -356,14 +737,30 @@
         function filterAsuntos() {
             const query = document.getElementById('searchAsuntos').value.toLowerCase().trim();
             
-            document.querySelectorAll('.asunto-card-item').forEach(card => {
-                const title = card.querySelector('h5').textContent.toLowerCase();
-                if (title.includes(query)) {
-                    card.style.display = 'block';
+            document.querySelectorAll('.folio-group').forEach(group => {
+                let groupHasVisibleCards = false;
+                
+                group.querySelectorAll('.asunto-card-item').forEach(card => {
+                    const searchableText = card.getAttribute('data-searchable-text') || '';
+                    if (searchableText.includes(query)) {
+                        card.style.display = 'block';
+                        groupHasVisibleCards = true;
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+
+                if (groupHasVisibleCards) {
+                    group.style.display = 'block';
                 } else {
-                    card.style.display = 'none';
+                    group.style.display = 'none';
                 }
             });
         }
+
+        // Inicializar dashboard al cargar
+        document.addEventListener("DOMContentLoaded", () => {
+            renderDashboard();
+        });
     </script>
 }

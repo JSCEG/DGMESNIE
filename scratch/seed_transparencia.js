@@ -16,12 +16,13 @@ const config = {
 
 async function main() {
     try {
+        const force = process.argv.includes('--force');
         console.log("Connecting to database...");
         await sql.connect(config);
         console.log("Connected successfully.");
 
-        // 1. Create Tables if they do not exist
-        console.log("Creating tables if they do not exist...");
+        // 1. Create/Alter Tables
+        console.log("Creating tables and validating schema...");
         
         await sql.query`
             IF OBJECT_ID('dgmesnie.TransparenciaHito', 'U') IS NULL
@@ -48,6 +49,8 @@ async function main() {
                     Titulo NVARCHAR(300) NOT NULL,
                     Fecha DATE NOT NULL,
                     Estatus NVARCHAR(100) NOT NULL DEFAULT 'Pendiente',
+                    FolioSolicitud NVARCHAR(100) NULL,
+                    NumeroExpediente NVARCHAR(100) NULL,
                     Descripcion NVARCHAR(MAX) NULL,
                     SharePointUrl NVARCHAR(1000) NULL,
                     AudioEmbedUrl NVARCHAR(1000) NULL,
@@ -59,26 +62,48 @@ async function main() {
                     ActualizadoEn DATETIME2 NULL,
                     ActualizadoPor NVARCHAR(450) NULL
                 );
+            END
+        `;
 
-                -- Add Foreign Key constraint if not exists
-                IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_TransparenciaHito_Asunto')
-                BEGIN
-                    ALTER TABLE dgmesnie.TransparenciaHito
-                    ADD CONSTRAINT FK_TransparenciaHito_Asunto
-                    FOREIGN KEY (AsuntoId) REFERENCES dgmesnie.TransparenciaAsunto(AsuntoId) ON DELETE CASCADE;
-                END
+        // Ensure columns exist on dgmesnie.TransparenciaAsunto if it was created previously
+        await sql.query`
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dgmesnie.TransparenciaAsunto') AND name = 'FolioSolicitud')
+            BEGIN
+                ALTER TABLE dgmesnie.TransparenciaAsunto ADD FolioSolicitud NVARCHAR(100) NULL;
+                PRINT 'Added column FolioSolicitud';
+            END
+
+            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dgmesnie.TransparenciaAsunto') AND name = 'NumeroExpediente')
+            BEGIN
+                ALTER TABLE dgmesnie.TransparenciaAsunto ADD NumeroExpediente NVARCHAR(100) NULL;
+                PRINT 'Added column NumeroExpediente';
+            END
+        `;
+
+        // Add Foreign Key constraint if not exists
+        await sql.query`
+            IF NOT EXISTS (SELECT * FROM sys.foreign_keys WHERE name = 'FK_TransparenciaHito_Asunto')
+            BEGIN
+                ALTER TABLE dgmesnie.TransparenciaHito
+                ADD CONSTRAINT FK_TransparenciaHito_Asunto
+                FOREIGN KEY (AsuntoId) REFERENCES dgmesnie.TransparenciaAsunto(AsuntoId) ON DELETE CASCADE;
             END
         `;
         
         console.log("Tables structure validated.");
 
-        // 2. Check if data already exists
+        // Check if data exists or if we should force reload
         const countRes = await sql.query`SELECT COUNT(*) AS count FROM dgmesnie.TransparenciaAsunto`;
         const count = countRes.recordset[0].count;
         console.log(`Current matters count in database: ${count}`);
 
-        if (count === 0) {
-            console.log("Database is empty. Loading data from JSON file...");
+        if (count === 0 || force) {
+            if (force) {
+                console.log("Force reload flag active. Deleting existing matters (cascades to hitos)...");
+                await sql.query`DELETE FROM dgmesnie.TransparenciaAsunto`;
+            }
+
+            console.log("Loading data from JSON file...");
             const jsonPath = path.join(__dirname, '..', 'wwwroot', 'data', 'transparencia_asuntos.json');
             
             if (fs.existsSync(jsonPath)) {
@@ -92,6 +117,8 @@ async function main() {
                     request.input('Titulo', sql.NVarChar(300), asunto.Titulo);
                     request.input('Fecha', sql.Date, asunto.Fecha);
                     request.input('Estatus', sql.NVarChar(100), asunto.Estatus);
+                    request.input('FolioSolicitud', sql.NVarChar(100), asunto.FolioSolicitud || null);
+                    request.input('NumeroExpediente', sql.NVarChar(100), asunto.NumeroExpediente || null);
                     request.input('Descripcion', sql.NVarChar(sql.MAX), asunto.Descripcion);
                     request.input('SharePointUrl', sql.NVarChar(1000), asunto.SharePointUrl);
                     request.input('AudioEmbedUrl', sql.NVarChar(1000), asunto.AudioEmbedUrl);
@@ -101,9 +128,9 @@ async function main() {
 
                     const insertAsuntoQuery = `
                         INSERT INTO dgmesnie.TransparenciaAsunto 
-                        (Titulo, Fecha, Estatus, Descripcion, SharePointUrl, AudioEmbedUrl, InfografiaEmbedUrl, PresentacionEmbedUrl, Activo, CreadoEn, CreadoPor)
+                        (Titulo, Fecha, Estatus, FolioSolicitud, NumeroExpediente, Descripcion, SharePointUrl, AudioEmbedUrl, InfografiaEmbedUrl, PresentacionEmbedUrl, Activo, CreadoEn, CreadoPor)
                         VALUES 
-                        (@Titulo, @Fecha, @Estatus, @Descripcion, @SharePointUrl, @AudioEmbedUrl, @InfografiaEmbedUrl, @PresentacionEmbedUrl, 1, SYSUTCDATETIME(), @CreadoPor);
+                        (@Titulo, @Fecha, @Estatus, @FolioSolicitud, @NumeroExpediente, @Descripcion, @SharePointUrl, @AudioEmbedUrl, @InfografiaEmbedUrl, @PresentacionEmbedUrl, 1, SYSUTCDATETIME(), @CreadoPor);
                         SELECT SCOPE_IDENTITY() AS AsuntoId;
                     `;
 
@@ -138,7 +165,7 @@ async function main() {
                 console.log(`JSON file not found at: ${jsonPath}`);
             }
         } else {
-            console.log("Database already has records. Skipping migration seed.");
+            console.log("Database already has records. Run with '--force' to clean and reload.");
         }
 
     } catch (err) {
