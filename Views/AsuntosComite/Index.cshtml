@@ -1,0 +1,761 @@
+@model List<NSIE.Controllers.ComiteSesionDto>
+@{
+    ViewData["Title"] = "Comité Técnico CNE";
+    var isAdmin = (bool)(ViewData["IsAdmin"] ?? false);
+    var sesionesJson = Newtonsoft.Json.JsonConvert.SerializeObject(Model);
+}
+
+@await Html.PartialAsync("_ViewHeader", ViewData["HeaderViewModel"] as NSIE.Models.HeaderViewModel)
+
+@section Styles {
+    <link rel="stylesheet" href="~/gestor/css/gestor.css" asp-append-version="true" />
+    <style>
+        :root {
+            --color-guinda: #9B2247;
+            --color-verde: #1E5B4F;
+            --color-dorado: #A57F2C;
+            --color-gris-oscuro: #2D3748;
+            --color-gris-medio: #718096;
+            --color-gris-claro: #F7FAFC;
+            --border-radius-premium: 16px;
+            --shadow-premium: 0 10px 30px rgba(0, 0, 0, 0.04);
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .comite-wrapper {
+            font-family: 'Noto Sans', sans-serif;
+            color: var(--color-gris-oscuro);
+        }
+
+        /* Contenedor tipo Glassmorphism */
+        .glass-card {
+            background: #ffffff;
+            border-radius: var(--border-radius-premium);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: var(--shadow-premium);
+            transition: var(--transition-smooth);
+            overflow: hidden;
+        }
+
+        /* Layout dividido */
+        .comite-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 1.5rem;
+            min-height: 700px;
+        }
+
+        @@media (max-width: 992px) {
+            .comite-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Sidebar de sesiones */
+        .comite-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-height: 800px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        .comite-sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .comite-sidebar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .comite-sidebar::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 3px;
+        }        /* Caja de búsqueda */
+        .search-box {
+            position: relative;
+            margin-bottom: 0.75rem;
+        }
+        .search-box .form-control {
+            padding: 0.6rem 1rem 0.6rem 2.2rem;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            font-size: 0.88rem;
+            background-color: #f8fafc;
+            transition: all 0.2s;
+        }
+        .search-box .form-control:focus {
+            background-color: #ffffff;
+            border-color: var(--color-guinda);
+            box-shadow: 0 0 0 3px rgba(155, 34, 71, 0.1);
+        }
+        .search-box .bi-search {
+            position: absolute;
+            left: 0.8rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--color-gris-medio);
+            font-size: 0.88rem;
+        }
+
+        /* Tarjeta de sesión individual premium y minimalista */
+        .sesion-card {
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            border-left: 3px solid var(--color-verde);
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        .sesion-card.inactiva {
+            border-left-color: var(--color-gris-medio);
+        }
+        .sesion-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+            border-color: #cbd5e0;
+        }
+        .sesion-card.active {
+            background-color: rgba(155, 34, 71, 0.02);
+            border-color: var(--color-guinda);
+            border-left-color: var(--color-guinda) !important;
+            box-shadow: 0 4px 12px rgba(155, 34, 71, 0.02);
+        }
+        .sesion-card h5 {
+            font-size: 0.92rem;
+            font-weight: 600;
+            margin: 0 0 8px 0;
+            color: #1a202c;
+            line-height: 1.45;
+            transition: color 0.2s;
+        }
+        .sesion-card.active h5 {
+            color: var(--color-guinda);
+        }
+        .sesion-card-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--color-gris-medio);
+        }
+        .badge-estatus {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.62rem;
+            letter-spacing: 0.03em;
+        }
+        .badge-estatus.inactivo {
+            background-color: #edf2f7;
+            color: #4a5568;
+        }
+        .sesion-card__actions {
+            opacity: 0;
+            transition: all 0.2s;
+        }
+        .sesion-card:hover .sesion-card__actions {
+            opacity: 0.8;
+        }
+
+        /* Panel de Detalle Derecho */
+        .detalle-pane {
+            padding: 2rem;
+        }
+        .detalle-header {
+            border-bottom: 1px solid #edf2f7;
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .detalle-title {
+            font-family: var(--font-family-headings);
+            color: var(--color-guinda);
+            font-weight: 700;
+            margin-bottom: 0.35rem;
+            font-size: 1.6rem;
+            letter-spacing: -0.02em;
+        }
+        .detalle-meta {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            font-size: 0.88rem;
+            color: var(--color-gris-medio);
+        }
+
+        /* Entorno de Canva Embed 16:9 */
+        .canva-container {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%; /* 16:9 Aspect Ratio */
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #edf2f7;
+            background: #1e1e1e;
+            margin-top: 1rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+        }
+        .canva-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* Caja de Insumos / Archivos */
+        .insumo-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        @@media (max-width: 768px) {
+            .insumo-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .insumo-card {
+            display: flex;
+            align-items: center;
+            padding: 0.85rem 1.1rem;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            color: var(--color-gris-oscuro);
+        }
+        .insumo-card:hover {
+            transform: translateY(-1px);
+            background: #ffffff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            color: var(--color-gris-oscuro);
+            border-color: #cbd5e0;
+        }
+        .insumo-card--pdf:hover {
+            border-color: var(--color-guinda);
+        }
+        .insumo-card--pdf i {
+            color: var(--color-guinda);
+            font-size: 1.35rem;
+            margin-right: 0.85rem;
+        }
+        .insumo-card--ppt:hover {
+            border-color: var(--color-dorado);
+        }
+        .insumo-card--ppt i {
+            color: var(--color-dorado);
+            font-size: 1.35rem;
+            margin-right: 0.85rem;
+        }
+        .insumo-card__title {
+            font-weight: 600;
+            font-size: 0.88rem;
+            margin-bottom: 0;
+        }
+
+        /* Modal styling y forzado de z-index */
+        .modal {
+            z-index: 12000 !important;
+        }
+        .modal-backdrop {
+            z-index: 11990 !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+        }
+        .swal2-container {
+            z-index: 12100 !important;
+        }
+        #modalSesion .modal-dialog {
+            margin-top: 5.5rem;
+        }
+        .modal-content-premium {
+            border-top: 4px solid var(--color-guinda);
+            border-radius: var(--border-radius-premium);
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Estilo para placeholder vacío */
+        .placeholder-empty {
+            text-align: center;
+            padding: 5rem 2rem;
+            color: var(--color-gris-medio);
+        }
+        .placeholder-empty i {
+            font-size: 3.5rem;
+            color: #cbd5e0;
+            margin-bottom: 1rem;
+            display: block;
+        }
+    </style>
+}
+
+<div class="container-fluid shell-page-container py-3 comite-wrapper">
+    <!-- Miga de Pan Homologada -->
+    <div class="gestor-breadcrumbs">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+            </ol>
+        </nav>
+    </div>
+
+    @Html.AntiForgeryToken()
+
+    <div class="comite-grid">
+        
+        <!-- SIDEBAR DE SESIONES -->
+        <div class="comite-sidebar">
+            @if (isAdmin)
+            {
+                <button type="button" class="btn btn-primary w-100 py-2.5 fw-bold" style="background-color: var(--color-guinda); border-color: var(--color-guinda); border-radius: 10px;" onclick="abrirModalCrear()">
+                    <i class="bi bi-plus-circle-fill me-2"></i>Nueva Sesión del Comité
+                </button>
+            }
+
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="text" id="buscadorSesiones" class="form-control shadow-none" placeholder="Buscar sesión por título o año..." onkeyup="filtrarSesiones()">
+            </div>
+
+            <div id="listaSesiones" class="d-flex flex-column gap-2">
+                @if (Model != null && Model.Any())
+                {
+                    foreach (var sesion in Model)
+                    {
+                        var isActiva = sesion.Activo;
+                        <div class="sesion-card @(sesion == Model.First() ? "active" : "") @(isActiva ? "" : "inactiva")" 
+                             id="card-@sesion.SesionId" 
+                             onclick="seleccionarSesion(@sesion.SesionId)" 
+                             data-title="@sesion.Titulo"
+                             data-year="@(DateTime.TryParse(sesion.FechaTexto, out var d) ? d.Year.ToString() : "")">
+                            
+                            <h5>@sesion.Titulo</h5>
+                            
+                            <div class="sesion-card-meta">
+                                <span>
+                                    <i class="bi bi-calendar3 me-1"></i>@(DateTime.TryParse(sesion.FechaTexto, out var f) ? f.ToString("dd MMM yyyy") : sesion.FechaTexto)
+                                </span>
+                                @if (!isActiva)
+                                {
+                                    <span class="badge-estatus inactivo">Inactiva</span>
+                                }
+                            </div>
+                            
+                            @if (isAdmin)
+                            {
+                                <div class="sesion-card__actions mt-2 pt-2 border-top d-flex justify-content-end gap-2">
+                                    <button class="btn btn-sm btn-outline-primary p-1 px-2" title="Editar" onclick="event.stopPropagation(); abrirModalEditar(@sesion.SesionId)">
+                                        <i class="bi bi-pencil-fill" style="font-size: 0.82rem;"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger p-1 px-2" title="Eliminar" onclick="event.stopPropagation(); eliminarSesion(@sesion.SesionId, '@sesion.Titulo')">
+                                        <i class="bi bi-trash-fill" style="font-size: 0.82rem;"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="text-center py-5 text-muted">No se encontraron sesiones registradas.</div>
+                }
+            </div>
+        </div>
+
+        <!-- PANEL DE DETALLE -->
+        <div class="glass-card detalle-pane" id="panelDetalle">
+            @if (Model != null && Model.Any())
+            {
+                var primera = Model.First();
+                <div id="detalleContenido">
+                    <div class="detalle-header">
+                        <h2 class="detalle-title" id="lblTitulo">@primera.Titulo</h2>
+                        <div class="detalle-meta">
+                            <span>
+                                <i class="bi bi-calendar2-check-fill me-1" style="color: var(--color-dorado);"></i>
+                                <span id="lblFecha">@(DateTime.TryParse(primera.FechaTexto, out var pF) ? pF.ToString("dd MMMM yyyy") : primera.FechaTexto)</span>
+                            </span>
+                            <span id="lblStatusWrap" class="d-none">
+                                <i class="bi bi-shield-fill-check me-1" style="color: var(--color-verde);"></i>
+                                <span id="lblStatus">Activa</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Resumen / Acuerdos -->
+                    <div id="resumenCard" class="mb-4">
+                        <h5 class="fw-bold" style="color: var(--color-guinda); font-size: 1.1rem; letter-spacing: -0.01em;">Resumen y Acuerdos de la Sesión</h5>
+                        <p id="lblResumen" class="mt-3" style="font-size: 0.98rem; line-height: 1.75; text-align: justify; color: var(--color-gris-oscuro);">@Html.Raw(primera.Resumen)</p>
+                    </div>
+
+                    <!-- Grid de Descarga de Archivos -->
+                    <h5 class="fw-bold mt-4" style="color: var(--color-gris-oscuro); font-size: 1.1rem; letter-spacing: -0.01em;">Archivos Fuente y Minutas</h5>
+                    <div class="insumo-grid">
+                        <a href="@primera.PdfUrl" target="_blank" rel="noopener noreferrer" class="insumo-card insumo-card--pdf" id="lnkPdf" style="@(string.IsNullOrWhiteSpace(primera.PdfUrl) ? "display: none;" : "")">
+                            <i class="fa-solid fa-file-pdf"></i>
+                            <div>
+                                <div class="insumo-card__title">Resumen de Asuntos (PDF)</div>
+                            </div>
+                        </a>
+                        
+                        <a href="@primera.PptUrl" target="_blank" rel="noopener noreferrer" class="insumo-card insumo-card--ppt" id="lnkPpt" style="@(string.IsNullOrWhiteSpace(primera.PptUrl) ? "display: none;" : "")">
+                            <i class="fa-solid fa-file-powerpoint"></i>
+                            <div>
+                                <div class="insumo-card__title">Presentación Ejecutiva (PPTX)</div>
+                            </div>
+                        </a>
+                        
+                        <div id="noArchivosMsg" class="alert alert-light border text-muted py-3 px-4 w-100" style="@(!string.IsNullOrWhiteSpace(primera.PdfUrl) || !string.IsNullOrWhiteSpace(primera.PptUrl) ? "display: none;" : "")">
+                            <i class="bi bi-info-circle-fill me-2"></i>No se han cargado archivos fuente para esta sesión.
+                        </div>
+                    </div>
+
+                    <!-- Canva Embed Presentation -->
+                    <div id="canvaSeccion" style="@(string.IsNullOrWhiteSpace(primera.CanvaEmbedUrl) ? "display: none;" : "")">
+                        <h5 class="fw-bold mt-4" style="color: var(--color-gris-oscuro); font-size: 1.1rem; letter-spacing: -0.01em;">Presentación Interactiva</h5>
+                        <div class="canva-container">
+                            <iframe id="iframeCanva" src="@primera.CanvaEmbedUrl" allowfullscreen="true" allow="fullscreen"></iframe>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="placeholder-empty">
+                    <i class="bi bi-folder-symlink"></i>
+                    <h3>Comité Técnico CNE</h3>
+                    <p>No hay sesiones registradas. Utiliza el botón "Nueva Sesión" para agregar el primer registro operativo.</p>
+                </div>
+            }
+        </div>
+
+    </div>
+</div>
+
+<!-- MODAL CRUD (CREAR / EDITAR SESIÓN) -->
+@if (isAdmin)
+{
+    <div class="modal fade" id="modalSesion" tabindex="-1" aria-labelledby="modalSesionTitle" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content modal-content-premium">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold text-dark" id="modalSesionTitle"><i class="bi bi-calendar2-plus-fill text-danger me-2"></i>Detalle de la Sesión del Comité</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <form id="formSesion">
+                        <input type="hidden" id="inputSesionId" name="SesionId" />
+                        
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label for="inputTitulo" class="form-label fw-bold small">Título de la Sesión *</label>
+                                <input type="text" class="form-control" id="inputTitulo" required placeholder="Ej. 11a Sesión Ordinaria" maxlength="300">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="inputFecha" class="form-label fw-bold small">Fecha de la Sesión *</label>
+                                <input type="date" class="form-control" id="inputFecha" required>
+                            </div>
+                            <div class="col-12">
+                                <label for="inputResumen" class="form-label fw-bold small">Resumen y Acuerdos Principales</label>
+                                <textarea class="form-control" id="inputResumen" rows="6" placeholder="Detalla los puntos y acuerdos revisados durante la sesión del Comité..." maxlength="4000"></textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="inputPdfUrl" class="form-label fw-bold small">URL de la Minuta (PDF) de Cloudflare</label>
+                                <input type="url" class="form-control" id="inputPdfUrl" placeholder="https://cdn.sassoapps.com/...pdf">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="inputPptUrl" class="form-label fw-bold small">URL del PowerPoint (PPTX) de Cloudflare</label>
+                                <input type="url" class="form-control" id="inputPptUrl" placeholder="https://cdn.sassoapps.com/...pptx">
+                            </div>
+                            <div class="col-12">
+                                <label for="inputCanva" class="form-label fw-bold small">Enlace para Embeber de Canva / Google Slides</label>
+                                <input type="text" class="form-control" id="inputCanva" placeholder="https://www.canva.com/design/... o código <iframe>">
+                            </div>
+                            <div class="col-12 mt-4">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="inputActivo" checked>
+                                    <label class="form-check-label fw-bold" for="inputActivo">Sesión Activa (Visible en el dashboard)</label>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary px-4" style="background-color: var(--color-guinda); border-color: var(--color-guinda);" onclick="guardarSesion()">
+                        <i class="bi bi-save2-fill me-2"></i>Guardar Cambios
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        // Serializar las sesiones de Razor a un arreglo de JS
+        let sesiones = @Html.Raw(sesionesJson);
+        const isAdmin = @(isAdmin.ToString().ToLower());
+
+        $(document).ready(function () {
+            // Resolver bug de superposición de z-index y backdrop moviendo el modal al body
+            if (isAdmin && $('#modalSesion').length) {
+                $('#modalSesion').appendTo('body');
+            }
+        });
+
+        function seleccionarSesion(id) {
+            const sesion = sesiones.find(x => x.SesionId === id);
+            if (!sesion) return;
+
+            // Marcar activa en la lista
+            document.querySelectorAll('.sesion-card').forEach(c => c.classList.remove('active'));
+            const selectedCard = document.getElementById(`card-${id}`);
+            if (selectedCard) selectedCard.classList.add('active');
+
+            // Actualizar vista de detalle
+            document.getElementById('lblTitulo').textContent = sesion.Titulo;
+            
+            // Formatear Fecha
+            if (sesion.FechaTexto) {
+                const dateObj = new Date(sesion.FechaTexto + 'T00:00:00');
+                const options = { day: '2-digit', month: 'long', year: 'numeric' };
+                document.getElementById('lblFecha').textContent = dateObj.toLocaleDateString('es-ES', options);
+            } else {
+                document.getElementById('lblFecha').textContent = '-';
+            }
+
+            // Resumen
+            document.getElementById('lblResumen').innerHTML = sesion.Resumen || 'Sin resumen registrado para esta sesión.';
+
+            // Descarga de archivos
+            let hasFiles = false;
+            const lnkPdf = document.getElementById('lnkPdf');
+            const lnkPpt = document.getElementById('lnkPpt');
+            const noArchivosMsg = document.getElementById('noArchivosMsg');
+
+            if (sesion.PdfUrl && sesion.PdfUrl.trim() !== '') {
+                lnkPdf.href = sesion.PdfUrl;
+                lnkPdf.style.display = 'flex';
+                hasFiles = true;
+            } else {
+                lnkPdf.style.display = 'none';
+            }
+
+            if (sesion.PptUrl && sesion.PptUrl.trim() !== '') {
+                lnkPpt.href = sesion.PptUrl;
+                lnkPpt.style.display = 'flex';
+                hasFiles = true;
+            } else {
+                lnkPpt.style.display = 'none';
+            }
+
+            noArchivosMsg.style.display = hasFiles ? 'none' : 'block';
+
+            // Canva Embed
+            const canvaSeccion = document.getElementById('canvaSeccion');
+            const iframeCanva = document.getElementById('iframeCanva');
+
+            if (sesion.CanvaEmbedUrl && sesion.CanvaEmbedUrl.trim() !== '') {
+                iframeCanva.src = sesion.CanvaEmbedUrl;
+                canvaSeccion.style.display = 'block';
+            } else {
+                iframeCanva.src = '';
+                canvaSeccion.style.display = 'none';
+            }
+        }
+
+        function filtrarSesiones() {
+            const buscador = document.getElementById('buscadorSesiones');
+            const filtro = buscador.value.trim().toLowerCase();
+            const cards = document.querySelectorAll('.sesion-card');
+
+            cards.forEach(card => {
+                const title = card.getAttribute('data-title').toLowerCase();
+                const year = card.getAttribute('data-year');
+                
+                if (title.includes(filtro) || year.includes(filtro)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        // --- FUNCIONES ADMINISTRATIVAS ---
+        @if (isAdmin)
+        {
+            <text>
+            function abrirModalCrear() {
+                document.getElementById('modalSesionTitle').innerHTML = '<i class="bi bi-calendar2-plus-fill text-danger me-2"></i>Nueva Sesión del Comité';
+                document.getElementById('inputSesionId').value = '';
+                document.getElementById('formSesion').reset();
+                document.getElementById('inputActivo').checked = true;
+
+                // Establecer fecha de hoy como default
+                const hoy = new Date().toISOString().split('T')[0];
+                document.getElementById('inputFecha').value = hoy;
+
+                const modal = new bootstrap.Modal(document.getElementById('modalSesion'));
+                modal.show();
+            }
+
+            function abrirModalEditar(id) {
+                const sesion = sesiones.find(x => x.SesionId === id);
+                if (!sesion) return;
+
+                document.getElementById('modalSesionTitle').innerHTML = '<i class="bi bi-pencil-square text-danger me-2"></i>Editar Sesión del Comité';
+                document.getElementById('inputSesionId').value = sesion.SesionId;
+                document.getElementById('inputTitulo').value = sesion.Titulo;
+                document.getElementById('inputFecha').value = sesion.FechaTexto;
+                document.getElementById('inputResumen').value = sesion.Resumen || '';
+                document.getElementById('inputPdfUrl').value = sesion.PdfUrl || '';
+                document.getElementById('inputPptUrl').value = sesion.PptUrl || '';
+                document.getElementById('inputCanva').value = sesion.CanvaEmbedUrl || '';
+                document.getElementById('inputActivo').checked = sesion.Activo;
+
+                const modal = new bootstrap.Modal(document.getElementById('modalSesion'));
+                modal.show();
+            }
+
+            function guardarSesion() {
+                const titulo = document.getElementById('inputTitulo').value.trim();
+                const fechaVal = document.getElementById('inputFecha').value;
+
+                if (!titulo || !fechaVal) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Campos requeridos',
+                        text: 'Por favor completa el título y la fecha de la sesión.',
+                        confirmButtonColor: '#9B2247'
+                    });
+                    return;
+                }
+
+                const sesionIdVal = document.getElementById('inputSesionId').value;
+                const formPayload = {
+                    SesionId: sesionIdVal ? parseInt(sesionIdVal) : null,
+                    Titulo: titulo,
+                    Fecha: fechaVal,
+                    Resumen: document.getElementById('inputResumen').value.trim(),
+                    PdfUrl: document.getElementById('inputPdfUrl').value.trim(),
+                    PptUrl: document.getElementById('inputPptUrl').value.trim(),
+                    CanvaEmbedUrl: document.getElementById('inputCanva').value.trim(),
+                    Activo: document.getElementById('inputActivo').checked
+                };
+
+                const verificationToken = $('input[name="__RequestVerificationToken"]').val();
+
+                Swal.fire({
+                    title: 'Guardando sesión...',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
+                });
+
+                $.ajax({
+                    url: '/AsuntosComite/Api/Guardar',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(formPayload),
+                    headers: {
+                        "RequestVerificationToken": verificationToken
+                    },
+                    success: function (response) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Éxito',
+                            text: response.mensaje,
+                            confirmButtonColor: '#9B2247'
+                        }).then(() => {
+                            location.reload();
+                        });
+                    },
+                    error: function (xhr) {
+                        let errorMsg = "Ocurrió un error al procesar tu solicitud.";
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMsg = xhr.responseJSON.error;
+                        }
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: errorMsg,
+                            confirmButtonColor: '#9B2247'
+                        });
+                    }
+                });
+            }
+
+            function eliminarSesion(id, titulo) {
+                Swal.fire({
+                    title: '¿Estás seguro?',
+                    text: `La sesión "${titulo}" se dará de baja en el sistema.`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#9B2247',
+                    cancelButtonColor: '#718096',
+                    confirmButtonText: 'Sí, eliminar',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        const verificationToken = $('input[name="__RequestVerificationToken"]').val();
+                        
+                        Swal.fire({
+                            title: 'Eliminando sesión...',
+                            allowOutsideClick: false,
+                            didOpen: () => {
+                                Swal.showLoading();
+                            }
+                        });
+
+                        $.ajax({
+                            url: `/AsuntosComite/Api/Eliminar/${id}`,
+                            type: 'POST',
+                            headers: {
+                                "RequestVerificationToken": verificationToken
+                            },
+                            success: function (response) {
+                                Swal.fire({
+                                    icon: 'success',
+                                    title: 'Eliminada',
+                                    text: response.mensaje,
+                                    confirmButtonColor: '#9B2247'
+                                }).then(() => {
+                                    location.reload();
+                                });
+                            },
+                            error: function (xhr) {
+                                let errorMsg = "No fue posible eliminar la sesión.";
+                                if (xhr.responseJSON && xhr.responseJSON.error) {
+                                    errorMsg = xhr.responseJSON.error;
+                                }
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Error',
+                                    text: errorMsg,
+                                    confirmButtonColor: '#9B2247'
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+            </text>
+        }
+    </script>
+}
