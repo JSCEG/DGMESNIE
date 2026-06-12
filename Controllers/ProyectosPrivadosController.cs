@@ -145,6 +145,123 @@ namespace NSIE.Controllers
             return View();
         }
 
+        // ── View: Energía Limpia ───────────────────────────────────────────
+        [HttpGet]
+        public IActionResult EnergiaLimpia()
+        {
+            if (!TieneAccesoEquipoDireccion(out var redireccion)) return redireccion;
+
+            ViewData["HeaderViewModel"] = new HeaderViewModel
+            {
+                Title = "Energía Limpia",
+                IconPath = "proyecto.png",
+                Description = "Seguimiento de energía limpia del sector energético nacional.",
+                Section = "Seguimiento de proyectos",
+                ModuleInfo = JsonConvert.SerializeObject(new
+                {
+                    title = "Energía Limpia — SENER",
+                    description = "Reporte interactivo de energía limpia del sector energético nacional.",
+                    functionality = "Visualización del reporte dinámico e interactivo de energía limpia.",
+                    stage = "Consulta y Seguimiento",
+                    roles = new[]
+                    {
+                        new { icon = "eye", text = "Usuarios Autorizados: Consulta y visualización del reporte." }
+                    },
+                    manualUrl = string.Empty
+                })
+            };
+            return View();
+        }
+
+        // ── View: Producción Energética Anual ──────────────────────────────
+        [HttpGet]
+        public IActionResult ProduccionEnergetica()
+        {
+            if (!TieneAccesoEquipoDireccion(out var redireccion)) return redireccion;
+
+            ViewData["HeaderViewModel"] = new HeaderViewModel
+            {
+                Title = "Producción Energética Anual",
+                IconPath = "proyecto.png",
+                Description = "Seguimiento de la producción energética anual nacional.",
+                Section = "Seguimiento de proyectos",
+                ModuleInfo = JsonConvert.SerializeObject(new
+                {
+                    title = "Producción Energética Anual — SENER",
+                    description = "Reporte interactivo de la producción energética anual.",
+                    functionality = "Visualización del reporte dinámico e interactivo de producción energética.",
+                    stage = "Consulta y Seguimiento",
+                    roles = new[]
+                    {
+                        new { icon = "eye", text = "Usuarios Autorizados: Consulta y visualización del reporte." }
+                    },
+                    manualUrl = string.Empty
+                })
+            };
+            return View();
+        }
+
+        // ── View: Evolución Prevalencia (Generación GWh) ───────────────────
+        [HttpGet]
+        public IActionResult EvolucionPrevalencia()
+        {
+            if (!TieneAccesoEquipoDireccion(out var redireccion)) return redireccion;
+
+            ViewData["HeaderViewModel"] = new HeaderViewModel
+            {
+                Title = "Evolución Prevalencia",
+                IconPath = "proyecto.png",
+                Description = "Evolución y prevalencia de la generación eléctrica (GWh).",
+                Section = "Seguimiento de proyectos",
+                ModuleInfo = JsonConvert.SerializeObject(new
+                {
+                    title = "Evolución Prevalencia — Generación GWh",
+                    description = "Reporte interactivo de la evolución y prevalencia de la generación eléctrica en GWh.",
+                    functionality = "Visualización del reporte dinámico e interactivo de generación en GWh.",
+                    stage = "Consulta y Seguimiento",
+                    roles = new[]
+                    {
+                        new { icon = "eye", text = "Usuarios Autorizados: Consulta y visualización del reporte." }
+                    },
+                    manualUrl = string.Empty
+                })
+            };
+            return View();
+        }
+
+        // ── Acceso restringido al equipo de Dirección (Javier, Claudia, Raúl, Nahúm) ──
+        private bool TieneAccesoEquipoDireccion(out IActionResult redireccion)
+        {
+            redireccion = null;
+            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrEmpty(perfilUsuarioJson))
+            {
+                redireccion = RedirectToAction("SesionExpirada", "Acceso");
+                return false;
+            }
+
+            var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+            if (perfil == null)
+            {
+                redireccion = RedirectToAction("SesionExpirada", "Acceso");
+                return false;
+            }
+
+            // Estrictamente IdUsuario in (1: Javier, 86: Claudia, 87: Raúl, 89: Nahúm)
+            bool hasAccess = perfil.IdUsuario == "1" ||
+                             perfil.IdUsuario == "86" ||
+                             perfil.IdUsuario == "87" ||
+                             perfil.IdUsuario == "89";
+
+            if (!hasAccess)
+            {
+                redireccion = RedirectToAction("Index", "Home");
+                return false;
+            }
+
+            return true;
+        }
+
         // ── View: Programa Vinculante 2026 — 2040 ──────────────────────────
         [HttpGet]
         public IActionResult ProgramaVinculante()
