@@ -1,4 +1,14 @@
-import { escape, fmtDate, daysFromToday, toast } from './utils.js';
+import { escape, fmtDate, daysFromToday, toast, getPeriodRange, getPeriodLabel } from './utils.js';
+import {
+    cleanupPresentationSlides,
+    enterFullscreen,
+    exitFullscreen,
+    fitSlideToViewport,
+    isBackwardPresentationKey,
+    isForwardPresentationKey,
+    renderPresentationSlides,
+    setPresentationControls
+} from './presentation-utils.js';
 
 let _actividades = [];
 let _temas = [];
@@ -21,8 +31,8 @@ const COLORS = {
 const ASSETS = [
     '/gestor/img/fondoppt.png',
     '/gestor/img/portada_ppt.png',
-    '/gestor/img/logo_gob.png',
-    '/gestor/img/logo_sener.png'
+    '/img/sideo/logo_gob.png',
+    '/img/sideo/logo_sener.png'
 ];
 
 export function setPresentacionData(actividades, temas) {
@@ -51,10 +61,10 @@ export function wirePresentacion() {
     });
     document.addEventListener('keydown', (ev) => {
         if (!presentationMode) return;
-        if (['ArrowRight', 'PageDown', ' '].includes(ev.key)) {
+        if (isForwardPresentationKey(ev.key)) {
             ev.preventDefault();
             nextPresentacionSlide();
-        } else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(ev.key)) {
+        } else if (isBackwardPresentationKey(ev.key)) {
             ev.preventDefault();
             prevPresentacionSlide();
         } else if (ev.key === 'Escape') {
@@ -118,13 +128,7 @@ function describeFilters(filters) {
     const actividad = filters.actividad ? getActividadName(filters.actividad) : 'Todas las actividades';
     parts.push(`Actividad: ${actividad}`);
     parts.push(`Responsable: ${filters.responsable || 'Todos'}`);
-    const periodos = {
-        semana_actual: 'Semana en curso',
-        mes_actual: 'Mes en curso',
-        '30': 'Próximos 30 días',
-        vencidas: 'Solo vencidas'
-    };
-    parts.push(`Periodo: ${periodos[filters.periodo] || 'Todo'}`);
+    parts.push(`Periodo: ${getPeriodLabel(filters.periodo)}`);
     if (filters.q) parts.push(`Búsqueda: ${filters.q}`);
     return parts;
 }
@@ -146,10 +150,8 @@ function applyFilters(temas, filters) {
         if (filters.periodo === 'vencidas') {
             if (!isVencido(t)) return false;
         }
-        if (filters.periodo === 'semana_actual' || filters.periodo === 'mes_actual') {
-            const range = getNamedRange(filters.periodo);
-            if (!range || !t.fechaCompromiso || t.fechaCompromiso < range.start || t.fechaCompromiso > range.end) return false;
-        }
+        const range = getPeriodRange(filters.periodo);
+        if (range && (!t.fechaCompromiso || t.fechaCompromiso < range.start || t.fechaCompromiso > range.end)) return false;
 
         if (filters.q) {
             const actividad = getActividadName(t.actividadId);
@@ -168,29 +170,6 @@ function applyFilters(temas, filters) {
 
         return true;
     });
-}
-
-function getNamedRange(name) {
-    const today = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const toDateOnly = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-    if (name === 'semana_actual') {
-        const day = today.getDay();
-        const monday = new Date(today);
-        monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        return { start: toDateOnly(monday), end: toDateOnly(sunday) };
-    }
-
-    if (name === 'mes_actual') {
-        const first = new Date(today.getFullYear(), today.getMonth(), 1);
-        const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        return { start: toDateOnly(first), end: toDateOnly(last) };
-    }
-
-    return null;
 }
 
 function isVencido(t) {
@@ -303,8 +282,9 @@ function slideTop(title) {
     return `
         <div class="internal-slide__top">
             <div class="internal-slide__brand">
-                <img src="/gestor/img/logo_gob.png" alt="Gobierno de México">
-                <img src="/gestor/img/logo_sener.png" alt="Secretaría de Energía">
+                <img src="/img/sideo/logo_gob.png" alt="Gobierno de México">
+                <div class="dv"></div>
+                <img src="/img/sideo/logo_sener.png" alt="Secretaría de Energía">
             </div>
             <div class="internal-slide__title">${escape(title)}</div>
             <div class="internal-slide__unit">DGMESNIE · Seguimiento de actividades</div>
@@ -461,13 +441,13 @@ function statusPill(t) {
 
 function progressBar(value) {
     const v = Math.max(0, Math.min(100, Number(value || 0)));
-    const color = v >= 80 ? COLORS.ok : v >= 40 ? COLORS.aviso : COLORS.riesgo;
+    const color = v >= 80 ? 'var(--ok)' : v >= 40 ? 'var(--proceso)' : 'var(--riesgo)';
     return `
         <div style="display:flex;align-items:center;gap:8px;">
-            <div style="height:7px;flex:1;background:#e5e7eb;border-radius:999px;overflow:hidden;min-width:80px;">
-                <span style="display:block;height:100%;width:${v}%;background:${color};"></span>
+            <div style="height:8px;flex:1;background:var(--borde);border-radius:2px;overflow:hidden;min-width:80px;">
+                <span style="display:block;height:100%;width:${v}%;background:${color};border-radius:2px;"></span>
             </div>
-            <strong style="font-size:.78rem;">${v}%</strong>
+            <strong style="font-size:.78rem;font-family:var(--font-mono);">${v}%</strong>
         </div>`;
 }
 
@@ -489,33 +469,13 @@ function setButtons(disabled) {
     });
 }
 
-function setPresentationControls(visible) {
-    const controls = document.getElementById('presentationControls');
-    if (!controls) return;
-    controls.style.display = visible ? 'flex' : 'none';
-    controls.setAttribute('aria-hidden', visible ? 'false' : 'true');
-}
-
 function fitActiveSlide() {
     if (!presentationMode || !presentationSlides.length) return;
-    const active = presentationSlides[presentationIndex];
-    if (!active) return;
-    const baseW = active.offsetWidth || 1280;
-    const baseH = active.offsetHeight || 720;
-    const baseScale = Math.min(window.innerWidth / baseW, window.innerHeight / baseH);
-    const scale = Math.max(0.2, baseScale * PRESENTATION_ZOOM_FACTOR);
-    active.style.setProperty('--presentation-scale', scale.toFixed(4));
+    fitSlideToViewport(presentationSlides[presentationIndex], PRESENTATION_ZOOM_FACTOR);
 }
 
 function renderPresentationState() {
-    if (!presentationSlides.length) return;
-    presentationSlides.forEach((slide, idx) => {
-        slide.classList.toggle('active', idx === presentationIndex);
-        if (idx !== presentationIndex) slide.style.removeProperty('--presentation-scale');
-    });
-    const counter = document.getElementById('presentationCounter');
-    if (counter) counter.textContent = `${presentationIndex + 1}/${presentationSlides.length}`;
-    fitActiveSlide();
+    renderPresentationSlides(presentationSlides, presentationIndex, { zoomFactor: PRESENTATION_ZOOM_FACTOR });
 }
 
 async function enterPresentacion(startAt = 0) {
@@ -529,9 +489,7 @@ async function enterPresentacion(startAt = 0) {
     document.body.classList.add('presentation-mode');
     setPresentationControls(true);
     renderPresentationState();
-    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-        try { await document.documentElement.requestFullscreen(); } catch (_) { }
-    }
+    await enterFullscreen();
     requestAnimationFrame(fitActiveSlide);
 }
 
@@ -539,14 +497,9 @@ async function exitPresentacion() {
     if (!presentationMode) return;
     presentationMode = false;
     document.body.classList.remove('presentation-mode');
-    presentationSlides.forEach(slide => {
-        slide.classList.remove('active');
-        slide.style.removeProperty('--presentation-scale');
-    });
+    cleanupPresentationSlides(presentationSlides);
     setPresentationControls(false);
-    if (document.fullscreenElement && document.exitFullscreen) {
-        try { await document.exitFullscreen(); } catch (_) { }
-    }
+    await exitFullscreen();
 }
 
 function nextPresentacionSlide() {

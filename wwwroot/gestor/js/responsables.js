@@ -1,4 +1,14 @@
-import { escape, fmtDate, semaforo, daysFromToday, uniqueResponsables, toast, parseDate } from './utils.js';
+import { escape, fmtDate, semaforo, daysFromToday, uniqueResponsables, toast, parseDate, getPeriodRange, getPeriodLabel } from './utils.js';
+import {
+    cleanupPresentationSlides,
+    enterFullscreen,
+    exitFullscreen,
+    fitSlideToViewport,
+    isBackwardPresentationKey,
+    isForwardPresentationKey,
+    renderPresentationSlides,
+    setPresentationControls
+} from './presentation-utils.js';
 
 const PRESENTATION_ZOOM_FACTOR = 0.92;
 let responsablePresentationMode = false;
@@ -110,38 +120,7 @@ function etapasParticipacion(t, nombre) {
 }
 
 function periodoLabel(value) {
-    const labels = {
-        '': 'Todo',
-        semana_actual: 'Semana en curso',
-        mes_actual: 'Mes en curso',
-        '30': 'Próximos 30 días',
-        vencidas: 'Solo vencidos'
-    };
-    return labels[value] || 'Todo';
-}
-
-function getRange(periodo) {
-    const today = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const toDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-    if (periodo === 'semana_actual') {
-        const day = today.getDay();
-        const monday = new Date(today);
-        monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        return { start: toDate(monday), end: toDate(sunday) };
-    }
-
-    if (periodo === 'mes_actual') {
-        return {
-            start: toDate(new Date(today.getFullYear(), today.getMonth(), 1)),
-            end: toDate(new Date(today.getFullYear(), today.getMonth() + 1, 0))
-        };
-    }
-
-    return null;
+    return value === 'vencidas' ? 'Solo vencidos' : getPeriodLabel(value);
 }
 
 function filtrarTemasPeriodo(ts, periodo) {
@@ -155,7 +134,7 @@ function filtrarTemasPeriodo(ts, periodo) {
     if (periodo === 'vencidas') {
         return ts.filter(t => t.estatus !== 'Concluida' && daysFromToday(t.fechaCompromiso) < 0);
     }
-    const range = getRange(periodo);
+    const range = getPeriodRange(periodo);
     if (!range) return ts;
     return ts.filter(t => t.fechaCompromiso && t.fechaCompromiso >= range.start && t.fechaCompromiso <= range.end);
 }
@@ -212,8 +191,9 @@ function renderReporteResponsable(responsableName, ts, actividades, periodo) {
             <section class="internal-slide internal-slide--content resp-report-slide">
                 <div class="internal-slide__top">
                     <div class="internal-slide__brand">
-                        <img src="/gestor/img/logo_gob.png" alt="Gobierno de México">
-                        <img src="/gestor/img/logo_sener.png" alt="Secretaría de Energía">
+                        <img src="/img/sideo/logo_gob.png" alt="Gobierno de México">
+                        <div class="dv"></div>
+                        <img src="/img/sideo/logo_sener.png" alt="Secretaría de Energía">
                     </div>
                     <div class="internal-slide__title">Resumen del periodo</div>
                     <div class="internal-slide__unit">DGMESNIE · Seguimiento de actividades</div>
@@ -248,8 +228,9 @@ function renderReporteResponsable(responsableName, ts, actividades, periodo) {
             <section class="internal-slide internal-slide--content resp-report-slide">
                 <div class="internal-slide__top">
                     <div class="internal-slide__brand">
-                        <img src="/gestor/img/logo_gob.png" alt="Gobierno de México">
-                        <img src="/gestor/img/logo_sener.png" alt="Secretaría de Energía">
+                        <img src="/img/sideo/logo_gob.png" alt="Gobierno de México">
+                        <div class="dv"></div>
+                        <img src="/img/sideo/logo_sener.png" alt="Secretaría de Energía">
                     </div>
                     <div class="internal-slide__title">Distribución de temas</div>
                     <div class="internal-slide__unit">${escape(responsableName)} · ${escape(periodoLabel(periodo))}</div>
@@ -284,8 +265,9 @@ function renderGanttResponsableSlide(responsableName, rows, periodo) {
         <section class="internal-slide internal-slide--content resp-report-slide">
             <div class="internal-slide__top">
                 <div class="internal-slide__brand">
-                    <img src="/gestor/img/logo_gob.png" alt="Gobierno de México">
-                    <img src="/gestor/img/logo_sener.png" alt="Secretaría de Energía">
+                    <img src="/img/sideo/logo_gob.png" alt="Gobierno de México">
+                    <div class="dv"></div>
+                    <img src="/img/sideo/logo_sener.png" alt="Secretaría de Energía">
                 </div>
                 <div class="internal-slide__title">Cronograma del periodo</div>
                 <div class="internal-slide__unit">${escape(responsableName)} · ${escape(periodoLabel(periodo))}</div>
@@ -341,8 +323,9 @@ function renderDetalleResponsableSlides(responsableName, rows, actividades, peri
         <section class="internal-slide internal-slide--content resp-report-slide">
             <div class="internal-slide__top">
                 <div class="internal-slide__brand">
-                    <img src="/gestor/img/logo_gob.png" alt="Gobierno de México">
-                    <img src="/gestor/img/logo_sener.png" alt="Secretaría de Energía">
+                    <img src="/img/sideo/logo_gob.png" alt="Gobierno de México">
+                    <div class="dv"></div>
+                    <img src="/img/sideo/logo_sener.png" alt="Secretaría de Energía">
                 </div>
                 <div class="internal-slide__title">Detalle de temas${pages.length > 1 ? ` ${idx + 1}/${pages.length}` : ''}</div>
                 <div class="internal-slide__unit">${escape(responsableName)} · ${escape(periodoLabel(periodo))}</div>
@@ -548,7 +531,7 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
         exporting: { enabled: false },
         chart: {
             backgroundColor: 'transparent',
-            style: { fontFamily: 'Montserrat, sans-serif' },
+            style: { fontFamily: "'Libre Franklin', sans-serif" },
             animation: true
         },
         lang: { noData: 'Sin temas para graficar' },
@@ -720,7 +703,7 @@ function renderResponsableGantt(cont, rows) {
     cont._hc = Highcharts.ganttChart(cont, {
         chart: {
             backgroundColor: 'transparent',
-            style: { fontFamily: 'Montserrat, sans-serif' },
+            style: { fontFamily: "'Libre Franklin', sans-serif" },
             animation: { duration: 700 }
         },
         credits: { enabled: false },
@@ -765,11 +748,9 @@ async function presentarReporteResponsable() {
     responsablePresentationMode = true;
     responsablePresentationIndex = 0;
     document.body.classList.add('presentation-mode');
-    setResponsablePresentationControls(true);
+    setPresentationControls(true);
     renderResponsablePresentationState();
-    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-        try { await document.documentElement.requestFullscreen(); } catch (_) { }
-    }
+    await enterFullscreen();
     requestAnimationFrame(fitResponsableActiveSlide);
 }
 
@@ -777,48 +758,28 @@ async function exitResponsablePresentacion() {
     if (!responsablePresentationMode) return;
     responsablePresentationMode = false;
     document.body.classList.remove('presentation-mode');
-    responsablePresentationSlides.forEach(slide => {
-        slide.classList.remove('active');
-        slide.style.removeProperty('--presentation-scale');
-    });
-    setResponsablePresentationControls(false);
-    if (document.fullscreenElement && document.exitFullscreen) {
-        try { await document.exitFullscreen(); } catch (_) { }
-    }
+    cleanupPresentationSlides(responsablePresentationSlides);
+    setPresentationControls(false);
+    await exitFullscreen();
 }
 
-function setResponsablePresentationControls(visible) {
-    const controls = document.getElementById('presentationControls');
-    if (!controls) return;
-    controls.style.display = visible ? 'flex' : 'none';
-    controls.setAttribute('aria-hidden', visible ? 'false' : 'true');
+function reflowChartsInSlide(slide) {
+    if (!window.Highcharts || !slide) return;
+    Highcharts.charts.forEach(chart => {
+        if (chart?.renderTo && slide.contains(chart.renderTo)) chart.reflow();
+    });
 }
 
 function fitResponsableActiveSlide() {
     if (!responsablePresentationMode || !responsablePresentationSlides.length) return;
-    const active = responsablePresentationSlides[responsablePresentationIndex];
-    if (!active) return;
-    const baseW = active.offsetWidth || 1280;
-    const baseH = active.offsetHeight || 720;
-    const baseScale = Math.min(window.innerWidth / baseW, window.innerHeight / baseH);
-    const scale = Math.max(0.2, baseScale * PRESENTATION_ZOOM_FACTOR);
-    active.style.setProperty('--presentation-scale', scale.toFixed(4));
-    if (window.Highcharts) {
-        Highcharts.charts.forEach(chart => {
-            if (chart?.renderTo && active.contains(chart.renderTo)) chart.reflow();
-        });
-    }
+    fitSlideToViewport(responsablePresentationSlides[responsablePresentationIndex], PRESENTATION_ZOOM_FACTOR, reflowChartsInSlide);
 }
 
 function renderResponsablePresentationState() {
-    if (!responsablePresentationSlides.length) return;
-    responsablePresentationSlides.forEach((slide, idx) => {
-        slide.classList.toggle('active', idx === responsablePresentationIndex);
-        if (idx !== responsablePresentationIndex) slide.style.removeProperty('--presentation-scale');
+    renderPresentationSlides(responsablePresentationSlides, responsablePresentationIndex, {
+        zoomFactor: PRESENTATION_ZOOM_FACTOR,
+        afterFit: reflowChartsInSlide
     });
-    const counter = document.getElementById('presentationCounter');
-    if (counter) counter.textContent = `${responsablePresentationIndex + 1}/${responsablePresentationSlides.length}`;
-    fitResponsableActiveSlide();
 }
 
 function nextResponsableSlide() {
@@ -846,10 +807,10 @@ function ensureResponsablePresentationEvents() {
     window.addEventListener('resize', fitResponsableActiveSlide);
     document.addEventListener('keydown', event => {
         if (!responsablePresentationMode) return;
-        if (['ArrowRight', 'PageDown', ' '].includes(event.key)) {
+        if (isForwardPresentationKey(event.key)) {
             event.preventDefault();
             nextResponsableSlide();
-        } else if (['ArrowLeft', 'PageUp'].includes(event.key)) {
+        } else if (isBackwardPresentationKey(event.key, false)) {
             event.preventDefault();
             prevResponsableSlide();
         } else if (event.key === 'Escape') {

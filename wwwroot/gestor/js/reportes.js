@@ -1,6 +1,16 @@
 // Reportes institucionales — deck de slides estilo PPT con filtros y descarga PDF/PPT/Excel.
 
-import { escape, fmtDate, daysFromToday, daysBetween, semaforoTema, avancePromedio, toast } from './utils.js';
+import { escape, fmtDate, daysFromToday, daysBetween, semaforoTema, avancePromedio, toast, getPeriodRange } from './utils.js';
+import {
+    cleanupPresentationSlides,
+    enterFullscreen,
+    exitFullscreen,
+    fitSlideToViewport,
+    isBackwardPresentationKey,
+    isForwardPresentationKey,
+    renderPresentationSlides,
+    setPresentationControls
+} from './presentation-utils.js';
 
 let _state = { temas: [], actividades: [], filters: {} };
 
@@ -10,13 +20,13 @@ let presentationSlides = [];
 const PRESENTATION_ZOOM_FACTOR = 1.0;
 
 const C_SLIDE = {
-    guinda: '#8a0031',
-    verde: '#1e5b4f',
-    ok: '#027a48',
-    proceso: '#b54708',
-    riesgo: '#b42318',
-    pendiente: '#667085',
-    textoSuave: '#6c7a89'
+    guinda: '#9B2247',
+    verde: '#0E8A6E',
+    ok: '#0E7C5A',
+    proceso: '#C0552E',
+    riesgo: '#9B2247',
+    pendiente: '#9A958E',
+    textoSuave: '#6F6B66'
 };
 const ESTATUS_COLOR = { Pendiente: C_SLIDE.pendiente, 'En proceso': C_SLIDE.proceso, Vencida: C_SLIDE.riesgo, Concluida: C_SLIDE.ok };
 const PRIORIDAD_COLOR = { Alta: C_SLIDE.riesgo, Media: C_SLIDE.proceso, Baja: C_SLIDE.ok };
@@ -24,8 +34,8 @@ const PRIORIDAD_COLOR = { Alta: C_SLIDE.riesgo, Media: C_SLIDE.proceso, Baja: C_
 const REPORT_BACKGROUND_ASSETS = [
     '/gestor/img/fondoppt.png',
     '/gestor/img/portada_ppt.png',
-    '/gestor/img/logo_gob.png',
-    '/gestor/img/logo_sener.png'
+    '/img/sideo/logo_gob.png',
+    '/img/sideo/logo_sener.png'
 ];
 
 function setTrackingPreloader(visible, title, sub, isError = false) {
@@ -154,52 +164,6 @@ function readFilters() {
     };
 }
 
-function getPeriodRange(period) {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-
-    let start, end;
-
-    switch (period) {
-        case 'semana_actual': {
-            const day = today.getDay();
-            const monday = new Date(today);
-            monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
-            monday.setHours(0, 0, 0, 0);
-            const sunday = new Date(monday);
-            sunday.setDate(monday.getDate() + 6);
-            sunday.setHours(23, 59, 59, 999);
-            start = monday;
-            end = sunday;
-            break;
-        }
-        case 'mes_actual': {
-            start = new Date(year, month, 1);
-            end = new Date(year, month + 1, 0, 23, 59, 59, 999);
-            break;
-        }
-        case 'mes_anterior': {
-            start = new Date(year, month - 1, 1);
-            end = new Date(year, month, 0, 23, 59, 59, 999);
-            break;
-        }
-        case 'dos_meses_atras': {
-            start = new Date(year, month - 2, 1);
-            end = new Date(year, month - 1, 0, 23, 59, 59, 999);
-            break;
-        }
-        case 'anio_actual': {
-            start = new Date(year, 0, 1);
-            end = new Date(year, 11, 31, 23, 59, 59, 999);
-            break;
-        }
-        default:
-            return null;
-    }
-    return { start, end };
-}
-
 function applyFilters(acts, f) {
     return acts.filter(a => {
         if (f.tema && String(a.actividadId) !== String(f.tema)) return false;
@@ -209,10 +173,7 @@ function applyFilters(acts, f) {
 
         const range = getPeriodRange(f.periodo);
         if (range) {
-            const pad = num => String(num).padStart(2, '0');
-            const startStr = `${range.start.getFullYear()}-${pad(range.start.getMonth() + 1)}-${pad(range.start.getDate())}`;
-            const endStr = `${range.end.getFullYear()}-${pad(range.end.getMonth() + 1)}-${pad(range.end.getDate())}`;
-            if (!a.fechaCompromiso || a.fechaCompromiso < startStr || a.fechaCompromiso > endStr) return false;
+            if (!a.fechaCompromiso || a.fechaCompromiso < range.start || a.fechaCompromiso > range.end) return false;
         }
 
         if (f.periodo === '7' || f.periodo === '30') {
@@ -253,8 +214,9 @@ function renderSlideHeader(title) {
     return `
         <div class="internal-slide__top">
             <div class="internal-slide__brand">
-                <img src="/gestor/img/logo_gob.png" alt="Gobierno de México">
-                <img src="/gestor/img/logo_sener.png" alt="Secretaría de Energía">
+                <img src="/img/sideo/logo_gob.png" alt="Gobierno de México">
+                <div class="dv"></div>
+                <img src="/img/sideo/logo_sener.png" alt="Secretaría de Energía">
             </div>
             <div class="internal-slide__title">${escape(title)}</div>
             <div class="internal-slide__unit">DGMESNIE · Subsecretaría de Planeación y Transición Energética</div>
@@ -885,7 +847,7 @@ function initSlideDashboard(actividades) {
     Highcharts.chart(priorityCont, {
         chart: {
             type: 'column',
-            style: { fontFamily: 'Montserrat, sans-serif' },
+            style: { fontFamily: "'Libre Franklin', sans-serif" },
             backgroundColor: '#ffffff',
             height: 180,
             spacing: [5, 5, 5, 5]
@@ -941,7 +903,7 @@ function initSlideDashboard(actividades) {
     Highcharts.chart(donutCont, {
         chart: {
             type: 'pie',
-            style: { fontFamily: 'Montserrat, sans-serif' },
+            style: { fontFamily: "'Libre Franklin', sans-serif" },
             backgroundColor: '#ffffff',
             height: 150,
             spacing: [5, 5, 5, 5]
@@ -1006,7 +968,7 @@ function initSlideDashboard(actividades) {
     Highcharts.chart(workloadCont, {
         chart: {
             type: 'bar',
-            style: { fontFamily: 'Montserrat, sans-serif' },
+            style: { fontFamily: "'Libre Franklin', sans-serif" },
             backgroundColor: '#ffffff',
             height: 155,
             spacing: [5, 5, 5, 5]
@@ -1091,7 +1053,7 @@ function initSlideTreemap(temas, actividades) {
     if (window.Highcharts) {
         Highcharts.chart(cont, {
             chart: {
-                style: { fontFamily: 'Montserrat, sans-serif' },
+                style: { fontFamily: "'Libre Franklin', sans-serif" },
                 backgroundColor: '#ffffff',
                 type: 'treemap',
                 height: 480
@@ -1357,34 +1319,13 @@ export async function descargarExcel() {
 
 // ============ PRESENTACION CONTROLLER ============
 
-function setPresentationControls(visible) {
-    const controls = document.getElementById('presentationControls');
-    if (!controls) return;
-    controls.style.display = visible ? 'flex' : 'none';
-    controls.setAttribute('aria-hidden', visible ? 'false' : 'true');
-}
-
 function fitActiveSlide() {
     if (!presentationMode || !presentationSlides.length) return;
-    const active = presentationSlides[presentationIndex];
-    if (!active) return;
-
-    const baseW = active.offsetWidth || 1280;
-    const baseH = active.offsetHeight || 720;
-    const baseScale = Math.min(window.innerWidth / baseW, window.innerHeight / baseH);
-    const scale = Math.max(0.2, baseScale * PRESENTATION_ZOOM_FACTOR);
-    active.style.setProperty('--presentation-scale', scale.toFixed(4));
+    fitSlideToViewport(presentationSlides[presentationIndex], PRESENTATION_ZOOM_FACTOR);
 }
 
 function renderPresentationState() {
-    if (!presentationSlides.length) return;
-    presentationSlides.forEach((slide, idx) => {
-        slide.classList.toggle('active', idx === presentationIndex);
-        if (idx !== presentationIndex) slide.style.removeProperty('--presentation-scale');
-    });
-    const counter = document.getElementById('presentationCounter');
-    if (counter) counter.textContent = `${presentationIndex + 1}/${presentationSlides.length}`;
-    fitActiveSlide();
+    renderPresentationSlides(presentationSlides, presentationIndex, { zoomFactor: PRESENTATION_ZOOM_FACTOR });
 }
 
 export async function enterPresentation(startAt = 0) {
@@ -1395,9 +1336,7 @@ export async function enterPresentation(startAt = 0) {
     document.body.classList.add('presentation-mode');
     setPresentationControls(true);
     renderPresentationState();
-    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-        try { await document.documentElement.requestFullscreen(); } catch (_) { }
-    }
+    await enterFullscreen();
     requestAnimationFrame(fitActiveSlide);
 }
 
@@ -1405,14 +1344,9 @@ export async function exitPresentation() {
     if (!presentationMode) return;
     presentationMode = false;
     document.body.classList.remove('presentation-mode');
-    presentationSlides.forEach(slide => {
-        slide.classList.remove('active');
-        slide.style.removeProperty('--presentation-scale');
-    });
+    cleanupPresentationSlides(presentationSlides);
     setPresentationControls(false);
-    if (document.fullscreenElement && document.exitFullscreen) {
-        try { await document.exitFullscreen(); } catch (_) { }
-    }
+    await exitFullscreen();
 }
 
 export function nextPresentationSlide() {
@@ -1457,10 +1391,10 @@ export function wireReportes() {
     });
     document.addEventListener('keydown', (ev) => {
         if (!presentationMode) return;
-        if (['ArrowRight', 'PageDown', ' '].includes(ev.key)) {
+        if (isForwardPresentationKey(ev.key)) {
             ev.preventDefault();
             nextPresentationSlide();
-        } else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(ev.key)) {
+        } else if (isBackwardPresentationKey(ev.key)) {
             ev.preventDefault();
             prevPresentationSlide();
         } else if (ev.key === 'Home') {

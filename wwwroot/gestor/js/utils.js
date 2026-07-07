@@ -20,6 +20,68 @@ export function fmtDate(s) {
     return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+export function toDateOnly(d) {
+    if (!(d instanceof Date) || isNaN(d)) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function getPeriodRange(period, options = {}) {
+    const { asDate = false } = options;
+    const today = todayAtMidnight();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    let start, end;
+
+    switch (period) {
+        case 'semana_actual': {
+            const day = today.getDay();
+            start = new Date(today);
+            start.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
+            end = new Date(start);
+            end.setDate(start.getDate() + 6);
+            break;
+        }
+        case 'mes_actual':
+            start = new Date(year, month, 1);
+            end = new Date(year, month + 1, 0);
+            break;
+        case 'mes_anterior':
+            start = new Date(year, month - 1, 1);
+            end = new Date(year, month, 0);
+            break;
+        case 'dos_meses_atras':
+            start = new Date(year, month - 2, 1);
+            end = new Date(year, month - 1, 0);
+            break;
+        case 'anio_actual':
+            start = new Date(year, 0, 1);
+            end = new Date(year, 11, 31);
+            break;
+        default:
+            return null;
+    }
+
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+    return asDate ? { start, end } : { start: toDateOnly(start), end: toDateOnly(end) };
+}
+
+export function getPeriodLabel(value) {
+    const labels = {
+        '': 'Todo',
+        semana_actual: 'Semana en curso',
+        mes_actual: 'Mes en curso',
+        mes_anterior: 'Mes anterior',
+        dos_meses_atras: 'Dos meses atrás',
+        anio_actual: 'Año en curso',
+        '7': 'Próximos 7 días',
+        '30': 'Próximos 30 días',
+        vencidas: 'Solo vencidas'
+    };
+    return labels[value] || 'Todo';
+}
+
 export function daysBetween(a, b) {
     const ms = parseDate(b) - parseDate(a);
     return Math.round(ms / 86400000);
