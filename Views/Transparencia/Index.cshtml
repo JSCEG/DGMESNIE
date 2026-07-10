@@ -101,8 +101,35 @@
                 </button>
             </div>
             <div class="sidebar-search-box">
-                <i class="bi bi-search"></i>
+                <i class="bi bi-search search-icon"></i>
                 <input type="text" id="searchAsuntos" placeholder="Buscar por título, folio o expediente..." oninput="filterAsuntos()">
+                <button type="button" id="btnClearSearch" class="btn-clear-search" onclick="clearSearch()" aria-label="Limpiar búsqueda" style="display: none;">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="sidebar-filter-toolbar">
+                <div class="status-chips" id="statusChips">
+                    <button type="button" class="status-chip active" data-status="all" aria-pressed="true">Todos</button>
+                    <button type="button" class="status-chip" data-status="concluido" aria-pressed="false">Concluido</button>
+                    <button type="button" class="status-chip" data-status="en proceso" aria-pressed="false">En proceso</button>
+                    <button type="button" class="status-chip" data-status="en revision" aria-pressed="false">En revisión</button>
+                    <button type="button" class="status-chip" data-status="pendiente" aria-pressed="false">Pendiente</button>
+                </div>
+                <div class="sort-select-wrap">
+                    <label for="sortFolios" class="sort-select-label">Ordenar:</label>
+                    <select id="sortFolios" class="sort-select" onchange="filterAsuntos()">
+                        <option value="recent">Más recientes</option>
+                        <option value="oldest">Más antiguos</option>
+                        <option value="folio-asc">Folio A-Z</option>
+                        <option value="folio-desc">Folio Z-A</option>
+                        <option value="title-asc">Tema A-Z</option>
+                    </select>
+                </div>
+            </div>
+            <div id="searchMeta" class="sidebar-search-meta" aria-live="polite"></div>
+            <div id="searchEmptyState" class="sidebar-search-empty" style="display: none;">
+                <i class="bi bi-search"></i>
+                <span>No se encontraron expedientes con ese criterio.</span>
             </div>
             
             <div class="sidebar-list-container" id="listAsuntos">
@@ -129,12 +156,31 @@
                         if (pendienteCount > 0) summaryParts.Add($"{pendienteCount} pendientes");
                         var summaryText = string.Join(", ", summaryParts);
 
+                        var temasUnicos = matters
+                            .Select(m => m.Titulo?.Trim())
+                            .Where(t => !string.IsNullOrWhiteSpace(t))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                        var temaPrincipal = temasUnicos.FirstOrDefault() ?? "Sin tema registrado";
+                        var temasPreview = temasUnicos.Skip(1).Take(2).ToList();
+                        var temasRestantes = Math.Max(0, temasUnicos.Count - 1 - temasPreview.Count);
+
                         <div class="folio-group" data-folio="@folio">
                             <div class="folio-group-header" onclick="toggleFolioGroup(this)" style="cursor: pointer;">
                                 <div class="d-flex align-items-center w-100">
                                     <span class="folio-label"><i class="bi bi-hash"></i> Folio: @folio</span>
                                     <i class="bi bi-chevron-right chevron-icon ms-auto text-muted" style="transition: transform 0.2s;"></i>
                                 </div>
+                                <div class="folio-topic-main" title="@temaPrincipal">
+                                    <i class="bi bi-bookmark-star"></i>
+                                    <span>@temaPrincipal</span>
+                                </div>
+                                @if (temasPreview.Any() || temasRestantes > 0)
+                                {
+                                    <div class="folio-topic-list" title="@string.Join("; ", temasUnicos)">
+                                        Temas: @string.Join(" • ", temasPreview)@(temasRestantes > 0 ? $" • +{temasRestantes} más" : "")
+                                    </div>
+                                }
                                 <span class="folio-summary">(@totalCount expedientes@(string.IsNullOrEmpty(summaryText) ? "" : $": {summaryText}"))</span>
                             </div>
                             <div class="folio-group-items" style="display: none;">
@@ -142,7 +188,7 @@
                                 {
                                     var statusClass = "status-" + (asunto.Estatus?.ToLower().Replace(" ", "-") ?? "pendiente");
                                     var badgeClass = asunto.Estatus?.ToLower().Replace(" ", "-") ?? "pendiente";
-                                    <div class="asunto-card-item @statusClass" id="card-@asunto.Id" onclick="selectAsunto('@asunto.Id')" data-searchable-text="@asunto.Titulo.ToLower() @(asunto.FolioSolicitud?.ToLower() ?? "") @(asunto.NumeroExpediente?.ToLower() ?? "")">
+                                    <div class="asunto-card-item @statusClass" id="card-@asunto.Id" onclick="selectAsunto('@asunto.Id')" data-status="@(asunto.Estatus?.ToLower() ?? "pendiente")" data-date="@asunto.Fecha" data-searchable-text="@asunto.Titulo.ToLower() @(asunto.FolioSolicitud?.ToLower() ?? "") @(asunto.NumeroExpediente?.ToLower() ?? "")">
                                         <div class="asunto-card-title-row">
                                             <span class="asunto-card-expediente">@asunto.NumeroExpediente</span>
                                         </div>
@@ -178,22 +224,22 @@
 
                 <!-- KPI Grid -->
                 <div class="dashboard-kpi-grid w-100 mb-4">
-                    <div class="kpi-card border-guinda">
+                    <div class="kpi-card border-guinda dashboard-filter-trigger" data-dashboard-filter="all" title="Mostrar todos los estatus">
                         <div class="kpi-icon"><i class="bi bi-hash"></i></div>
                         <div class="kpi-num" id="statTotalFolios">--</div>
                         <div class="kpi-label">Solicitudes (Folios)</div>
                     </div>
-                    <div class="kpi-card border-dorado">
+                    <div class="kpi-card border-dorado dashboard-filter-trigger" data-dashboard-filter="all" title="Mostrar todos los estatus">
                         <div class="kpi-icon"><i class="bi bi-file-earmark-medical-fill"></i></div>
                         <div class="kpi-num" id="statTotalExpedientes">--</div>
                         <div class="kpi-label">Total Expedientes</div>
                     </div>
-                    <div class="kpi-card border-verde">
+                    <div class="kpi-card border-verde dashboard-filter-trigger" data-dashboard-filter="concluido" title="Filtrar por concluidos">
                         <div class="kpi-icon"><i class="bi bi-check-circle-fill"></i></div>
                         <div class="kpi-num" id="statConcluidos">--</div>
                         <div class="kpi-label">Concluidos</div>
                     </div>
-                    <div class="kpi-card border-gris">
+                    <div class="kpi-card border-gris dashboard-filter-trigger" data-dashboard-filter="activos" title="Filtrar por en proceso y en revisión">
                         <div class="kpi-icon"><i class="bi bi-clock-history"></i></div>
                         <div class="kpi-num" id="statActivos">--</div>
                         <div class="kpi-label">En Proceso / Revisión</div>
@@ -210,19 +256,19 @@
                                     <canvas id="statusChart"></canvas>
                                 </div>
                                 <div class="chart-legend-container" style="display: flex; flex-direction: column; gap: 8px; min-width: 150px; flex: 1;">
-                                    <div class="legend-item d-flex align-items-center justify-content-between pb-1" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
+                                    <div class="legend-item dashboard-filter-trigger d-flex align-items-center justify-content-between pb-1" data-dashboard-filter="concluido" title="Filtrar por concluidos" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
                                         <span><i class="bi bi-circle-fill text-success me-2"></i>Concluidos</span>
                                         <span class="fw-bold" id="legendConcluido">--</span>
                                     </div>
-                                    <div class="legend-item d-flex align-items-center justify-content-between pb-1" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
+                                    <div class="legend-item dashboard-filter-trigger d-flex align-items-center justify-content-between pb-1" data-dashboard-filter="en proceso" title="Filtrar por en proceso" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
                                         <span><i class="bi bi-circle-fill text-warning me-2"></i>En proceso</span>
                                         <span class="fw-bold" id="legendProceso">--</span>
                                     </div>
-                                    <div class="legend-item d-flex align-items-center justify-content-between pb-1" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
+                                    <div class="legend-item dashboard-filter-trigger d-flex align-items-center justify-content-between pb-1" data-dashboard-filter="en revision" title="Filtrar por en revisión" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
                                         <span><i class="bi bi-circle-fill me-2" style="color: var(--color-gobmx-guinda) !important;"></i>En revisión</span>
                                         <span class="fw-bold" id="legendRevision">--</span>
                                     </div>
-                                    <div class="legend-item d-flex align-items-center justify-content-between pb-1" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
+                                    <div class="legend-item dashboard-filter-trigger d-flex align-items-center justify-content-between pb-1" data-dashboard-filter="pendiente" title="Filtrar por pendientes" style="font-size: 0.82rem; border-bottom: 1px solid #f1f5f9;">
                                         <span><i class="bi bi-circle-fill text-secondary me-2"></i>Pendientes</span>
                                         <span class="fw-bold" id="legendPendiente">--</span>
                                     </div>
@@ -357,6 +403,7 @@
         let selectedAsuntoId = null;
         let activeTab = 'resumen';
         let myStatusChart = null;
+        const sidebarStateStorageKey = 'transparenciaSidebarState.v1';
 
         // Inicializador
         function selectAsunto(id) {
@@ -426,6 +473,7 @@
 
             // Regresar a la pestaña de resumen por defecto
             switchTab('resumen');
+            saveSidebarState();
         }
 
         // Alternar colapso de acordeón
@@ -464,6 +512,8 @@
                 }
                 group.classList.remove('expanded');
             }
+
+            saveSidebarState();
         }
 
         // Mostrar Tablero General
@@ -484,6 +534,7 @@
 
             // Renderizar datos del Dashboard
             renderDashboard();
+            saveSidebarState();
         }
 
         // Calcular y renderizar datos del Dashboard reactivamente
@@ -545,6 +596,14 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        onClick: function(_evt, elements) {
+                            if (!elements || elements.length === 0) return;
+                            const statusByIndex = ['concluido', 'en proceso', 'en revision', 'pendiente'];
+                            const statusKey = statusByIndex[elements[0].index];
+                            if (statusKey) {
+                                applyDashboardStatusFilter(statusKey);
+                            }
+                        },
                         plugins: {
                             legend: {
                                 display: false
@@ -733,34 +792,354 @@
             });
         }
 
+        function normalizeSearchText(value) {
+            return (value || '')
+                .toString()
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim();
+        }
+
+        function setFolioGroupExpanded(group, expanded) {
+            const itemsContainer = group.querySelector('.folio-group-items');
+            const icon = group.querySelector('.chevron-icon');
+            if (!itemsContainer) return;
+
+            itemsContainer.style.display = expanded ? 'flex' : 'none';
+
+            if (icon) {
+                icon.classList.toggle('bi-chevron-down', expanded);
+                icon.classList.toggle('bi-chevron-right', !expanded);
+            }
+
+            group.classList.toggle('expanded', expanded);
+        }
+
+        function clearSearch() {
+            const searchInput = document.getElementById('searchAsuntos');
+            if (!searchInput) return;
+
+            searchInput.value = '';
+            filterAsuntos();
+            searchInput.focus();
+        }
+
+        const activeStatusFilters = new Set();
+        let isRestoringSidebarState = false;
+
+        function getDashboardFilterFromActiveStatuses() {
+            if (activeStatusFilters.size === 0) return 'all';
+            if (activeStatusFilters.size === 1) return Array.from(activeStatusFilters)[0];
+            if (activeStatusFilters.size === 2 && activeStatusFilters.has('en proceso') && activeStatusFilters.has('en revision')) {
+                return 'activos';
+            }
+            return '';
+        }
+
+        function syncDashboardFilterUI() {
+            const activeDashboardFilter = getDashboardFilterFromActiveStatuses();
+            document.querySelectorAll('.dashboard-filter-trigger').forEach(el => {
+                const key = normalizeSearchText(el.getAttribute('data-dashboard-filter') || '');
+                el.classList.toggle('active-filter', !!activeDashboardFilter && key === activeDashboardFilter);
+            });
+        }
+
+        function applyDashboardStatusFilter(statusKey) {
+            const key = normalizeSearchText(statusKey);
+
+            activeStatusFilters.clear();
+            if (key === 'concluido') {
+                activeStatusFilters.add('concluido');
+            } else if (key === 'en proceso') {
+                activeStatusFilters.add('en proceso');
+            } else if (key === 'en revision') {
+                activeStatusFilters.add('en revision');
+            } else if (key === 'pendiente') {
+                activeStatusFilters.add('pendiente');
+            } else if (key === 'activos') {
+                activeStatusFilters.add('en proceso');
+                activeStatusFilters.add('en revision');
+            }
+
+            applyStatusChipsUI();
+            filterAsuntos();
+        }
+
+        function collectExpandedFolios() {
+            return Array.from(document.querySelectorAll('.folio-group.expanded'))
+                .map(group => group.getAttribute('data-folio') || '')
+                .filter(folio => folio.length > 0);
+        }
+
+        function saveSidebarState() {
+            if (isRestoringSidebarState) return;
+
+            const searchInput = document.getElementById('searchAsuntos');
+            const sortSelect = document.getElementById('sortFolios');
+            const detailContent = document.getElementById('detailContent');
+
+            const state = {
+                query: searchInput ? searchInput.value : '',
+                sortMode: sortSelect ? sortSelect.value : 'recent',
+                statusFilters: Array.from(activeStatusFilters),
+                expandedFolios: collectExpandedFolios(),
+                selectedAsuntoId,
+                viewMode: detailContent && detailContent.style.display !== 'none' ? 'detail' : 'dashboard'
+            };
+
+            try {
+                localStorage.setItem(sidebarStateStorageKey, JSON.stringify(state));
+            } catch {
+                // Ignorar errores de almacenamiento local
+            }
+        }
+
+        function applyStatusChipsUI() {
+            const chips = Array.from(document.querySelectorAll('#statusChips .status-chip'));
+            chips.forEach(chip => {
+                const status = normalizeSearchText(chip.getAttribute('data-status') || '');
+                const isAll = status === 'all';
+                const active = isAll ? activeStatusFilters.size === 0 : activeStatusFilters.has(status);
+                chip.classList.toggle('active', active);
+                chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+
+            syncDashboardFilterUI();
+        }
+
+        function restoreSidebarState() {
+            let raw = null;
+            try {
+                raw = localStorage.getItem(sidebarStateStorageKey);
+            } catch {
+                raw = null;
+            }
+
+            if (!raw) {
+                filterAsuntos();
+                return;
+            }
+
+            try {
+                const state = JSON.parse(raw);
+                isRestoringSidebarState = true;
+
+                const searchInput = document.getElementById('searchAsuntos');
+                const sortSelect = document.getElementById('sortFolios');
+
+                if (searchInput && typeof state.query === 'string') {
+                    searchInput.value = state.query;
+                }
+
+                if (sortSelect && typeof state.sortMode === 'string') {
+                    sortSelect.value = state.sortMode;
+                }
+
+                activeStatusFilters.clear();
+                if (Array.isArray(state.statusFilters)) {
+                    state.statusFilters
+                        .map(s => normalizeSearchText(s))
+                        .filter(Boolean)
+                        .forEach(s => activeStatusFilters.add(s));
+                }
+                applyStatusChipsUI();
+
+                filterAsuntos();
+
+                if (Array.isArray(state.expandedFolios)) {
+                    const expandedSet = new Set(state.expandedFolios);
+                    document.querySelectorAll('.folio-group').forEach(group => {
+                        const folio = group.getAttribute('data-folio') || '';
+                        setFolioGroupExpanded(group, expandedSet.has(folio));
+                    });
+                }
+
+                if (state.viewMode === 'dashboard') {
+                    showDashboard();
+                } else if (state.selectedAsuntoId) {
+                    const card = document.getElementById(`card-${state.selectedAsuntoId}`);
+                    if (card && card.style.display !== 'none') {
+                        selectAsunto(state.selectedAsuntoId.toString());
+                    }
+                }
+            } catch {
+                filterAsuntos();
+            } finally {
+                isRestoringSidebarState = false;
+                saveSidebarState();
+            }
+        }
+
+        function getDateValueFromCard(card) {
+            const raw = card.getAttribute('data-date') || '';
+            const value = new Date(raw).getTime();
+            return Number.isNaN(value) ? 0 : value;
+        }
+
+        function compareCards(cardA, cardB, sortMode) {
+            if (sortMode === 'oldest') {
+                return getDateValueFromCard(cardA) - getDateValueFromCard(cardB);
+            }
+
+            if (sortMode === 'title-asc') {
+                const titleA = (cardA.querySelector('h5')?.textContent || '').trim();
+                const titleB = (cardB.querySelector('h5')?.textContent || '').trim();
+                return titleA.localeCompare(titleB, 'es', { sensitivity: 'base' });
+            }
+
+            return getDateValueFromCard(cardB) - getDateValueFromCard(cardA);
+        }
+
         // Filtrador del buscador reactivo en el sidebar
         function filterAsuntos() {
-            const query = document.getElementById('searchAsuntos').value.toLowerCase().trim();
+            const searchInput = document.getElementById('searchAsuntos');
+            const query = normalizeSearchText(searchInput ? searchInput.value : '');
+            const hasQuery = query.length > 0;
+            const sortSelect = document.getElementById('sortFolios');
+            const sortMode = sortSelect ? sortSelect.value : 'recent';
+            const listContainer = document.getElementById('listAsuntos');
+
+            const clearButton = document.getElementById('btnClearSearch');
+            const searchMeta = document.getElementById('searchMeta');
+            const searchEmptyState = document.getElementById('searchEmptyState');
+
+            let visibleGroups = 0;
+            let visibleCards = 0;
+            const visibleGroupData = [];
             
             document.querySelectorAll('.folio-group').forEach(group => {
+                const folioText = normalizeSearchText(group.getAttribute('data-folio') || '');
+                const topicMain = normalizeSearchText(group.querySelector('.folio-topic-main span')?.textContent || '');
+                const topicList = normalizeSearchText(group.querySelector('.folio-topic-list')?.textContent || '');
+                const groupLevelMatch = hasQuery && (folioText.includes(query) || topicMain.includes(query) || topicList.includes(query));
+                const cards = Array.from(group.querySelectorAll('.asunto-card-item'));
+                const itemsContainer = group.querySelector('.folio-group-items');
                 let groupHasVisibleCards = false;
+                const visibleCardsInGroup = [];
                 
-                group.querySelectorAll('.asunto-card-item').forEach(card => {
-                    const searchableText = card.getAttribute('data-searchable-text') || '';
-                    if (searchableText.includes(query)) {
+                cards.forEach(card => {
+                    const searchableText = normalizeSearchText(card.getAttribute('data-searchable-text') || card.textContent || '');
+                    const cardStatus = normalizeSearchText(card.getAttribute('data-status') || 'pendiente');
+                    const statusMatch = activeStatusFilters.size === 0 || activeStatusFilters.has(cardStatus);
+                    const textMatch = !hasQuery || groupLevelMatch || searchableText.includes(query);
+                    const matches = statusMatch && textMatch;
+
+                    if (matches) {
                         card.style.display = 'block';
+                        card.classList.toggle('search-hit', hasQuery);
                         groupHasVisibleCards = true;
+                        visibleCards += 1;
+                        visibleCardsInGroup.push(card);
                     } else {
                         card.style.display = 'none';
+                        card.classList.remove('search-hit');
                     }
                 });
 
+                visibleCardsInGroup.sort((a, b) => compareCards(a, b, sortMode));
+                if (itemsContainer) {
+                    visibleCardsInGroup.forEach(card => itemsContainer.appendChild(card));
+                }
+
                 if (groupHasVisibleCards) {
                     group.style.display = 'block';
+                    visibleGroups += 1;
+                    if (hasQuery) {
+                        setFolioGroupExpanded(group, true);
+                    }
+                    visibleGroupData.push({
+                        group,
+                        folio: group.getAttribute('data-folio') || '',
+                        topic: group.querySelector('.folio-topic-main span')?.textContent || '',
+                        latestDate: visibleCardsInGroup.length > 0 ? getDateValueFromCard(visibleCardsInGroup[0]) : 0
+                    });
                 } else {
                     group.style.display = 'none';
                 }
             });
+
+            if (listContainer) {
+                visibleGroupData.sort((a, b) => {
+                    if (sortMode === 'oldest') return a.latestDate - b.latestDate;
+                    if (sortMode === 'folio-asc') return a.folio.localeCompare(b.folio, 'es', { numeric: true, sensitivity: 'base' });
+                    if (sortMode === 'folio-desc') return b.folio.localeCompare(a.folio, 'es', { numeric: true, sensitivity: 'base' });
+                    if (sortMode === 'title-asc') return a.topic.localeCompare(b.topic, 'es', { sensitivity: 'base' });
+                    return b.latestDate - a.latestDate;
+                });
+
+                visibleGroupData.forEach(item => listContainer.appendChild(item.group));
+            }
+
+            if (clearButton) {
+                clearButton.style.display = hasQuery ? 'inline-flex' : 'none';
+            }
+
+            if (searchMeta) {
+                const filtroTexto = activeStatusFilters.size > 0
+                    ? ` | Estatus: ${Array.from(activeStatusFilters).join(', ')}`
+                    : '';
+                searchMeta.textContent = (hasQuery || activeStatusFilters.size > 0)
+                    ? `${visibleCards} expedientes en ${visibleGroups} folios${filtroTexto}`
+                    : '';
+            }
+
+            if (searchEmptyState) {
+                searchEmptyState.style.display = (hasQuery || activeStatusFilters.size > 0) && visibleCards === 0 ? 'flex' : 'none';
+            }
+
+            saveSidebarState();
         }
 
         // Inicializar dashboard al cargar
         document.addEventListener("DOMContentLoaded", () => {
             renderDashboard();
+
+            const searchInput = document.getElementById('searchAsuntos');
+            if (searchInput) {
+                searchInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape' && searchInput.value) {
+                        event.preventDefault();
+                        clearSearch();
+                    }
+                });
+            }
+
+            document.querySelectorAll('#statusChips .status-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    const status = normalizeSearchText(chip.getAttribute('data-status') || '');
+
+                    if (status === 'all') {
+                        activeStatusFilters.clear();
+                        applyStatusChipsUI();
+                        filterAsuntos();
+                        return;
+                    }
+
+                    if (activeStatusFilters.has(status)) {
+                        activeStatusFilters.delete(status);
+                        chip.classList.remove('active');
+                        chip.setAttribute('aria-pressed', 'false');
+                    } else {
+                        activeStatusFilters.add(status);
+                        chip.classList.add('active');
+                        chip.setAttribute('aria-pressed', 'true');
+                    }
+
+                    applyStatusChipsUI();
+
+                    filterAsuntos();
+                });
+            });
+
+            document.querySelectorAll('.dashboard-filter-trigger').forEach(trigger => {
+                trigger.addEventListener('click', () => {
+                    const filterKey = trigger.getAttribute('data-dashboard-filter') || 'all';
+                    applyDashboardStatusFilter(filterKey);
+                });
+            });
+
+            restoreSidebarState();
         });
     </script>
 }

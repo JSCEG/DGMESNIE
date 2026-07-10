@@ -563,6 +563,22 @@ namespace NSIE.Controllers
             }
         }
 
+        public sealed class ActualizarEstatusAccionRequest
+        {
+            public string Estatus { get; set; } = string.Empty;
+            public string Comentarios { get; set; } = string.Empty;
+        }
+
+        public sealed class CrearAccionRequest
+        {
+            public int ProyectoId { get; set; }
+            public string Titulo { get; set; } = string.Empty;
+            public string Descripcion { get; set; } = string.Empty;
+            public string ResponsableId { get; set; } = string.Empty;
+            public string ResponsableNombre { get; set; } = string.Empty;
+            public DateTime? FechaCompromiso { get; set; }
+        }
+
         // ── API: Endpoints JSON para Frontend ────────────────────────────────
         [HttpGet("ProyectosPrivados/Api/Proyectos")]
         public async Task<IActionResult> ApiProyectos([FromQuery] string buscar = null, [FromQuery] string tecnologia = null, [FromQuery] int? clasificacionId = null, [FromQuery] int? prioridadId = null, [FromQuery] int? semaforoId = null)
@@ -604,15 +620,16 @@ namespace NSIE.Controllers
 
         [HttpPut("ProyectosPrivados/Api/Acciones/{id:int}/Estatus")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ApiActualizarEstatusAccion(int id, [FromBody] dynamic body)
+        public async Task<IActionResult> ApiActualizarEstatusAccion(int id, [FromBody] ActualizarEstatusAccionRequest body)
         {
             try
             {
-                // Deserialize body to extract status and comments
-                string json = body.ToString();
-                var data = JsonConvert.DeserializeAnonymousType(json, new { estatus = "", comentarios = "" });
+                if (body is null || string.IsNullOrWhiteSpace(body.Estatus))
+                {
+                    return BadRequest(new { error = "El estatus es obligatorio." });
+                }
 
-                var ok = await _repo.ActualizarEstatusAccionAsync(id, data.estatus, data.comentarios, GetCurrentUserName());
+                var ok = await _repo.ActualizarEstatusAccionAsync(id, body.Estatus.Trim(), body.Comentarios?.Trim(), GetCurrentUserName());
                 if (ok) return Ok(new { success = true });
                 return BadRequest(new { error = "No fue posible actualizar la acción." });
             }
@@ -625,21 +642,24 @@ namespace NSIE.Controllers
 
         [HttpPost("ProyectosPrivados/Api/Acciones")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ApiCrearAccion([FromBody] dynamic body)
+        public async Task<IActionResult> ApiCrearAccion([FromBody] CrearAccionRequest body)
         {
             try
             {
-                string json = body.ToString();
-                var data = JsonConvert.DeserializeAnonymousType(json, new {
-                    proyectoId = 0,
-                    titulo = "",
-                    descripcion = "",
-                    responsableId = "",
-                    responsableNombre = "",
-                    fechaCompromiso = (DateTime?)null
-                });
+                if (body is null || body.ProyectoId <= 0 || string.IsNullOrWhiteSpace(body.Titulo))
+                {
+                    return BadRequest(new { error = "Proyecto y título son obligatorios." });
+                }
 
-                var id = await _repo.CrearAccionAsync(data.proyectoId, data.titulo, data.descripcion, data.responsableNombre, data.responsableId, data.fechaCompromiso, GetCurrentUserName());
+                var id = await _repo.CrearAccionAsync(
+                    body.ProyectoId,
+                    body.Titulo.Trim(),
+                    body.Descripcion?.Trim(),
+                    body.ResponsableNombre?.Trim(),
+                    body.ResponsableId,
+                    body.FechaCompromiso,
+                    GetCurrentUserName());
+
                 return Json(new { success = true, id });
             }
             catch (Exception ex)

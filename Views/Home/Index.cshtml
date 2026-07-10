@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Http
 @using Newtonsoft.Json
 @inject IHttpContextAccessor HttpContextAccessor
+@inject NSIE.Servicios.IRepositorioUsuarios RepositorioUsuarios
 
 @{
     const string tituloInstitucional = "Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información de Energía";
@@ -13,6 +14,10 @@
     ViewData["NombreUsuario"] = perfilUsuario.Nombre;
     ViewData["RolUsuario"] = perfilUsuario.Rol;
     ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+
+    // Obtener lista de usuarios de forma dinámica
+    var listaUsuarios = await RepositorioUsuarios.ObtenerListadeUsuarios();
+    var totalUsuariosCount = listaUsuarios?.Count() ?? 0;
 
     var header = new HeaderViewModel
     {
@@ -27,9 +32,9 @@
             functionality = "Desde aquí puedes retomar tus vistas recientes y orientarte según tu perfil de consulta o gestión.",
             stage = "Operación",
             roles = new[] {
-new { icon = "globe", text = "Consulta pública: entrada rápida a tableros, indicadores y vistas de consulta." },
-new { icon = "user-shield", text = "Operación institucional: acceso a módulos de captura, seguimiento y administración." }
-},
+                new { icon = "globe", text = "Consulta pública: entrada rápida a tableros, indicadores y vistas de consulta." },
+                new { icon = "user-shield", text = "Operación institucional: acceso a módulos de captura, seguimiento y administración." }
+            },
             highlights = new[] {
                 "Retomar las vistas recientes disponibles para tu perfil.",
                 "Ubicar accesos directos al punto correcto sin recorrer todo el menú.",
@@ -47,115 +52,18 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
     var esConsultaPublica = rolUsuario == "10"
         || (nombreUsuario?.Contains("consult", StringComparison.OrdinalIgnoreCase) == true);
     var nombreUsuarioTexto = string.IsNullOrWhiteSpace(nombreUsuario) ? "Usuario" : nombreUsuario;
-    var documentosSharePoint = new[]
-    {
-        new
-        {
-            Grupo = "Normatividad",
-            Titulo = "Ordenamientos, leyes y reglamentos",
-            Descripcion = "Carpeta base para consulta regulatoria y documentos normativos.",
-            Url = "https://senermx.sharepoint.com/:f:/s/DGMESNIE/IgDgfkw_tRxzQosj7tjwjZvmASMeDUVmu5TthiY9AUxjVpM?e=uDuL8I"
-        },
-        new
-        {
-            Grupo = "Normatividad",
-            Titulo = "Atribuciones DGMESNIE",
-            Descripcion = "Consulta institucional sobre funciones, alcance y atribuciones del área.",
-            Url = "https://senermx.sharepoint.com/:f:/s/DGMESNIE/IgD1M7GaoQmhRp0cVUkhPPVrAbpW-DjWPrcA8UNTiP6kzqs?e=LFGq0r"
-        },
-        new
-        {
-            Grupo = "Documentos institucionales",
-            Titulo = "Nuevo acceso SharePoint",
-            Descripcion = "Acceso directo a carpeta institucional en SharePoint. Pendiente de renombrar y clasificar.",
-            Url = "https://senermx.sharepoint.com/:f:/s/DGMESNIE/IgAE7tmilAtaTL3HQSabw-JnAWxIBJtIZiiLMJrdfBzX_Ts?e=OXqXPc"
-        },
-        new
-        {
-            Grupo = "Documentos institucionales",
-            Titulo = "Nuevo acceso SharePoint 2",
-            Descripcion = "Acceso directo a carpeta administrativa en SharePoint. Pendiente de renombrar y clasificar.",
-            Url = "https://senermx.sharepoint.com/:f:/s/DGMESNIE/IgC3vANYQIYdRKHdVe-0cv7IAcgkY58h0c8oFdKsE8uYZTg?e=szqHTM"
-        },
-        new
-        {
-            Grupo = "Documentos institucionales",
-            Titulo = "Nuevo acceso SharePoint 3",
-            Descripcion = "Acceso directo a carpeta administrativa en SharePoint. Pendiente de renombrar y clasificar.",
-            Url = "https://senermx.sharepoint.com/:f:/s/DGMESNIE/IgCNR1sZVD0PQZAjxjn42VEBATUAoFpwwxRz82HnfdBEsQI?e=nm1cMZ"
-        },
-        new
-        {
-            Grupo = "Documentos institucionales",
-            Titulo = "Nuevo acceso SharePoint 4",
-            Descripcion = "Acceso directo a carpeta administrativa en SharePoint. Pendiente de renombrar y clasificar.",
-            Url = "https://senermx.sharepoint.com/:f:/s/DGMESNIE/IgBUAOoqdYRLQI8L5FL66b8LAaJtiv454e-Q0VDi8AUfiXQ?e=1KX7oK"
-        },
-        new
-        {
-            Grupo = "Documentos institucionales",
-            Titulo = "Nuevo acceso SharePoint 5",
-            Descripcion = "Acceso directo a carpeta administrativa en SharePoint. Pendiente de renombrar y clasificar.",
-            Url = "https://senermx.sharepoint.com/:f:/s/DGMESNIE/IgDNruFj9jG9RZD71x8VHdGfAUpM9NdHdBoOVjO2SS2LoFI?e=UNjcAS"
-        }
-    };
-    var gruposSharePoint = documentosSharePoint
-        .GroupBy(x => x.Grupo)
-        .ToList();
 
     var modulosDisponibles = Model.Secciones
         .Where(s => s.Modulos != null)
         .SelectMany(s => s.Modulos.Select(m => new { Seccion = s, Modulo = m }))
-        .Where(x => x.Modulo != null && !string.IsNullOrWhiteSpace(x.Modulo.Controller) &&
-!string.IsNullOrWhiteSpace(x.Modulo.Action))
+        .Where(x => x.Modulo != null && !string.IsNullOrWhiteSpace(x.Modulo.Controller) && !string.IsNullOrWhiteSpace(x.Modulo.Action))
         .GroupBy(x => $"{x.Modulo.Controller}|{x.Modulo.Action}")
         .Select(g => g.First())
         .ToList();
 
-    var herramientasDestacadas = new[]
-    {
-        new
-        {
-            Categoria = "Jurídico",
-            Titulo = "Buscador jurídico de leyes",
-            Descripcion = "Consulta rápida de leyes, ordenamientos y referencias normativas desde el portal externo especializado.",
-            Url = "https://buscador-leyes.pages.dev/",
-            Icono = "bi-bank2",
-            Etiqueta = "Normatividad"
-        },
-        new
-        {
-            Categoria = "Mapa dinámico",
-            Titulo = "Mapa de almacenamiento",
-            Descripcion = "Visualiza la capa dinámica de almacenamiento y su consulta territorial en una vista geoespacial directa.",
-            Url = "https://mapassniendinamicos.pages.dev/saee-gcr",
-            Icono = "bi-map",
-            Etiqueta = "Geoespacial"
-        },
-
-        new
-        {
-            Categoria = "Seguimiento",
-            Titulo = "Seguimiento de proyectos",
-            Descripcion = "Accede al reporte interno para seguimiento de proyectos y consulta de avance operativo.",
-            Url = "https://formulario-seguimiento-proyectos.pages.dev/reporte-interno",
-            Icono = "bi-kanban",
-            Etiqueta = "Reporte interno"
-        },
-        new
-        {
-            Categoria = "Buscador",
-            Titulo = "Buscador de Permisos CNE",
-            Descripcion = "Consulta en tiempo real de permisos y resoluciones oficiales de la Comisión Nacional de Energía.",
-            Url = Url.Action("Index", "CNE"),
-            Icono = "bi-search",
-            Etiqueta = "Registro Público"
-        }
-    };
     var totalSecciones = Model.Secciones.Count;
     var totalModulos = modulosDisponibles.Count;
-    var totalDocumentos = documentosSharePoint.Length;
-    var totalAccesosRapidos = herramientasDestacadas.Length;
+    var heroBackgroundUrl = "https://cdn.sassoapps.com/img_fondos/portada.PNG";
     var fondosBienvenida = new[]
     {
         new
@@ -165,11 +73,379 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
             Posicion = "88% center"
         }
     };
-
 }
 
 @section Styles {
     <link rel="stylesheet" href="~/css/home-dashboard.css" asp-append-version="true" />
+    <style>
+        .badge-new-pulse {
+            background-color: #8A0031;
+            color: #ffffff !important;
+            font-size: 0.62rem;
+            font-weight: 800;
+            padding: 0.15rem 0.35rem;
+            border-radius: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            animation: badge-pulse 1.8s infinite;
+            display: inline-flex;
+            align-items: center;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+            line-height: 1;
+            box-shadow: 0 2px 6px rgba(138, 0, 49, 0.2);
+        }
+
+        @@keyframes badge-pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(138, 0, 49, 0.45);
+            }
+            70% {
+                transform: scale(1.04);
+                box-shadow: 0 0 0 5px rgba(138, 0, 49, 0);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(138, 0, 49, 0);
+            }
+        }
+
+        /* Asegurar la misma altura en las tarjetas del carrusel en escritorio */
+        .carousel-item .hero-home__copy {
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+        }
+
+        .carousel-item .hero-home__stats-card,
+        .carousel-item .hero-home__mock-preview {
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
+        @@media (max-width: 991px) {
+            .hero-home__mock-preview {
+                display: none !important;
+            }
+            .hero-home__content--split {
+                grid-template-columns: 1fr !important;
+            }
+            .hero-home__copy {
+                padding: 1rem !important;
+            }
+        }
+
+        /* Fuerza el diseño de dos columnas (3/4 y 1/4) y áreas grid en pantallas grandes */
+        @@media (min-width: 992px) {
+            .carousel-item .hero-home__copy {
+                height: 415px !important;
+            }
+
+            .carousel-item .hero-home__stats-card,
+            .carousel-item .hero-home__mock-preview {
+                height: 415px !important;
+            }
+
+            .home-dashboard-page .dashboard-grid--landing {
+                display: grid !important;
+                grid-template-columns: 3fr 1fr !important;
+                grid-template-areas: 
+                    "hero sidebar"
+                    "presentation sidebar" !important;
+                align-items: start !important;
+                gap: 1.5rem !important;
+            }
+
+            #hero-home-wrapper {
+                grid-area: hero !important;
+            }
+
+            #atribuciones-section {
+                grid-area: presentation !important;
+            }
+
+            #accesos-rapidos {
+                grid-area: sidebar !important;
+            }
+        }
+
+        /* Estilo para el título de novedad */
+        .hero-home__title--novedad {
+            font-size: clamp(1.8rem, 2.8vw, 2.2rem) !important;
+            font-weight: 700 !important;
+            color: #333333 !important;
+            line-height: 1.25 !important;
+            margin-top: 0.5rem !important;
+            margin-bottom: 0.5rem !important;
+        }
+
+        /* Novedad destacada badge */
+        .badge-novedad {
+            background-color: rgba(138, 0, 49, 0.08);
+            color: #8A0031;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.3rem 0.8rem;
+            border-radius: 99px;
+            display: inline-block;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            width: fit-content;
+        }
+
+        .text-guinda {
+            color: #8A0031;
+            font-weight: 800;
+        }
+
+        .hero-features-row {
+            margin-top: 1rem;
+        }
+
+        .hero-feature-item strong {
+            font-size: 0.78rem;
+            color: #333;
+            display: block;
+        }
+
+        .hero-feature-item small {
+            font-size: 0.68rem;
+            color: #777;
+        }
+
+        .hero-feature-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(180, 137, 52, 0.1);
+            color: #b48934;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        .hero-feature-item:nth-child(2) .hero-feature-icon {
+            background: rgba(138, 0, 49, 0.1);
+            color: #8A0031;
+        }
+
+        .hero-feature-item:nth-child(3) .hero-feature-icon {
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+        }
+
+        /* Mockup Card */
+        .hero-home__mock-preview {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem;
+        }
+
+        .mockup-card {
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+            width: 100%;
+            max-width: 360px;
+            overflow: hidden;
+            position: relative;
+            aspect-ratio: 1.6;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s;
+        }
+
+        .mockup-card:hover {
+            transform: translateY(-4px) scale(1.01);
+        }
+
+        .mockup-header {
+            background: #f8f9fa;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 0.4rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            height: 32px;
+        }
+
+        .mockup-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .mockup-dots span {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .mockup-dots span:nth-child(1) { background: #ff5f56; }
+        .mockup-dots span:nth-child(2) { background: #ffbd2e; }
+        .mockup-dots span:nth-child(3) { background: #27c93f; }
+
+        .mockup-address {
+            font-size: 0.65rem;
+            color: #aaa;
+            font-family: monospace;
+            background: #ffffff;
+            padding: 1px 12px;
+            border-radius: 4px;
+            border: 1px solid rgba(0,0,0,0.04);
+            line-height: 1.2;
+        }
+
+        .mockup-body {
+            flex: 1;
+            padding: 0.75rem;
+            display: flex;
+            gap: 0.75rem;
+            background-image: radial-gradient(circle at 10% 20%, rgba(138, 0, 49, 0.02) 0%, transparent 80%);
+        }
+
+        .mockup-map {
+            flex: 1.2;
+            background: #f1f3f5;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: rgba(138, 0, 49, 0.15);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pulse-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #8A0031;
+            box-shadow: 0 0 0 0 rgba(138, 0, 49, 0.4);
+            animation: pulse-dot-anim 1.5s infinite;
+        }
+
+        .pin-1 { top: 40%; left: 30%; }
+        .pin-2 { top: 60%; left: 55%; animation-delay: 0.4s; }
+        .pin-3 { top: 30%; left: 70%; animation-delay: 0.8s; }
+
+        @@keyframes pulse-dot-anim {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(138, 0, 49, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 6px rgba(138, 0, 49, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(138, 0, 49, 0);
+            }
+        }
+
+        .mockup-stats {
+            flex: 0.8;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .mockup-bar-chart {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.5rem;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+            height: 50px;
+        }
+
+        .mockup-bar-chart .bar {
+            width: 6px;
+            background: rgba(138, 0, 49, 0.4);
+            border-radius: 2px 2px 0 0;
+        }
+
+        .bar-1 { height: 60%; background: #b48934 !important; }
+        .bar-2 { height: 85%; background: #8A0031 !important; }
+        .bar-3 { height: 40%; }
+
+        .mockup-donut {
+            flex: 1;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 4px solid #fff;
+            box-shadow: inset 0 0 0 4px rgba(138, 0, 49, 0.1);
+        }
+
+        .mockup-fab {
+            position: absolute;
+            top: 40px;
+            right: 10px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #8A0031;
+            color: #ffffff !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            box-shadow: 0 4px 10px rgba(138, 0, 49, 0.3);
+            transition: all 0.2s;
+            z-index: 10;
+        }
+
+        .mockup-fab:hover {
+            transform: scale(1.1);
+            background: #a3003a;
+        }
+
+        /* Carousel Indicators */
+        .carousel-indicators-custom {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 15;
+        }
+
+        .carousel-indicators-custom button {
+            width: 20px;
+            height: 5px;
+            border-radius: 2px;
+            border: none;
+            background: rgba(0,0,0,0.15);
+            transition: all 0.3s;
+        }
+
+        .carousel-indicators-custom button.active {
+            background: #8A0031;
+            width: 32px;
+        }
+
+        /* Destacado item in quick access */
+        .quick-access-item--featured {
+            border-color: rgba(138, 0, 49, 0.3) !important;
+            background: rgba(138, 0, 49, 0.03) !important;
+        }
+    </style>
 }
 
 <div class="home-dashboard-page">
@@ -177,200 +453,436 @@ new { icon = "user-shield", text = "Operación institucional: acceso a módulos 
         @await Html.PartialAsync("_ViewHeader", header)
     </div>
 
-    <section id="hero-home" aria-label="Inicio principal">
-        <div class="hero-home__background" aria-hidden="true">
-            <div class="hero-home__media" id="heroMediaContainer">
-            </div>
-            <div class="hero-home__brand-strip">
-                <img src="https://cdn.sassoapps.com/dgmesnie/logo_gob.png" alt="Gobierno de México"
-                     class="hero-home__brand-logo hero-home__brand-logo--gob" />
-                <span class="hero-home__brand-divider"></span>
-                <img src="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" alt="Secretaría de Energía"
-                     class="hero-home__brand-logo hero-home__brand-logo--sener" />
-            </div>
-            <div class="hero-home__pattern hero-home__pattern--chip"></div>
-            <div class="hero-home__pattern hero-home__pattern--rings"></div>
-            <div class="hero-home__pattern hero-home__pattern--bars"></div>
-            <div class="hero-home__pattern hero-home__pattern--grid"></div>
-            <div class="hero-home__pattern hero-home__pattern--lines"></div>
-        </div>
+    <div class="dashboard-container mt-2">
         <div class="container">
-            <div class="hero-home__content hero-home__content--portal">
-                <span class="hero-home__eyebrow">Portal principal</span>
-                <div class="hero-home__copy" id="heroWelcomePanel">
-                    <h1 class="hero-home__title">
-                        @if (esConsultaPublica)
-                        {
-                            <text>Consulta pública del SNIEr</text>
-                        }
-                        else
-                        {
-                            <text>Bienvenido, @nombreUsuarioTexto</text>
-                        }
-                    </h1>
-                    <p class="hero-home__lead">Accede a módulos, indicadores y reportes de la Dirección General de
-                        Metodologías y Estadísticas desde un solo lugar.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <div class="dashboard-container">
-            <div class="container">
-                <div class="dashboard-grid dashboard-grid--landing">
-                    <div class="dashboard-main-stack">
-                        <section class="home-panel full-width" aria-label="Atribuciones DGMESNIE 2026">
-                            <div class="card-header card-header--split">
-                                <div class="card-header__title-wrap">
-                                    <div class="card-icon"><i class="bi bi-journal-bookmark-fill"></i></div>
-                                    <div>
-                                        <h3 class="card-title mb-1">Atribuciones DGMESNIE 2026</h3>
-                                        <p class="text-muted small mb-0">Presentación interactiva sobre las funciones y atribuciones institucionales de la Dirección General.</p>
-                                    </div>
-                                </div>
+            <div class="dashboard-grid dashboard-grid--landing">
+                <!-- Hero/Carrusel -->
+                <div id="hero-home-wrapper" class="hero-container-wrapper" style="margin-bottom: 0;">
+                    <section id="hero-home" aria-label="Inicio principal" style="margin-bottom: 0; border: none; border-radius: 34px; overflow: hidden; position: relative;">
+                        <div class="hero-home__background" aria-hidden="true" style="background-image: linear-gradient(112deg, rgba(255,255,255,.92) 0%, rgba(255,255,255,.72) 42%, rgba(255,255,255,.42) 100%), url('@heroBackgroundUrl'); text-align: center;">
+                            <div class="hero-home__media" id="heroMediaContainer">
                             </div>
-                            <div class="card-body">
-                                <div class="iframe-container-canva" style="position: relative; width: 100%; height: 0; padding-top: 56.2500%; overflow: hidden; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.08);">
-                                    <iframe loading="lazy" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; border: none; padding: 0; margin: 0; display: block;"
-                                        src="https://www.canva.com/design/DAHKCctIuNc/WR-5MctSz21rJ9gBTKvZ8w/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen">
-                                    </iframe>
-                                </div>
+                            <div class="hero-home__brand-strip">
+                                <img src="https://cdn.sassoapps.com/dgmesnie/logo_gob.png" alt="Gobierno de México"
+                                     class="hero-home__brand-logo hero-home__brand-logo--gob" />
+                                <span class="hero-home__brand-divider"></span>
+                                <img src="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" alt="Secretaría de Energía"
+                                     class="hero-home__brand-logo hero-home__brand-logo--sener" />
                             </div>
-                        </section>
-
-                        <section class="home-panel home-panel--quick" aria-label="Accesos rápidos">
-                            <div class="card-header card-header--split">
-                                <div class="card-header__title-wrap">
-                                    <div class="card-icon"><i class="bi bi-lightning-charge"></i></div>
-                                    <div>
-                                        <h3 class="card-title mb-1">Accesos rápidos</h3>
-                                        <p class="text-muted small mb-0">Entradas directas a módulos prioritarios para
-                                            continuar trabajando.</p>
+                            <div class="hero-home__pattern hero-home__pattern--chip"></div>
+                            <div class="hero-home__pattern hero-home__pattern--rings"></div>
+                            <div class="hero-home__pattern hero-home__pattern--bars"></div>
+                            <div class="hero-home__pattern hero-home__pattern--lines"></div>
+                        </div>
+                        <div class="w-100 position-relative">
+                            <div id="heroCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="6000">
+                                <div class="carousel-inner">
+                                    <!-- Slide 1: Nuevo Dashboard (Mockup) -->
+                                    <div class="carousel-item active">
+                                        <div class="hero-home__content hero-home__content--portal hero-home__content--split">
+                                            <div class="hero-home__copy">
+                                                <span class="badge-novedad mb-3">Novedad destacada</span>
+                                                <h1 class="hero-home__title hero-home__title--portal hero-home__title--novedad">
+                                                    Nuevo <span class="text-guinda">Dashboard</span> de proyectos energéticos
+                                                </h1>
+                                                <p class="hero-home__lead">Visualiza, analiza y da seguimiento a los proyectos energéticos en tiempo real con datos interactivos.</p>
+                                                <div class="hero-home__cta-row gap-3">
+                                                    <a href="@Url.Action("Index", "DashboardProyectos")" class="hero-home__cta-btn">
+                                                        Ir al dashboard
+                                                        <i class="bi bi-arrow-right"></i>
+                                                    </a>
+                                                    <a href="https://cdn.sassoapps.com/video/fondo_dgmesnie.mp4" target="_blank" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" style="border-radius: 99px; padding: 0.75rem 1.5rem; font-weight: 600; color: #8A0031; border-color: rgba(138, 0, 49, 0.2); background: transparent;">
+                                                        Ver video demo <i class="bi bi-play-circle"></i>
+                                                    </a>
+                                                </div>
+                                                <!-- Features row at bottom -->
+                                                <div class="hero-features-row d-flex gap-4">
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon"><i class="bi bi-lightning-charge"></i></span>
+                                                        <div>
+                                                            <strong>Datos en tiempo real</strong>
+                                                            <small class="d-block text-muted">Información actualizada continuamente</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon"><i class="bi bi-bar-chart"></i></span>
+                                                        <div>
+                                                            <strong>Análisis interactivo</strong>
+                                                            <small class="d-block text-muted">Filtros dinámicos y avanzados</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon"><i class="bi bi-shield-check"></i></span>
+                                                        <div>
+                                                            <strong>Información confiable</strong>
+                                                            <small class="d-block text-muted">Fuentes oficiales y validadas</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="hero-home__mock-preview">
+                                                <div class="mockup-card">
+                                                    <div class="mockup-header">
+                                                        <div class="mockup-dots"><span></span><span></span><span></span></div>
+                                                        <span class="mockup-address">tablero-9rj.pages.dev</span>
+                                                    </div>
+                                                    <div class="mockup-body">
+                                                        <div class="mockup-map">
+                                                            <i class="bi bi-map-fill"></i>
+                                                            <span class="pulse-dot pin-1"></span>
+                                                            <span class="pulse-dot pin-2"></span>
+                                                            <span class="pulse-dot pin-3"></span>
+                                                        </div>
+                                                        <div class="mockup-stats">
+                                                            <div class="mockup-bar-chart">
+                                                                <div class="bar bar-1"></div>
+                                                                <div class="bar bar-2"></div>
+                                                                <div class="bar bar-3"></div>
+                                                            </div>
+                                                            <div class="mockup-donut"></div>
+                                                        </div>
+                                                    </div>
+                                                    <a href="@Url.Action("Index", "DashboardProyectos")" class="mockup-fab" aria-label="Abrir dashboard">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <span class="home-quick-counter">@totalAccesosRapidos disponibles</span>
-                                </div>
-                                <div class="card-body">
-                                    <div class="home-quick-grid">
-                                        @foreach (var herramienta in herramientasDestacadas)
-                                        {
-                                            var isExternal = herramienta.Url.StartsWith("http", StringComparison.OrdinalIgnoreCase);
-                                            <a class="home-quick-card" href="@herramienta.Url" target="@(isExternal ? "_blank" : "_self")"
-                                               rel="noopener noreferrer"
-                                               data-search="@($"{herramienta.Titulo} {herramienta.Categoria} {herramienta.Etiqueta}".ToLowerInvariant())">
-                                                <span class="home-quick-card__icon"><i class="bi @herramienta.Icono"></i></span>
-                                                <div class="home-quick-card__copy">
-                                                    <small class="home-quick-card__section">@herramienta.Categoria</small>
-                                                    <strong>@herramienta.Titulo</strong>
-                                                    <span>@herramienta.Descripcion</span>
-                                                </div>
-                                                <span class="home-quick-card__arrow">
-                                                    <i class="bi @(isExternal ? "bi-box-arrow-up-right" : "bi-chevron-right")"></i>
-                                                </span>
-                                            </a>
-                                        }
-                                    </div>
-                                </div>
-                            </section>
 
-                            @*
-                            <section class="home-panel home-panel--plain home-panel--documents full-width"
-                                     aria-label="Documentos SharePoint">
-                                <div class="card-header card-header--split">
-                                    <div class="card-header__title-wrap">
-                                        <div class="card-icon"><i class="bi bi-folder2-open"></i></div>
-                                        <div>
-                                            <h3 class="card-title mb-1">Accesos de SharePoint</h3>
-                                            <p class="text-muted small mb-0">Accesos directos a carpetas institucionales priorizadas.</p>
+                                    <!-- Slide 2: Portal General (Original) -->
+                                    <div class="carousel-item">
+                                        <div class="hero-home__content hero-home__content--portal hero-home__content--split">
+                                            <div class="hero-home__copy" id="heroWelcomePanel">
+                                                <span class="hero-home__eyebrow">Portal principal</span>
+                                                <h1 class="hero-home__title hero-home__title--portal">
+                                                    <span class="hero-home__title-main">Dirección General de Metodologías y Estadísticas</span>
+                                                    <span class="hero-home__title-welcome">
+                                                        @if (esConsultaPublica)
+                                                        {
+                                                            <text>Consulta pública del SNIEr</text>
+                                                        }
+                                                        else
+                                                        {
+                                                            <text>Bienvenido, @nombreUsuarioTexto</text>
+                                                        }
+                                                    </span>
+                                                </h1>
+                                                <p class="hero-home__lead">Accede a módulos, indicadores y reportes de la Dirección General de Metodologías y Estadísticas desde un solo lugar.</p>
+                                                <div class="hero-home__cta-row">
+                                                    <a href="#accesos-rapidos" class="hero-home__cta-btn">
+                                                        Explorar módulos
+                                                        <i class="bi bi-arrow-right"></i>
+                                                    </a>
+                                                    <p class="hero-home__cta-text">Consulta los accesos rápidos y la presentación institucional del área.</p>
+                                                </div>
+                                            </div>
+
+                                            <aside class="hero-home__stats-card" aria-label="Resumen institucional">
+                                                <div class="hero-home__stats-item">
+                                                    <span class="hero-home__stats-icon"><i class="bi bi-file-earmark-text"></i></span>
+                                                    <div>
+                                                        <small>Módulos disponibles</small>
+                                                        <strong>@totalModulos</strong>
+                                                        <a href="#accesos-rapidos" class="text-decoration-none"><span>Ver todos <i class="bi bi-arrow-up-right"></i></span></a>
+                                                    </div>
+                                                </div>
+                                                <div class="hero-home__stats-item">
+                                                    <span class="hero-home__stats-icon"><i class="bi bi-bar-chart-line"></i></span>
+                                                    <div>
+                                                        <small>Indicadores activos</small>
+                                                        <strong>1,240</strong>
+                                                        <a href="@Url.Action("EnConstruccion", "Home")" class="text-decoration-none"><span>Ver indicadores <i class="bi bi-arrow-up-right"></i></span></a>
+                                                    </div>
+                                                </div>
+                                                <div class="hero-home__stats-item">
+                                                    <span class="hero-home__stats-icon"><i class="bi bi-people"></i></span>
+                                                    <div>
+                                                        <small>Usuarios registrados</small>
+                                                        <strong>@totalUsuariosCount</strong>
+                                                        <a href="@Url.Action("AdministrarUsuarios", "Usuarios")" class="text-decoration-none"><span>Ver usuarios <i class="bi bi-arrow-up-right"></i></span></a>
+                                                    </div>
+                                                </div>
+                                            </aside>
+                                        </div>
+                                    </div>
+
+                                    <!-- Slide 3: Guía de Transparencia -->
+                                    <div class="carousel-item">
+                                        <div class="hero-home__content hero-home__content--portal hero-home__content--split">
+                                            <div class="hero-home__copy">
+                                                <span class="badge-novedad mb-3" style="background-color: rgba(180, 137, 52, 0.08); color: #b48934;">Material de Consulta</span>
+                                                <h1 class="hero-home__title hero-home__title--portal hero-home__title--novedad">
+                                                    Guía para Solicitudes de <span class="text-guinda">Transparencia</span>
+                                                </h1>
+                                                <p class="hero-home__lead">Consulta de forma ágil e interactiva el flujo de gestión, plazos oficiales y respuestas a peticiones de información pública.</p>
+                                                <div class="hero-home__cta-row gap-3">
+                                                    <a href="@Url.Content("~/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html")" target="_blank" class="hero-home__cta-btn">
+                                                        Abrir guía interactiva
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                                <!-- Features row at bottom -->
+                                                <div class="hero-features-row d-flex gap-4">
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #b48934; background: rgba(180, 137, 52, 0.08);"><i class="bi bi-clock"></i></span>
+                                                        <div>
+                                                            <strong>Plazos y Tiempos</strong>
+                                                            <small class="d-block text-muted">Calendario oficial de respuesta</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #b48934; background: rgba(180, 137, 52, 0.08);"><i class="bi bi-diagram-3"></i></span>
+                                                        <div>
+                                                            <strong>Flujo de Gestión</strong>
+                                                            <small class="d-block text-muted">Proceso paso a paso detallado</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="hero-home__mock-preview">
+                                                <div class="mockup-card" style="border-color: rgba(180, 137, 52, 0.25);">
+                                                    <div class="mockup-header" style="background: rgba(180, 137, 52, 0.05);">
+                                                        <div class="mockup-dots"><span></span><span></span><span></span></div>
+                                                        <span class="mockup-address">Guía de Transparencia DGMESNIE</span>
+                                                    </div>
+                                                    <div class="mockup-body" style="background: #9B2247; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 2rem; text-align: center; height: 100%;">
+                                                        <i class="bi bi-file-slides" style="font-size: 3rem; color: #E0A12E; margin-bottom: 0.5rem;"></i>
+                                                        <strong style="font-size: 1.1rem; color: white;">Guía de Solicitudes</strong>
+                                                        <span style="font-size: 0.75rem; opacity: 0.8; margin-top: 0.2rem;">Dirección General</span>
+                                                    </div>
+                                                    <a href="@Url.Content("~/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html")" target="_blank" class="mockup-fab" style="background: #E0A12E; color: white;" aria-label="Abrir guía">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="card-body">
-                                    <div class="home-document-groups">
-                                        @foreach (var documento in documentosSharePoint)
-                                        {
-                                            <a class="home-document-link" href="@documento.Url" target="_blank"
-                                               rel="noopener noreferrer">
-                                                <span class="home-document-link__icon"><i class="bi bi-folder"></i></span>
-                                                <div class="home-document-link__copy">
-                                                    <small class="home-document-link__section">@documento.Grupo</small>
-                                                    <strong>@documento.Titulo</strong>
-                                                    <span>@documento.Descripcion</span>
-                                                </div>
-                                                <span class="home-document-link__arrow">
-                                                    <i class="bi bi-box-arrow-up-right"></i>
-                                                </span>
-                                            </a>
-                                        }
-                                    </div>
-                                </div>
-                            </section>
-                            *@
 
-
+                                <!-- Indicadores de Carousel -->
+                                <div class="carousel-indicators-custom">
+                                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="0" class="active" aria-current="true" aria-label="Slide 1"></button>
+                                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="1" aria-label="Slide 2"></button>
+                                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="2" aria-label="Slide 3"></button>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </section>
+                </div>
 
-                    @*
-<div class="container my-4">
-                                <section class="home-panel full-width" data-aos="fade-up">
-        <div class="card-header">
-            <div class="card-icon"><i class="bi bi-diagram-3"></i></div>
-            <h3 class="card-title">Diagrama Energético</h3>
-        </div>
-        <div class="card-body">
-            <div class="diagram-wrapper">
-                <partial name="_DiagramaSEM_N" />
+                <!-- Columna: Accesos Rápidos -->
+                <section id="accesos-rapidos" class="home-panel home-panel--quick" aria-label="Accesos rápidos" style="margin-bottom: 0; height: 100%;">
+                    <div class="card-header">
+                        <h3 class="card-title mb-1" style="font-size: 1.25rem; font-weight: 700; color: #333;">Accesos rápidos</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="quick-access-list">
+                            <a href="@Url.Action("Index", "Gestor")" class="quick-access-item">
+                                <span class="quick-access-icon"><i class="bi bi-file-earmark-text"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title">Seguimiento de actividades</span>
+                                    <span class="quick-access-desc">Monitoreo y control de actividades</span>
+                                </div>
+                            </a>
+                            <a href="@Url.Action("EnConstruccion", "Home")" class="quick-access-item">
+                                <span class="quick-access-icon"><i class="bi bi-bar-chart-line"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title">Indicadores</span>
+                                    <span class="quick-access-desc">Ver métricas clave sectoriales</span>
+                                </div>
+                            </a>
+                            <a href="@Url.Action("EnConstruccion", "Home")" class="quick-access-item">
+                                <span class="quick-access-icon"><i class="bi bi-file-text"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title">Reportes</span>
+                                    <span class="quick-access-desc">Generar reportes e informes</span>
+                                </div>
+                            </a>
+                            <a href="@Url.Action("Index", "DashboardProyectos")" class="quick-access-item quick-access-item--featured">
+                                <span class="quick-access-icon" style="background: rgba(138, 0, 49, 0.1); color: #8A0031;"><i class="bi bi-speedometer2"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title" style="color: #8A0031; font-weight: 700;">Dashboards de proyectos<span class="badge-new-pulse">Nuevo</span></span>
+                                    <span class="quick-access-desc">Explora proyectos energéticos interactivos</span>
+                                </div>
+                            </a>
+                            <a href="@Url.Action("BNE", "SankeySener")" class="quick-access-item">
+                                <span class="quick-access-icon"><i class="bi bi-bezier2"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title">Balance de energía</span>
+                                    <span class="quick-access-desc">Balance Nacional de Energía Oficial</span>
+                                </div>
+                            </a>
+                            <a href="@Url.Action("FlujoEnergia", "SankeySener")" class="quick-access-item">
+                                <span class="quick-access-icon"><i class="bi bi-lightning-charge"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title">Balance animado</span>
+                                    <span class="quick-access-desc">Diagrama de flujos y transiciones</span>
+                                </div>
+                            </a>
+                            <a href="https://buscador-leyes.pages.dev" target="_blank" rel="noopener noreferrer" class="quick-access-item">
+                                <span class="quick-access-icon"><i class="bi bi-bank"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title">Buscador de leyes<span class="badge-new-pulse">Nuevo</span></span>
+                                    <span class="quick-access-desc">Consulta de leyes y reglamentos</span>
+                                </div>
+                            </a>
+                            <a href="@Url.Action("Index", "Manuales")" class="quick-access-item">
+                                <span class="quick-access-icon"><i class="bi bi-book"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title">Manuales y guías<span class="badge-new-pulse">Nuevo</span></span>
+                                    <span class="quick-access-desc">Documentación técnica</span>
+                                </div>
+                            </a>
+                            <a href="@Url.Content("~/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html")" target="_blank" class="quick-access-item">
+                                <span class="quick-access-icon"><i class="bi bi-file-earmark-slides"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title">Guía de transparencia<span class="badge-new-pulse">Nuevo</span></span>
+                                    <span class="quick-access-desc">Gestión y flujo de solicitudes</span>
+                                </div>
+                            </a>
+                            <a href="@Url.Content("~/Presentaciones/Presentacion%20DGMESNIE.html")" target="_blank" class="quick-access-item">
+                                <span class="quick-access-icon"><i class="bi bi-file-slides"></i></span>
+                                <div class="quick-access-info">
+                                    <span class="quick-access-title">Presentación institucional</span>
+                                    <span class="quick-access-desc">Atribuciones y objetivos DGMESNIE</span>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Columna: Atribuciones -->
+                <section id="atribuciones-section" class="home-panel" aria-label="Atribuciones DGMESNIE 2026" style="margin-bottom: 0;">
+                    <div class="card-header card-header--split align-items-center">
+                        <div class="card-header__title-wrap">
+                            <div class="card-icon" style="background: rgba(138, 0, 49, 0.08); color: #8A0031; width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                                <i class="bi bi-journal-bookmark-fill"></i>
+                            </div>
+                            <div>
+                                <h3 class="card-title mb-1" style="font-size: 1.25rem; font-weight: 700; color: #333;">Atribuciones DGMESNIE 2026</h3>
+                                <p class="text-muted small mb-0">Presentación interactiva sobre las funciones y atribuciones institucionales de la Dirección General.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="iframe-container-canva"
+                             style="position: relative; width: 100%; height: 0; padding-top: 56.2500%; overflow: hidden; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.08);">
+                            <iframe loading="lazy"
+                                    style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; border: none; padding: 0; margin: 0; display: block;"
+                                    src="@Url.Content("~/Presentaciones/Presentacion%20DGMESNIE.html")"
+                                    allowfullscreen="allowfullscreen" allow="fullscreen">
+                            </iframe>
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
-                                </section>
+    </div>
 </div>
-*@
 
-                    @section Scripts {
-                        <script>
-                                $(function () {
-                                    const fondosBienvenida = @Html.Raw(JsonConvert.SerializeObject(fondosBienvenida));
-                                    const $heroWelcomePanel = $('#heroWelcomePanel');
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script>
+        $(function () {
+            const fondosBienvenida = @Html.Raw(JsonConvert.SerializeObject(fondosBienvenida));
+            const $heroWelcomePanel = $('#heroWelcomePanel');
 
-                                    function aplicarFondoBienvenida(item) {
-                                        if (!item || !$heroWelcomePanel.length) {
-                                            return;
-                                        }
+            function aplicarFondoBienvenida(item) {
+                if (!item || !$heroWelcomePanel.length) {
+                    return;
+                }
 
-                                        $heroWelcomePanel[0].style.setProperty('--hero-welcome-bg', `url("${item.Url}")`);
-                                        $heroWelcomePanel[0].style.setProperty('--hero-welcome-position', item.Posicion || 'center center');
-                                    }
+                $heroWelcomePanel[0].style.setProperty('--hero-welcome-bg', `url("${item.Url}")`);
+                $heroWelcomePanel[0].style.setProperty('--hero-welcome-position', item.Posicion || 'center center');
+            }
 
-                                    if (fondosBienvenida.length && $heroWelcomePanel.length) {
-                                        aplicarFondoBienvenida(fondosBienvenida[0]);
-                                    }
+            if (fondosBienvenida.length && $heroWelcomePanel.length) {
+                aplicarFondoBienvenida(fondosBienvenida[0]);
+            }
 
-                                    // Cargar video de fondo de YouTube dinámicamente solo en pantallas de escritorio (>= 992px)
-                                    if (window.innerWidth >= 992) {
-                                        const mediaContainer = document.getElementById('heroMediaContainer');
-                                        if (mediaContainer) {
-                                            const iframe = document.createElement('iframe');
-                                            iframe.id = 'heroBackgroundVideo';
-                                            iframe.src = 'https://www.youtube-nocookie.com/embed/3Os0pbDTubQ?autoplay=1&mute=1&controls=0&loop=1&playlist=3Os0pbDTubQ&playsinline=1&rel=0&modestbranding=1&enablejsapi=1';
-                                            iframe.title = 'Video institucional de fondo';
-                                            iframe.tabIndex = -1;
-                                            iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
-                                            iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+            // Animación de entrada con AnimeJS (estilo login)
+            if (typeof anime !== 'undefined') {
+                // Estado inicial
+                anime.set([
+                    '.home-dashboard-page__view-header',
+                    '.hero-home__background',
+                    '.hero-home__copy > span',
+                    '.hero-home__copy > h1',
+                    '.hero-home__copy > p',
+                    '.hero-home__cta-row',
+                    '.hero-home__stats-item',
+                    '.home-panel',
+                    '.quick-access-item'
+                ], {
+                    opacity: 0,
+                    translateY: 15
+                });
 
-                                            iframe.addEventListener('load', function () {
-                                                const playerWindow = iframe.contentWindow;
-                                                if (playerWindow) {
-                                                    playerWindow.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
-                                                    playerWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
-                                                }
-                                            });
+                const timeline = anime.timeline({
+                    easing: 'easeOutExpo',
+                    duration: 800
+                });
 
-                                            mediaContainer.appendChild(iframe);
-                                        }
-                                    }
-                                });
-                        </script>
-                    }
+                timeline
+                    .add({
+                        targets: '.home-dashboard-page__view-header',
+                        opacity: [0, 1],
+                        translateY: [10, 0],
+                        duration: 600
+                    })
+                    .add({
+                        targets: '.hero-home__background',
+                        opacity: [0, 1],
+                        scale: [0.98, 1],
+                        duration: 800
+                    }, '-=400')
+                    .add({
+                        targets: [
+                            '.hero-home__copy > span',
+                            '.hero-home__copy > h1',
+                            '.hero-home__copy > p',
+                            '.hero-home__cta-row'
+                        ],
+                        opacity: [0, 1],
+                        translateY: [15, 0],
+                        delay: anime.stagger(100),
+                        duration: 600
+                    }, '-=600')
+                    .add({
+                        targets: '.hero-home__stats-item',
+                        opacity: [0, 1],
+                        translateY: [15, 0],
+                        delay: anime.stagger(80),
+                        duration: 600
+                    }, '-=400')
+                    .add({
+                        targets: '.home-panel',
+                        opacity: [0, 1],
+                        translateY: [20, 0],
+                        delay: anime.stagger(120),
+                        duration: 700
+                    }, '-=500')
+                    .add({
+                        targets: '.quick-access-item',
+                        opacity: [0, 1],
+                        translateY: [12, 0],
+                        delay: anime.stagger(60),
+                        duration: 500
+                    }, '-=400');
+        });
+
+        function makeFullscreen() {
+            const container = document.querySelector('.iframe-container-canva');
+            if (container) {
+                if (container.requestFullscreen) {
+                    container.requestFullscreen();
+                } else if (container.webkitRequestFullscreen) { /* Safari */
+                    container.webkitRequestFullscreen();
+                } else if (container.msRequestFullscreen) { /* IE11 */
+                    container.msRequestFullscreen();
+                }
+            }
+        }
+    </script>
+}

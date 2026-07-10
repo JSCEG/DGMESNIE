@@ -4093,39 +4093,23 @@ mapas[0].on('baselayerchange', function (e) {
 });
 
 // --- Inicialización del plugin de impresión ---
-// Crear preloader
+// Crear preloader con la misma gramática visual del sistema global.
 const preloader = document.createElement('div');
 preloader.id = 'preloader';
-preloader.innerHTML = '<div class="spinner"></div>';
+preloader.setAttribute('aria-live', 'polite');
+preloader.setAttribute('aria-busy', 'true');
+preloader.innerHTML = '<div class="spinner" role="status" aria-label="Preparando vista"></div>';
 preloader.style.cssText = `
     position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background-color: rgba(255,255,255,0.7);
+    inset: 0;
+    width: 100%;
+    height: 100%;
     display: none;
     z-index: 9999;
     justify-content: center;
     align-items: center;
 `;
 document.body.appendChild(preloader);
-
-// Estilos del spinner
-const style = document.createElement('style');
-style.innerHTML = `
-  .spinner {
-    border: 8px solid #f3f3f3;
-    border-top: 8px solid #333;
-    border-radius: 50%;
-    width: 60px;
-    height: 60px;
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-`;
-document.head.appendChild(style);
 
 // Inicializar el printer
 const printer = L.easyPrint({

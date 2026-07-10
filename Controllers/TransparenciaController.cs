@@ -115,6 +115,7 @@ namespace NSIE.Controllers
                             PresentacionEmbedUrl,
                             Activo
                         FROM dgmesnie.TransparenciaAsunto
+                        WHERE Activo = 1
                         ORDER BY Fecha DESC, AsuntoId DESC";
                     var asuntos = (await connection.QueryAsync<TransparenciaAsunto>(query)).ToList();
                     return View(asuntos);
