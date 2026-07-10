@@ -128,7 +128,7 @@
                 
                     // Control de capas y vista inicial
                     L.control.layers(baseLayers).addTo(targetMap);
-                    baseLayers["SENER"].addTo(targetMap);
+                    (baseLayers["SENER"] || layer_GoogleSatellite_0).addTo(targetMap);
                 
                     // Eventos y controles
                     targetMap.on('baselayerchange', function (eventLayer) {

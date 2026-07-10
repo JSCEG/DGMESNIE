@@ -320,12 +320,14 @@ function limpiarMarcadores() {
 function handleNull(value) {
     return value ? value : "S/D-Sin Dato";
 }
-Highcharts.setOptions({
-    lang: {
-        decimalPoint: '.',
-        thousandsSep: ','
-    }
-});
+if (window.Highcharts) {
+    Highcharts.setOptions({
+        lang: {
+            decimalPoint: '.',
+            thousandsSep: ','
+        }
+    });
+}
 
 
 //Electricidad
@@ -358,7 +360,7 @@ function CargaElectricidad() {
     function cargarCamposVisibles() {
         return new Promise((resolve, reject) => {
             $.ajax({
-                url: '/Indicadores/GetCamposVisiblesElectricidad_Infra',
+                url: '/Atlas/Azel_publico/campos',
                 type: 'GET',
                 contentType: 'application/json',
                 success: function (camposVisibles) {
@@ -381,7 +383,7 @@ function CargaElectricidad() {
         // Carga los Marcadores y Ductos
 
         $.ajax({
-            url: '/Indicadores/GetExpendiosAutorizadosElectricidad_Infra',
+            url: '/Atlas/Azel_publico/permisos',
             type: 'GET',
             // data: JSON.stringify(datos_mun),
             contentType: 'application/json',
@@ -518,7 +520,7 @@ function CargaElectricidad() {
                     }
 
                     if (camposVisiblesGlobal.includes("Generación_estimada_anual")) {
-                        contenido += "<li><strong>Generación Estimada Anual:</strong> " + handleNull(coordenada.generacion_estimada_anual) + "</li>";
+                        contenido += "<li><strong>Generación Estimada Anual:</strong> " + handleNull(coordenada.generacionEstimadaAnual) + "</li>";
                     }
 
 
@@ -634,10 +636,6 @@ function CargaElectricidad() {
                         }
                         */
                     contenido += "</ul>";
-
-                    if (camposVisiblesGlobal.includes("NumeroPermiso")) {
-                        contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
-                    }
 
                     contenido += "<a class='street-view-link btn btn-cre-verde' href='http://maps.google.com/maps?q=&layer=c&cbll=" + coordenada.latitudGeo + "," + coordenada.longitudGeo + "&cbp=11,0,0,0,0' target='_blank'><b> Ver vista de calle </b></a>";
 
@@ -863,7 +861,9 @@ function CargaElectricidad() {
 
 
                 // Renderizar el gráfico en el contenedor con el ID 'grafico'
-                Highcharts.chart('grafico', options);
+                if (window.Highcharts) {
+                    Highcharts.chart('grafico', options);
+                }
                 // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
                 var uniqueTerms = [...new Set(availableTerms)];
 
@@ -3594,7 +3594,7 @@ function cargarMarcadoresViento() {
     function cargarCamposVisibles() {
         return new Promise((resolve, reject) => {
             $.ajax({
-                url: '/Indicadores/GetCamposVisiblesElectricidad_Infra',
+                url: '/Atlas/Azel_publico/campos',
                 type: 'GET',
                 contentType: 'application/json',
                 success: function (camposVisibles) {
@@ -3612,7 +3612,7 @@ function cargarMarcadoresViento() {
     cargarCamposVisibles().then(camposVisibles => {
         limpiarMarcadores();
         $.ajax({
-            url: '/Indicadores/GetExpendiosAutorizadosElectricidad_Infra',
+            url: '/Atlas/Azel_publico/permisos',
             type: 'GET',
             contentType: 'application/json',
             success: function (response) {
@@ -3716,7 +3716,7 @@ function cargarMarcadoresViento() {
                         contenido += "<li><strong>Capacidad Autorizada (MW):</strong> " + handleNull(coordenada.capacidadAutorizadaMW) + "</li>";
                     }
                     if (camposVisiblesGlobal.includes("Generación_estimada_anual")) {
-                        contenido += "<li><strong>Generación Estimada Anual:</strong> " + handleNull(coordenada.generacion_estimada_anual) + "</li>";
+                        contenido += "<li><strong>Generación Estimada Anual:</strong> " + handleNull(coordenada.generacionEstimadaAnual) + "</li>";
                     }
                     if (camposVisiblesGlobal.includes("Inversion_estimada_mdls")) {
                         contenido += "<li><strong>Inversión Estimada (mdls):</strong> " + handleNull(coordenada.inversion_estimada_mdls) + "</li>";
@@ -3752,9 +3752,6 @@ function cargarMarcadoresViento() {
                         contenido += "<li><strong>Comentarios:</strong> " + handleNull(coordenada.comentarios) + "</li>";
                     }
                     contenido += "</ul>";
-                    if (camposVisiblesGlobal.includes("NumeroPermiso")) {
-                        contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
-                    }
                     contenido += "<a class='street-view-link btn btn-cre-verde' href='http://maps.google.com/maps?q=&layer=c&cbll=" + coordenada.latitudGeo + "," + coordenada.longitudGeo + "&cbp=11,0,0,0,0' target='_blank'><b> Ver vista de calle </b></a>";
                     contenido += "</div>";
                     return contenido;
@@ -3894,7 +3891,9 @@ function cargarMarcadoresViento() {
                         enabled: false
                     }
                 };
-                Highcharts.chart('grafico', options);
+                if (window.Highcharts) {
+                    Highcharts.chart('grafico', options);
+                }
                 // --- FIN GRÁFICO VIENTO ---
 
 

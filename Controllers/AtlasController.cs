@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Data;
 using System.Configuration;
+using Microsoft.AspNetCore.Authorization;
 
 
 
@@ -31,15 +32,23 @@ namespace NSIE.Controllers
 
         [HttpGet]
         [Route("Atlas/ProxyImagen")]
+        [AllowAnonymous]
         public async Task<IActionResult> ProxyImagen([FromQuery] string url)
         {
             if (string.IsNullOrWhiteSpace(url))
                 return BadRequest("Se requiere una URL");
 
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var imageUri)
+                || imageUri.Scheme != Uri.UriSchemeHttps
+                || !string.Equals(imageUri.Host, "cdn.sassoapps.com", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest("La URL de imagen no está permitida");
+            }
+
             try
             {
                 var client = _httpClientFactory.CreateClient();
-                var response = await client.GetAsync(url);
+                var response = await client.GetAsync(imageUri);
 
                 if (!response.IsSuccessStatusCode)
                     return StatusCode((int)response.StatusCode, "No se pudo obtener la imagen");
@@ -62,9 +71,25 @@ namespace NSIE.Controllers
             return View();
         }
 
+        [HttpGet("/Atlas/Azel_publico")]
+        [AllowAnonymous]
         public IActionResult AZEL_Publico()
         {
             return View();
+        }
+
+        [HttpGet("/Atlas/Azel_publico/campos")]
+        [AllowAnonymous]
+        public async Task<IActionResult> AzelPublicoCampos()
+        {
+            return Json(await repositorioAtlas.ObtenerCamposPublicosAzelAsync());
+        }
+
+        [HttpGet("/Atlas/Azel_publico/permisos")]
+        [AllowAnonymous]
+        public async Task<IActionResult> AzelPublicoPermisos()
+        {
+            return Json(await repositorioAtlas.ObtenerPermisosPublicosAzelAsync());
         }
 
 

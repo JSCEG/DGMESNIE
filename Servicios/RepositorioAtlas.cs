@@ -21,6 +21,8 @@ namespace NSIE.Servicios
 
         //Demanda Diare a por GCR
         Task<List<DemandaDiaria>> ObtenerDemandaHistoricaAsync(DateTime inicio, DateTime fin, string claveProcesoMercado);
+        Task<List<string>> ObtenerCamposPublicosAzelAsync();
+        Task<IEnumerable<AzelPermisoPublico>> ObtenerPermisosPublicosAzelAsync();
 
 
 
@@ -30,10 +32,12 @@ namespace NSIE.Servicios
     public class RepositorioAtlas : IRepositorioAtlas
     {
         private readonly string connectionString;
+        private readonly string defaultConnectionString;
 
         public RepositorioAtlas(IConfiguration configuration)
         {
             connectionString = configuration.GetConnectionString("MIMConnection");
+            defaultConnectionString = configuration.GetConnectionString("DefaultConnection");
         }
 
 
@@ -145,6 +149,24 @@ namespace NSIE.Servicios
                     ClaveProcesoMercado = claveProcesoMercado
                 })).ToList();
             }
+        }
+
+        public async Task<List<string>> ObtenerCamposPublicosAzelAsync()
+        {
+            using var connection = new SqlConnection(defaultConnectionString);
+            var campos = await connection.QueryAsync<string>(
+                "dgmesnie.sp_AzelPublico_ObtenerCampos",
+                commandType: CommandType.StoredProcedure);
+
+            return campos.ToList();
+        }
+
+        public async Task<IEnumerable<AzelPermisoPublico>> ObtenerPermisosPublicosAzelAsync()
+        {
+            using var connection = new SqlConnection(defaultConnectionString);
+            return await connection.QueryAsync<AzelPermisoPublico>(
+                "dgmesnie.sp_AzelPublico_ObtenerPermisos",
+                commandType: CommandType.StoredProcedure);
         }
 
 
