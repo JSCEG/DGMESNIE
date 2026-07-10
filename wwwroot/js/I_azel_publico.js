@@ -810,13 +810,7 @@ function CargaElectricidad() {
                     series: [{
                         name: 'Proyectos Autorizados',
                         data: dataPermisos,
-                        color: {
-                            linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
-                            stops: [
-                                [0, '#4facfe'],
-                                [1, '#00f2fe']
-                            ]
-                        },
+                        color: '#9b2247',
                         dataLabels: {
                             enabled: true,
                             rotation: 0,
@@ -3843,13 +3837,7 @@ function cargarMarcadoresViento() {
                     series: [{
                         name: 'Proyectos Autorizados',
                         data: dataPermisos,
-                        color: {
-                            linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
-                            stops: [
-                                [0, '#2af598'],
-                                [1, '#009efd']
-                            ]
-                        },
+                        color: '#9b2247',
                         dataLabels: {
                             enabled: true,
                             rotation: 0,

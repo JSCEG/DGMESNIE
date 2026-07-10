@@ -8,7 +8,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Data;
 using System.Configuration;
-using Microsoft.AspNetCore.Authorization;
 
 
 
@@ -32,7 +31,6 @@ namespace NSIE.Controllers
 
         [HttpGet]
         [Route("Atlas/ProxyImagen")]
-        [AllowAnonymous]
         public async Task<IActionResult> ProxyImagen([FromQuery] string url)
         {
             if (string.IsNullOrWhiteSpace(url))
@@ -72,21 +70,18 @@ namespace NSIE.Controllers
         }
 
         [HttpGet("/Atlas/Azel_publico")]
-        [AllowAnonymous]
         public IActionResult AZEL_Publico()
         {
             return View();
         }
 
         [HttpGet("/Atlas/Azel_publico/campos")]
-        [AllowAnonymous]
         public async Task<IActionResult> AzelPublicoCampos()
         {
             return Json(await repositorioAtlas.ObtenerCamposPublicosAzelAsync());
         }
 
         [HttpGet("/Atlas/Azel_publico/permisos")]
-        [AllowAnonymous]
         public async Task<IActionResult> AzelPublicoPermisos()
         {
             return Json(await repositorioAtlas.ObtenerPermisosPublicosAzelAsync());

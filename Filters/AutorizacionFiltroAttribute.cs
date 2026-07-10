@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using NSIE.Models;
 using Microsoft.Extensions.Configuration;
-using Microsoft.AspNetCore.Authorization;
 using System;
 
 public class AutorizacionFiltro : ActionFilterAttribute
@@ -28,12 +27,6 @@ public class AutorizacionFiltro : ActionFilterAttribute
 
     public override void OnActionExecuting(ActionExecutingContext context)
     {
-        if (context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() != null)
-        {
-            base.OnActionExecuting(context);
-            return;
-        }
-
         // Log para confirmar que el filtro se ejecuta
         Console.WriteLine("Filtro AutorizacionFiltro ejecutado");
 
