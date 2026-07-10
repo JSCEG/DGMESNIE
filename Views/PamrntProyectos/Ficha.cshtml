@@ -1,0 +1,127 @@
+@model NSIE.Models.PamrntFichaProyectoViewModel
+
+@{
+    ViewData["Title"] = $"Ficha {Model.Ficha.ClavePem}";
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 pam-ficha-page">
+    <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+        <a asp-action="Index" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Proyectos identificados</a>
+        <button id="pam-fullscreen" type="button" class="btn btn-primary"><i class="fas fa-expand me-2"></i>Presentar</button>
+    </div>
+
+    <div id="pam-deck" class="pam-deck">
+        <section class="pam-slide is-active" data-slide>
+            <div class="pam-slide__kicker">PAMRNT 2026-2040 · Prioridad @Model.Proyecto.Prioridad</div>
+            <h1>@Model.Ficha.ClavePem</h1>
+            <h2>@Model.Ficha.Titulo</h2>
+            <div class="pam-slide__rule"></div>
+            <p>@string.Join(" · ", Model.Ficha.Estados)</p>
+            <footer>Ficha ejecutiva construida desde una fuente versionada, independiente del registro SQL.</footer>
+        </section>
+
+        <section class="pam-slide" data-slide>
+            <div class="pam-slide__kicker">Decisión ejecutiva</div>
+            <h2>@Model.Ficha.AlternativaSeleccionada</h2>
+            <p class="pam-slide__lead">@Model.Ficha.ResumenEjecutivo</p>
+            <div class="pam-slide__metrics pam-slide__metrics--three">
+                <article><strong>@Model.Ficha.InversionMdp.ToString("N3")</strong><span>MDP 2025</span></article>
+                <article><strong>@Model.Ficha.FechaNecesaria</strong><span>fecha necesaria y factible</span></article>
+                <article><strong>@Model.Ficha.RelacionBeneficioCosto.ToString("N2")</strong><span>relación Beneficio / Costo</span></article>
+            </div>
+            <footer>@Model.Ficha.Fuente</footer>
+        </section>
+
+        <section class="pam-slide" data-slide>
+            <div class="pam-slide__kicker">Metas físicas</div>
+            <h2>Una red troncal regional con @Model.Ficha.TotalObras componentes.</h2>
+            <p class="pam-slide__lead">@Model.Ficha.CorredorPrincipal</p>
+            <div class="pam-slide__metrics">
+                @foreach (var meta in Model.Ficha.MetasFisicas)
+                {
+                    <article><strong>@meta.Valor</strong><span>@meta.Concepto · @meta.Unidad</span></article>
+                }
+            </div>
+            <footer>Valores reportados por la ficha I26-PE1 del PAMRNT 2026-2040.</footer>
+        </section>
+
+        <section class="pam-slide" data-slide>
+            <div class="pam-slide__kicker">Control de calidad</div>
+            <h2>Pendientes antes de cerrar la presentación.</h2>
+            <ol class="pam-slide__list">
+                @foreach (var pendiente in Model.Ficha.PendientesValidacion)
+                {
+                    <li>@pendiente</li>
+                }
+            </ol>
+            <div class="pam-db-status">
+                <span>Estado en Informe Pormenorizado</span>
+                <strong>@(Model.Proyecto.EnBaseInformePormenorizado == true ? $"Encontrado · {Model.Proyecto.EtapaBase}" : Model.Proyecto.EnBaseInformePormenorizado == false ? "No encontrado" : "Sin consulta disponible")</strong>
+            </div>
+            <footer>Siguiente iteración: cronograma generación-transmisión y mapa con capas CDN.</footer>
+        </section>
+
+        <nav class="pam-deck__nav" aria-label="Navegación de la ficha">
+            <button id="pam-prev" type="button" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button>
+            <span id="pam-counter">1 / 4</span>
+            <button id="pam-next" type="button" aria-label="Siguiente"><i class="fas fa-chevron-right"></i></button>
+        </nav>
+    </div>
+</div>
+
+<style>
+    .pam-ficha-page { --pam-guinda:#9b2247; --pam-dorado:#e0a12e; --pam-tinta:#25211f; }
+    .pam-deck { position:relative; width:min(100%,1500px); aspect-ratio:16/9; margin:auto; background:#fff; border-radius:1rem; box-shadow:0 1rem 3rem rgba(44,31,36,.16); overflow:hidden; }
+    .pam-slide { display:none; position:absolute; inset:0; padding:5.5% 6.5%; background:linear-gradient(135deg,#fff 0%,#fff 70%,#f8eef1 100%); color:var(--pam-tinta); }
+    .pam-slide.is-active { display:flex; flex-direction:column; }
+    .pam-slide__kicker { color:var(--pam-guinda); font-weight:800; letter-spacing:.14em; text-transform:uppercase; font-size:clamp(.8rem,1.25vw,1.35rem); }
+    .pam-slide h1 { margin:auto 0 0; color:var(--pam-guinda); font-family:Georgia,serif; font-size:clamp(4rem,10vw,9rem); line-height:.85; }
+    .pam-slide h2 { margin:2.5% 0 0; max-width:28ch; font-family:Georgia,serif; font-size:clamp(2rem,4vw,4.2rem); line-height:1.08; }
+    .pam-slide h1 + h2 { margin:2% 0 0; font-family:inherit; font-size:clamp(1.4rem,2.5vw,2.7rem); font-weight:500; color:#5f5854; max-width:42ch; }
+    .pam-slide__rule { width:12rem; height:.45rem; margin:2.5% 0; background:var(--pam-dorado); }
+    .pam-slide p { font-size:clamp(1rem,1.8vw,2rem); color:#5f5854; }
+    .pam-slide__lead { max-width:54ch; line-height:1.5; margin-top:2.5%; }
+    .pam-slide footer { margin-top:auto; padding-top:1rem; border-top:1px solid #e8e1dc; color:#817a75; font-size:clamp(.7rem,1vw,1rem); }
+    .pam-slide__metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1.5rem; margin-top:4%; }
+    .pam-slide__metrics--three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .pam-slide__metrics article { padding:1.5rem; border-radius:1rem; background:#fff; border:1px solid #eadfe3; border-left:6px solid var(--pam-guinda); box-shadow:0 .6rem 1.4rem rgba(44,31,36,.06); }
+    .pam-slide__metrics strong,.pam-slide__metrics span { display:block; }
+    .pam-slide__metrics strong { color:var(--pam-guinda); font-size:clamp(1.6rem,3vw,3.3rem); line-height:1; }
+    .pam-slide__metrics span { margin-top:.65rem; color:#69615d; font-size:clamp(.75rem,1.15vw,1.25rem); }
+    .pam-slide__list { margin:4% 0 0; display:grid; gap:1.2rem; padding-left:2rem; max-width:70ch; font-size:clamp(1rem,1.6vw,1.7rem); line-height:1.4; }
+    .pam-slide__list li::marker { color:var(--pam-guinda); font-weight:800; }
+    .pam-db-status { margin-top:4%; padding:1.2rem 1.5rem; border-left:6px solid var(--pam-dorado); background:#fbf5e8; max-width:60ch; }
+    .pam-db-status span,.pam-db-status strong { display:block; }
+    .pam-db-status span { color:#746b65; }
+    .pam-db-status strong { margin-top:.25rem; font-size:1.4rem; }
+    .pam-deck__nav { position:absolute; right:2rem; bottom:1.2rem; display:flex; align-items:center; gap:.8rem; z-index:10; }
+    .pam-deck__nav button { width:2.4rem; height:2.4rem; border-radius:50%; border:1px solid #d8ced2; background:#fff; color:var(--pam-guinda); }
+    .pam-deck__nav span { min-width:4rem; text-align:center; color:#716967; font-weight:700; }
+    .pam-deck:fullscreen { width:100vw; height:100vh; border-radius:0; aspect-ratio:auto; }
+    @@media (max-width:900px) { .pam-deck { aspect-ratio:auto; min-height:72vh; } .pam-slide__metrics,.pam-slide__metrics--three { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+</style>
+
+<script>
+    (() => {
+        const deck = document.getElementById('pam-deck');
+        const slides = [...deck.querySelectorAll('[data-slide]')];
+        const counter = document.getElementById('pam-counter');
+        let current = 0;
+
+        const show = index => {
+            current = (index + slides.length) % slides.length;
+            slides.forEach((slide, i) => slide.classList.toggle('is-active', i === current));
+            counter.textContent = `${current + 1} / ${slides.length}`;
+        };
+
+        document.getElementById('pam-prev').addEventListener('click', () => show(current - 1));
+        document.getElementById('pam-next').addEventListener('click', () => show(current + 1));
+        document.getElementById('pam-fullscreen').addEventListener('click', () => deck.requestFullscreen?.());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'ArrowRight' || event.key === 'PageDown') show(current + 1);
+            if (event.key === 'ArrowLeft' || event.key === 'PageUp') show(current - 1);
+        });
+    })();
+</script>

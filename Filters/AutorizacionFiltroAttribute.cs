@@ -51,6 +51,9 @@ public class AutorizacionFiltro : ActionFilterAttribute
 
         var controller = context.RouteData.Values["controller"]?.ToString() ?? string.Empty;
         var action = context.RouteData.Values["action"]?.ToString() ?? string.Empty;
+        var controllerAutorizacion = string.Equals(controller, "PamrntProyectos", StringComparison.OrdinalIgnoreCase)
+            ? "InformePormenorizado"
+            : controller;
 
         if (string.Equals(controller, "Acceso", StringComparison.OrdinalIgnoreCase) &&
             PublicAccesoActions.Contains(action))
@@ -90,7 +93,7 @@ public class AutorizacionFiltro : ActionFilterAttribute
                     "PlanMexico"
                 };
 
-                if (restrictedControllers.Contains(controller))
+                if (restrictedControllers.Contains(controllerAutorizacion))
                 {
                     if (idUsuario != 1 && idUsuario != 86)
                     {
@@ -110,9 +113,9 @@ public class AutorizacionFiltro : ActionFilterAttribute
                             if (seccion.Modulos == null) continue;
                             foreach (var mod in seccion.Modulos)
                             {
-                                if (string.Equals(mod.Controller, controller, StringComparison.OrdinalIgnoreCase))
+                                if (string.Equals(mod.Controller, controllerAutorizacion, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    if (string.Equals(controller, "PlanMexico", StringComparison.OrdinalIgnoreCase))
+                                    if (string.Equals(controllerAutorizacion, "PlanMexico", StringComparison.OrdinalIgnoreCase))
                                     {
                                         if (string.Equals(action, "Plan_Polos", StringComparison.OrdinalIgnoreCase))
                                         {

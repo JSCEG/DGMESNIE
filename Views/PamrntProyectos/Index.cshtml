@@ -1,0 +1,146 @@
+@model NSIE.Models.PamrntProyectosIdentificadosViewModel
+
+@{
+    ViewData["Title"] = "Proyectos Identificados PAMRNT";
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 pamrnt-identificados">
+    <div class="pamrnt-hero mb-4">
+        <div>
+            <span class="pamrnt-eyebrow">PAMRNT 2026-2040</span>
+            <h2>Proyectos identificados de ampliación de la RNT</h2>
+            <p>Universo separado del Informe Pormenorizado para identificar los proyectos nuevos, verificar su clave PEM y preparar sus fichas ejecutivas.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-self-start">
+            <a asp-controller="InformePormenorizado" asp-action="Index" class="btn btn-outline-secondary">
+                <i class="fas fa-database me-2"></i>Ver base vigente
+            </a>
+            <a asp-action="Ficha" asp-route-clavePem="I26-PE1" class="btn btn-primary">
+                <i class="fas fa-presentation-screen me-2"></i>Abrir ficha I26-PE1
+            </a>
+        </div>
+    </div>
+
+    @if (!Model.CruceBaseDisponible)
+    {
+        <div class="alert alert-warning border-0 shadow-sm" role="alert">
+            <i class="fas fa-triangle-exclamation me-2"></i>@Model.AvisoCruce
+        </div>
+    }
+
+    <div class="pamrnt-kpis mb-4">
+        <article><span>Proyectos identificados</span><strong>@Model.TotalProyectos</strong><small>Cuadro 8.4.3</small></article>
+        <article><span>Encontrados en la base</span><strong>@Model.TotalEncontrados</strong><small>Cruce exacto por clave PEM</small></article>
+        <article class="is-warning"><span>No encontrados</span><strong>@Model.TotalNoEncontrados</strong><small>Nuevos o pendientes de incorporación</small></article>
+        <article class="is-gold"><span>Inversión estimada</span><strong>@Model.InversionTotalMdp.ToString("N1")</strong><small>MDP 2025</small></article>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="pamrnt-toolbar">
+                <div>
+                    <h5 class="mb-1">Tabla principal de identificación</h5>
+                    <p class="text-muted mb-0">@Model.Fuente · @Model.VersionDatos</p>
+                </div>
+                <label class="pamrnt-search">
+                    <i class="fas fa-magnifying-glass"></i>
+                    <input id="pamrnt-busqueda" type="search" placeholder="Buscar clave, proyecto, región o estado" />
+                </label>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table align-middle mb-0 pamrnt-table" id="pamrnt-tabla">
+                    <thead>
+                        <tr>
+                            <th>Prioridad</th>
+                            <th>Clave PEM</th>
+                            <th>Proyecto / zona atendida</th>
+                            <th>GCR</th>
+                            <th>Fecha necesaria</th>
+                            <th class="text-end">Inversión MDP</th>
+                            <th>Base PAM</th>
+                            <th class="text-end">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.Proyectos.OrderBy(x => x.Prioridad))
+                        {
+                            <tr data-pamrnt-row>
+                                <td><span class="pamrnt-prioridad">@item.Prioridad</span></td>
+                                <td><code>@item.ClavePem</code></td>
+                                <td>
+                                    <div class="fw-semibold">@item.Proyecto</div>
+                                    <div class="small text-muted mt-1">@item.ZonaAtendida</div>
+                                </td>
+                                <td>@item.Gcr</td>
+                                <td>@item.FechaNecesaria</td>
+                                <td class="text-end fw-semibold">@item.InversionMdp.ToString("N3")</td>
+                                <td>
+                                    @if (item.EnBaseInformePormenorizado == true)
+                                    {
+                                        <span class="badge rounded-pill text-bg-success">Encontrado</span>
+                                        <div class="small text-muted mt-1">@item.EtapaBase</div>
+                                    }
+                                    else if (item.EnBaseInformePormenorizado == false)
+                                    {
+                                        <span class="badge rounded-pill text-bg-warning">No encontrado</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge rounded-pill text-bg-secondary">Sin consulta</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    @if (item.FichaDisponible)
+                                    {
+                                        <a asp-action="Ficha" asp-route-clavePem="@item.ClavePem" class="btn btn-sm btn-primary">Ver ficha</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="small text-muted">Ficha pendiente</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .pamrnt-identificados { --pam-guinda:#9b2247; --pam-dorado:#b38e5d; --pam-tinta:#2b2725; --pam-suave:#f7f4f1; }
+    .pamrnt-hero { display:flex; justify-content:space-between; gap:2rem; align-items:end; padding:2rem; border-radius:1.2rem; background:linear-gradient(135deg,#fff 0%,#f7eef1 100%); border:1px solid #eee3e7; }
+    .pamrnt-eyebrow { color:var(--pam-guinda); font-weight:800; letter-spacing:.12em; text-transform:uppercase; font-size:.8rem; }
+    .pamrnt-hero h2 { margin:.35rem 0 .45rem; color:var(--pam-tinta); font-weight:750; }
+    .pamrnt-hero p { margin:0; color:#6d6763; max-width:75ch; }
+    .pamrnt-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1rem; }
+    .pamrnt-kpis article { background:#fff; border:1px solid #eee8e3; border-left:5px solid var(--pam-guinda); border-radius:1rem; padding:1.2rem 1.35rem; box-shadow:0 .35rem 1rem rgba(45,32,36,.05); }
+    .pamrnt-kpis article.is-warning { border-left-color:#e0a12e; }
+    .pamrnt-kpis article.is-gold { border-left-color:var(--pam-dorado); }
+    .pamrnt-kpis span,.pamrnt-kpis small { display:block; color:#746e69; }
+    .pamrnt-kpis strong { display:block; margin:.2rem 0; font-size:2rem; color:var(--pam-tinta); }
+    .pamrnt-toolbar { display:flex; justify-content:space-between; gap:1.5rem; align-items:center; padding:1.25rem 1.5rem; border-bottom:1px solid #ece7e2; }
+    .pamrnt-search { display:flex; align-items:center; gap:.65rem; min-width:min(100%,360px); border:1px solid #d9d3ce; border-radius:.75rem; padding:.65rem .85rem; color:#8c8580; }
+    .pamrnt-search input { border:0; outline:0; width:100%; background:transparent; }
+    .pamrnt-table thead th { background:var(--pam-suave); color:#5c5551; font-size:.78rem; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; border-bottom:1px solid #ddd5cf; }
+    .pamrnt-table td { padding:1rem .75rem; border-color:#eee9e5; }
+    .pamrnt-table code { color:var(--pam-guinda); font-weight:800; font-size:.9rem; }
+    .pamrnt-prioridad { display:inline-grid; place-items:center; width:2.2rem; height:2.2rem; border-radius:50%; background:#f4e5ea; color:var(--pam-guinda); font-weight:800; }
+    @@media (max-width: 1100px) { .pamrnt-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .pamrnt-hero { align-items:start; flex-direction:column; } }
+    @@media (max-width: 650px) { .pamrnt-kpis { grid-template-columns:1fr; } .pamrnt-toolbar { align-items:stretch; flex-direction:column; } .pamrnt-search { min-width:0; } }
+</style>
+
+<script>
+    (() => {
+        const input = document.getElementById('pamrnt-busqueda');
+        const rows = [...document.querySelectorAll('[data-pamrnt-row]')];
+        input?.addEventListener('input', () => {
+            const term = input.value.trim().toLocaleLowerCase('es-MX');
+            rows.forEach(row => row.hidden = term && !row.textContent.toLocaleLowerCase('es-MX').includes(term));
+        });
+    })();
+</script>
