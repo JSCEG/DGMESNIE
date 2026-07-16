@@ -1,0 +1,214 @@
+@model NSIE.Models.PamNuevaActualizacionViewModel
+
+@{
+    ViewData["Title"] = "Nueva actualización PAM/PAMRNT";
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 pam-update-page">
+    <div class="pam-update-topbar">
+        <div>
+            <span class="pam-update-eyebrow">Centro de actualización</span>
+            <h2>Registrar archivos fuente</h2>
+            <p>Recibe los originales y conserva su trazabilidad. Esta operación no modifica la cartera de proyectos.</p>
+        </div>
+        <a asp-action="Index" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Volver al dashboard
+        </a>
+    </div>
+
+    @if (TempData["PamActualizacionSuccess"] is string successMessage)
+    {
+        <div class="alert pam-update-success" role="status">
+            <i class="fas fa-circle-check"></i>
+            <div><strong>Actualización recibida</strong><span>@successMessage</span></div>
+        </div>
+    }
+
+    <div class="pam-update-grid">
+        <section class="card border-0 shadow-sm pam-update-card">
+            <div class="pam-update-card__header">
+                <span class="pam-update-step">1</span>
+                <div>
+                    <h3>Sube los archivos tal como los recibiste</h3>
+                    <p>PDF, PowerPoint o Excel. No necesitas convertirlos ni acomodarlos en un layout.</p>
+                </div>
+            </div>
+
+            <form asp-action="NuevaActualizacion" method="post" enctype="multipart/form-data" class="pam-update-form" id="pam-update-form">
+                @Html.AntiForgeryToken()
+
+                <div asp-validation-summary="ModelOnly" class="pam-validation-summary" role="alert"></div>
+
+                <div class="pam-update-fields">
+                    <div class="pam-field pam-field--wide">
+                        <label asp-for="Input.Nombre"></label>
+                        <input asp-for="Input.Nombre" class="form-control" placeholder="Ej. Actualización CFE — corte 10 julio 2026" autocomplete="off" />
+                        <span asp-validation-for="Input.Nombre" class="text-danger"></span>
+                    </div>
+                    <div class="pam-field">
+                        <label asp-for="Input.FechaCorte"></label>
+                        <input asp-for="Input.FechaCorte" class="form-control" max="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                        <span asp-validation-for="Input.FechaCorte" class="text-danger"></span>
+                    </div>
+                    <div class="pam-field pam-field--full">
+                        <label asp-for="Input.Notas"></label>
+                        <textarea asp-for="Input.Notas" class="form-control" rows="3" placeholder="Ej. Archivos enviados después de la reunión de seguimiento."></textarea>
+                        <span asp-validation-for="Input.Notas" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <label class="pam-dropzone" for="pam-files" id="pam-dropzone">
+                    <input asp-for="Input.Archivos" id="pam-files" type="file" multiple accept=".pdf,.ppt,.pptx,.xls,.xlsx" />
+                    <span class="pam-dropzone__icon"><i class="fas fa-file-arrow-up"></i></span>
+                    <strong>Selecciona o arrastra los archivos aquí</strong>
+                    <span>PDF · PPT/PPTX · XLS/XLSX</span>
+                    <small>Hasta 12 archivos, 200 MB por archivo y 240 MB por actualización.</small>
+                </label>
+                <span asp-validation-for="Input.Archivos" class="text-danger d-block mt-2"></span>
+
+                <div class="pam-file-selection" id="pam-file-selection" hidden>
+                    <div><strong id="pam-file-count">0 archivos</strong><span id="pam-file-size"></span></div>
+                    <ul id="pam-file-list"></ul>
+                </div>
+
+                <div class="pam-update-confirmation">
+                    <div>
+                        <i class="fas fa-shield-halved"></i>
+                        <span>Se guardará el original, su hash SHA-256, fecha de corte y usuario. La cartera no cambia en este paso.</span>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="pam-submit">
+                        <i class="fas fa-inbox me-2"></i>Registrar actualización
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <aside class="pam-update-aside">
+            <section class="card border-0 shadow-sm pam-flow-card">
+                <h3>Flujo de actualización</h3>
+                <ol>
+                    <li class="is-active"><span>1</span><div><strong>Recibir fuentes</strong><small>Preservar los archivos crudos.</small></div></li>
+                    <li><span>2</span><div><strong>Analizar</strong><small>Extraer y cotejar contra SQL.</small></div></li>
+                    <li><span>3</span><div><strong>Revisar y aplicar</strong><small>Aprobar cambios con traza completa.</small></div></li>
+                </ol>
+            </section>
+
+            <section class="pam-format-note">
+                <i class="fas fa-circle-info"></i>
+                <div>
+                    <strong>También aceptamos .ppt y .xls</strong>
+                    <p>El original se conserva y la conversión necesaria para extraer datos se hará internamente.</p>
+                </div>
+            </section>
+        </aside>
+    </div>
+
+    <section class="card border-0 shadow-sm pam-recent-card">
+        <div class="pam-recent-card__header">
+            <div>
+                <span class="pam-update-eyebrow">Trazabilidad operativa</span>
+                <h3>Actualizaciones recientes</h3>
+            </div>
+            <span class="pam-recent-count">@Model.LotesRecientes.Count lote(s)</span>
+        </div>
+
+        @if (Model.LotesRecientes.Count == 0)
+        {
+            <div class="pam-recent-empty">
+                <i class="fas fa-box-open"></i>
+                <div><strong>Aún no hay actualizaciones registradas.</strong><span>El primer lote aparecerá aquí sin alterar los 279 proyectos vigentes.</span></div>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table align-middle mb-0 pam-recent-table">
+                    <thead><tr><th>Lote</th><th>Corte</th><th>Archivos fuente</th><th>Extracción</th><th>Estado</th><th>Registro</th></tr></thead>
+                    <tbody>
+                    @foreach (var lote in Model.LotesRecientes)
+                    {
+                        <tr>
+                            <td><a asp-action="ActualizacionDetalle" asp-route-loteId="@lote.LoteId" class="pam-lot-link">@lote.Nombre</a><small>#@lote.LoteId · @(lote.LoteUid.ToString("N").Substring(0, 8))</small></td>
+                            <td>@lote.FechaCorte.ToString("dd MMM yyyy")</td>
+                            <td><div class="pam-files-cell" title="@lote.Archivos">@lote.Archivos</div><small>@lote.TotalArchivos archivo(s)</small></td>
+                            <td>
+                                @if (lote.RequierenConversion > 0) { <span class="pam-mini-status is-warning">@lote.RequierenConversion por convertir</span> }
+                                @if (lote.PendientesExtraccion > 0) { <span class="pam-mini-status">@lote.PendientesExtraccion pendiente(s)</span> }
+                            </td>
+                            <td><span class="pam-lot-status">@(lote.Estado == "Cargado" ? "Recibido" : lote.Estado)</span></td>
+                            <td>@lote.FechaRegistroUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")<small>@(string.IsNullOrWhiteSpace(lote.UsuarioNombre) ? "Usuario no identificado" : lote.UsuarioNombre)</small></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+<style>
+    .shell-page-container.pam-update-page{width:100%;max-width:1500px;padding-inline:clamp(.8rem,2vw,2rem);--pam-guinda:var(--shell-accent,#9b2247);--pam-dorado:var(--shell-accent-2,#b38e5d);--pam-tinta:var(--shell-ink,#292421);--pam-suave:var(--shell-surface-2,#f7f4f1);--pam-blanco:var(--shell-surface,#fff);--pam-linea:var(--shell-line,#eee3e7);color:var(--pam-tinta)}
+    .pam-update-topbar{display:flex;justify-content:space-between;align-items:flex-end;gap:1.5rem;padding:1.4rem 1.5rem;margin-bottom:1.2rem;border:1px solid var(--pam-linea);border-left:4px solid var(--pam-dorado);border-radius:14px;background:var(--pam-blanco)}
+    .pam-update-eyebrow{color:var(--pam-guinda);font-size:.74rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+    .pam-update-topbar h2{margin:.35rem 0;color:var(--pam-tinta);font-weight:750}.pam-update-topbar p{margin:0;color:#706965}
+    .pam-update-success{display:flex;align-items:center;gap:.9rem;margin-bottom:1.2rem;padding:1rem 1.2rem;border:1px solid #b9dec7;border-radius:.9rem;background:#edf8f1;color:#235e39}.pam-update-success>i{font-size:1.35rem}.pam-update-success strong,.pam-update-success span{display:block}
+    .pam-update-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,.75fr);gap:1.2rem;align-items:start}.pam-update-card{overflow:hidden;border:1px solid var(--pam-linea)!important;border-radius:14px!important;box-shadow:none!important;background:var(--pam-blanco)}.pam-update-card__header{display:flex;gap:1rem;padding:1.4rem 1.5rem;border-bottom:1px solid var(--pam-linea);background:var(--pam-blanco)}.pam-update-card__header h3,.pam-flow-card h3,.pam-recent-card h3{margin:0;color:var(--pam-tinta);font-size:1.12rem;font-weight:750}.pam-update-card__header p{margin:.2rem 0 0;color:#77706b;font-size:.92rem}.pam-update-step{display:grid;place-items:center;flex:0 0 2.3rem;height:2.3rem;border-radius:50%;background:var(--pam-guinda);color:#fff;font-weight:800}
+    .pam-update-form{padding:1.5rem}.pam-update-fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(210px,.8fr);gap:1rem;margin-bottom:1rem}.pam-field--full{grid-column:1/-1}.pam-field label{display:block;margin-bottom:.4rem;color:#514b47;font-size:.84rem;font-weight:750}.pam-field .form-control{border-color:#d9d1cb;border-radius:.65rem;padding:.7rem .8rem}.pam-field .form-control:focus{border-color:var(--pam-guinda);box-shadow:0 0 0 .2rem rgba(155,34,71,.11)}
+    .pam-validation-summary:empty{display:none}.pam-validation-summary{margin-bottom:1rem;padding:.8rem 1rem;border-left:4px solid #a94442;border-radius:.5rem;background:#fbefee;color:#812f2c}.pam-validation-summary ul{margin:0;padding-left:1.2rem}
+    .pam-dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:220px;padding:1.5rem;border:2px dashed #cdbfc3;border-radius:1rem;background:#fcfaf9;text-align:center;cursor:pointer;transition:.18s ease}.pam-dropzone:hover,.pam-dropzone.is-dragging{border-color:var(--pam-guinda);background:#fbf3f6}.pam-dropzone input{position:absolute;width:1px;height:1px;opacity:0}.pam-dropzone__icon{display:grid;place-items:center;width:3.4rem;height:3.4rem;margin-bottom:.8rem;border-radius:1rem;background:#f1e2e7;color:var(--pam-guinda);font-size:1.35rem}.pam-dropzone strong{color:#403a37;font-size:1.02rem}.pam-dropzone>span:not(.pam-dropzone__icon){margin:.25rem 0;color:var(--pam-guinda);font-weight:750}.pam-dropzone small{color:#807873}
+    .pam-file-selection{margin-top:1rem;padding:1rem;border-radius:.8rem;background:#f7f4f1}.pam-file-selection>div{display:flex;justify-content:space-between;color:#625b57}.pam-file-selection ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem 1rem;margin:.7rem 0 0;padding:0;list-style:none}.pam-file-selection li{overflow:hidden;color:#6c6561;font-size:.82rem;text-overflow:ellipsis;white-space:nowrap}.pam-file-selection li:before{content:'\f15b';margin-right:.45rem;color:var(--pam-guinda);font-family:'Font Awesome 5 Free';font-weight:900}
+    .pam-update-confirmation{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-top:1.2rem}.pam-update-confirmation>div{display:flex;align-items:flex-start;gap:.6rem;max-width:70ch;color:#716a66;font-size:.84rem}.pam-update-confirmation>div i{margin-top:.1rem;color:#39714d}.pam-update-confirmation .btn{flex:0 0 auto;padding:.7rem 1rem}
+    .pam-update-aside{display:grid;gap:1rem}.pam-flow-card{padding:1.3rem;border:1px solid var(--pam-linea)!important;border-radius:14px!important;box-shadow:none!important;background:var(--pam-blanco)}.pam-flow-card ol{display:grid;gap:.2rem;margin:1rem 0 0;padding:0;list-style:none}.pam-flow-card li{display:flex;gap:.8rem;padding:.75rem;border-radius:.7rem;color:#817a75}.pam-flow-card li>span{display:grid;place-items:center;flex:0 0 1.8rem;height:1.8rem;border:1px solid #d7cfca;border-radius:50%;font-weight:800}.pam-flow-card li strong,.pam-flow-card li small{display:block}.pam-flow-card li small{margin-top:.15rem}.pam-flow-card li.is-active{background:#f7eaee;color:var(--pam-guinda)}.pam-flow-card li.is-active>span{border-color:var(--pam-guinda);background:var(--pam-guinda);color:#fff}.pam-format-note{display:flex;gap:.8rem;padding:1rem 1.1rem;border:1px solid #e3d3b9;border-radius:.9rem;background:#fbf7ef;color:#67583f}.pam-format-note i{margin-top:.15rem;color:var(--pam-dorado)}.pam-format-note strong{display:block}.pam-format-note p{margin:.25rem 0 0;font-size:.84rem}
+    .pam-recent-card{margin-top:1.2rem;overflow:hidden;border:1px solid var(--pam-linea)!important;border-radius:14px!important;box-shadow:none!important;background:var(--pam-blanco)}.pam-recent-card__header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.2rem 1.4rem;border-bottom:1px solid var(--pam-linea)}.pam-recent-card__header h3{margin-top:.2rem}.pam-recent-count{padding:.3rem .65rem;border-radius:1rem;background:#f1ece8;color:#635c57;font-size:.78rem;font-weight:750}.pam-recent-empty{display:flex;align-items:center;justify-content:center;gap:1rem;padding:2rem;color:#7d7671}.pam-recent-empty i{font-size:1.6rem;color:var(--pam-dorado)}.pam-recent-empty strong,.pam-recent-empty span{display:block}.pam-recent-table th{padding:.75rem 1rem;background:#f5f1ee;color:#655e5a;font-size:.73rem;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}.pam-recent-table td{padding:.8rem 1rem;border-color:#eee9e5;color:#514b47}.pam-recent-table td strong,.pam-recent-table td small{display:block}.pam-recent-table td small{margin-top:.2rem;color:#837b76;font-size:.74rem}.pam-lot-link{display:block;color:var(--pam-guinda);font-weight:800;text-decoration:none}.pam-lot-link:hover{text-decoration:underline}.pam-files-cell{max-width:390px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pam-lot-status,.pam-mini-status{display:inline-block;padding:.22rem .5rem;border-radius:1rem;background:#e7f2eb;color:#2f6e45;font-size:.7rem;font-weight:800;white-space:nowrap}.pam-mini-status{margin:.12rem;background:#e9edf3;color:#465d79}.pam-mini-status.is-warning{background:#f8eedb;color:#80602a}
+    @@media(max-width:980px){.pam-update-grid{grid-template-columns:1fr}.pam-update-aside{grid-template-columns:1fr 1fr}.pam-update-topbar{align-items:flex-start;flex-direction:column}}
+    @@media(max-width:650px){.pam-update-topbar{padding:1.3rem}.pam-update-fields,.pam-update-aside{grid-template-columns:1fr}.pam-update-confirmation{align-items:stretch;flex-direction:column}.pam-update-confirmation .btn{width:100%}.pam-file-selection ul{grid-template-columns:1fr}}
+</style>
+
+<script>
+    (() => {
+        const input = document.getElementById('pam-files');
+        const dropzone = document.getElementById('pam-dropzone');
+        const selection = document.getElementById('pam-file-selection');
+        const count = document.getElementById('pam-file-count');
+        const size = document.getElementById('pam-file-size');
+        const list = document.getElementById('pam-file-list');
+        const form = document.getElementById('pam-update-form');
+        const submit = document.getElementById('pam-submit');
+
+        const refresh = () => {
+            const files = Array.from(input.files || []);
+            selection.hidden = files.length === 0;
+            count.textContent = `${files.length} archivo${files.length === 1 ? '' : 's'}`;
+            const total = files.reduce((sum, file) => sum + file.size, 0);
+            size.textContent = total < 1048576 ? `${(total / 1024).toFixed(0)} KB` : `${(total / 1048576).toFixed(1)} MB`;
+            list.replaceChildren(...files.map(file => {
+                const item = document.createElement('li');
+                item.textContent = file.name;
+                item.title = file.name;
+                return item;
+            }));
+        };
+
+        input.addEventListener('change', refresh);
+        ['dragenter', 'dragover'].forEach(eventName => dropzone.addEventListener(eventName, event => {
+            event.preventDefault();
+            dropzone.classList.add('is-dragging');
+        }));
+        ['dragleave', 'drop'].forEach(eventName => dropzone.addEventListener(eventName, event => {
+            event.preventDefault();
+            dropzone.classList.remove('is-dragging');
+        }));
+        dropzone.addEventListener('drop', event => {
+            if (event.dataTransfer?.files?.length) {
+                input.files = event.dataTransfer.files;
+                refresh();
+            }
+        });
+        form.addEventListener('submit', () => {
+            submit.disabled = true;
+            submit.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Registrando fuentes…';
+        });
+    })();
+</script>

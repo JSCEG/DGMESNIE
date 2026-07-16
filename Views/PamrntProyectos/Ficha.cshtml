@@ -1,127 +1,964 @@
 @model NSIE.Models.PamrntFichaProyectoViewModel
 
 @{
-    ViewData["Title"] = $"Ficha {Model.Ficha.ClavePem}";
+    ViewData["Title"] = $"Ficha ejecutiva {Model.Ficha.ClavePem}";
+    var detalle = Model.Detalle?.Actual;
+    var panorama = Model.ContextoCartera.Take(8).ToList();
+    var alternativa1 = Model.Ficha.Alternativas.FirstOrDefault(x => x.Recomendada) ?? Model.Ficha.Alternativas.FirstOrDefault();
+    var fechaCorte = detalle?.FechaCorte ?? Model.Proyecto.FechaCorte ?? DateTime.Today;
+    var fuentes = Model.Detalle?.Fuentes?.Count ?? 0;
+    var versiones = Model.Detalle?.Historial?.Count ?? 0;
+    var cambios = Model.Detalle?.Cambios?.Count ?? 0;
+    var recursosVisuales = Model.Diagramas.ToList();
+    var bcTexto = Model.Ficha.RelacionBeneficioCosto > 0 ? Model.Ficha.RelacionBeneficioCosto.ToString("N2") : "En integración";
+    var beneficioTexto = Model.Ficha.BeneficioNetoUsdMiles.HasValue ? $"{Model.Ficha.BeneficioNetoUsdMiles:N0} miles USD" : "En integración";
+    var crecimientoTexto = Model.Ficha.CrecimientoDemandaPorcentaje.HasValue ? $"{Model.Ficha.CrecimientoDemandaPorcentaje:N2}%" : "En integración";
+    var tipoProyecto = string.IsNullOrWhiteSpace(Model.Proyecto.TipoProyecto) ? Model.Ficha.TipoFicha : Model.Proyecto.TipoProyecto;
+    var regionProyecto = string.IsNullOrWhiteSpace(Model.Proyecto.Gcr) ? "Región por definir" : Model.Proyecto.Gcr;
+    var historialVersiones = (Model.Detalle?.Historial ?? new List<NSIE.Models.PamProyectoVersionResumen>())
+        .OrderBy(x => x.NumeroVersion)
+        .TakeLast(12)
+        .ToList();
+    var historialCambios = (Model.Detalle?.Cambios ?? new List<NSIE.Models.PamCambioDetalle>())
+        .OrderByDescending(x => x.FechaRegistroUtc)
+        .Take(12)
+        .ToList();
+    var archivoBase = $"Ficha_{Model.Ficha.ClavePem}_{DateTime.Now:yyyyMMdd}";
+    var seccion01 = $"Sección 01 · {Model.Ficha.ClavePem}";
+    var seccion02 = "Sección 02 · Cierre y trazabilidad";
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+    var esMX = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+
+    // ── Datos para gráficos ECharts (dona de cartera y anillo B/C) ──
+    var datosDona = panorama
+        .Where(p => (p.InversionMdp ?? 0) > 0)
+        .Select(p => new
+        {
+            clave = p.ClavePem,
+            valor = Math.Round(p.InversionMdp ?? 0, 3),
+            activo = string.Equals(p.ClavePem, Model.Ficha.ClavePem, StringComparison.OrdinalIgnoreCase)
+        })
+        .ToList();
+    var totalCartera = datosDona.Sum(d => d.valor);
+    var inversionActiva = datosDona.Where(d => d.activo).Sum(d => d.valor);
+    var pctCartera = totalCartera > 0 ? 100m * inversionActiva / totalCartera : 0;
+    var jsonDona = System.Text.Json.JsonSerializer.Serialize(datosDona);
+    // Cuando la ficha es de un proyecto PAM que no está entre los 8 identificados,
+    // la dona se muestra como referencia de cartera (sin porcentaje del proyecto).
+    var proyectoEnDona = datosDona.Any(d => d.activo);
+    var donaCentroValor = proyectoEnDona ? $"{pctCartera.ToString("N1", inv)}%" : totalCartera.ToString("N0", inv);
+    var donaCentroEtiqueta = proyectoEnDona ? "de la cartera" : "MDP · 8 proyectos";
+
+    // ── Barra de tiempo hacia la fecha necesaria (parsea "abril de 2031") ──
+    DateTime? fechaNecesariaFecha = null;
+    var fnTexto = (Model.Ficha.FechaNecesaria ?? string.Empty).ToLowerInvariant();
+    var mesesNombre = new Dictionary<string, int>
+    {
+        ["enero"] = 1, ["febrero"] = 2, ["marzo"] = 3, ["abril"] = 4, ["mayo"] = 5, ["junio"] = 6,
+        ["julio"] = 7, ["agosto"] = 8, ["septiembre"] = 9, ["octubre"] = 10, ["noviembre"] = 11, ["diciembre"] = 12
+    };
+    foreach (var mes in mesesNombre)
+    {
+        if (!fnTexto.Contains(mes.Key)) continue;
+        var anio = System.Text.RegularExpressions.Regex.Match(fnTexto, @"20\d{2}");
+        if (anio.Success) fechaNecesariaFecha = new DateTime(int.Parse(anio.Value), mes.Value, 1);
+        break;
+    }
+    var inicioPrograma = new DateTime(2026, 1, 1);
+    double? pctTiempo = null;
+    int? mesesRestantes = null;
+    if (fechaNecesariaFecha.HasValue && fechaNecesariaFecha.Value > inicioPrograma)
+    {
+        var totalDias = (fechaNecesariaFecha.Value - inicioPrograma).TotalDays;
+        var transcurrido = (DateTime.Today - inicioPrograma).TotalDays;
+        pctTiempo = Math.Clamp(transcurrido / totalDias * 100.0, 0.0, 100.0);
+        mesesRestantes = Math.Max(0, (int)Math.Round((fechaNecesariaFecha.Value - DateTime.Today).TotalDays / 30.44));
+    }
+
+    // ── Proyección de demanda real para el gráfico ECharts ──
+    // Parte de la demanda máxima observada y la tasa de crecimiento del proyecto;
+    // proyecta año a año y cruza la capacidad en el año de la fecha necesaria.
+    double? demandaBase = null;
+    var demMatch = System.Text.RegularExpressions.Regex.Match(Model.Ficha.DemandaMaxima ?? string.Empty, @"[\d][\d,\.]*");
+    if (demMatch.Success && double.TryParse(demMatch.Value.Replace(",", ""), System.Globalization.NumberStyles.Any, inv, out var db) && db > 0)
+        demandaBase = db;
+    var tasaCrecimiento = (double)(Model.Ficha.CrecimientoDemandaPorcentaje ?? 0) / 100.0;
+    const int anioBaseDemanda = 2025;
+    const int anioFinDemanda = 2040;
+    var anioNecesaria = fechaNecesariaFecha?.Year;
+    var hayGraficoDemanda = demandaBase.HasValue && tasaCrecimiento > 0;
+    var serieDemanda = new List<object[]>();
+    double? capacidadLimite = null;
+    if (hayGraficoDemanda)
+    {
+        for (var a = anioBaseDemanda; a <= anioFinDemanda; a++)
+            serieDemanda.Add(new object[] { a, Math.Round(demandaBase.Value * Math.Pow(1 + tasaCrecimiento, a - anioBaseDemanda)) });
+        var anioCruce = anioNecesaria is >= anioBaseDemanda and <= anioFinDemanda ? anioNecesaria.Value : anioBaseDemanda + 6;
+        capacidadLimite = Math.Round(demandaBase.Value * Math.Pow(1 + tasaCrecimiento, anioCruce - anioBaseDemanda));
+    }
+    var jsonDemanda = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        serie = serieDemanda,
+        limite = capacidadLimite,
+        anioNecesaria,
+        unidad = "MWh/h",
+        etiquetaNecesaria = $"Fecha necesaria · {Model.Ficha.FechaNecesaria}"
+    });
 }
 
-@await Html.PartialAsync("_ViewHeader", Model.Header)
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="~/css/pam-ficha-presentacion.css" asp-append-version="true" />
 
-<div class="container-fluid shell-page-container py-3 pam-ficha-page">
-    <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
-        <a asp-action="Index" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Proyectos identificados</a>
-        <button id="pam-fullscreen" type="button" class="btn btn-primary"><i class="fas fa-expand me-2"></i>Presentar</button>
+<main class="pam-ficha-page" data-filename="@archivoBase" data-project-key="@Model.Ficha.ClavePem">
+    <div class="pam-ficha-toolbar" aria-label="Acciones de la ficha">
+        <a asp-action="Index" class="pam-ficha-toolbar__back">
+            <i class="fas fa-arrow-left" aria-hidden="true"></i><span>Proyectos identificados</span>
+        </a>
+        <div class="pam-ficha-toolbar__title">
+            <strong>@Model.Ficha.ClavePem</strong><span>Ficha ejecutiva navegable</span>
+        </div>
+        <div class="pam-ficha-toolbar__actions">
+            <button type="button" data-export="pdf" title="Descargar ficha en PDF"><i class="fas fa-file-pdf"></i><span>PDF</span></button>
+            <button type="button" data-export="pptx" title="Descargar ficha en PowerPoint"><i class="fas fa-file-powerpoint"></i><span>PPT</span></button>
+            <button type="button" data-fullscreen title="Presentar en pantalla completa"><i class="fas fa-expand"></i><span>Presentar</span></button>
+        </div>
     </div>
 
-    <div id="pam-deck" class="pam-deck">
-        <section class="pam-slide is-active" data-slide>
-            <div class="pam-slide__kicker">PAMRNT 2026-2040 · Prioridad @Model.Proyecto.Prioridad</div>
-            <h1>@Model.Ficha.ClavePem</h1>
-            <h2>@Model.Ficha.Titulo</h2>
-            <div class="pam-slide__rule"></div>
-            <p>@string.Join(" · ", Model.Ficha.Estados)</p>
-            <footer>Ficha ejecutiva construida desde una fuente versionada, independiente del registro SQL.</footer>
-        </section>
+    <div id="pam-deck-shell" class="pam-deck-shell">
+        <div id="pam-deck" class="pam-deck" aria-live="polite">
 
-        <section class="pam-slide" data-slide>
-            <div class="pam-slide__kicker">Decisión ejecutiva</div>
-            <h2>@Model.Ficha.AlternativaSeleccionada</h2>
-            <p class="pam-slide__lead">@Model.Ficha.ResumenEjecutivo</p>
-            <div class="pam-slide__metrics pam-slide__metrics--three">
-                <article><strong>@Model.Ficha.InversionMdp.ToString("N3")</strong><span>MDP 2025</span></article>
-                <article><strong>@Model.Ficha.FechaNecesaria</strong><span>fecha necesaria y factible</span></article>
-                <article><strong>@Model.Ficha.RelacionBeneficioCosto.ToString("N2")</strong><span>relación Beneficio / Costo</span></article>
-            </div>
-            <footer>@Model.Ficha.Fuente</footer>
-        </section>
+            @* ── 01 · Portada (patrón insumo: logos, eyebrow, H1 Patria, clave + regla dorada, banda fotográfica guinda, meta) ── *@
+            <section class="pam-slide pam-slide--cover is-active" data-slide data-label="Portada" data-screen-label="01">
+                <div class="pam-cover__logos">
+                    <img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" />
+                    <i></i>
+                    <img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" />
+                </div>
+                <div class="pam-cover__head">
+                    <div class="pam-cover__eyebrow">Subsecretaría de Planeación y Transición Energética</div>
+                    <h1>Proyectos identificados de ampliación de la RNT</h1>
+                    <div class="pam-cover__row">
+                        <div class="pam-cover__clave">@Model.Ficha.ClavePem</div>
+                        <span class="pam-cover__dash"></span>
+                        <p>@Model.Ficha.Titulo</p>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(Model.Proyecto.EstatusLicitacion))
+                    {
+                        <div class="pam-cover__estatus @NSIE.Models.PamSemaforo.Clase(Model.Proyecto.EstatusLicitacion)">
+                            <i aria-hidden="true"></i>Estatus de licitación: @Model.Proyecto.EstatusLicitacion
+                        </div>
+                    }
+                </div>
+                <div class="pam-cover__photo">
+                    <img src="~/img/pamrnt/reno_portada.png" alt="" aria-hidden="true" />
+                    <i class="pam-cover__goldline"></i>
+                    <i class="pam-cover__shade"></i>
+                </div>
+                <div class="pam-cover__meta">
+                    <div><span>Versión</span><strong>@(detalle?.NumeroVersion ?? 1).0</strong></div>
+                    <div><span>Corte</span><strong>@fechaCorte.ToString("dd 'de' MMMM 'de' yyyy")</strong></div>
+                    <div><span>Prioridad</span><strong>@(Model.Proyecto.Prioridad?.ToString() ?? "—") · @regionProyecto</strong></div>
+                    <div><span>Fuente</span><strong>PAMRNT 2026–2040</strong></div>
+                </div>
+            </section>
 
-        <section class="pam-slide" data-slide>
-            <div class="pam-slide__kicker">Metas físicas</div>
-            <h2>Una red troncal regional con @Model.Ficha.TotalObras componentes.</h2>
-            <p class="pam-slide__lead">@Model.Ficha.CorredorPrincipal</p>
-            <div class="pam-slide__metrics">
-                @foreach (var meta in Model.Ficha.MetasFisicas)
-                {
-                    <article><strong>@meta.Valor</strong><span>@meta.Concepto · @meta.Unidad</span></article>
-                }
-            </div>
-            <footer>Valores reportados por la ficha I26-PE1 del PAMRNT 2026-2040.</footer>
-        </section>
+            @* ── 02 · Índice navegable (patrón insumo: grupos numerados + líderes punteados + folio mono) ── *@
+            <section class="pam-slide pam-slide--content pam-slide--index" data-slide data-label="Índice" data-screen-label="02">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                        Contenido
+                    </span>
+                    <span class="pam-lamina-head__aside">Índice navegable</span>
+                </header>
+                <h2 class="pam-lamina-title is-guinda">Índice</h2>
+                <div class="pam-lamina-body pam-index">
+                    <button type="button" class="pam-index__group" data-goto="2"><b>01</b><span>El proyecto</span></button>
+                    <button type="button" class="pam-index__entry" data-goto="3"><span>Decisión ejecutiva</span><i></i><small>04</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="4"><span>Panorama del PAMRNT 2026–2040</span><i></i><small>05</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="5"><span>Diagnóstico operativo</span><i></i><small>06</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="6"><span>Pronóstico e impacto regional</span><i></i><small>07</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="7"><span>Riesgos y dependencias</span><i></i><small>08</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="8"><span>Alternativas de solución</span><i></i><small>09</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="9"><span>Comparativa de confiabilidad</span><i></i><small>10</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="10"><span>Evaluación económica</span><i></i><small>11</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="11"><span>Diagramas y geoespacial</span><i></i><small>12</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="12"><span>Fases y licitación</span><i></i><small>13</small></button>
+                    <button type="button" class="pam-index__group" data-goto="13"><b>02</b><span>Cierre y trazabilidad</span></button>
+                    <button type="button" class="pam-index__entry" data-goto="14"><span>Conclusión ejecutiva</span><i></i><small>15</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="15"><span>Trazabilidad metodológica</span><i></i><small>16</small></button>
+                    <button type="button" class="pam-index__group" data-goto="16"><b>03</b><span>Anexos</span></button>
+                    <button type="button" class="pam-index__entry" data-goto="17"><span>Historial de versiones</span><i></i><small>18</small></button>
+                    <button type="button" class="pam-index__entry" data-goto="18"><span>Línea de tiempo de modificaciones</span><i></i><small>19</small></button>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Documento en dos secciones y un cierre de referencia. En pantalla, cada entrada salta a su lámina.</span>
+                    <span class="pam-lamina-foot__meta">02</span>
+                </div>
+            </section>
 
-        <section class="pam-slide" data-slide>
-            <div class="pam-slide__kicker">Control de calidad</div>
-            <h2>Pendientes antes de cerrar la presentación.</h2>
-            <ol class="pam-slide__list">
-                @foreach (var pendiente in Model.Ficha.PendientesValidacion)
-                {
-                    <li>@pendiente</li>
-                }
-            </ol>
-            <div class="pam-db-status">
-                <span>Estado en Informe Pormenorizado</span>
-                <strong>@(Model.Proyecto.EnBaseInformePormenorizado == true ? $"Encontrado · {Model.Proyecto.EtapaBase}" : Model.Proyecto.EnBaseInformePormenorizado == false ? "No encontrado" : "Sin consulta disponible")</strong>
-            </div>
-            <footer>Siguiente iteración: cronograma generación-transmisión y mapa con capas CDN.</footer>
-        </section>
+            @* ── 03 · Divisoria Sección 01 (patrón insumo: barra guinda, número gigante, kicker con punto, Patria, regla dorada) ── *@
+            <section class="pam-slide pam-slide--divider" data-slide data-label="Sección 01" data-screen-label="03">
+                <i class="pam-divider__bar" aria-hidden="true"></i>
+                <div class="pam-divider__logos">
+                    <img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" />
+                    <i></i>
+                    <img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" />
+                </div>
+                <button type="button" class="pam-home pam-divider__home" data-goto="1" title="Volver al índice">
+                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg>
+                </button>
+                <div class="pam-divider__big" aria-hidden="true">01</div>
+                <div class="pam-divider__kicker"><span></span>Sección 01 · @tipoProyecto</div>
+                <h1>@Model.Ficha.ClavePem</h1>
+                <div class="pam-divider__sub">
+                    <i></i>
+                    <p>@Model.Ficha.Titulo · @regionProyecto</p>
+                </div>
+            </section>
 
-        <nav class="pam-deck__nav" aria-label="Navegación de la ficha">
-            <button id="pam-prev" type="button" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button>
-            <span id="pam-counter">1 / 4</span>
-            <button id="pam-next" type="button" aria-label="Siguiente"><i class="fas fa-chevron-right"></i></button>
-        </nav>
+            @* ── 04 · Decisión ejecutiva ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Decisión ejecutiva" data-screen-label="04">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Decisión ejecutiva</span>
+                </header>
+                <h2 class="pam-lamina-title">Proyecto recomendado: @Model.Ficha.AlternativaSeleccionada.</h2>
+                <div class="pam-lamina-body">
+                    <p class="pam-lead">@Model.Ficha.ResumenEjecutivo</p>
+                    <div class="pam-metrics pam-metrics--four">
+                        <article><span>Inversión</span><strong>@Model.Ficha.InversionMdp.ToString("N3")</strong><small>MDP 2025</small></article>
+                        <article><span>Fecha necesaria</span><strong>@Model.Ficha.FechaNecesaria</strong><small>necesaria y factible</small></article>
+                        <article><span>Beneficio / Costo</span><strong>@bcTexto</strong><small>pesos por peso invertido</small></article>
+                        <article><span>Obras</span><strong>@Model.Ficha.TotalObras</strong><small>componentes asociados</small></article>
+                    </div>
+                    <div class="pam-decision-strip"><strong>Recomendación</strong><span>@Model.Ficha.RecomendacionEjecutiva</span></div>
+                    @if (pctTiempo.HasValue)
+                    {
+                        <div class="pam-timebar">
+                            <div class="pam-timebar__head">
+                                <span>Ruta a la fecha necesaria</span>
+                                <strong>@Model.Ficha.FechaNecesaria · @mesesRestantes meses restantes</strong>
+                            </div>
+                            <div class="pam-timebar__track"><i style="width:@pctTiempo.Value.ToString("F1", inv)%"></i></div>
+                            <div class="pam-timebar__scale">
+                                <span>Inicio del ejercicio · 2026</span>
+                                <span>@pctTiempo.Value.ToString("N0")% del plazo transcurrido</span>
+                                <span>@Model.Ficha.FechaNecesaria</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>@Model.Ficha.Fuente</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        04
+                    </span>
+                </div>
+            </section>
+
+            @* ── 05 · Panorama ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Panorama" data-screen-label="05">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Panorama PAMRNT 2026–2040</span>
+                </header>
+                <h2 class="pam-lamina-title">Ocho proyectos identificados de ampliación de la RNT.</h2>
+                <div class="pam-lamina-body pam-panorama">
+                    <table class="pam-table pam-table--portfolio">
+                        <thead>
+                            <tr><th>Prioridad</th><th>Clave</th><th>Proyecto</th><th>Región</th><th>Inversión MDP</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in panorama)
+                            {
+                                <tr class="@(string.Equals(item.ClavePem, Model.Ficha.ClavePem, StringComparison.OrdinalIgnoreCase) ? "is-highlighted" : null)">
+                                    <td>@item.Prioridad</td>
+                                    <td>@item.ClavePem</td>
+                                    <td>@item.Proyecto</td>
+                                    <td>@item.Gcr</td>
+                                    <td>@(item.InversionMdp?.ToString("N3") ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    <aside class="pam-panorama__aside">
+                        <div class="pam-chart-caption">Peso en la inversión de la cartera</div>
+                        <div id="pam-chart-dona" class="pam-chart-dona"></div>
+                        @if (proyectoEnDona)
+                        {
+                            <p class="pam-chart-note"><strong>@Model.Ficha.ClavePem</strong> representa el <strong>@pctCartera.ToString("N1")%</strong> de los @totalCartera.ToString("N3") MDP de los ocho proyectos identificados.</p>
+                        }
+                        else
+                        {
+                            <p class="pam-chart-note"><strong>@Model.Ficha.ClavePem</strong> pertenece a la cartera PAM; la dona muestra, como referencia, los ocho proyectos identificados del PAMRNT 2026–2040.</p>
+                        }
+                    </aside>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Fuente SQL: repositorio histórico PAM/PAMRNT · corte @fechaCorte.ToString("yyyy-MM-dd"). Cuadro 8.4.3 del PAMRNT 2026–2040.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        05
+                    </span>
+                </div>
+            </section>
+
+            @* ── 06 · Diagnóstico operativo ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="El problema" data-screen-label="06">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Diagnóstico operativo</span>
+                </header>
+                <h2 class="pam-lamina-title">Problema y ámbito: @Model.Ficha.CorredorPrincipal.</h2>
+                <div class="pam-lamina-body pam-problem">
+                    <div class="pam-problem__layout">
+                        <div class="pam-problem__corridor" aria-label="Ámbito del proyecto">
+                            <div class="pam-corridor-line"></div>
+                            @for (var i = 0; i < Math.Min(5, Model.Ficha.Estados.Count); i++)
+                            {
+                                <span style="--i:@i">@Model.Ficha.Estados[i]</span>
+                            }
+                        </div>
+                        <div>
+                            <p class="pam-lead">@Model.Ficha.DiagnosticoOperativo</p>
+                            <div class="pam-alert-card"><strong>Fecha necesaria</strong><span>@Model.Ficha.FechaNecesaria</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>PAMRNT 2026–2040 · Ficha @Model.Ficha.ClavePem, diagnóstico operativo.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        06
+                    </span>
+                </div>
+            </section>
+
+            @* ── 07 · Pronóstico ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Pronóstico" data-screen-label="07">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Pronóstico e impacto regional</span>
+                </header>
+                <h2 class="pam-lamina-title">La demanda crece y el proyecto refuerza la capacidad de su región.</h2>
+                <div class="pam-lamina-body">
+                    <div class="pam-forecast">
+                        <div class="pam-forecast__chart">
+                            @if (hayGraficoDemanda)
+                            {
+                                <div id="pam-chart-demanda" class="pam-chart-demanda"></div>
+                            }
+                            else
+                            {
+                                <div class="pam-forecast__sindatos">
+                                    <i class="fas fa-chart-line" aria-hidden="true"></i>
+                                    <strong>Pronóstico de demanda en integración</strong>
+                                    <span>La curva se generará automáticamente al registrar la demanda máxima observada y la tasa de crecimiento del proyecto.</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="pam-forecast__facts">
+                            <article><strong>@crecimientoTexto</strong><span>crecimiento medio anual a 2030</span></article>
+                            <article><strong>@Model.Ficha.DemandaMaxima</strong><span>demanda máxima observada</span></article>
+                            <p>@Model.Ficha.PronosticoDemanda</p>
+                        </div>
+                    </div>
+                    @if (Model.ImpactoRegional?.TieneDatos == true)
+                    {
+                        var ir = Model.ImpactoRegional;
+                        <div class="pam-impacto">
+                            <div class="pam-impacto__titulo">Contribución del proyecto en la GCR @ir.Region · @ir.TotalProyectos proyectos vigentes</div>
+                            <div class="pam-impacto__barras">
+                                <div class="pam-impacto__barra">
+                                    <span>Inversión</span>
+                                    <div class="pam-impacto__track"><i style="width:@(Math.Clamp(ir.PorcentajeInversion, 0, 100).ToString("F1", inv))%"></i></div>
+                                    <strong>@ir.PorcentajeInversion.ToString("N1")%</strong>
+                                    <small>@ir.InversionProyecto.ToString("N0") de @ir.InversionRegion.ToString("N0") MDP</small>
+                                </div>
+                                <div class="pam-impacto__barra">
+                                    <span>Transmisión</span>
+                                    <div class="pam-impacto__track"><i style="width:@(Math.Clamp(ir.PorcentajeKmC, 0, 100).ToString("F1", inv))%"></i></div>
+                                    <strong>@ir.PorcentajeKmC.ToString("N1")%</strong>
+                                    <small>@((ir.KmCProyecto ?? 0).ToString("N1")) de @ir.KmCRegion.ToString("N1") km-C</small>
+                                </div>
+                                <div class="pam-impacto__barra">
+                                    <span>Transformación</span>
+                                    <div class="pam-impacto__track"><i style="width:@(Math.Clamp(ir.PorcentajeMva, 0, 100).ToString("F1", inv))%"></i></div>
+                                    <strong>@ir.PorcentajeMva.ToString("N1")%</strong>
+                                    <small>@((ir.MvaProyecto ?? 0).ToString("N0")) de @ir.MvaRegion.ToString("N0") MVA</small>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>PAMRNT 2026–2040 · escenario de Planeación · agregados de la GCR desde la cartera vigente.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        07
+                    </span>
+                </div>
+            </section>
+
+            @* ── 08 · Riesgos ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Riesgos y dependencias" data-screen-label="08">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Riesgos y dependencias</span>
+                </header>
+                <h2 class="pam-lamina-title">Qué puede fallar, cuál es su impacto y cómo mitigarlo.</h2>
+                <div class="pam-lamina-body">
+                    <div class="pam-risk-grid">
+                        @foreach (var riesgo in Model.Ficha.Riesgos)
+                        {
+                            <article>
+                                <i class="fas fa-triangle-exclamation"></i>
+                                <h3>@riesgo.Riesgo</h3>
+                                <p>@riesgo.Impacto</p>
+                                <div><strong>Mitigación</strong><span>@riesgo.Mitigacion</span></div>
+                            </article>
+                        }
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>PAMRNT 2026–2040 · diagnóstico operativo y alternativas de solución.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        08
+                    </span>
+                </div>
+            </section>
+
+            @* ── 09 · Alternativas ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Alternativas" data-screen-label="09">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Alternativas de solución</span>
+                </header>
+                <h2 class="pam-lamina-title">Opciones técnicas registradas para el alcance del proyecto.</h2>
+                <div class="pam-lamina-body">
+                    <div class="pam-alternatives">
+                        @foreach (var alternativa in Model.Ficha.Alternativas)
+                        {
+                            <article class="@(alternativa.Recomendada ? "is-recommended" : null)">
+                                @if (alternativa.Recomendada)
+                                {
+                                    <span class="pam-recommended">Recomendada</span>
+                                }
+                                <small>@alternativa.Nombre</small>
+                                <h3>@alternativa.Tecnologia</h3>
+                                <strong>@alternativa.InversionMdp.ToString("N3") <em>MDP 2025</em></strong>
+                                <p>@alternativa.Alcance</p>
+                                <div>@alternativa.Ventaja</div>
+                            </article>
+                        }
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>PAMRNT 2026–2040 · Ficha @Model.Ficha.ClavePem, alternativas de solución.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        09
+                    </span>
+                </div>
+            </section>
+
+            @* ── 10 · Comparativa ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Comparativa" data-screen-label="10">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Comparativa de confiabilidad</span>
+                </header>
+                <h2 class="pam-lamina-title">Comparación trazable entre alternativas o alcance vigente.</h2>
+                <div class="pam-lamina-body">
+                    <table class="pam-table pam-table--comparison">
+                        <thead>
+                            <tr><th>Criterio</th><th>Opción 1</th><th>Opción 2</th><th>Favorable</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var fila in Model.Ficha.Comparativa)
+                            {
+                                <tr>
+                                    <th>@fila.Criterio</th>
+                                    <td>@fila.Alternativa1</td>
+                                    <td>@fila.Alternativa2</td>
+                                    <td><span>@fila.Favorable</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>PAMRNT 2026–2040 · Cuadro 8.4.6.10.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        10
+                    </span>
+                </div>
+            </section>
+
+            @* ── 11 · Evaluación económica ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Evaluación económica" data-screen-label="11">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Evaluación económica</span>
+                </header>
+                <h2 class="pam-lamina-title">Indicadores económicos del alcance vigente.</h2>
+                <div class="pam-lamina-body pam-economics">
+                    <div class="pam-economics__layout">
+                        @if (Model.Ficha.RelacionBeneficioCosto > 0)
+                        {
+                            <div id="pam-chart-bc" class="pam-chart-bc" data-etiqueta="@(alternativa1?.Nombre ?? "Alcance vigente")"></div>
+                        }
+                        else
+                        {
+                            <div class="pam-benefit-ring"><span>Relación B/C</span><strong>@bcTexto</strong><small>@(alternativa1?.Nombre ?? "Alcance vigente")</small></div>
+                        }
+                        <div class="pam-economics__facts">
+                            <article><span>Inversión seleccionada</span><strong>@Model.Ficha.InversionMdp.ToString("N3") MDP</strong></article>
+                            <article><span>Beneficio neto</span><strong>@beneficioTexto</strong></article>
+                            <p>@Model.Ficha.NotaEvaluacionEconomica</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>PAMRNT 2026–2040 · Cuadro 8.4.6.9 · valor presente 2028.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        11
+                    </span>
+                </div>
+            </section>
+
+            @* ── 12 · Diagramas y geoespacial (recursos BD) ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Diagramas y geoespacial" data-screen-label="12">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Recursos técnicos del proyecto</span>
+                </header>
+                <h2 class="pam-lamina-title">Diagrama unifilar, mapa geoespacial y lámina C7U según disponibilidad.</h2>
+                <div class="pam-lamina-body pam-network">
+                    @if (recursosVisuales.Count > 0)
+                    {
+                        <div class="pam-assets-grid @(recursosVisuales.Count == 1 ? "is-single" : null)">
+                            @foreach (var recurso in recursosVisuales.Take(3))
+                            {
+                                <article class="pam-asset-card">
+                                    <div class="pam-asset-card__media">
+                                        @if (!string.IsNullOrWhiteSpace(recurso.Url))
+                                        {
+                                            <img src="@recurso.Url" alt="@(string.IsNullOrWhiteSpace(recurso.AltText) ? recurso.Titulo : recurso.AltText)" />
+                                        }
+                                        else
+                                        {
+                                            <div class="pam-asset-card__placeholder"><i class="fas fa-image"></i><span>Recurso pendiente</span></div>
+                                        }
+                                    </div>
+                                    <div class="pam-asset-card__caption">
+                                        <strong>@recurso.Titulo</strong>
+                                        <span>@recurso.Descripcion</span>
+                                    </div>
+                                </article>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="pam-network__canvas pam-network__canvas--placeholder">
+                            <div class="pam-empty-resource"><i class="fas fa-map-location-dot"></i><strong>Recursos visuales pendientes</strong><span>La ficha reserva este espacio para diagrama unifilar, geoespacial, lámina C7U, ambos o ninguno. Se activará automáticamente al registrar el PNG o URL en la base de datos.</span></div>
+                            <div class="pam-network__badge"><strong>@Model.Ficha.TotalObras</strong><span>obras / relaciones registradas</span></div>
+                        </div>
+                    }
+                    <div class="pam-physical-metrics">
+                        @foreach (var meta in Model.Ficha.MetasFisicas)
+                        {
+                            <article><strong>@meta.Valor</strong><span>@meta.Concepto</span><small>@meta.Unidad</small></article>
+                        }
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Recursos leídos desde dgmesnie.PAMProyectoFichaRecurso cuando existan; de lo contrario se conserva el espacio institucional.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        12
+                    </span>
+                </div>
+            </section>
+
+            @* ── 13 · Fases constructivas y estatus de licitación ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Fases y licitación" data-screen-label="13">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Fases y licitación</span>
+                </header>
+                <h2 class="pam-lamina-title">Fases constructivas, estatus de licitación y empalme con la fecha necesaria.</h2>
+                <div class="pam-lamina-body">
+                    @{ var emp = Model.Empalme; }
+                    <div class="pam-empalme @emp.Clase" aria-label="Empalme de cronograma: fecha necesaria contra red lista">
+                        <div class="pam-empalme__linea">
+                            <div class="pam-empalme__hito">
+                                <span>Fecha necesaria</span>
+                                <strong title="@emp.FechaNecesariaTexto">@(emp.FechaNecesaria?.ToString("MMM yyyy", esMX) ?? (string.IsNullOrWhiteSpace(emp.FechaNecesariaTexto) ? "—" : emp.FechaNecesariaTexto))</strong>
+                            </div>
+                            <div class="pam-empalme__gap">
+                                @if (emp.Evaluable)
+                                {
+                                    <b>@(emp.DeltaMeses > 0 ? "+" : "")@emp.DeltaMeses meses</b>
+                                }
+                                <i aria-hidden="true"></i>
+                            </div>
+                            <div class="pam-empalme__hito is-feo">
+                                <span>Red lista · FEO factible</span>
+                                <strong title="@emp.FeoFactibleTexto">@(emp.FeoFactible?.ToString("MMM yyyy", esMX) ?? (string.IsNullOrWhiteSpace(emp.FeoFactibleTexto) ? "—" : emp.FeoFactibleTexto))</strong>
+                            </div>
+                        </div>
+                        <div class="pam-empalme__veredicto">
+                            <i aria-hidden="true"></i>
+                            <div><strong>@emp.Nivel</strong><small>@emp.Resumen</small></div>
+                        </div>
+                    </div>
+                    <div class="pam-licitacion">
+                        <div class="pam-fases">
+                            @if (Model.Fases.Count > 0)
+                            {
+                                <div class="pam-chart-caption">Fases detectadas en el corte vigente</div>
+                                <ol class="pam-fases__lista">
+                                    @foreach (var fase in Model.Fases)
+                                    {
+                                        <li class="@fase.EstatusClase">
+                                            <i aria-hidden="true"></i>
+                                            <div>
+                                                <span>@fase.Etiqueta @(string.IsNullOrWhiteSpace(fase.Feo) ? null : $"· FEO {fase.Feo}")</span>
+                                                <strong>@fase.EstatusTexto</strong>
+                                                <small>Semáforo: @fase.EstatusSemaforo</small>
+                                            </div>
+                                        </li>
+                                    }
+                                </ol>
+                            }
+                            else
+                            {
+                                <div class="pam-chart-caption">Proyecto de fase única</div>
+                                <div class="pam-fases__unica @NSIE.Models.PamSemaforo.Clase(Model.Proyecto.EstatusLicitacion)">
+                                    <i aria-hidden="true"></i>
+                                    <div>
+                                        <strong>@(string.IsNullOrWhiteSpace(Model.Proyecto.EstatusLicitacion) ? "Por clasificar" : Model.Proyecto.EstatusLicitacion)</strong>
+                                        <small>@(string.IsNullOrWhiteSpace(Model.Proyecto.EtapaProyecto) ? "Etapa sin registrar en el corte vigente." : Model.Proyecto.EtapaProyecto)</small>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="pam-licitacion__datos">
+                            <article>
+                                <span>Avance de ejecución</span>
+                                <strong>@(detalle?.PorcentajeAvanceEjecucion?.ToString("N2") ?? "—")%</strong>
+                                <div class="pam-avance"><i style="width:@(Math.Clamp(detalle?.PorcentajeAvanceEjecucion ?? 0, 0, 100).ToString("F1", inv))%"></i></div>
+                            </article>
+                            <article><span>FEO indicada (oficio SENER)</span><strong>@(string.IsNullOrWhiteSpace(detalle?.FeoIndicadaOficioSener) ? "—" : detalle.FeoIndicadaOficioSener)</strong></article>
+                            <article><span>FEO factible</span><strong>@(string.IsNullOrWhiteSpace(detalle?.FeoFactible) ? "—" : detalle.FeoFactible)</strong></article>
+                            <article><span>Año de instrucción</span><strong>@(detalle?.AnioInstruccion?.ToString() ?? "—")</strong></article>
+                            <article><span>Financiamiento</span><strong>@(string.IsNullOrWhiteSpace(detalle?.TipoFinanciamiento) ? "—" : detalle.TipoFinanciamiento)</strong></article>
+                            <article><span>Región</span><strong>@regionProyecto</strong></article>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Estatus derivado del Informe Pormenorizado vigente (dgmesnie.PAMEstatusMapeo). Las fases con relaciones documentadas se incorporarán como jerarquía 'Fase de'.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        13
+                    </span>
+                </div>
+            </section>
+
+            @* ── 14 · Divisoria Sección 02 ── *@
+            <section class="pam-slide pam-slide--divider" data-slide data-label="Sección 02" data-screen-label="14">
+                <i class="pam-divider__bar" aria-hidden="true"></i>
+                <div class="pam-divider__logos">
+                    <img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" />
+                    <i></i>
+                    <img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" />
+                </div>
+                <button type="button" class="pam-home pam-divider__home" data-goto="1" title="Volver al índice">
+                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg>
+                </button>
+                <div class="pam-divider__big" aria-hidden="true">02</div>
+                <div class="pam-divider__kicker"><span></span>Sección 02</div>
+                <h1>Cierre y trazabilidad</h1>
+                <div class="pam-divider__sub">
+                    <i></i>
+                    <p>Conclusión ejecutiva, próximos pasos y evidencia documental del repositorio maestro.</p>
+                </div>
+            </section>
+
+            @* ── 15 · Conclusión ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Conclusión" data-screen-label="15">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion02</span>
+                    <span class="pam-lamina-head__aside">Conclusión ejecutiva</span>
+                </header>
+                <h2 class="pam-lamina-title">Conclusión ejecutiva para @Model.Ficha.ClavePem.</h2>
+                <div class="pam-lamina-body pam-conclusion">
+                    <p class="pam-lead">@Model.Ficha.ConclusionEjecutiva</p>
+                    <div class="pam-conclusion__grid">
+                        <article><i class="fas fa-bolt"></i><strong>Alcance</strong><span>@Model.Ficha.AlternativaSeleccionada</span></article>
+                        <article><i class="fas fa-location-dot"></i><strong>Beneficio regional</strong><span>@Model.Ficha.CorredorPrincipal</span></article>
+                        <article><i class="fas fa-chart-line"></i><strong>Rentabilidad</strong><span>Relación B/C: @bcTexto.</span></article>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>PAMRNT 2026–2040 · conclusión de la alternativa seleccionada.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        15
+                    </span>
+                </div>
+            </section>
+
+            @* ── 16 · Trazabilidad ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Trazabilidad" data-screen-label="16">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion02</span>
+                    <span class="pam-lamina-head__aside">Trazabilidad metodológica</span>
+                </header>
+                <h2 class="pam-lamina-title">Una ficha reproducible desde la cartera maestra y sus fuentes.</h2>
+                <div class="pam-lamina-body pam-trace">
+                    <div class="pam-trace__layout">
+                        <ol>
+                            @foreach (var paso in Model.Ficha.ProximosPasos)
+                            {
+                                <li>@paso</li>
+                            }
+                        </ol>
+                        <div class="pam-trace__cards">
+                            <article><span>Proyecto SQL</span><strong>ID @Model.Proyecto.ProyectoId</strong><small>versión @(detalle?.NumeroVersion ?? 1)</small></article>
+                            <article><span>Trazabilidad</span><strong>@versiones versiones</strong><small>@cambios cambios históricos</small></article>
+                            <article><span>Evidencia</span><strong>@fuentes fuentes</strong><small>corte @fechaCorte.ToString("yyyy-MM-dd")</small></article>
+                            <article><span>Estado</span><strong>@Model.Proyecto.EstadoVigenciaCartera</strong><small>@Model.Proyecto.EtapaProyecto</small></article>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Fuente principal: @Model.Ficha.Fuente</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        16
+                    </span>
+                </div>
+            </section>
+
+            @* ── 17 · Divisoria Sección 03 · Anexos ── *@
+            <section class="pam-slide pam-slide--divider" data-slide data-label="Sección 03" data-screen-label="17">
+                <i class="pam-divider__bar" aria-hidden="true"></i>
+                <div class="pam-divider__logos">
+                    <img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" />
+                    <i></i>
+                    <img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" />
+                </div>
+                <button type="button" class="pam-home pam-divider__home" data-goto="1" title="Volver al índice">
+                    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg>
+                </button>
+                <div class="pam-divider__big" aria-hidden="true">03</div>
+                <div class="pam-divider__kicker"><span></span>Sección 03</div>
+                <h1>Anexos</h1>
+                <div class="pam-divider__sub">
+                    <i></i>
+                    <p>Historial de versiones y línea de tiempo de modificaciones del repositorio maestro.</p>
+                </div>
+            </section>
+
+            @* ── 18 · Anexo A: Historial de versiones ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Historial de versiones" data-screen-label="18">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">Sección 03 · Anexos</span>
+                    <span class="pam-lamina-head__aside">Anexo A · Historial de versiones</span>
+                </header>
+                <h2 class="pam-lamina-title">Todas las versiones del proyecto en la cartera maestra.</h2>
+                <div class="pam-lamina-body">
+                    @if (historialVersiones.Count == 0)
+                    {
+                        <div class="pam-annex-empty">
+                            <i class="fas fa-clock-rotate-left"></i>
+                            <strong>No hay versiones históricas registradas.</strong>
+                            <span>Cada aplicación de paquete documental generará aquí una nueva versión con su fuente y corte.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="pam-table pam-table--annex">
+                            <thead>
+                                <tr><th>Versión</th><th>Vigencia</th><th>Estado</th><th>Fuente documental</th><th>Corte</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var version in historialVersiones)
+                                {
+                                    <tr class="@(version.EsVersionVigente ? "is-highlighted" : null)">
+                                        <td>V@(version.NumeroVersion)</td>
+                                        <td>@(version.EsVersionVigente ? "Vigente" : "Histórica")</td>
+                                        <td>@version.EstadoVigenciaCartera</td>
+                                        <td>@version.FuenteDocumento</td>
+                                        <td>@version.FechaCorte.ToString("yyyy-MM-dd")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Versiones leídas de dgmesnie.PAMProyectoVersion; las anteriores nunca se eliminan, permanecen para auditoría.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        18
+                    </span>
+                </div>
+            </section>
+
+            @* ── 19 · Anexo B: Línea de tiempo de modificaciones ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Línea de tiempo" data-screen-label="19">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">Sección 03 · Anexos</span>
+                    <span class="pam-lamina-head__aside">Anexo B · Línea de tiempo</span>
+                </header>
+                <h2 class="pam-lamina-title">Trazabilidad del seguimiento: qué cambió, cuándo y desde qué fuente.</h2>
+                <div class="pam-lamina-body">
+                    @if (historialCambios.Count == 0)
+                    {
+                        <div class="pam-annex-empty">
+                            <i class="fas fa-timeline"></i>
+                            <strong>No hay cambios detallados capturados.</strong>
+                            <span>Al aplicar cada actualización del Informe Pormenorizado, sus diferencias quedarán aquí con antes, después y fuente.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        var gruposCambios = historialCambios
+                            .GroupBy(c => new { c.FechaCorte, c.FuenteDocumento })
+                            .OrderByDescending(g => g.Key.FechaCorte)
+                            .ToList();
+                        <ol class="pam-trace-log">
+                            @foreach (var grupo in gruposCambios)
+                            {
+                                <li class="pam-trace-log__item">
+                                    <div class="pam-trace-log__hito">
+                                        <time>@grupo.Key.FechaCorte.ToString("dd MMM yyyy", esMX)</time>
+                                        <span title="@grupo.Key.FuenteDocumento">@grupo.Key.FuenteDocumento</span>
+                                    </div>
+                                    <div class="pam-trace-log__cambios">
+                                        @foreach (var c in grupo)
+                                        {
+                                            if (c.EsAlta)
+                                            {
+                                                <div class="pam-trace-chip is-alta"><b>Alta en la cartera</b><span>Fotografía inicial del proyecto</span></div>
+                                            }
+                                            else
+                                            {
+                                                <div class="pam-trace-chip">
+                                                    <b>@c.CampoEtiqueta</b>
+                                                    <span class="pam-trace-diff">
+                                                        <del title="@c.AntesLimpio">@c.AntesLimpio</del>
+                                                        <i aria-hidden="true">→</i>
+                                                        <ins title="@c.DespuesLimpio">@c.DespuesLimpio</ins>
+                                                    </span>
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ol>
+                    }
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Historial reconstruido desde dgmesnie.PAMCambio; cada bloque corresponde a una actualización aplicada con su fuente y corte.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        19
+                    </span>
+                </div>
+            </section>
+
+            @* ── 20 · Contraportada (patrón insumo: mujer, banda Gracias, divisor dorado, social, código, QR) ── *@
+            <section class="pam-slide pam-slide--back" data-slide data-label="Contraportada" data-screen-label="20">
+                <div class="pam-back__top">
+                    <button type="button" class="pam-home" data-goto="1" title="Volver al índice">
+                        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg>
+                    </button>
+                    <div class="pam-back__logos">
+                        <img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" />
+                        <i></i>
+                        <img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" />
+                    </div>
+                </div>
+                <div class="pam-back__body">
+                    <img class="pam-back__figure" src="~/img/pamrnt/mujer.png" alt="" aria-hidden="true" />
+                    <div class="pam-back__center">
+                        <div class="pam-back__band"><span>Gracias</span></div>
+                        <div class="pam-back__divider"><span></span><i></i><span></span></div>
+                        <p>A todas y todos los que hacen posible, con energía y compromiso, construir un México más justo, soberano y sostenible.</p>
+                    </div>
+                </div>
+                <div class="pam-back__goldline"></div>
+                <div class="pam-back__footer">
+                    <div class="pam-back__institution">
+                        <strong>Secretaría de Energía</strong>
+                        <span>Subsecretaría de Planeación y Transición Energética</span>
+                        <div class="pam-back__social">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-label="Facebook"><path d="M13.5 9H16l.4-3H13.5V4.2c0-.85.25-1.4 1.5-1.4h1.5V.1C16.1.07 15.1 0 14 0c-2.35 0-3.9 1.42-3.9 4.03V6H7.5v3h2.6v9h3.4V9z"></path></svg>
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-label="X"><path d="M18.24 2H21.5l-7.5 8.57L22.5 22h-6.9l-4.62-6.04L5.6 22H2.34l8.02-9.17L1.5 2h6.97l4.18 5.52L18.24 2zm-1.2 18h1.92L7.04 4H5.0l12.04 16z"></path></svg>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Instagram"><rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.4" cy="6.6" r="1.1" fill="currentColor" stroke="none"></circle></svg>
+                            <svg width="21" height="18" viewBox="0 0 24 24" fill="currentColor" aria-label="YouTube"><path d="M23 7.5s-.2-1.6-.9-2.3c-.9-.95-1.85-.95-2.3-1C16.9 4 12 4 12 4s-4.9 0-7.8.2c-.45.05-1.4.05-2.3 1C1.2 5.9 1 7.5 1 7.5S.8 9.4.8 11.3v1.3C.8 14.5 1 16.4 1 16.4s.2 1.6.9 2.3c.9.95 2.1.92 2.6 1.02C7.2 19.9 12 20 12 20s4.9 0 7.8-.2c.45-.05 1.4-.05 2.3-1 .7-.7.9-2.3.9-2.3s.2-1.9.2-3.8v-1.3c0-1.9-.2-3.8-.2-3.8zM9.8 14.8V8.9l5.1 2.95-5.1 2.95z"></path></svg>
+                            <i></i>
+                            <b>gob.mx/sener</b>
+                        </div>
+                        <div class="pam-back__barcode"></div>
+                        <div class="pam-back__code">SENER·PAMRNT·@Model.Ficha.ClavePem·@DateTime.Now.Year</div>
+                    </div>
+                    <div class="pam-back__qrblock">
+                        <div class="pam-back__qrtext">
+                            <strong>Conoce el programa completo</strong>
+                            <span>Escanea el código y visita el portal de la SENER.</span>
+                        </div>
+                        <div class="pam-back__qr" aria-hidden="true">
+                            <span style="grid-column:1/3;grid-row:1/3;"></span><span style="grid-column:6/8;grid-row:1/3;"></span><span style="grid-column:4;grid-row:2;"></span><span style="grid-column:1/3;grid-row:6/8;"></span><span style="grid-column:3;grid-row:4;"></span><span style="grid-column:5;grid-row:5;"></span><span style="grid-column:4;grid-row:6;"></span><span style="grid-column:6;grid-row:5;"></span><span style="grid-column:7;grid-row:4;"></span><span style="grid-column:5;grid-row:7;"></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <nav id="pam-presentation-controls" class="pam-presentation-controls" aria-label="Controles de presentación">
+                <button type="button" data-prev title="Lámina anterior"><i class="fas fa-chevron-left"></i></button>
+                <button type="button" data-goto="1" title="Ir al índice"><i class="fas fa-list"></i></button>
+                <span data-counter>01 / 20</span>
+                <button type="button" data-export="pdf" title="Descargar PDF"><i class="fas fa-file-pdf"></i></button>
+                <button type="button" data-export="pptx" title="Descargar PowerPoint"><i class="fas fa-file-powerpoint"></i></button>
+                <button type="button" data-fullscreen title="Pantalla completa"><i class="fas fa-expand"></i></button>
+                <button type="button" data-next title="Lámina siguiente"><i class="fas fa-chevron-right"></i></button>
+            </nav>
+        </div>
     </div>
-</div>
 
-<style>
-    .pam-ficha-page { --pam-guinda:#9b2247; --pam-dorado:#e0a12e; --pam-tinta:#25211f; }
-    .pam-deck { position:relative; width:min(100%,1500px); aspect-ratio:16/9; margin:auto; background:#fff; border-radius:1rem; box-shadow:0 1rem 3rem rgba(44,31,36,.16); overflow:hidden; }
-    .pam-slide { display:none; position:absolute; inset:0; padding:5.5% 6.5%; background:linear-gradient(135deg,#fff 0%,#fff 70%,#f8eef1 100%); color:var(--pam-tinta); }
-    .pam-slide.is-active { display:flex; flex-direction:column; }
-    .pam-slide__kicker { color:var(--pam-guinda); font-weight:800; letter-spacing:.14em; text-transform:uppercase; font-size:clamp(.8rem,1.25vw,1.35rem); }
-    .pam-slide h1 { margin:auto 0 0; color:var(--pam-guinda); font-family:Georgia,serif; font-size:clamp(4rem,10vw,9rem); line-height:.85; }
-    .pam-slide h2 { margin:2.5% 0 0; max-width:28ch; font-family:Georgia,serif; font-size:clamp(2rem,4vw,4.2rem); line-height:1.08; }
-    .pam-slide h1 + h2 { margin:2% 0 0; font-family:inherit; font-size:clamp(1.4rem,2.5vw,2.7rem); font-weight:500; color:#5f5854; max-width:42ch; }
-    .pam-slide__rule { width:12rem; height:.45rem; margin:2.5% 0; background:var(--pam-dorado); }
-    .pam-slide p { font-size:clamp(1rem,1.8vw,2rem); color:#5f5854; }
-    .pam-slide__lead { max-width:54ch; line-height:1.5; margin-top:2.5%; }
-    .pam-slide footer { margin-top:auto; padding-top:1rem; border-top:1px solid #e8e1dc; color:#817a75; font-size:clamp(.7rem,1vw,1rem); }
-    .pam-slide__metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1.5rem; margin-top:4%; }
-    .pam-slide__metrics--three { grid-template-columns:repeat(3,minmax(0,1fr)); }
-    .pam-slide__metrics article { padding:1.5rem; border-radius:1rem; background:#fff; border:1px solid #eadfe3; border-left:6px solid var(--pam-guinda); box-shadow:0 .6rem 1.4rem rgba(44,31,36,.06); }
-    .pam-slide__metrics strong,.pam-slide__metrics span { display:block; }
-    .pam-slide__metrics strong { color:var(--pam-guinda); font-size:clamp(1.6rem,3vw,3.3rem); line-height:1; }
-    .pam-slide__metrics span { margin-top:.65rem; color:#69615d; font-size:clamp(.75rem,1.15vw,1.25rem); }
-    .pam-slide__list { margin:4% 0 0; display:grid; gap:1.2rem; padding-left:2rem; max-width:70ch; font-size:clamp(1rem,1.6vw,1.7rem); line-height:1.4; }
-    .pam-slide__list li::marker { color:var(--pam-guinda); font-weight:800; }
-    .pam-db-status { margin-top:4%; padding:1.2rem 1.5rem; border-left:6px solid var(--pam-dorado); background:#fbf5e8; max-width:60ch; }
-    .pam-db-status span,.pam-db-status strong { display:block; }
-    .pam-db-status span { color:#746b65; }
-    .pam-db-status strong { margin-top:.25rem; font-size:1.4rem; }
-    .pam-deck__nav { position:absolute; right:2rem; bottom:1.2rem; display:flex; align-items:center; gap:.8rem; z-index:10; }
-    .pam-deck__nav button { width:2.4rem; height:2.4rem; border-radius:50%; border:1px solid #d8ced2; background:#fff; color:var(--pam-guinda); }
-    .pam-deck__nav span { min-width:4rem; text-align:center; color:#716967; font-weight:700; }
-    .pam-deck:fullscreen { width:100vw; height:100vh; border-radius:0; aspect-ratio:auto; }
-    @@media (max-width:900px) { .pam-deck { aspect-ratio:auto; min-height:72vh; } .pam-slide__metrics,.pam-slide__metrics--three { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-</style>
+    <div id="pam-export-status" class="pam-export-status" hidden role="status" aria-live="polite">
+        <div class="pam-export-status__spinner"></div><strong>Preparando archivo</strong><span data-export-message></span>
+    </div>
+</main>
 
 <script>
-    (() => {
-        const deck = document.getElementById('pam-deck');
-        const slides = [...deck.querySelectorAll('[data-slide]')];
-        const counter = document.getElementById('pam-counter');
-        let current = 0;
-
-        const show = index => {
-            current = (index + slides.length) % slides.length;
-            slides.forEach((slide, i) => slide.classList.toggle('is-active', i === current));
-            counter.textContent = `${current + 1} / ${slides.length}`;
-        };
-
-        document.getElementById('pam-prev').addEventListener('click', () => show(current - 1));
-        document.getElementById('pam-next').addEventListener('click', () => show(current + 1));
-        document.getElementById('pam-fullscreen').addEventListener('click', () => deck.requestFullscreen?.());
-        document.addEventListener('keydown', event => {
-            if (event.key === 'ArrowRight' || event.key === 'PageDown') show(current + 1);
-            if (event.key === 'ArrowLeft' || event.key === 'PageUp') show(current - 1);
-        });
-    })();
+    window.pamFichaCharts = {
+        dona: @Html.Raw(jsonDona),
+        donaCentroValor: "@donaCentroValor",
+        donaCentroEtiqueta: "@donaCentroEtiqueta",
+        bc: @Model.Ficha.RelacionBeneficioCosto.ToString(inv),
+        bcEtiqueta: "@(alternativa1?.Nombre ?? "Alcance vigente")",
+        demanda: @Html.Raw(jsonDemanda)
+    };
 </script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="~/vendor/pam-export/html2canvas.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/jspdf.umd.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/pptxgen.bundle.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-presentacion.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-charts.js" asp-append-version="true"></script>

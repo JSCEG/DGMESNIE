@@ -1,0 +1,327 @@
+@model NSIE.Models.PamProyectoDetalleViewModel
+
+@{
+    ViewData["Title"] = $"Detalle {Model.Actual.ClaveProyecto ?? Model.Actual.ProyectoId.ToString()}";
+    var proyecto = Model.Actual;
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 pam-detail">
+    <div class="pam-detail-actions mb-3">
+        <a asp-action="Index" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Volver al dashboard</a>
+        @if (Model.FichaDisponible)
+        {
+            <a asp-action="Ficha" asp-route-clavePem="@proyecto.ClaveProyecto" class="btn btn-primary"><i class="fas fa-chart-column me-2"></i>Abrir ficha</a>
+        }
+    </div>
+
+    <section class="pam-detail-hero">
+        <div>
+            <div class="pam-detail-badges">
+                <span class="pam-detail-origin">@proyecto.OrigenPrograma</span>
+                <span class="pam-detail-status @(proyecto.EstadoVigenciaCartera == "Cancelado" ? "is-cancelled" : "")">@proyecto.EstadoVigenciaCartera</span>
+                <span>@proyecto.TipoProyecto</span>
+            </div>
+            <code>@(string.IsNullOrWhiteSpace(proyecto.ClaveProyecto) ? "Sin clave" : proyecto.ClaveProyecto)</code>
+            @if (!string.IsNullOrWhiteSpace(proyecto.ClavesAlternas))
+            {
+                <p class="mb-1"><strong>Claves alternas:</strong> @proyecto.ClavesAlternas.Replace("\r", "").Replace("\n", " · ")</p>
+            }
+            <h2>@proyecto.NombreProyecto</h2>
+            <p>ID permanente @proyecto.ProyectoId · UID @proyecto.ProyectoUid</p>
+        </div>
+        <div class="pam-detail-version">
+            <span>Versión vigente</span>
+            <strong>@proyecto.NumeroVersion</strong>
+            <small>desde @proyecto.VigenteDesde.ToString("yyyy-MM-dd")</small>
+        </div>
+    </section>
+
+    <section class="pam-detail-kpis">
+        <article><span>Etapa</span><strong>@(proyecto.EtapaProyecto ?? "Sin etapa")</strong></article>
+        <article><span>Región</span><strong>@(proyecto.GRT ?? "Sin región")</strong></article>
+        <article><span>Inversión</span><strong>@(proyecto.MontoProyectoMdp?.ToString("N3") ?? "—")</strong><small>MDP</small></article>
+        <article><span>Último corte</span><strong>@proyecto.FechaCorte.ToString("yyyy-MM-dd")</strong><small>@proyecto.FuenteDocumento</small></article>
+    </section>
+
+    <section class="card border-0 shadow-sm pam-detail-card">
+        <nav class="pam-detail-tabs" aria-label="Secciones del proyecto">
+            <button class="is-active" type="button" data-detail-tab="vigente"><i class="fas fa-circle-info"></i>Datos vigentes</button>
+            <button type="button" data-detail-tab="historial"><i class="fas fa-clock-rotate-left"></i>Historial <span>@Model.Historial.Count</span></button>
+            <button type="button" data-detail-tab="fuentes"><i class="fas fa-file-lines"></i>Fuentes <span>@Model.Fuentes.Count</span></button>
+            <button type="button" data-detail-tab="relaciones"><i class="fas fa-diagram-project"></i>Relaciones <span>@Model.Relaciones.Count</span></button>
+        </nav>
+
+        <div class="pam-detail-panel is-active" data-detail-panel="vigente">
+            <div class="pam-detail-grid">
+                <article><span>Programa</span><strong>@proyecto.Programa</strong></article>
+                <article><span>Año del programa</span><strong>@(proyecto.AnioPrograma?.ToString() ?? "—")</strong></article>
+                <article><span>Año de instrucción</span><strong>@(proyecto.AnioInstruccion?.ToString() ?? "—")</strong></article>
+                <article><span>Tipo de financiamiento</span><strong>@(proyecto.TipoFinanciamiento ?? "—")</strong></article>
+                <article><span>Prioridad</span><strong>@(proyecto.PrioridadPrograma?.ToString() ?? "—")</strong></article>
+                <article><span>Fecha necesaria</span><strong>@(proyecto.FechaNecesaria ?? "—")</strong></article>
+                <article><span>FEO indicada</span><strong>@(proyecto.FeoIndicadaOficioSener ?? "—")</strong></article>
+                <article><span>FEO factible</span><strong>@(proyecto.FeoFactible ?? "—")</strong></article>
+                <article><span>Avance de ejecución</span><strong>@(proyecto.PorcentajeAvanceEjecucion?.ToString("N2") ?? "—")%</strong></article>
+                <article><span>MVA</span><strong>@(proyecto.Mva?.ToString("N2") ?? "—")</strong></article>
+                <article><span>MVAr</span><strong>@(proyecto.Mvar?.ToString("N2") ?? "—")</strong></article>
+                <article><span>km-C</span><strong>@(proyecto.KmC?.ToString("N2") ?? "—")</strong></article>
+            </div>
+
+            @foreach (var bloque in new[]
+            {
+                ("Zona atendida", proyecto.ZonaAtendida),
+                ("Elementos y equipos asociados", proyecto.ElementosEquiposAsociados),
+                ("Estado real del proyecto", proyecto.EstadoRealProyecto),
+                ("Circunstancias de atraso", proyecto.CircunstanciasAtrasos),
+                ("Acciones de mitigación", proyecto.AccionesMitigacionCorreccion),
+                ("Comentarios de priorización", proyecto.ComentariosNivelPriorizacion)
+            })
+            {
+                @if (!string.IsNullOrWhiteSpace(bloque.Item2))
+                {
+                    <article class="pam-detail-text"><h5>@bloque.Item1</h5><p>@bloque.Item2</p></article>
+                }
+            }
+        </div>
+
+        <div class="pam-detail-panel" data-detail-panel="historial">
+            <h4>Versiones del proyecto</h4>
+            <div class="table-responsive mb-4">
+                <table class="table pam-history-table align-middle">
+                    <thead><tr><th>Versión</th><th>Vigencia</th><th>Etapa</th><th>Estatus</th><th>Inversión MDP</th><th>Fuente</th><th>Motivo</th></tr></thead>
+                    <tbody>
+                    @foreach (var version in Model.Historial)
+                    {
+                        <tr>
+                            <td><strong>v@version.NumeroVersion</strong>@if (version.EsVersionVigente) { <span class="pam-current">Vigente</span> }</td>
+                            <td>@version.VigenteDesde.ToString("yyyy-MM-dd")<br /><small>hasta @(version.VigenteHasta?.ToString("yyyy-MM-dd") ?? "actual")</small></td>
+                            <td>@(version.EtapaProyecto ?? "—")</td>
+                            <td>@version.EstadoVigenciaCartera</td>
+                            <td>@(version.MontoProyectoMdp?.ToString("N3") ?? "—")</td>
+                            <td>@version.FuenteDocumento<br /><small>Corte @version.FechaCorte.ToString("yyyy-MM-dd")</small></td>
+                            <td>@version.MotivoCambio</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+
+            <h4>Cambios registrados</h4>
+            @if (Model.Cambios.Count == 0)
+            {
+                <div class="pam-detail-empty">Aún no existen cambios registrados.</div>
+            }
+            else
+            {
+                <div class="pam-change-list">
+                    @foreach (var cambio in Model.Cambios)
+                    {
+                        <article>
+                            <div><span class="pam-change-type">@cambio.TipoCambio</span><strong>@(cambio.Campo ?? "Registro completo")</strong></div>
+                            <p><del>@(cambio.ValorAnterior ?? "Sin valor anterior")</del><i class="fas fa-arrow-right"></i><ins>@(cambio.ValorNuevo ?? "Sin valor nuevo")</ins></p>
+                            <small>@cambio.FechaRegistroUtc.ToString("yyyy-MM-dd HH:mm") UTC · @cambio.FuenteDocumento · @cambio.TipoCarga</small>
+                        </article>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="pam-detail-panel" data-detail-panel="fuentes">
+            @if (Model.Fuentes.Count == 0)
+            {
+                <div class="pam-detail-empty">No hay fuentes asociadas.</div>
+            }
+            else
+            {
+                <div class="pam-source-grid">
+                    @foreach (var fuente in Model.Fuentes)
+                    {
+                        <article>
+                            <div class="pam-source-icon"><i class="fas fa-file-shield"></i></div>
+                            <div>
+                                <h5>@fuente.NombreDocumento</h5>
+                                <p>@fuente.TipoDocumento · Corte @fuente.FechaCorte.ToString("yyyy-MM-dd")</p>
+                                <dl>
+                                    <dt>Ubicación</dt><dd>@(fuente.HojaPaginaSeccion ?? "Sin referencia interna")</dd>
+                                    <dt>Versión</dt><dd>@(fuente.VersionDocumento ?? "—")</dd>
+                                    <dt>Ruta</dt><dd>@(fuente.RutaArchivo ?? "—")</dd>
+                                    <dt>SHA-256</dt><dd><code>@(fuente.HashSha256 ?? "No registrado")</code></dd>
+                                </dl>
+                                @if (!string.IsNullOrWhiteSpace(fuente.Observaciones)) { <small>@fuente.Observaciones</small> }
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="pam-detail-panel" data-detail-panel="relaciones">
+            @if (Model.Relaciones.Count == 0)
+            {
+                <div class="pam-detail-empty">
+                    <i class="fas fa-diagram-project"></i>
+                    <strong>Sin relaciones padre-hijo registradas.</strong>
+                    <p>Las relaciones se incorporarán únicamente cuando exista una fuente documental que las respalde.</p>
+                </div>
+            }
+            else
+            {
+                <div class="pam-relation-list">
+                    @foreach (var relacion in Model.Relaciones)
+                    {
+                        <article>
+                            <span class="pam-relation-direction">@relacion.Direccion</span>
+                            <div><code>@(relacion.ClaveRelacionada ?? $"ID {relacion.ProyectoRelacionadoId}")</code><h5>@relacion.NombreRelacionado</h5></div>
+                            <div><strong>@relacion.TipoRelacion</strong><small>@relacion.EstadoValidacion · desde @relacion.VigenteDesde.ToString("yyyy-MM-dd")</small></div>
+                            <div><span>@relacion.FuenteDocumento</span><small>@relacion.HojaPaginaSeccion</small></div>
+                        </article>
+                    }
+                </div>
+            }
+        </div>
+    </section>
+</div>
+
+<style>
+    /* ══════ Detalle PAM/PAMRNT — mobile first, tokens shell, sin degradados ══════ */
+    .pam-detail {
+        --pd-surface: var(--shell-surface, #ffffff);
+        --pd-surface-2: var(--shell-surface-2, #f7f4f1);
+        --pd-line: var(--shell-line, rgba(138, 0, 49, 0.10));
+        --pd-ink: var(--shell-ink, #262220);
+        --pd-muted: var(--shell-muted, #746e69);
+        --pd-guinda: var(--shell-accent, #9b2247);
+        --pd-gold: var(--shell-accent-2, #b38e5d);
+        --pd-verde: var(--shell-accent-3, #1e5b4f);
+        color: var(--pd-ink);
+    }
+
+    .pam-detail-actions { display:flex; flex-wrap:wrap; justify-content:space-between; gap:.6rem; }
+
+    /* Hero plano con filo dorado */
+    .pam-detail-hero { display:flex; flex-direction:column; gap:1rem; padding:1.25rem; border:1px solid var(--pd-line); border-left:4px solid var(--pd-gold); border-radius:14px; background:var(--pd-surface); }
+    .pam-detail-hero code { display:block; margin:.7rem 0 .25rem; color:var(--pd-guinda); font-size:1.25rem; font-weight:800; }
+    .pam-detail-hero h2 { margin:0 0 .35rem; max-width:55ch; color:var(--pd-ink); font-family:var(--font-display, "Patria", "Noto Serif", Georgia, serif); font-size:clamp(1.25rem, 4vw, 1.7rem); }
+    .pam-detail-hero p { margin:0; color:var(--pd-muted); }
+    .pam-detail-badges { display:flex; flex-wrap:wrap; gap:.4rem; }
+    .pam-detail-badges span { padding:.26rem .6rem; border-radius:1rem; background:var(--pd-surface-2); color:var(--pd-muted); font-size:.73rem; font-weight:800; }
+    .pam-detail-badges .pam-detail-origin { background:rgba(155, 34, 71, 0.12); color:var(--pd-guinda); }
+    .pam-detail-badges .pam-detail-status { background:rgba(30, 91, 79, 0.12); color:var(--pd-verde); }
+    .pam-detail-badges .pam-detail-status.is-cancelled { background:rgba(192, 85, 46, 0.12); color:#c0552e; }
+    .pam-detail-version { width:100%; padding:1rem; border:1px solid var(--pd-line); border-radius:12px; background:var(--pd-surface-2); text-align:center; }
+    .pam-detail-version span,.pam-detail-version small { display:block; color:var(--pd-muted); font-size:.78rem; }
+    .pam-detail-version strong { display:block; color:var(--pd-guinda); font-family:var(--font-display, "Patria", "Noto Serif", Georgia, serif); font-size:2.4rem; line-height:1.1; font-variant-numeric:tabular-nums; }
+
+    /* KPIs con barra de acento (mismo patrón del dashboard) */
+    .pam-detail-kpis { display:grid; grid-template-columns:1fr; gap:.75rem; margin:1rem 0; }
+    .pam-detail-kpis article { position:relative; padding:.85rem .95rem .9rem 1.1rem; border:1px solid var(--pd-line); border-radius:14px; background:var(--pd-surface); overflow:hidden; }
+    .pam-detail-kpis article::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--pd-gold); }
+    .pam-detail-kpis span,.pam-detail-kpis small { display:block; color:var(--pd-muted); font-size:.74rem; }
+    .pam-detail-kpis span { font-size:.7rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+    .pam-detail-kpis strong { display:block; margin:.2rem 0 .1rem; color:var(--pd-ink); font-size:1.05rem; }
+
+    .pam-detail-card { border:1px solid var(--pd-line) !important; border-radius:14px; background:var(--pd-surface); box-shadow:none !important; overflow:hidden; }
+
+    .pam-detail-tabs { display:flex; gap:.25rem; padding:.75rem .75rem 0; border-bottom:1px solid var(--pd-line); overflow-x:auto; scrollbar-width:none; }
+    .pam-detail-tabs::-webkit-scrollbar { display:none; }
+    .pam-detail-tabs button { display:flex; align-items:center; gap:.5rem; padding:.7rem .85rem; border:0; border-bottom:3px solid transparent; background:transparent; color:var(--pd-muted); font-weight:700; font-size:.88rem; white-space:nowrap; }
+    .pam-detail-tabs button:hover { color:var(--pd-guinda); }
+    .pam-detail-tabs button:focus-visible { outline:3px solid rgba(155, 34, 71, 0.24); outline-offset:-3px; border-radius:8px; }
+    .pam-detail-tabs button.is-active { color:var(--pd-guinda); border-bottom-color:var(--pd-guinda); }
+    .pam-detail-tabs button span { display:inline-grid; place-items:center; min-width:1.5rem; height:1.5rem; padding:0 .35rem; border-radius:1rem; background:var(--pd-surface-2); font-size:.72rem; }
+    .pam-detail-tabs button.is-active span { background:rgba(155, 34, 71, 0.12); }
+
+    .pam-detail-panel { display:none; padding:1rem; }
+    .pam-detail-panel.is-active { display:block; }
+
+    .pam-detail-grid { display:grid; grid-template-columns:1fr; gap:.75rem; }
+    .pam-detail-grid article { padding:.9rem 1rem; border:1px solid var(--pd-line); border-radius:12px; background:var(--pd-surface-2); }
+    .pam-detail-grid span,.pam-detail-grid strong { display:block; }
+    .pam-detail-grid span { color:var(--pd-muted); font-size:.72rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+    .pam-detail-grid strong { margin-top:.25rem; color:var(--pd-ink); }
+
+    .pam-detail-text { margin-top:1rem; padding:1rem 1.15rem; border-left:4px solid var(--pd-gold); border-radius:0 12px 12px 0; background:var(--pd-surface-2); }
+    .pam-detail-text h5 { color:var(--pd-ink); font-size:.9rem; }
+    .pam-detail-text p { margin:0; white-space:pre-line; color:var(--pd-muted); }
+
+    .pam-history-table th { color:var(--pd-muted); font-size:.71rem; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; border-color:var(--pd-line); background:var(--pd-surface-2); }
+    .pam-history-table td { border-color:var(--pd-line); color:var(--pd-ink); }
+    .pam-history-table small { color:var(--pd-muted); }
+    .pam-current { display:block; width:max-content; margin-top:.25rem; padding:.15rem .45rem; border-radius:1rem; background:rgba(30, 91, 79, 0.12); color:var(--pd-verde); font-size:.65rem; font-weight:800; }
+
+    .pam-change-list { display:grid; gap:.75rem; }
+    .pam-change-list article { padding:1rem; border:1px solid var(--pd-line); border-radius:12px; background:var(--pd-surface); }
+    .pam-change-list article>div { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; }
+    .pam-change-type { padding:.2rem .5rem; border-radius:1rem; background:rgba(155, 34, 71, 0.12); color:var(--pd-guinda); font-size:.7rem; font-weight:800; }
+    .pam-change-list p { display:flex; align-items:flex-start; flex-direction:column; gap:.5rem; margin:.8rem 0; }
+    .pam-change-list p i { color:var(--pd-gold); }
+    .pam-change-list del { color:#9a4c43; }
+    .pam-change-list ins { color:var(--pd-verde); text-decoration:none; }
+    .pam-change-list small { color:var(--pd-muted); }
+
+    .pam-source-grid { display:grid; gap:.75rem; }
+    .pam-source-grid>article { display:grid; grid-template-columns:auto 1fr; gap:1rem; padding:1.1rem; border:1px solid var(--pd-line); border-radius:12px; background:var(--pd-surface); }
+    .pam-source-icon { display:grid; place-items:center; width:2.8rem; height:2.8rem; border-radius:12px; background:rgba(155, 34, 71, 0.12); color:var(--pd-guinda); }
+    .pam-source-grid h5,.pam-source-grid p { margin-bottom:.4rem; }
+    .pam-source-grid p { color:var(--pd-muted); }
+    .pam-source-grid dl { display:grid; grid-template-columns:1fr; gap:.3rem .75rem; margin:.8rem 0; }
+    .pam-source-grid dt { color:var(--pd-muted); }
+    .pam-source-grid dd { margin:0; overflow-wrap:anywhere; }
+    .pam-source-grid code { color:var(--pd-guinda); font-size:.72rem; }
+    .pam-source-grid small { color:var(--pd-muted); }
+
+    .pam-relation-list { display:grid; gap:.75rem; }
+    .pam-relation-list article { display:grid; grid-template-columns:1fr; align-items:center; gap:.6rem; padding:1rem; border:1px solid var(--pd-line); border-radius:12px; background:var(--pd-surface); }
+    .pam-relation-list code { color:var(--pd-guinda); font-weight:800; }
+    .pam-relation-list small,.pam-relation-list span { display:block; color:var(--pd-muted); }
+    .pam-relation-direction { font-weight:800; color:var(--pd-guinda)!important; }
+
+    .pam-detail-empty { padding:2.5rem 1.5rem; text-align:center; color:var(--pd-muted); background:var(--pd-surface-2); border-radius:12px; }
+    .pam-detail-empty i,.pam-detail-empty strong { display:block; }
+    .pam-detail-empty i { margin-bottom:.6rem; font-size:2rem; color:var(--pd-gold); }
+
+    /* ── Escalado a tablet/escritorio ── */
+    @@media (min-width: 576px) {
+        .pam-detail-kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .pam-detail-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .pam-source-grid dl { grid-template-columns:100px 1fr; }
+    }
+
+    @@media (min-width: 768px) {
+        .pam-detail-hero { flex-direction:row; align-items:center; justify-content:space-between; gap:2rem; padding:1.6rem 1.75rem; }
+        .pam-detail-version { width:auto; min-width:150px; }
+        .pam-detail-panel { padding:1.5rem; }
+        .pam-change-list p { flex-direction:row; align-items:center; gap:.8rem; }
+        .pam-relation-list article { grid-template-columns:1fr 2fr; gap:1rem; }
+    }
+
+    @@media (min-width: 992px) {
+        .pam-detail-kpis { grid-template-columns:repeat(4, minmax(0, 1fr)); }
+    }
+
+    @@media (min-width: 1100px) {
+        .pam-detail-grid { grid-template-columns:repeat(4, minmax(0, 1fr)); }
+        .pam-relation-list article { grid-template-columns:80px 1.5fr 1fr 1fr; }
+    }
+</style>
+
+<script>
+    (() => {
+        const buttons = [...document.querySelectorAll('[data-detail-tab]')];
+        const panels = [...document.querySelectorAll('[data-detail-panel]')];
+        const valid = new Set(buttons.map(x => x.dataset.detailTab));
+        const activate = name => {
+            if (!valid.has(name)) name = 'vigente';
+            buttons.forEach(x => x.classList.toggle('is-active', x.dataset.detailTab === name));
+            panels.forEach(x => x.classList.toggle('is-active', x.dataset.detailPanel === name));
+        };
+        buttons.forEach(button => button.addEventListener('click', () => {
+            const name = button.dataset.detailTab;
+            history.replaceState(null, '', `#${name}`);
+            activate(name);
+        }));
+        activate(location.hash.replace('#', ''));
+    })();
+</script>

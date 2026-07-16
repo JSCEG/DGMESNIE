@@ -1,0 +1,520 @@
+@model NSIE.Models.PamPreparacionAplicacionViewModel
+
+@{
+    ViewData["Title"] = $"Preparar aplicación del lote {Model.Lote.LoteId}";
+    var paqueteSuccessMessage = TempData["PamPaqueteSuccess"] as string;
+    var paqueteErrorMessage = TempData["PamPaqueteError"] as string;
+    var aplicacionSuccessMessage = TempData["PamAplicacionSuccess"] as string;
+    var aplicacionErrorMessage = TempData["PamAplicacionError"] as string;
+
+    string EtiquetaCampo(string campo) => campo switch
+    {
+        "NombreProyecto" => "Nombre del proyecto",
+        "GRT" => "Región de transmisión",
+        "EtapaProyecto" => "Etapa del proyecto",
+        "FechaNecesaria" => "Fecha necesaria",
+        "FeoFactible" => "Fecha de entrada en operación",
+        "MontoProyectoMdp" => "Inversión (MDP)",
+        "EstadoRealProyecto" => "Estado reportado",
+        "AnioInstruccion" => "Año de instrucción",
+        _ => campo ?? "Campo"
+    };
+
+    string HashCorto(string hash) => string.IsNullOrWhiteSpace(hash)
+        ? "Sin hash"
+        : hash[..Math.Min(12, hash.Length)];
+
+    string UidCorto(Guid? uid) => uid.HasValue
+        ? uid.Value.ToString()[..8]
+        : "Sin UID";
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 pam-prepare-page">
+    @if (!string.IsNullOrWhiteSpace(paqueteSuccessMessage))
+    {
+        <div class="alert pam-package-message is-success" role="status"><i class="fas fa-circle-check" aria-hidden="true"></i>@paqueteSuccessMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(paqueteErrorMessage))
+    {
+        <div class="alert pam-package-message is-error" role="alert"><i class="fas fa-circle-xmark" aria-hidden="true"></i>@paqueteErrorMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(aplicacionSuccessMessage))
+    {
+        <div class="alert pam-package-message is-success" role="status"><i class="fas fa-circle-check" aria-hidden="true"></i>@aplicacionSuccessMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(aplicacionErrorMessage))
+    {
+        <div class="alert pam-package-message is-error" role="alert"><i class="fas fa-circle-xmark" aria-hidden="true"></i>@aplicacionErrorMessage</div>
+    }
+    <nav class="pam-prepare-nav" aria-label="Navegación de preparación">
+        <a asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2" aria-hidden="true"></i>Volver a la revisión
+        </a>
+        <a asp-action="Index" class="btn btn-link pam-dashboard-link">
+            <i class="fas fa-table-columns me-2" aria-hidden="true"></i>Dashboard de proyectos
+        </a>
+    </nav>
+
+    <header class="pam-prepare-hero">
+        <div>
+            <span>Vista previa controlada</span>
+            <h2>Preparar aplicación a la cartera</h2>
+            <p>@Model.Lote.Nombre · corte @Model.Lote.FechaCorte.ToString("dd MMM yyyy") · análisis #@Model.AnalisisId</p>
+        </div>
+        <div class="pam-prepare-lock"><i class="fas fa-lock" aria-hidden="true"></i>Sin cambios en SQL</div>
+    </header>
+
+    @if (!Model.ListaParaConfirmar)
+    {
+        <section class="pam-prepare-alert is-warning" role="status">
+            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+            <div>
+                <strong>La aplicación todavía no está lista.</strong>
+                <span>Faltan @Model.TotalPendientes decisión(es): @Model.Pendientes.Count de altas/cancelaciones y @Model.ResumenCampos.Pendientes de campos. Atiéndalas antes de confirmar cualquier cambio en la cartera maestra.</span>
+            </div>
+            <a asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId" asp-route-estadoRevision="Pendiente" class="btn btn-primary">Resolver pendientes</a>
+        </section>
+    }
+    else
+    {
+        <section class="pam-prepare-alert is-success" role="status">
+            <i class="fas fa-circle-check" aria-hidden="true"></i>
+            <div>
+                <strong>Todas las decisiones están cerradas.</strong>
+                <span>La vista previa está lista para una confirmación final separada y trazable.</span>
+            </div>
+        </section>
+    }
+
+    <section class="pam-prepare-kpis" aria-label="Resumen de acciones preparadas">
+        <article><span>Altas vigentes</span><strong>@Model.TotalAltas</strong><i class="fas fa-circle-plus" aria-hidden="true"></i></article>
+        <article><span>Claves a vincular</span><strong>@Model.TotalVinculos</strong><i class="fas fa-link" aria-hidden="true"></i></article>
+        <article><span>Antecedentes cancelados</span><strong>@Model.TotalAntecedentesCancelados</strong><i class="fas fa-clock-rotate-left" aria-hidden="true"></i></article>
+        <article><span>Existentes a cancelar</span><strong>@Model.TotalCancelacionesVinculadas</strong><i class="fas fa-ban" aria-hidden="true"></i></article>
+        <article><span>Sin aplicación</span><strong>@Model.TotalDescartados</strong><i class="fas fa-box-archive" aria-hidden="true"></i></article>
+        <article class="@(Model.TotalPendientes > 0 ? "is-warning" : "is-success")"><span>Pendientes totales</span><strong>@Model.TotalPendientes</strong><i class="fas fa-list-check" aria-hidden="true"></i></article>
+    </section>
+
+    <section class="pam-prepare-card pam-validation-card">
+        <div class="pam-prepare-heading">
+            <div><span>Control previo</span><h3>@(Model.TienePaqueteVigente ? "Advertencias aceptadas al congelar" : "Validaciones del paquete")</h3></div>
+            <div class="pam-validation-totals">
+                <strong class="@(Model.TotalBloqueos > 0 ? "is-block" : "is-ok")">@Model.TotalBloqueos bloqueo(s)</strong>
+                <strong class="@(Model.TotalAdvertencias > 0 ? "is-warning" : "is-ok")">@Model.TotalAdvertencias advertencia(s)</strong>
+            </div>
+        </div>
+        @if (Model.Validaciones.Count == 0)
+        {
+            <div class="pam-validation-empty"><i class="fas fa-shield-circle-check" aria-hidden="true"></i><span><strong>Sin observaciones automáticas.</strong> El contenido puede congelarse para una autorización posterior.</span></div>
+        }
+        else
+        {
+            <div class="pam-validation-list">
+                @foreach (var validacion in Model.Validaciones)
+                {
+                    <article class="@(validacion.Severidad == "Bloqueo" ? "is-block" : "is-warning")">
+                        <i class="fas @(validacion.Severidad == "Bloqueo" ? "fa-circle-xmark" : "fa-triangle-exclamation")" aria-hidden="true"></i>
+                        <div><strong>@validacion.Titulo</strong><span>@validacion.Detalle</span><code>@validacion.Codigo</code></div>
+                        <b>@validacion.Total.ToString("N0")</b>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="pam-prepare-card pam-risk-card">
+        <div class="pam-prepare-heading">
+            <div><span>Lectura por riesgo</span><h3>Cambios agrupados por campo</h3></div>
+            <strong>@Model.GruposCampos.Count</strong>
+        </div>
+        <p class="pam-risk-intro">El nivel de riesgo ayuda a concentrar la última revisión; no cambia las decisiones que ya registraste.</p>
+        <div class="pam-field-risk-grid">
+            @foreach (var grupo in Model.GruposCampos)
+            {
+                var esAlto = string.Equals(grupo.NivelRiesgo, "Alto", StringComparison.OrdinalIgnoreCase);
+                <article class="@(esAlto ? "is-high" : "is-medium")">
+                    <div class="pam-risk-title">
+                        <span class="pam-risk-badge">Riesgo @grupo.NivelRiesgo.ToLowerInvariant()</span>
+                        <strong>@EtiquetaCampo(grupo.Campo)</strong>
+                        <code>@grupo.Campo</code>
+                    </div>
+                    <b>@grupo.Total.ToString("N0")</b>
+                    <div class="pam-risk-decisions">
+                        <span><i class="fas fa-check" aria-hidden="true"></i>@grupo.Aplicar.ToString("N0") aplicar</span>
+                        <span><i class="fas fa-database" aria-hidden="true"></i>@grupo.MantenerSql.ToString("N0") mantener</span>
+                        <span><i class="fas fa-forward" aria-hidden="true"></i>@grupo.Omitir.ToString("N0") omitir</span>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+
+    @if (Model.TotalPendientes > 0)
+    {
+        <section class="pam-prepare-card">
+            <div class="pam-prepare-heading">
+                <div><span>Bloqueos</span><h3>Decisiones que faltan</h3></div>
+                <strong>@Model.TotalPendientes</strong>
+            </div>
+            @if (Model.ResumenCampos.Pendientes > 0)
+            {
+                <div class="pam-field-pending-summary">
+                    <i class="fas fa-table-list" aria-hidden="true"></i>
+                    <div>
+                        <strong>@Model.ResumenCampos.Pendientes campos pendientes en @Model.ResumenCampos.ProyectosPendientes proyectos</strong>
+                        <span>Abra cada proyecto, use “Resolver todos los campos” y ajuste únicamente las excepciones.</span>
+                    </div>
+                    <a asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId" asp-route-estadoRevision="Pendiente" class="btn btn-outline-secondary btn-sm">Ir a proyectos</a>
+                </div>
+            }
+            <div class="pam-prepare-list">
+                @foreach (var item in Model.Pendientes)
+                {
+                    <article class="is-pending">
+                        <div><code>@(item.ClaveRecibida ?? "Sin clave")</code><strong>@(item.NombreRecibido ?? "Nombre no extraído")</strong></div>
+                        <span>@(item.EsCancelacion ? "Cancelación sin clasificar" : "Revisión pendiente")</span>
+                        <small>@(item.FuenteDocumento ?? "Fuente no indicada") · @(item.UbicacionFuente ?? "sin ubicación")</small>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+
+    <section class="pam-prepare-card">
+        <div class="pam-prepare-heading">
+            <div><span>Revisión de diferencias</span><h3>Decisiones por campo</h3></div>
+            <strong>@Model.ResumenCampos.Total</strong>
+        </div>
+        <div class="pam-field-decision-kpis" aria-label="Resumen de decisiones por campo">
+            <article><span>Aplicar propuesta</span><strong>@Model.ResumenCampos.Aplicar</strong><i class="fas fa-check" aria-hidden="true"></i></article>
+            <article><span>Mantener SQL</span><strong>@Model.ResumenCampos.MantenerSql</strong><i class="fas fa-database" aria-hidden="true"></i></article>
+            <article><span>Omitir</span><strong>@Model.ResumenCampos.Omitir</strong><i class="fas fa-forward" aria-hidden="true"></i></article>
+            <article class="@(Model.ResumenCampos.Pendientes > 0 ? "is-warning" : "is-success")"><span>Pendientes</span><strong>@Model.ResumenCampos.Pendientes</strong><i class="fas fa-hourglass-half" aria-hidden="true"></i></article>
+            <article><span>Proyectos revisados</span><strong>@Model.ResumenCampos.ProyectosRevisados</strong><i class="fas fa-folder-closed" aria-hidden="true"></i></article>
+        </div>
+        @if (Model.CamposAplicables.Count > 0)
+        {
+            <details class="pam-fields-ready">
+                <summary>Ver campos marcados para aplicar (@Model.ResumenCampos.Aplicar)</summary>
+                <div class="pam-fields-ready-list">
+                    @foreach (var campo in Model.CamposAplicables)
+                    {
+                        <article>
+                            <div><code>@campo.ClaveProyecto</code><strong>@campo.NombreProyecto</strong></div>
+                            <div><small>@campo.Campo</small><span>@(string.IsNullOrWhiteSpace(campo.ValorActual) ? "Sin valor" : campo.ValorActual)</span></div>
+                            <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                            <div><small>Valor propuesto</small><span>@(string.IsNullOrWhiteSpace(campo.ValorPropuesto) ? "Sin valor" : campo.ValorPropuesto)</span></div>
+                        </article>
+                    }
+                </div>
+                @if (Model.ResumenCampos.Aplicar > Model.CamposAplicables.Count)
+                {
+                    <p>Se muestran los primeros @Model.CamposAplicables.Count de @Model.ResumenCampos.Aplicar campos aceptados.</p>
+                }
+            </details>
+        }
+        else
+        {
+            <div class="pam-prepare-empty">Aún no hay diferencias de campo marcadas para aplicar.</div>
+        }
+    </section>
+
+    <section class="pam-prepare-card">
+        <div class="pam-prepare-heading">
+            <div><span>Acciones preparadas</span><h3>Qué ocurriría al confirmar</h3></div>
+            <strong>@Model.Acciones.Count</strong>
+        </div>
+        @if (Model.Acciones.Count == 0)
+        {
+            <div class="pam-prepare-empty">Todavía no hay acciones cerradas para mostrar.</div>
+        }
+        else
+        {
+            <div class="pam-prepare-list">
+                @foreach (var item in Model.Acciones)
+                {
+                    <article>
+                        <div><code>@(item.ClaveRecibida ?? "Sin clave")</code><strong>@(item.NombreRecibido ?? "Nombre no extraído")</strong></div>
+                        <span class="pam-action-type">@item.TipoAccion</span>
+                        <div class="pam-action-target">
+                            @if (item.ProyectoRelacionadoId.HasValue)
+                            {
+                                <small>Destino en cartera</small>
+                                <strong>@(item.ProyectoRelacionadoClave ?? $"Proyecto {item.ProyectoRelacionadoId}")</strong>
+                                <span>@item.ProyectoRelacionadoNombre</span>
+                            }
+                            else
+                            {
+                                <small>@(item.TipoAccion == "No aplicar" ? "La fuente queda sólo en la traza" : "Se prepararía un registro propio")</small>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="pam-package-card @(Model.TienePaqueteVigente ? "is-frozen" : "")">
+        <div class="pam-package-heading">
+            <div>
+                <span>Cierre trazable</span>
+                <h3>@(Model.PaqueteAplicado ? "Paquete aplicado a la cartera" : Model.TienePaqueteVigente ? "Paquete de cierre congelado" : "Congelar paquete para autorización")</h3>
+                <p>El paquete conserva una fotografía inmutable de las decisiones. Congelarlo no aplica cambios a los proyectos.</p>
+            </div>
+            @if (Model.TienePaqueteVigente)
+            {
+                <span class="pam-package-status"><i class="fas @(Model.PaqueteAplicado ? "fa-circle-check" : "fa-snowflake")" aria-hidden="true"></i>@(Model.PaqueteCierre.EstadoActual ?? "Congelado")</span>
+            }
+        </div>
+
+        @if (Model.TienePaqueteVigente)
+        {
+            <div class="pam-package-meta">
+                <article><span>UID</span><strong>@UidCorto(Model.PaqueteCierre.PaqueteUid)</strong></article>
+                <article><span>Huella SHA-256</span><strong>@HashCorto(Model.PaqueteCierre.HashContenido)…</strong></article>
+                <article><span>Elementos</span><strong>@Model.PaqueteCierre.TotalDetalles.ToString("N0")</strong></article>
+                <article><span>Responsable</span><strong>@Model.PaqueteCierre.UsuarioCreacion</strong></article>
+                <article><span>Fecha</span><strong>@Model.PaqueteCierre.FechaCreacionUtc?.ToLocalTime().ToString("dd MMM yyyy HH:mm")</strong></article>
+            </div>
+            <div class="pam-package-seal"><i class="fas fa-shield-circle-check" aria-hidden="true"></i><span>@(Model.PaqueteAplicado ? "La aplicación quedó vinculada a este paquete, sus resultados y el historial por campo." : "Este contenido coincide con la revisión actual. Cualquier decisión posterior generará una huella distinta y requerirá un nuevo paquete.")</span></div>
+        }
+        else
+        {
+            @if (Model.PaqueteCierre.PaqueteAplicacionId.HasValue)
+            {
+                <div class="pam-package-stale"><i class="fas fa-rotate" aria-hidden="true"></i><span>Existe un paquete anterior, pero ya no coincide con las decisiones actuales. Debes congelar una nueva versión.</span></div>
+            }
+
+            <form asp-action="CongelarPaqueteCierre" asp-route-loteId="@Model.Lote.LoteId" method="post" class="pam-freeze-form" data-freeze-form>
+                @Html.AntiForgeryToken()
+                <div class="pam-package-preview">
+                    <article><span>Cambios de campo</span><strong>@Model.ResumenCampos.Total.ToString("N0")</strong></article>
+                    <article><span>Acciones sobre claves</span><strong>@Model.Acciones.Count.ToString("N0")</strong></article>
+                    <article><span>Huella actual</span><strong>@HashCorto(Model.PaqueteCierre.HashActual)…</strong></article>
+                </div>
+                <label class="pam-freeze-note">
+                    <span>Nota de cierre <small>(opcional)</small></span>
+                    <textarea name="Nota" maxlength="1000" rows="2" placeholder="Ej. Revisión final contra fuentes recibidas y criterios acordados."></textarea>
+                </label>
+                <label class="pam-freeze-confirm">
+                    <input type="checkbox" name="Confirmado" value="true" required @(Model.ListaParaCongelar ? null : "disabled") />
+                    <span>Confirmo que revisé el resumen, los riesgos y las advertencias. Entiendo que este paso sólo congela la evidencia y todavía no modifica la cartera maestra.</span>
+                </label>
+                <div class="pam-freeze-actions">
+                    @if (Model.TotalBloqueos > 0)
+                    {
+                        <span><i class="fas fa-circle-xmark" aria-hidden="true"></i>Resuelve @Model.TotalBloqueos bloqueo(s) antes de congelar.</span>
+                    }
+                    else
+                    {
+                        <span><i class="fas fa-shield-halved" aria-hidden="true"></i>Se guardarán decisiones, valores, fuentes, usuario, fecha y huellas de integridad.</span>
+                    }
+                    <button type="submit" class="btn btn-primary" @(Model.ListaParaCongelar ? null : "disabled")>
+                        <i class="fas fa-snowflake me-2" aria-hidden="true"></i>Congelar paquete de cierre
+                    </button>
+                </div>
+            </form>
+        }
+    </section>
+
+    @if (Model.TienePaqueteVigente)
+    {
+        <section class="pam-apply-card @(Model.PaqueteAplicado ? "is-applied" : "")">
+            <div class="pam-package-heading">
+                <div>
+                    <span>Aplicación transaccional</span>
+                    <h3>@(Model.PaqueteAplicado ? "Aplicación concluida" : "Impacto definitivo en la cartera")</h3>
+                    <p>@(Model.PaqueteAplicado ? "Las versiones anteriores permanecen disponibles en el historial." : "Esta segunda confirmación sí creará versiones y registros nuevos en la fuente de verdad PAM.")</p>
+                </div>
+                <span class="pam-apply-status @(Model.Aplicacion.TotalBloqueos > 0 ? "is-blocked" : Model.PaqueteAplicado ? "is-done" : "is-ready")">
+                    <i class="fas @(Model.Aplicacion.TotalBloqueos > 0 ? "fa-ban" : Model.PaqueteAplicado ? "fa-circle-check" : "fa-shield-halved")" aria-hidden="true"></i>
+                    @(Model.Aplicacion.TotalBloqueos > 0 ? $"{Model.Aplicacion.TotalBloqueos} bloqueo(s)" : Model.PaqueteAplicado ? "Aplicado" : "Listo para confirmar")
+                </span>
+            </div>
+
+            <div class="pam-apply-impact" aria-label="Impacto de la aplicación definitiva">
+                <article><span>Proyectos a versionar</span><strong>@Model.Aplicacion.TotalVersionesNuevas.ToString("N0")</strong><small>La versión anterior se conserva.</small></article>
+                <article><span>Campos con historial</span><strong>@Model.Aplicacion.TotalCambiosCampo.ToString("N0")</strong><small>Valor anterior, nuevo y fuente.</small></article>
+                <article><span>Proyectos nuevos</span><strong>@Model.Aplicacion.TotalProyectosNuevos.ToString("N0")</strong><small>@Model.Aplicacion.TotalAltasVigentes vigente(s) y @Model.Aplicacion.TotalAntecedentes antecedente(s).</small></article>
+                <article><span>Claves alternas</span><strong>@Model.Aplicacion.TotalClavesAlternas.ToString("N0")</strong><small>No generan jerarquías padre-hijo.</small></article>
+                <article><span>Fuentes enlazadas</span><strong>@Model.Aplicacion.TotalFuentes.ToString("N0")</strong><small>Documento, hoja/fila y carga.</small></article>
+            </div>
+
+            @if (Model.Aplicacion.Validaciones.Count > 0)
+            {
+                <div class="pam-apply-validations">
+                    @foreach (var validacion in Model.Aplicacion.Validaciones)
+                    {
+                        <article class="@(validacion.Severidad == "Bloqueo" ? "is-block" : "is-warning")">
+                            <i class="fas @(validacion.Severidad == "Bloqueo" ? "fa-circle-xmark" : "fa-circle-info")" aria-hidden="true"></i>
+                            <div><strong>@validacion.Titulo</strong><span>@validacion.Detalle</span></div>
+                            <b>@validacion.Total.ToString("N0")</b>
+                        </article>
+                    }
+                </div>
+            }
+
+            @if (Model.PaqueteAplicado)
+            {
+                <div class="pam-applied-result">
+                    <i class="fas fa-circle-check" aria-hidden="true"></i>
+                    <div><strong>@Model.Aplicacion.TotalResultados.ToString("N0") resultados trazables registrados</strong><span>El paquete no puede volver a aplicarse y cada cambio quedó enlazado con su versión resultante.</span></div>
+                    <a asp-action="Index" class="btn btn-outline-success">Ver cartera actualizada</a>
+                </div>
+            }
+            else
+            {
+                <form asp-action="AplicarPaquete" asp-route-loteId="@Model.Lote.LoteId" method="post" class="pam-apply-form" data-apply-form>
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="PaqueteAplicacionId" value="@Model.PaqueteCierre.PaqueteAplicacionId" />
+                    <div class="pam-apply-warning">
+                        <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                        <div><strong>Esta operación sí modifica la cartera maestra.</strong><span>Se ejecuta en una sola transacción: si cualquier validación falla, todo se revierte.</span></div>
+                    </div>
+                    <label class="pam-confirm-phrase">
+                        <span>Para autorizar, escribe exactamente <code>@Model.Aplicacion.FraseConfirmacion</code></span>
+                        <input type="text" name="Confirmacion" maxlength="80" autocomplete="off" spellcheck="false" required placeholder="@Model.Aplicacion.FraseConfirmacion" @(Model.Aplicacion.PuedeAplicar ? null : "disabled") />
+                    </label>
+                    <label class="pam-freeze-confirm">
+                        <input type="checkbox" name="Confirmado" value="true" required @(Model.Aplicacion.PuedeAplicar ? null : "disabled") />
+                        <span>Confirmo que autorizo el versionado de la cartera, las altas, los antecedentes cancelados y las claves alternas descritas arriba.</span>
+                    </label>
+                    <div class="pam-freeze-actions">
+                        <span><i class="fas fa-clock-rotate-left" aria-hidden="true"></i>Las versiones anteriores no se eliminan: permanecen en el historial para auditoría.</span>
+                        <button type="submit" class="btn btn-danger" @(Model.Aplicacion.PuedeAplicar ? null : "disabled")>
+                            <i class="fas fa-database me-2" aria-hidden="true"></i>Aplicar paquete a la cartera
+                        </button>
+                    </div>
+                </form>
+            }
+        </section>
+    }
+
+    <footer class="pam-prepare-footer">
+        <div><i class="fas fa-shield-halved" aria-hidden="true"></i><span><strong>Control de seguridad:</strong> congelar y aplicar son operaciones independientes; cada una conserva usuario, fecha y huella del contenido.</span></div>
+        <span class="pam-footer-state"><i class="fas @(Model.PaqueteAplicado ? "fa-circle-check" : "fa-lock")" aria-hidden="true"></i>@(Model.PaqueteAplicado ? "Aplicación registrada" : "Esperando confirmación final")</span>
+    </footer>
+</div>
+
+<style>
+    .pam-prepare-page{--pp-guinda:var(--shell-accent,#9b2247);--pp-gold:var(--shell-accent-2,#b38e5d);--pp-muted:var(--shell-muted,#746d68);--pp-surface:var(--shell-surface,#fff);--pp-surface-2:var(--shell-surface-2,#f7f4f1);--pp-line:var(--shell-line,#eadfe3);display:grid;gap:1rem;color:var(--shell-ink,#302b28)}.pam-package-message{display:flex;align-items:center;gap:.55rem;margin:0;padding:.8rem 1rem;border-radius:.7rem;font-size:.75rem;font-weight:750}.pam-package-message.is-success{border:1px solid #cfe5d7;background:#eaf6ee;color:#286348}.pam-package-message.is-error{border:1px solid #efc9d4;background:#faedf1;color:#8f1d40}.pam-prepare-nav{display:flex;align-items:center;justify-content:space-between;gap:1rem}.pam-dashboard-link{color:var(--pp-guinda);font-weight:750;text-decoration:none}.pam-prepare-hero{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.5rem;border:1px solid var(--pp-line);border-left:4px solid var(--pp-gold);border-radius:14px;background:var(--pp-surface)}.pam-prepare-hero span,.pam-prepare-heading span,.pam-package-heading>div>span{color:var(--pp-guinda);font-size:.7rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.pam-prepare-hero h2{margin:.2rem 0 .35rem;font-size:clamp(1.4rem,2vw,2rem)}.pam-prepare-hero p{margin:0;color:var(--pp-muted)}.pam-prepare-lock{display:flex;align-items:center;gap:.45rem;padding:.55rem .75rem;border-radius:999px;background:#f1edeb;color:#625b57;font-size:.72rem;font-weight:800;white-space:nowrap}.pam-prepare-alert{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.9rem;padding:1rem 1.15rem;border-radius:.8rem}.pam-prepare-alert>i{font-size:1.25rem}.pam-prepare-alert strong,.pam-prepare-alert span{display:block}.pam-prepare-alert span{margin-top:.15rem;font-size:.75rem}.pam-prepare-alert.is-warning{border:1px solid #ead6ad;background:#fbf3e3;color:#76591f}.pam-prepare-alert.is-success{border:1px solid #cfe5d7;background:#eaf6ee;color:#286348}.pam-prepare-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.65rem}.pam-prepare-kpis article{position:relative;min-width:0;padding:1rem;border:1px solid #e9e2dd;border-radius:.75rem;background:#fff;overflow:hidden}.pam-prepare-kpis span,.pam-prepare-kpis strong{display:block}.pam-prepare-kpis span{min-height:2.1em;color:var(--pp-muted);font-size:.67rem}.pam-prepare-kpis strong{margin-top:.15rem;color:var(--pp-guinda);font-size:1.4rem}.pam-prepare-kpis i{position:absolute;right:.65rem;bottom:.65rem;color:#eadde1}.pam-prepare-kpis .is-warning{background:#fbf3e5}.pam-prepare-kpis .is-success{background:#edf7f0}.pam-prepare-card{padding:1.2rem;border:1px solid var(--pp-line);border-radius:14px;background:var(--pp-surface);box-shadow:none}.pam-prepare-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:.9rem}.pam-prepare-heading h3{margin:.15rem 0 0;font-size:1.05rem}.pam-prepare-heading>strong{display:grid;min-width:32px;height:32px;place-items:center;border-radius:999px;background:#f2e1e7;color:var(--pp-guinda)}.pam-validation-totals{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.45rem}.pam-validation-totals strong{padding:.35rem .55rem;border-radius:999px;font-size:.66rem}.pam-validation-totals .is-block{background:#fae6ec;color:#9b2247}.pam-validation-totals .is-warning{background:#fbf0d9;color:#75571d}.pam-validation-totals .is-ok{background:#e5f4eb;color:#286348}.pam-validation-empty{display:flex;align-items:center;gap:.65rem;padding:.9rem;border-radius:.65rem;background:#edf7f0;color:#286348;font-size:.73rem}.pam-validation-empty i{font-size:1.15rem}.pam-validation-list{display:grid;gap:.5rem}.pam-validation-list article{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.7rem;padding:.75rem;border-radius:.65rem}.pam-validation-list article.is-block{border:1px solid #edcad4;background:#fbf0f3;color:#8c1f3f}.pam-validation-list article.is-warning{border:1px solid #ead8af;background:#fcf5e6;color:#76591f}.pam-validation-list article>i{font-size:1.05rem}.pam-validation-list strong,.pam-validation-list span,.pam-validation-list code{display:block}.pam-validation-list span{margin-top:.12rem;font-size:.69rem}.pam-validation-list code{margin-top:.2rem;color:inherit;font-size:.58rem}.pam-validation-list b{font-size:1.15rem}.pam-risk-intro{margin:-.35rem 0 .8rem;color:var(--pp-muted);font-size:.71rem}.pam-field-risk-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem}.pam-field-risk-grid article{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.55rem;padding:.8rem;border:1px solid #ebe3de;border-left:4px solid var(--pp-gold);border-radius:.65rem;background:#fcfbfa}.pam-field-risk-grid article.is-high{border-left-color:var(--pp-guinda);background:#fcf7f8}.pam-risk-title strong,.pam-risk-title code{display:block}.pam-risk-title strong{margin-top:.32rem;font-size:.76rem}.pam-risk-title code{margin-top:.12rem;color:var(--pp-muted);font-size:.58rem}.pam-risk-badge{display:inline-flex;padding:.18rem .4rem;border-radius:999px;background:#f3eadb;color:#76591f;font-size:.56rem;font-weight:850;text-transform:uppercase}.is-high .pam-risk-badge{background:#f3dfe5;color:var(--pp-guinda)}.pam-field-risk-grid article>b{color:var(--pp-guinda);font-size:1.15rem}.pam-risk-decisions{display:flex;grid-column:1/-1;flex-wrap:wrap;gap:.7rem;padding-top:.45rem;border-top:1px solid #eee6e1;color:var(--pp-muted);font-size:.63rem}.pam-risk-decisions span{display:flex;align-items:center;gap:.28rem}.pam-risk-decisions i{color:var(--pp-gold)}.pam-field-pending-summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.75rem;margin-bottom:.8rem;padding:.8rem;border-left:4px solid var(--pp-gold);border-radius:.65rem;background:#fbf3e5;color:#76591f}.pam-field-pending-summary>i{font-size:1.2rem}.pam-field-pending-summary strong,.pam-field-pending-summary span{display:block}.pam-field-pending-summary span{margin-top:.15rem;font-size:.68rem}.pam-prepare-list{display:grid;gap:.55rem}.pam-prepare-list article{display:grid;grid-template-columns:minmax(220px,1fr) minmax(150px,.45fr) minmax(240px,.9fr);align-items:center;gap:.8rem;padding:.8rem;border:1px solid #eee7e2;border-left:4px solid #2f7b61;border-radius:.65rem}.pam-prepare-list article.is-pending{border-left-color:var(--pp-gold)}.pam-prepare-list code,.pam-prepare-list strong,.pam-prepare-list small,.pam-prepare-list span{display:block}.pam-prepare-list code{color:var(--pp-guinda);font-weight:900}.pam-prepare-list strong{margin-top:.2rem;font-size:.75rem}.pam-prepare-list small{color:var(--pp-muted);font-size:.65rem}.pam-action-type{width:max-content;padding:.25rem .5rem;border-radius:999px;background:#e8f4ef;color:#256149;font-size:.65rem;font-weight:850}.pam-action-target{min-width:0}.pam-action-target span{margin-top:.15rem;color:var(--pp-muted);font-size:.68rem}.pam-field-decision-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.55rem}.pam-field-decision-kpis article{position:relative;min-width:0;padding:.75rem;border:1px solid #ece5e0;border-radius:.65rem;background:#faf8f6}.pam-field-decision-kpis span,.pam-field-decision-kpis strong{display:block}.pam-field-decision-kpis span{min-height:2em;color:var(--pp-muted);font-size:.62rem}.pam-field-decision-kpis strong{margin-top:.15rem;color:var(--pp-guinda);font-size:1.2rem}.pam-field-decision-kpis i{position:absolute;right:.55rem;bottom:.55rem;color:#eadde1}.pam-field-decision-kpis .is-warning{background:#fbf3e5}.pam-field-decision-kpis .is-success{background:#edf7f0}.pam-fields-ready{margin-top:.8rem;border-top:1px solid #eee7e2;padding-top:.7rem}.pam-fields-ready>summary{width:max-content;max-width:100%;cursor:pointer;color:var(--pp-guinda);font-size:.72rem;font-weight:850}.pam-fields-ready-list{display:grid;gap:.45rem;margin-top:.65rem}.pam-fields-ready-list article{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:.6rem;padding:.65rem;border:1px solid #eee7e2;border-radius:.6rem}.pam-fields-ready-list code,.pam-fields-ready-list strong,.pam-fields-ready-list small,.pam-fields-ready-list span{display:block;overflow-wrap:anywhere}.pam-fields-ready-list code{color:var(--pp-guinda);font-weight:850}.pam-fields-ready-list strong{margin-top:.15rem;font-size:.68rem}.pam-fields-ready-list small{color:var(--pp-muted);font-size:.58rem;font-weight:800;text-transform:uppercase}.pam-fields-ready-list span{font-size:.68rem}.pam-fields-ready-list>article>i{color:var(--pp-gold)}.pam-fields-ready>p{margin:.6rem 0 0;color:var(--pp-muted);font-size:.66rem}.pam-prepare-empty{padding:1rem;border-radius:.65rem;background:#f7f4f2;color:var(--pp-muted);text-align:center}.pam-package-card{padding:1.3rem;border:1px solid var(--pp-line);border-left:4px solid var(--pp-gold);border-radius:14px;background:var(--pp-surface);box-shadow:none}.pam-package-card.is-frozen{border-color:#c6dfd0;border-left-color:#2f7b61;background:var(--pp-surface)}.pam-package-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.pam-package-heading h3{margin:.15rem 0 .25rem;font-size:1.15rem}.pam-package-heading p{margin:0;color:var(--pp-muted);font-size:.72rem}.pam-package-status{display:flex;align-items:center;gap:.4rem;padding:.4rem .6rem;border-radius:999px;background:#dff1e6;color:#286348;font-size:.65rem;font-weight:850;white-space:nowrap}.pam-package-meta,.pam-package-preview{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.55rem;margin-top:1rem}.pam-package-preview{grid-template-columns:repeat(3,minmax(0,1fr));margin:0}.pam-package-meta article,.pam-package-preview article{min-width:0;padding:.7rem;border:1px solid #e8e0db;border-radius:.6rem;background:rgba(255,255,255,.8)}.pam-package-meta span,.pam-package-meta strong,.pam-package-preview span,.pam-package-preview strong{display:block;overflow-wrap:anywhere}.pam-package-meta span,.pam-package-preview span{color:var(--pp-muted);font-size:.58rem;text-transform:uppercase}.pam-package-meta strong,.pam-package-preview strong{margin-top:.18rem;color:var(--pp-guinda);font-size:.74rem}.pam-package-seal,.pam-package-stale{display:flex;align-items:center;gap:.55rem;margin-top:.75rem;padding:.7rem;border-radius:.6rem;font-size:.7rem}.pam-package-seal{background:#dff1e6;color:#286348}.pam-package-stale{border:1px solid #ead6ad;background:#fbf3e3;color:#76591f}.pam-freeze-form{display:grid;gap:.85rem;margin-top:1rem}.pam-freeze-note span{display:block;margin-bottom:.35rem;font-size:.68rem;font-weight:800}.pam-freeze-note small{color:var(--pp-muted);font-weight:500}.pam-freeze-note textarea{width:100%;padding:.65rem;border:1px solid #dcd2cc;border-radius:.55rem;background:#fff;font-size:.72rem;resize:vertical}.pam-freeze-note textarea:focus{border-color:var(--pp-guinda);outline:3px solid rgba(155,34,71,.1)}.pam-freeze-confirm{display:flex;align-items:flex-start;gap:.55rem;padding:.75rem;border:1px solid #e2d8d2;border-radius:.6rem;background:#fff;font-size:.7rem;cursor:pointer}.pam-freeze-confirm input{margin-top:.15rem;accent-color:var(--pp-guinda)}.pam-freeze-actions{display:flex;align-items:center;justify-content:space-between;gap:1rem}.pam-freeze-actions>span{display:flex;align-items:center;gap:.4rem;color:var(--pp-muted);font-size:.68rem}.pam-freeze-actions>span i{color:var(--pp-gold)}.pam-prepare-footer{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem;border:1px solid #e5ddd7;border-radius:.8rem;background:#faf8f6}.pam-prepare-footer>div{display:flex;align-items:flex-start;gap:.6rem;max-width:900px;color:#655d58;font-size:.73rem}.pam-prepare-footer i{margin-top:.1rem;color:var(--pp-guinda)}
+    .pam-apply-card{padding:1.35rem;border:1px solid #d8c39f;border-left:4px solid var(--pp-gold);border-radius:14px;background:var(--pp-surface);box-shadow:none}.pam-apply-card.is-applied{border-color:#b9d9c7;border-left-color:#2f7b61;background:var(--pp-surface)}.pam-apply-status{display:flex;align-items:center;gap:.4rem;padding:.45rem .65rem;border-radius:999px;font-size:.66rem;font-weight:850;white-space:nowrap}.pam-apply-status.is-ready{background:#f5e8c9;color:#72531c}.pam-apply-status.is-blocked{background:#f7dfe6;color:#8f1d40}.pam-apply-status.is-done{background:#dff1e6;color:#286348}.pam-apply-impact{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.55rem;margin-top:1rem}.pam-apply-impact article{min-width:0;padding:.8rem;border:1px solid #e6ddd6;border-radius:.65rem;background:rgba(255,255,255,.82)}.pam-apply-impact span,.pam-apply-impact strong,.pam-apply-impact small{display:block}.pam-apply-impact span{min-height:2em;color:var(--pp-muted);font-size:.6rem;text-transform:uppercase}.pam-apply-impact strong{margin:.2rem 0;color:var(--pp-guinda);font-size:1.3rem}.pam-apply-impact small{color:#756d68;font-size:.6rem}.pam-apply-validations{display:grid;gap:.45rem;margin-top:.8rem}.pam-apply-validations article{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.65rem;padding:.7rem;border-radius:.6rem}.pam-apply-validations article.is-block{border:1px solid #edcad4;background:#fbf0f3;color:#8c1f3f}.pam-apply-validations article.is-warning{border:1px solid #ead8af;background:#fff8ea;color:#76591f}.pam-apply-validations strong,.pam-apply-validations span{display:block}.pam-apply-validations span{margin-top:.12rem;font-size:.66rem}.pam-apply-validations b{font-size:1rem}.pam-apply-form{display:grid;gap:.8rem;margin-top:1rem;padding-top:1rem;border-top:1px solid #e3d6ca}.pam-apply-warning{display:flex;align-items:flex-start;gap:.6rem;padding:.8rem;border:1px solid #e4bdc9;border-radius:.65rem;background:#fbebf0;color:#87203f}.pam-apply-warning>i{margin-top:.1rem}.pam-apply-warning strong,.pam-apply-warning span{display:block}.pam-apply-warning span{margin-top:.15rem;font-size:.69rem}.pam-confirm-phrase>span{display:block;margin-bottom:.4rem;font-size:.7rem;font-weight:750}.pam-confirm-phrase code{padding:.15rem .3rem;border-radius:.3rem;background:#f1e2e7;color:var(--pp-guinda);font-weight:900}.pam-confirm-phrase input{width:100%;max-width:460px;padding:.7rem;border:1px solid #cdbfc0;border-radius:.55rem;background:#fff;font-family:monospace;font-size:.78rem;text-transform:uppercase}.pam-confirm-phrase input:focus{border-color:var(--pp-guinda);outline:3px solid rgba(155,34,71,.1)}.pam-applied-result{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.75rem;margin-top:1rem;padding:.9rem;border-radius:.7rem;background:#dff1e6;color:#286348}.pam-applied-result>i{font-size:1.25rem}.pam-applied-result strong,.pam-applied-result span{display:block}.pam-applied-result span{margin-top:.12rem;font-size:.68rem}.pam-footer-state{display:flex;align-items:center;gap:.4rem;padding:.4rem .6rem;border-radius:999px;background:#eee8e4;color:#625a55;font-size:.66rem;font-weight:800;white-space:nowrap}.pam-footer-state i{margin:0}
+    @@media(max-width:1000px){.pam-prepare-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.pam-field-decision-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.pam-package-meta,.pam-apply-impact{grid-template-columns:repeat(3,minmax(0,1fr))}.pam-prepare-list article,.pam-fields-ready-list article{grid-template-columns:1fr}.pam-fields-ready-list>article>i{transform:rotate(90deg);justify-self:center}.pam-prepare-alert,.pam-field-pending-summary{grid-template-columns:auto 1fr}.pam-prepare-alert .btn,.pam-field-pending-summary .btn{grid-column:1/-1}.pam-freeze-actions,.pam-prepare-footer{align-items:stretch;flex-direction:column}.pam-footer-state{width:max-content}}
+    @@media(max-width:650px){.pam-prepare-nav,.pam-prepare-hero,.pam-package-heading{align-items:stretch;flex-direction:column}.pam-prepare-kpis,.pam-field-decision-kpis,.pam-field-risk-grid,.pam-package-meta,.pam-package-preview,.pam-apply-impact{grid-template-columns:1fr 1fr}.pam-package-status,.pam-apply-status{width:max-content}.pam-validation-totals{justify-content:flex-start}.pam-applied-result{grid-template-columns:auto 1fr}.pam-applied-result .btn{grid-column:1/-1}}
+</style>
+
+<script>
+    (() => {
+        const form = document.querySelector('[data-freeze-form]');
+        if (!form) return;
+
+        form.addEventListener('submit', async event => {
+            if (form.dataset.confirmed === 'true') return;
+            event.preventDefault();
+
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            if (typeof Swal === 'undefined') {
+                if (!window.confirm('¿Congelar el paquete de cierre? Este paso conserva una fotografía inmutable, pero no modifica la cartera maestra.')) return;
+            } else {
+                const result = await Swal.fire({
+                    icon: 'warning',
+                    title: 'Congelar paquete de cierre',
+                    html: 'Se conservarán <strong>@Model.ResumenCampos.Total.ToString("N0") decisiones de campo</strong> y <strong>@Model.Acciones.Count.ToString("N0") acciones sobre claves</strong>.<br><br>Este paso <strong>no modifica la cartera maestra</strong>.',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, congelar paquete',
+                    cancelButtonText: 'Volver a revisar',
+                    confirmButtonColor: '#9b2247',
+                    cancelButtonColor: '#6c6865',
+                    reverseButtons: true,
+                    focusCancel: true
+                });
+                if (!result.isConfirmed) return;
+            }
+
+            form.dataset.confirmed = 'true';
+            const button = form.querySelector('button[type="submit"]');
+            if (button) {
+                button.disabled = true;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin me-2" aria-hidden="true"></i>Congelando…';
+            }
+            form.requestSubmit();
+        });
+
+        @if (!string.IsNullOrWhiteSpace(paqueteSuccessMessage))
+        {
+            <text>
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'success', title: 'Paquete actualizado', text: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(paqueteSuccessMessage)), confirmButtonText: 'Entendido', confirmButtonColor: '#9b2247' });
+            }
+            </text>
+        }
+        @if (!string.IsNullOrWhiteSpace(paqueteErrorMessage))
+        {
+            <text>
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'error', title: 'No se pudo congelar', text: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(paqueteErrorMessage)), confirmButtonText: 'Entendido', confirmButtonColor: '#9b2247' });
+            }
+            </text>
+        }
+
+        const applyForm = document.querySelector('[data-apply-form]');
+        if (applyForm) {
+            applyForm.addEventListener('submit', async event => {
+                if (applyForm.dataset.confirmed === 'true') return;
+                event.preventDefault();
+
+                if (!applyForm.checkValidity()) {
+                    applyForm.reportValidity();
+                    return;
+                }
+
+                const accepted = typeof Swal === 'undefined'
+                    ? window.confirm('Esta operación creará versiones y proyectos en la cartera maestra. ¿Deseas continuar?')
+                    : (await Swal.fire({
+                        icon: 'warning',
+                        title: 'Aplicar a la cartera maestra',
+                        html: 'Se crearán <strong>@Model.Aplicacion.TotalVersionesNuevas.ToString("N0") versiones</strong>, <strong>@Model.Aplicacion.TotalProyectosNuevos.ToString("N0") proyectos</strong> y <strong>@Model.Aplicacion.TotalClavesAlternas.ToString("N0") claves alternas</strong>.<br><br>La operación será atómica y quedará en el historial.',
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, aplicar paquete',
+                        cancelButtonText: 'Cancelar',
+                        confirmButtonColor: '#9b2247',
+                        cancelButtonColor: '#6c6865',
+                        reverseButtons: true,
+                        focusCancel: true
+                    })).isConfirmed;
+
+                if (!accepted) return;
+                applyForm.dataset.confirmed = 'true';
+                const button = applyForm.querySelector('button[type="submit"]');
+                if (button) {
+                    button.disabled = true;
+                    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2" aria-hidden="true"></i>Aplicando transacción…';
+                }
+                applyForm.requestSubmit();
+            });
+        }
+
+        @if (!string.IsNullOrWhiteSpace(aplicacionSuccessMessage))
+        {
+            <text>
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'success', title: 'Cartera actualizada', text: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(aplicacionSuccessMessage)), confirmButtonText: 'Ver resultado', confirmButtonColor: '#9b2247' });
+            }
+            </text>
+        }
+        @if (!string.IsNullOrWhiteSpace(aplicacionErrorMessage))
+        {
+            <text>
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'error', title: 'Transacción revertida', text: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(aplicacionErrorMessage)), confirmButtonText: 'Entendido', confirmButtonColor: '#9b2247' });
+            }
+            </text>
+        }
+    })();
+</script>
