@@ -59,20 +59,27 @@ var municipiosFiltrados = null;
 
 
 
-//Colores
+// Encuadre nacional: el mapa vive en México; nada de pasearse por el mundo
+mapas[0].setMinZoom(4);
+mapas[0].options.maxBoundsViscosity = 0.9;
+mapas[0].setMaxBounds([[12.5, -123.5], [35.5, -82.0]]);
+
+//Colores — sistema de diseño SENER: guinda para límites, dorado para hover
 var initialStyle = {
-    color: '#222', // Color de línea (negro/gris oscuro)
-    fillColor: '#222', // Color de relleno (gris oscuro, opacidad baja)
-    fillOpacity: 0.01, // Opacidad del relleno
-    weight: 3 // Ancho de la línea
+    color: '#9B2247',      // guinda institucional para límites estatales
+    fillColor: '#9B2247',
+    fillOpacity: 0.02,
+    weight: 1.4,
+    opacity: 0.55
 };
 
-// Estilo para el hover
+// Estilo para el hover (dorado de apoyo)
 var highlightStyle = {
-    color: '#555', // Gris medio para hover
-    fillColor: '#555', // Gris medio para hover
-    fillOpacity: 0.01,
-    weight: 3
+    color: '#E0A12E',
+    fillColor: '#E0A12E',
+    fillOpacity: 0.14,
+    weight: 2.2,
+    opacity: 0.95
 };
 
 // Se eliminó el marcador de vista de calle al hacer clic en el mapa por solicitud del usuario.
@@ -206,11 +213,12 @@ function buscarGeneral() {
                     estadosLayer.resetStyle(lastSearchedEstadoLayer);
                 }
 
-                // Resalta la entidad federativa encontrada
+                // Resalta la entidad federativa encontrada (guinda pleno institucional)
                 layer.setStyle({
-                    color: '#FF0000',
-                    fillColor: '#FF0000',
-                    fillOpacity: 0.5
+                    color: '#9B2247',
+                    fillColor: '#9B2247',
+                    fillOpacity: 0.35,
+                    weight: 3
                 });
 
                 lastSearchedEstadoLayer = layer;
@@ -252,9 +260,10 @@ function buscarGeneral() {
                 // Agrega el municipio encontrado al mapa y lo resalta
                 lastSearchedMunicipioLayer = L.geoJSON(municipio, {
                     style: {
-                        color: '#FF0000',
-                        fillColor: '#FF0000',
-                        fillOpacity: 0.5
+                        color: '#9B2247',
+                        fillColor: '#9B2247',
+                        fillOpacity: 0.35,
+                        weight: 3
                     }
                 }).addTo(mapas[0]);
 
@@ -3221,13 +3230,8 @@ var overlaysTree = [
             console.log("Overlays Tree: ", overlaysTree);
 
             var lay = L.control.layers.tree(null, overlaysTree,{
-            //namedToggle: true,
-            //selectorBack: false,
-            //closedSymbol: '&#8862; &#x1f5c0;',
-            //openedSymbol: '&#8863; &#x1f5c1;',
-            //collapseAll: 'Collapse all',
-            //expandAll: 'Expand all',
-            collapsed: true,
+            // Siempre expandido: vive dentro del dock lateral de capas
+            collapsed: false,
         });
         lay.addTo(mapas[0]);
 
@@ -3379,13 +3383,8 @@ var overlaysTreeDC = [
         aplicarProxyCDNEnLabels(overlaysTreeDC);
 
     var layDC = L.control.layers.tree(null, overlaysTreeDC,{
-    //namedToggle: true,
-    //selectorBack: false,
-    //closedSymbol: '&#8862; &#x1f5c0;',
-    //openedSymbol: '&#8863; &#x1f5c1;',
-    //collapseAll: 'Collapse all',
-    //expandAll: 'Expand all',
-    collapsed: true,
+    // Siempre expandido: vive dentro del dock lateral de capas
+    collapsed: false,
 });
 layDC.addTo(mapas[0]);
 
@@ -3905,11 +3904,8 @@ var rasterActivo = rasterBaseLayers["🌞 Potencial Fotovoltaico"];
 // Crear el control visual (slider)
 var opacityControl = L.control({ position: 'topleft' });
 opacityControl.onAdd = function (map) {
-    var div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-    div.style.background = '#fff';
-    div.style.padding = '6px 10px 2px 10px';
-    div.style.width = '160px';
-    div.innerHTML = '<label style="font-size:12px;">Opacidad raster</label><br><input id="raster-opacity-slider" type="range" min="0" max="1" step="0.01" value="1" style="width:130px;">';
+    var div = L.DomUtil.create('div', 'leaflet-bar leaflet-control azel-opacity-control');
+    div.innerHTML = '<label for="raster-opacity-slider">Opacidad raster</label><input id="raster-opacity-slider" type="range" min="0" max="1" step="0.01" value="1">';
 
     // Evitar que el mapa se mueva al interactuar con el control
     L.DomEvent.disableClickPropagation(div);
@@ -4132,3 +4128,221 @@ const esperarOpcionesImpresion = setInterval(() => {
         clearInterval(esperarOpcionesImpresion); // Ya no es necesario seguir buscando
     }
 }, 500);
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DOCK LATERAL DE CAPAS — panel auto-ocultable dentro del mapa.
+   Adopta los contenedores de los controles Leaflet existentes (rasters `control`,
+   árboles `lay`/`layDC`) sin tocar su lógica: cuando el handler de
+   baselayerchange los agrega/quita del mapa, el dock se sincroniza.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function initAzelDock() {
+    var mapEl = document.getElementById('map');
+    if (!mapEl || typeof mapas === 'undefined' || !mapas[0]) return;
+
+    var dock = document.createElement('aside');
+    dock.id = 'azel-dock';
+    dock.className = 'azel-dock';
+    dock.setAttribute('aria-label', 'Panel de capas del mapa');
+    dock.innerHTML =
+        '<button type="button" class="azel-dock__tab" aria-expanded="false" aria-controls="azel-dock-panel">' +
+            '<i class="bi bi-layers-half" aria-hidden="true"></i><span>Capas</span>' +
+        '</button>' +
+        '<div class="azel-dock__panel" id="azel-dock-panel">' +
+            '<div class="azel-dock__head">' +
+                '<strong><i class="bi bi-stack" aria-hidden="true"></i> Capas del mapa</strong>' +
+                '<button type="button" class="azel-dock__close" aria-label="Ocultar panel de capas">' +
+                    '<i class="bi bi-chevron-double-right" aria-hidden="true"></i>' +
+                '</button>' +
+            '</div>' +
+            '<div class="azel-dock__body">' +
+                '<section class="azel-dock__section" id="azel-dock-rasters">' +
+                    '<h6>Capa de potencial</h6>' +
+                '</section>' +
+                '<section class="azel-dock__section" id="azel-dock-escenarios" hidden>' +
+                    '<h6>Escenarios y simbología</h6>' +
+                '</section>' +
+            '</div>' +
+        '</div>';
+    mapEl.appendChild(dock);
+
+    // El dock no debe mover el mapa ni hacer zoom al interactuar
+    L.DomEvent.disableClickPropagation(dock);
+    L.DomEvent.disableScrollPropagation(dock);
+
+    var slotRasters = dock.querySelector('#azel-dock-rasters');
+    var slotEscenarios = dock.querySelector('#azel-dock-escenarios');
+    var tab = dock.querySelector('.azel-dock__tab');
+
+    function adopt(ctrl, slot) {
+        if (!ctrl || !ctrl.getContainer) return false;
+        var el = ctrl.getContainer();
+        if (!el) return false;
+        if (el.parentNode !== slot) slot.appendChild(el);
+        return true;
+    }
+
+    // El selector de rasters vive siempre en el dock
+    adopt(control, slotRasters);
+
+    // ---------- Íconos del sistema de diseño en lugar de emojis ----------
+    // Mosaico redondeado en el color de la tecnología + glifo de línea blanco
+    // (inventario TECH_ICONS del Sistema de Diseño SENER). Las CLAVES de las
+    // capas conservan su emoji (la lógica de baselayerchange compara nombres);
+    // aquí solo se decora el texto visible.
+    var AZEL_TECH_ICONS = {
+        '🌞': { color: '#E0A12E', svg: '<path d="M4 14 L9 5 H20.5 L16.5 14 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10.8 14 V20 M7 20 H15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>' },
+        '☀️': { color: '#D98A2B', svg: '<circle cx="12" cy="12" r="3.4" fill="currentColor"/><path d="M12 3 V5.6 M12 18.4 V21 M3 12 H5.6 M18.4 12 H21 M5.5 5.5 7.3 7.3 M16.7 16.7 18.5 18.5 M18.5 5.5 16.7 7.3 M7.3 16.7 5.5 18.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>' },
+        '💨': { color: '#1E9CB8', svg: '<path d="M12 21 V11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 10 V3 M12 10 L18.3 13.2 M12 10 L5.7 13.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><circle cx="12" cy="10.2" r="1.6" fill="currentColor"/>' },
+        '🛢️': { color: '#5E6671', svg: '<path d="M5 19 C5 10 11 4.5 20 4.5 C20 12 14 19 5 19 Z" fill="currentColor"/>' },
+        '🐄': { color: '#9AAE3B', svg: '<path d="M5 19 C5 10 11 4.5 20 4.5 C20 12 14 19 5 19 Z" fill="currentColor"/>' },
+        '🗑️': { color: '#8A9099', svg: '<path d="M5 19 C5 10 11 4.5 20 4.5 C20 12 14 19 5 19 Z" fill="currentColor"/>' },
+        '🌲': { color: '#5B9A43', svg: '<path d="M5 19 C5 10 11 4.5 20 4.5 C20 12 14 19 5 19 Z" fill="currentColor"/>' },
+        '🌋': { color: '#C0552E', svg: '<path d="M3 20 H21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 17 q -1.7 -2 0 -4 q 1.7 -2 0 -4 M12 16 q -1.7 -2 0 -4 q 1.7 -2 0 -4 M17 17 q -1.7 -2 0 -4 q 1.7 -2 0 -4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' },
+        '💧': { color: '#2E6FB0', svg: '<path d="M3 8 q 3 -2.4 6 0 t 6 0 t 6 0 M3 13 q 3 -2.4 6 0 t 6 0 t 6 0 M3 18 q 3 -2.4 6 0 t 6 0 t 6 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>' }
+    };
+
+    function decorarIconosCapas(raiz) {
+        raiz.querySelectorAll('label').forEach(function (label) {
+            if (label.querySelector('.azel-tech-icon')) return;
+            var walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+            var nodo, hecho = false;
+            while (!hecho && (nodo = walker.nextNode())) {
+                var texto = nodo.nodeValue;
+                for (var emoji in AZEL_TECH_ICONS) {
+                    if (texto.indexOf(emoji) !== -1) {
+                        var meta = AZEL_TECH_ICONS[emoji];
+                        nodo.nodeValue = ' ' + texto.split(emoji).join('').trim();
+                        var icono = document.createElement('span');
+                        icono.className = 'azel-tech-icon';
+                        icono.style.background = meta.color;
+                        icono.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + meta.svg + '</svg>';
+                        nodo.parentNode.insertBefore(icono, nodo);
+                        hecho = true;
+                        break;
+                    }
+                }
+            }
+        });
+    }
+    decorarIconosCapas(slotRasters);
+
+    // Los árboles solo existen en el DOM cuando su capa activa los requiere.
+    // Leaflet recrea el contenedor en cada addTo → re-adoptar en cada cambio.
+    function syncEscenarios() {
+        var visible = false;
+        if (typeof lay !== 'undefined' && lay._map) visible = adopt(lay, slotEscenarios) || visible;
+        if (typeof layDC !== 'undefined' && layDC._map) visible = adopt(layDC, slotEscenarios) || visible;
+        slotEscenarios.hidden = !visible;
+    }
+    syncEscenarios();
+    // Nuestro listener se registra después del handler original → corre después
+    mapas[0].on('baselayerchange', function () { setTimeout(syncEscenarios, 0); });
+
+    function setOpen(open) {
+        dock.classList.toggle('is-open', open);
+        tab.setAttribute('aria-expanded', String(open));
+    }
+
+    tab.addEventListener('click', function () {
+        setOpen(!dock.classList.contains('is-open'));
+    });
+    dock.querySelector('.azel-dock__close').addEventListener('click', function () {
+        setOpen(false);
+    });
+
+    // Auto-ocultar al interactuar con el mapa en pantallas chicas
+    mapas[0].on('dragstart', function () {
+        if (window.innerWidth < 768) setOpen(false);
+    });
+
+    // Escritorio abre de inicio; móvil arranca oculto
+    setOpen(window.matchMedia('(min-width: 768px)').matches);
+})();
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MAPA BASE EN EL DOCK + INDICADOR DE CARGA DE RASTERS
+   - El control flotante de basemaps (configura_mapa.js) se sustituye por una
+     sección de pills en el dock (el control original se oculta por CSS).
+   - Los rasters pesados (fotovoltaico, radiación, viento) muestran un chip
+     "Cargando capa…" hasta que su imagen termina de descargar.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function initAzelBasemapsYCarga() {
+    var dock = document.getElementById('azel-dock');
+    var mapEl = document.getElementById('map');
+    if (!dock || !mapEl || typeof mapas === 'undefined' || !mapas[0]) return;
+
+    // ---------- Selector de mapa base ----------
+    if (window.baseMaps && Object.keys(window.baseMaps).length) {
+        var body = dock.querySelector('.azel-dock__body');
+        var sec = document.createElement('section');
+        sec.className = 'azel-dock__section azel-dock__section--base';
+        sec.innerHTML = '<h6>Mapa base</h6><div class="azel-basemap-grid" role="group" aria-label="Selector de mapa base"></div>';
+        body.insertBefore(sec, body.firstChild);
+
+        var grid = sec.querySelector('.azel-basemap-grid');
+        var META = {
+            'Vista Satélite': ['Satélite', 'bi-globe-americas'],
+            'SENER': ['SENER', 'bi-map'],
+            'SENER Light': ['Claro', 'bi-brightness-high'],
+            'SENER Dark': ['Oscuro', 'bi-moon-stars']
+        };
+
+        var actual = Object.keys(window.baseMaps).find(function (n) {
+            return mapas[0].hasLayer(window.baseMaps[n]);
+        }) || Object.keys(window.baseMaps)[0];
+
+        Object.keys(window.baseMaps).forEach(function (nombre) {
+            var meta = META[nombre] || [nombre, 'bi-map'];
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'azel-basemap-btn' + (nombre === actual ? ' is-active' : '');
+            btn.innerHTML = '<i class="bi ' + meta[1] + '" aria-hidden="true"></i><span>' + meta[0] + '</span>';
+            btn.addEventListener('click', function () {
+                if (nombre === actual) return;
+                var prev = window.baseMaps[actual];
+                if (prev && mapas[0].hasLayer(prev)) mapas[0].removeLayer(prev);
+                window.baseMaps[nombre].addTo(mapas[0]);
+                if (nombre === 'Vista Satélite' && window.baseMaps[nombre].redraw) {
+                    window.baseMaps[nombre].redraw();
+                }
+                actual = nombre;
+                grid.querySelectorAll('.azel-basemap-btn').forEach(function (b) { b.classList.remove('is-active'); });
+                btn.classList.add('is-active');
+            });
+            grid.appendChild(btn);
+        });
+    }
+
+    // ---------- Chip de carga para rasters pesados ----------
+    var chip = document.createElement('div');
+    chip.className = 'azel-map-loading';
+    chip.hidden = true;
+    chip.innerHTML = '<span class="azel-map-loading__spin" aria-hidden="true"></span>Cargando capa…';
+    mapEl.appendChild(chip);
+
+    var ocultarTimer = null;
+
+    function mostrarCarga(capa) {
+        var overlay = null;
+        if (capa && typeof capa.eachLayer === 'function') {
+            capa.eachLayer(function (l) { if (!overlay && l instanceof L.ImageOverlay) overlay = l; });
+        } else if (capa instanceof L.ImageOverlay) {
+            overlay = capa;
+        }
+        if (!overlay) return; // capas vectoriales pintan al instante
+        if (overlay._image && overlay._image.complete) return; // ya en caché
+
+        chip.hidden = false;
+        clearTimeout(ocultarTimer);
+        var listo = function () {
+            chip.hidden = true;
+            clearTimeout(ocultarTimer);
+        };
+        overlay.once('load', listo);
+        ocultarTimer = setTimeout(listo, 6000); // failsafe: no dejar el chip pegado
+    }
+
+    mapas[0].on('baselayerchange', function (e) {
+        mostrarCarga(e.layer);
+    });
+})();

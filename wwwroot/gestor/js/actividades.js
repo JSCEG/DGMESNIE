@@ -394,11 +394,11 @@ export function renderTabla(temas, actividades, filters = {}) {
                         <span class="tabla-actions-cell">
                             ${t.evidenciaUrl ? `<a href="${escape(t.evidenciaUrl)}" target="_blank" rel="noopener" class="tabla-link-btn" title="Abrir evidencia" style="margin-right: 8px; display: inline-flex; align-items: center;"><i class="fa-solid fa-folder-open" style="font-size: 1.15rem; color: #b48934;"></i></a>` : ''}
                             <button class="tabla-action-btn" data-email="${t.id}" title="Enviar por correo" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
-                                <i class="fa-solid fa-envelope" style="font-size: 1.15rem; color: #8a0031;"></i>
+                                <i class="fa-solid fa-envelope" style="font-size: 1.15rem; color: var(--g-acento, #8a0031);"></i>
                             </button>
                             ${showReminder ? `
                             <button class="tabla-action-btn" data-reminder="${t.id}" title="Enviar recordatorio por correo" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
-                                <i class="fa-solid fa-paper-plane" style="font-size: 1.1rem; color: #8a0031;"></i>
+                                <i class="fa-solid fa-paper-plane" style="font-size: 1.1rem; color: var(--g-acento, #8a0031);"></i>
                             </button>` : ''}
                             <!--
                             <button class="tabla-action-btn" data-whatsapp="${t.id}" title="Enviar por WhatsApp" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
@@ -1057,8 +1057,8 @@ export async function openTemaModal(tema, actividades) {
                     <span style="font-weight: 700; font-size: 0.8rem; color: var(--guinda);">Etapa ${index + 1}</span>
                     ${canEdit ? `
                     <div style="display: flex; gap: 6px; align-items: center;">
-                        <button type="button" class="btn-move-up-etapa" title="Subir" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-arrow-up" style="font-size:0.8rem; color:#8a0031;"></i></button>
-                        <button type="button" class="btn-move-down-etapa" title="Bajar" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-arrow-down" style="font-size:0.8rem; color:#8a0031;"></i></button>
+                        <button type="button" class="btn-move-up-etapa" title="Subir" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-arrow-up" style="font-size:0.8rem; color:var(--g-acento, #8a0031);"></i></button>
+                        <button type="button" class="btn-move-down-etapa" title="Bajar" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-arrow-down" style="font-size:0.8rem; color:var(--g-acento, #8a0031);"></i></button>
                         <button type="button" class="btn-del-etapa" title="Eliminar" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-trash" style="font-size:0.8rem; color:var(--riesgo);"></i></button>
                     </div>
                     ` : ''}
@@ -1349,8 +1349,8 @@ export function openTemaDetalle(t, actividades) {
         const activeStage = t.etapas.find(e => e.avance < 100) || t.etapas[t.etapas.length - 1];
         
         etapasTimelineHtml = `
-            <div style="background:#f8fafc;border-radius:8px;padding:14px;border:1px solid rgba(138,0,49,0.06);margin-top:10px;">
-                <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+            <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:14px;border:1px solid rgba(138,0,49,0.06);margin-top:10px;">
+                <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:12px;display:flex;align-items:center;gap:6px;">
                     <i class="fa-solid fa-route"></i> Secuencia y Trazabilidad de Etapas (${t.etapas.length})
                 </div>
                 <div style="position:relative;padding-left:22px;display:flex;flex-direction:column;gap:16px;">
@@ -1367,12 +1367,12 @@ export function openTemaDetalle(t, actividades) {
                             : e.fechaCompromiso ? `Fecha compromiso: ${fmtDate(e.fechaCompromiso)}` : 'Sin fechas';
 
                         return `
-                            <div style="position:relative;display:flex;flex-direction:column;gap:3px;${isActive ? 'background:rgba(138,0,49,0.03);padding:6px 10px;border-radius:6px;border-left:3px solid #8a0031;margin-left:-10px;' : ''}">
+                            <div style="position:relative;display:flex;flex-direction:column;gap:3px;${isActive ? 'background:rgba(138,0,49,0.03);padding:6px 10px;border-radius:6px;border-left:3px solid var(--g-acento, #8a0031);margin-left:-10px;' : ''}">
                                 <!-- Dot -->
                                 <div style="position:absolute;left:${isActive ? '-20px' : '-22px'};top:4px;width:10px;height:10px;border-radius:50%;background:${dotColor};border:2px solid #fff;box-shadow:0 0 0 1px ${dotColor};z-index:1;"></div>
                                 
                                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                                    <span style="font-weight:700;font-size:0.82rem;color:#0f172a;">Etapa ${idx + 1}: ${escape(e.nombre)}</span>
+                                    <span style="font-weight:700;font-size:0.82rem;color:var(--g-tinta, #0f172a);">Etapa ${idx + 1}: ${escape(e.nombre)}</span>
                                     <span style="font-size:0.65rem;font-weight:700;padding:1px 5px;border-radius:4px;background:${isCompleted ? 'rgba(2,122,72,0.1)' : isActive ? 'rgba(217,119,6,0.1)' : 'rgba(102,112,133,0.1)'};color:${dotColor};">${escape(e.estatus)}</span>
                                     ${isActive ? '<span style="font-size:0.62rem;font-weight:800;background:#8a0031;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;letter-spacing:0.05em;display:inline-flex;align-items:center;gap:3px;"><i class="fa-solid fa-play"></i> Etapa Activa</span>' : ''}
                                 </div>
@@ -1393,56 +1393,56 @@ export function openTemaDetalle(t, actividades) {
 
     const html = `
         <div style="display:flex;flex-direction:column;gap:1rem;">
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(138,0,49,0.04);border-left:4px solid #8a0031;">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(138,0,49,0.04);border-left:4px solid var(--g-acento, #8a0031);">
                 <span class="semaforo ${sem}" style="width:12px;height:12px;flex-shrink:0;margin-top:0;"></span>
                 <div>
-                    <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:#8a0031;letter-spacing:.05em;">Tema / Tarea</div>
-                    <div style="font-weight:700;font-size:1rem;color:#0f172a;">${escape(t.tema)}</div>
+                    <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);letter-spacing:.05em;">Tema / Tarea</div>
+                    <div style="font-weight:700;font-size:1rem;color:var(--g-tinta, #0f172a);">${escape(t.tema)}</div>
                 </div>
-                <span style="margin-left:auto;font-size:0.78rem;font-weight:700;color:#8a0031;">${semLabels[sem] || sem}</span>
+                <span style="margin-left:auto;font-size:0.78rem;font-weight:700;color:var(--g-acento, #8a0031);">${semLabels[sem] || sem}</span>
             </div>
 
             ${t.descripcion ? `<p style="margin:0;font-size:0.87rem;color:#475569;line-height:1.55;">${escape(t.descripcion)}</p>` : ''}
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Actividad Asociada</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${escape(actividad?.actividad || '—')}</div>
+                <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Actividad Asociada</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${escape(actividad?.actividad || '—')}</div>
                 </div>
-                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Responsable Vigente</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${escape(t.responsable || '—')}</div>
+                <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Responsable Vigente</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${escape(t.responsable || '—')}</div>
                 </div>
-                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Inicio</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${fmtDate(t.fechaInicio)}</div>
+                <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Inicio</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${fmtDate(t.fechaInicio)}</div>
                 </div>
-                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Compromiso</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${fmtDate(t.fechaCompromiso)}</div>
+                <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Compromiso</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${fmtDate(t.fechaCompromiso)}</div>
                 </div>
-                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Prioridad · Estatus</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${escape(t.prioridad)} · ${escape(t.estatus)}</div>
+                <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Prioridad · Estatus</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${escape(t.prioridad)} · ${escape(t.estatus)}</div>
                 </div>
-                <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:3px;">Bloqueada</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:#0f172a;">${t.bloqueada ? `Sí (${escape(t.motivoBloqueo || 'Sin motivo')})` : 'No'}</div>
+                <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Bloqueada</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${t.bloqueada ? `Sí (${escape(t.motivoBloqueo || 'Sin motivo')})` : 'No'}</div>
                 </div>
             </div>
 
-            <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
-                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:6px;">Avance General del Tema</div>
+            <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
+                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:6px;">Avance General del Tema</div>
                 <div style="display:flex;align-items:center;gap:10px;">
                     <div style="flex:1;height:8px;border-radius:99px;background:rgba(138,0,49,.1);overflow:hidden;">
                         <div style="height:100%;width:${t.avance || 0}%;border-radius:99px;background:${sem==='rojo'?'#c0222a':sem==='amarillo'?'#d97706':'#027a48'};transition:width .4s;"></div>
                     </div>
-                    <span style="font-weight:700;font-size:0.9rem;color:#0f172a;">${t.avance || 0}%</span>
+                    <span style="font-weight:700;font-size:0.9rem;color:var(--g-tinta, #0f172a);">${t.avance || 0}%</span>
                 </div>
             </div>
 
-            <div style="background:#f8fafc;border-radius:8px;padding:10px 14px;">
-                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:#8a0031;margin-bottom:6px;">Corresponsables</div>
+            <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
+                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:6px;">Corresponsables</div>
                 <div style="display:flex;flex-wrap:wrap;gap:5px;">${corrList}</div>
             </div>
 

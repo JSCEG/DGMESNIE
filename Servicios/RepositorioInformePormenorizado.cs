@@ -8,6 +8,8 @@ namespace NSIE.Servicios
     public interface IRepositorioInformePormenorizado
     {
         Task<List<ProyectoModernizacionRegistro>> ObtenerAsync(string busqueda = null, string etapa = null, string tipoFinanciamiento = null, string universo = null);
+        Task<List<ProyectoModernizacionListado>> ObtenerPaginaAsync(string busqueda, string etapa, string tipoFinanciamiento, string universo, int pagina, int tamanoPagina);
+        Task<InformePormenorizadoAgregados> ObtenerAgregadosAsync(string busqueda, string etapa, string tipoFinanciamiento, string universo);
         Task<ProyectoModernizacionRegistro> ObtenerPorIdAsync(int proyectoModernizacionId);
         Task<int> CrearAsync(ProyectoModernizacionRegistro registro);
         Task ActualizarAsync(ProyectoModernizacionRegistro registro);
@@ -51,6 +53,84 @@ ORDER BY Numero;";
             });
 
             return registros.ToList();
+        }
+
+        private const string FiltroSql = @"Activo = 1
+  AND (@Busqueda IS NULL OR NombreProyecto LIKE @BusquedaLike OR GRT LIKE @BusquedaLike OR ClavePem LIKE @BusquedaLike OR EstadoRealProyecto LIKE @BusquedaLike)
+  AND (@Etapa IS NULL OR EtapaProyecto = @Etapa)
+  AND (@TipoFinanciamiento IS NULL OR TipoFinanciamiento = @TipoFinanciamiento)
+  AND (@Universo IS NULL OR UniversoPresentacionPresidencia = @Universo)";
+
+        private static object BuildFilterParameters(string busqueda, string etapa, string tipoFinanciamiento, string universo, int? offset = null, int? tamanoPagina = null)
+        {
+            return new
+            {
+                Busqueda = Normalize(busqueda),
+                BusquedaLike = string.IsNullOrWhiteSpace(busqueda) ? null : $"%{busqueda.Trim()}%",
+                Etapa = Normalize(etapa),
+                TipoFinanciamiento = Normalize(tipoFinanciamiento),
+                Universo = Normalize(universo),
+                Offset = offset ?? 0,
+                TamanoPagina = tamanoPagina ?? 20,
+                UniversoSi = "Sí"
+            };
+        }
+
+        public async Task<List<ProyectoModernizacionListado>> ObtenerPaginaAsync(string busqueda, string etapa, string tipoFinanciamiento, string universo, int pagina, int tamanoPagina)
+        {
+            var sql = $@"
+SELECT ProyectoModernizacionId, Numero, NombreProyecto, GRT, ClavePem, EtapaProyecto,
+       TipoFinanciamiento, MontoProyectoMdp, PorcentajeAvanceEjecucion, UniversoPresentacionPresidencia,
+       COUNT(*) OVER() AS TotalFiltrado
+FROM {TableName}
+WHERE {FiltroSql}
+ORDER BY Numero
+OFFSET @Offset ROWS FETCH NEXT @TamanoPagina ROWS ONLY;";
+
+            var offset = Math.Max(0, (pagina - 1) * tamanoPagina);
+            using var connection = new SqlConnection(_connectionString);
+            var registros = await connection.QueryAsync<ProyectoModernizacionListado>(
+                sql, BuildFilterParameters(busqueda, etapa, tipoFinanciamiento, universo, offset, tamanoPagina));
+            return registros.ToList();
+        }
+
+        public async Task<InformePormenorizadoAgregados> ObtenerAgregadosAsync(string busqueda, string etapa, string tipoFinanciamiento, string universo)
+        {
+            var sql = $@"
+SELECT COUNT(*) AS TotalRegistros,
+       ISNULL(SUM(MontoProyectoMdp), 0) AS MontoTotalMdp,
+       ISNULL(ROUND(AVG(PorcentajeAvanceEjecucion), 1), 0) AS AvancePromedio,
+       SUM(CASE WHEN EtapaProyecto LIKE '%Operaci%' THEN 1 ELSE 0 END) AS ProyectosOperacion,
+       SUM(CASE WHEN UniversoPresentacionPresidencia = @UniversoSi THEN 1 ELSE 0 END) AS ProyectosPriorizados
+FROM {TableName}
+WHERE {FiltroSql};
+
+SELECT ISNULL(NULLIF(LTRIM(RTRIM(EtapaProyecto)), ''), 'Sin etapa') AS Etiqueta,
+       COUNT(*) AS Total,
+       ISNULL(SUM(MontoProyectoMdp), 0) AS Monto
+FROM {TableName}
+WHERE {FiltroSql}
+GROUP BY ISNULL(NULLIF(LTRIM(RTRIM(EtapaProyecto)), ''), 'Sin etapa')
+ORDER BY COUNT(*) DESC
+OFFSET 0 ROWS FETCH NEXT 6 ROWS ONLY;
+
+SELECT ISNULL(NULLIF(LTRIM(RTRIM(TipoFinanciamiento)), ''), 'Sin tipo') AS Etiqueta,
+       COUNT(*) AS Total,
+       ISNULL(SUM(MontoProyectoMdp), 0) AS Monto
+FROM {TableName}
+WHERE {FiltroSql}
+GROUP BY ISNULL(NULLIF(LTRIM(RTRIM(TipoFinanciamiento)), ''), 'Sin tipo')
+ORDER BY SUM(MontoProyectoMdp) DESC
+OFFSET 0 ROWS FETCH NEXT 4 ROWS ONLY;";
+
+            using var connection = new SqlConnection(_connectionString);
+            using var multi = await connection.QueryMultipleAsync(
+                sql, BuildFilterParameters(busqueda, etapa, tipoFinanciamiento, universo));
+
+            var agregados = await multi.ReadFirstAsync<InformePormenorizadoAgregados>();
+            agregados.ResumenEtapas = (await multi.ReadAsync<InformePormenorizadoResumenItem>()).ToList();
+            agregados.ResumenFinanciamiento = (await multi.ReadAsync<InformePormenorizadoResumenItem>()).ToList();
+            return agregados;
         }
 
         public async Task<ProyectoModernizacionRegistro> ObtenerPorIdAsync(int proyectoModernizacionId)

@@ -108,6 +108,10 @@ function renderCurrent() {
     renderAlertas(actividades, filteredTemas);
 }
 
+// Re-render al cambiar tema: los gráficos se reconstruyen con la paleta
+// del tema activo (charts.js lee data-bs-theme en cada render)
+window.addEventListener('themechange', () => renderCurrent());
+
 function switchView(view) {
     state.view = view;
     document.querySelectorAll('.gestor-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));

@@ -6,7 +6,9 @@
 @{
     var httpContext = HttpContextAccessor.HttpContext;
     var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
-    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    var perfilUsuario = string.IsNullOrWhiteSpace(perfilUsuarioJson)
+        ? null
+        : JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
 
     ViewData["Title"] = "Manuales y Guías Metodológicas";
     ViewData["NombreUsuario"] = perfilUsuario?.Nombre ?? "Invitado";
@@ -40,7 +42,7 @@
     <style>
         .manuales-grid {
             display: grid;
-            grid-template-columns: 280px 1fr;
+            grid-template-columns: 280px minmax(0, 1fr);
             gap: 1.5rem;
         }
 
@@ -48,6 +50,7 @@
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
+            min-width: 0;
         }
 
         .topic-item {
@@ -61,6 +64,35 @@
             display: flex;
             align-items: center;
             gap: 0.75rem;
+        }
+
+        .topic-info {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .topic-count,
+        .resource-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.6rem;
+            height: 1.6rem;
+            padding: 0 0.42rem;
+            border: 1px solid rgba(138, 0, 49, 0.18);
+            border-radius: 999px;
+            background: rgba(138, 0, 49, 0.06);
+            color: #8A0031;
+            font-size: 0.72rem;
+            font-weight: 800;
+            line-height: 1;
+            flex: 0 0 auto;
+        }
+
+        .topic-item.active .topic-count {
+            border-color: #8A0031;
+            background: #8A0031;
+            color: #ffffff;
         }
 
         .topic-item:hover {
@@ -113,11 +145,15 @@
             padding: 1.5rem;
             box-shadow: 0 4px 20px rgba(0,0,0,0.02);
             min-height: 500px;
+            min-width: 0;
         }
 
         .resource-tabs {
             border-bottom: 2px solid #f1f3f5;
             margin-bottom: 1.5rem;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
         }
 
         .resource-tab {
@@ -130,6 +166,12 @@
             position: relative;
             transition: color 0.2s;
             cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            flex: 1 1 0;
+            min-width: 145px;
         }
 
         .resource-tab:hover {
@@ -138,6 +180,12 @@
 
         .resource-tab.active {
             color: #8A0031;
+        }
+
+        .resource-tab.active .resource-count {
+            border-color: #8A0031;
+            background: #8A0031;
+            color: #ffffff;
         }
 
         .resource-tab.active::after {
@@ -212,8 +260,74 @@
 
         @@media (max-width: 991px) {
             .manuales-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: minmax(0, 1fr);
             }
+
+            .resource-tabs {
+                justify-content: flex-start;
+            }
+
+            .resource-tab {
+                flex: 0 0 auto;
+            }
+        }
+
+        @@media (max-width: 575px) {
+            .detail-panel {
+                padding: 1rem;
+            }
+
+            .resource-card {
+                align-items: stretch;
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .resource-meta {
+                align-items: flex-start;
+            }
+
+            .resource-btn {
+                justify-content: center;
+                width: 100%;
+            }
+        }
+
+        /* --- Modo oscuro --- */
+        [data-bs-theme="dark"] .topic-item,
+        [data-bs-theme="dark"] .detail-panel,
+        [data-bs-theme="dark"] .resource-card {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .topic-icon {
+            background: var(--shell-surface-2, #241f2e);
+        }
+
+        [data-bs-theme="dark"] .topic-info h4,
+        [data-bs-theme="dark"] .resource-details h5,
+        [data-bs-theme="dark"] #topic-title {
+            color: var(--shell-ink, #ece7e2) !important;
+        }
+
+        [data-bs-theme="dark"] .topic-info p,
+        [data-bs-theme="dark"] .resource-details p {
+            color: var(--shell-muted, #a39aa8);
+        }
+
+        [data-bs-theme="dark"] .topic-count,
+        [data-bs-theme="dark"] .resource-count {
+            border-color: rgba(218, 156, 181, 0.35);
+            background: rgba(218, 156, 181, 0.12);
+            color: #e4a8bf;
+        }
+
+        [data-bs-theme="dark"] .topic-item.active .topic-count,
+        [data-bs-theme="dark"] .resource-tab.active .resource-count {
+            border-color: #d59ab2;
+            background: #d59ab2;
+            color: #24131b;
         }
     </style>
 }
@@ -227,46 +341,57 @@
         <div class="manuales-grid">
             <!-- Columna Izquierda: Temas -->
             <aside class="topic-list" aria-label="Lista de Temas">
-                <button type="button" class="topic-item active" onclick="switchTopic(0)">
+                <button type="button" class="topic-item" onclick="switchTopic(0)" aria-pressed="false" aria-label="Transparencia: 1 recurso">
                     <span class="topic-icon"><i class="bi bi-shield-check"></i></span>
                     <div class="topic-info">
                         <h4>Transparencia</h4>
                         <p>Leyes, solicitudes e informes</p>
                     </div>
+                    <span class="topic-count" aria-hidden="true">1</span>
                 </button>
-                <button type="button" class="topic-item" onclick="switchTopic(1)">
+                <button type="button" class="topic-item active" onclick="switchTopic(1)" aria-pressed="true" aria-label="Metodologías y Estadísticas: 1 recurso">
                     <span class="topic-icon"><i class="bi bi-file-earmark-bar-graph"></i></span>
                     <div class="topic-info">
                         <h4>Metodologías y Estadísticas</h4>
                         <p>Normas técnicas y balances</p>
                     </div>
+                    <span class="topic-count" aria-hidden="true">1</span>
                 </button>
-                <button type="button" class="topic-item" onclick="switchTopic(2)">
+                <button type="button" class="topic-item" onclick="switchTopic(2)" aria-pressed="false" aria-label="Manuales del Sistema: 0 recursos">
                     <span class="topic-icon"><i class="bi bi-laptop"></i></span>
                     <div class="topic-info">
                         <h4>Manuales del Sistema</h4>
                         <p>Guías de uso del SNIEr</p>
                     </div>
+                    <span class="topic-count" aria-hidden="true">0</span>
                 </button>
             </aside>
 
             <!-- Columna Derecha: Detalle -->
             <main class="detail-panel">
                 <div id="topic-title-wrap" class="mb-4">
-                    <h2 id="topic-title" style="font-size: 1.5rem; font-weight: 800; color: #333; margin-bottom: 0.25rem;">Transparencia</h2>
-                    <p id="topic-desc" class="text-muted small mb-0">Recursos institucionales, leyes generales, infografías informativas y formatos de consulta regulatoria.</p>
+                    <h2 id="topic-title" style="font-size: 1.5rem; font-weight: 800; color: #333; margin-bottom: 0.25rem;">Metodologías y Estadísticas</h2>
+                    <p id="topic-desc" class="text-muted small mb-0">Normas técnicas para la integración de datos y diagramas de balance energético nacional.</p>
                 </div>
 
                 <!-- Tabs de Recursos -->
-                <nav class="resource-tabs d-flex" aria-label="Tipos de recurso">
-                    <button type="button" class="resource-tab active" onclick="switchTab('infografias')">Infografías</button>
-                    <button type="button" class="resource-tab" onclick="switchTab('presentaciones')">Presentaciones</button>
-                    <button type="button" class="resource-tab" onclick="switchTab('regulacion')">Leyes y Regulación</button>
-                    <button type="button" class="resource-tab" onclick="switchTab('consulta')">Material de Consulta</button>
+                <nav class="resource-tabs d-flex" aria-label="Tipos de recurso" role="tablist">
+                    <button type="button" class="resource-tab active" data-tab="infografias" role="tab" aria-selected="true" aria-label="Infografías: 0 recursos" onclick="switchTab('infografias')">
+                        <span>Infografías</span><span class="resource-count" aria-hidden="true">0</span>
+                    </button>
+                    <button type="button" class="resource-tab" data-tab="presentaciones" role="tab" aria-selected="false" aria-label="Presentaciones: 1 recurso" onclick="switchTab('presentaciones')">
+                        <span>Presentaciones</span><span class="resource-count" aria-hidden="true">1</span>
+                    </button>
+                    <button type="button" class="resource-tab" data-tab="regulacion" role="tab" aria-selected="false" aria-label="Leyes y Regulación: 0 recursos" onclick="switchTab('regulacion')">
+                        <span>Leyes y Regulación</span><span class="resource-count" aria-hidden="true">0</span>
+                    </button>
+                    <button type="button" class="resource-tab" data-tab="consulta" role="tab" aria-selected="false" aria-label="Material de Consulta: 0 recursos" onclick="switchTab('consulta')">
+                        <span>Material de Consulta</span><span class="resource-count" aria-hidden="true">0</span>
+                    </button>
                 </nav>
 
                 <!-- Contenido de Recursos -->
-                <div id="resources-container">
+                <div id="resources-container" role="tabpanel" aria-live="polite">
                     <!-- Dinámico -->
                 </div>
             </main>
@@ -277,63 +402,75 @@
 @section Scripts {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
     <script>
-        // Datos de la biblioteca estructurados
+        // Los conteos se calculan directamente desde este catálogo.
+        // Los recursos publicados en esta vista deben apuntar a /Presentaciones/.
         const libraryData = [
             {
                 title: "Transparencia",
                 desc: "Recursos institucionales, leyes generales, infografías informativas y formatos de consulta regulatoria.",
-                infografias: [
-                    { title: "Ciclo de Transparencia del SNIEr", desc: "Infografía del flujo de peticiones de transparencia institucional.", actionText: "Ver Infografía", icon: "bi-image", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "#" },
-                    { title: "Obligaciones del Sector Energético", desc: "Mapa conceptual de regulaciones obligatorias.", actionText: "Ver Infografía", icon: "bi-image", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "#" }
-                ],
+                infografias: [],
                 presentaciones: [
-                    { title: "Guía para Solicitudes de Transparencia", desc: "Guía interactiva paso a paso para tramitar y gestionar solicitudes ante la Dirección General.", actionText: "Abrir guía", icon: "bi-file-slides", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html" },
-                    { title: "Inducción a la Transparencia Energética", desc: "Presentación base para capacitaciones internas.", actionText: "Abrir presentación", icon: "bi-presentation-play", color: "rgba(180, 137, 52, 0.08)", textCol: "#b48934", url: "#" }
+                    { title: "Guía para Solicitudes de Transparencia", desc: "Guía interactiva paso a paso para tramitar y gestionar solicitudes ante la Dirección General.", actionText: "Abrir guía", icon: "bi-file-earmark-slides", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html" }
                 ],
-                regulacion: [
-                    { title: "Ley General de Transparencia", desc: "Documento oficial del Diario Oficial de la Federación.", actionText: "Ir a Ley", icon: "bi-bank", color: "rgba(108, 117, 125, 0.08)", textCol: "#6c757d", url: "https://buscador-leyes.pages.dev" },
-                    { title: "Reglamento del Comité de Información", desc: "Disposiciones administrativas internas vigentes.", actionText: "Descargar PDF", icon: "bi-file-earmark-pdf", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "#" }
-                ],
-                consulta: [
-                    { title: "Guía Interactiva de Solicitudes", desc: "Consulta rápida de flujos de solicitudes de transparencia y plazos oficiales.", actionText: "Abrir guía", icon: "bi-journal-bookmark-fill", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html" },
-                    { title: "Formato Único de Solicitud de Información", desc: "Guía interactiva para tramitar peticiones ciudadanas.", actionText: "Descargar Formato", icon: "bi-file-text", color: "rgba(40, 167, 69, 0.08)", textCol: "#28a745", url: "#" }
-                ]
+                regulacion: [],
+                consulta: []
             },
             {
                 title: "Metodologías y Estadísticas",
                 desc: "Normas técnicas para la integración de datos y diagramas de balance energético nacional.",
-                infografias: [
-                    { title: "Flujo del Balance Energético Nacional (Sankey)", desc: "Representación gráfica de las transiciones energéticas nacionales.", actionText: "Ver Infografía", icon: "bi-image", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "#" }
-                ],
+                infografias: [],
                 presentaciones: [
-                    { title: "Atribuciones Específicas del Área", desc: "Inducción al marco de facultades metodológicas y de publicación.", actionText: "Ver Diapositivas", icon: "bi-presentation-play", color: "rgba(180, 137, 52, 0.08)", textCol: "#b48934", url: "@Url.Action("Index", "Home")" }
+                    { title: "Atribuciones DGMESNIE", desc: "Presentación institucional de las atribuciones, objetivos y alcance de la Dirección General.", actionText: "Abrir presentación", icon: "bi-file-earmark-slides", color: "rgba(180, 137, 52, 0.08)", textCol: "#b48934", url: "/Presentaciones/Presentacion%20DGMESNIE.html" }
                 ],
-                regulacion: [
-                    { title: "Lineamientos de Calidad Estadística", desc: "Normatividad interna aplicable para series oficiales.", actionText: "Ver Documento", icon: "bi-bank", color: "rgba(108, 117, 125, 0.08)", textCol: "#6c757d", url: "#" }
-                ],
-                consulta: [
-                    { title: "Visualización Interactiva Sankey (Balance)", desc: "Acceso al módulo de balance de energía del portal.", actionText: "Ir a visualizador", icon: "bi-lightning-charge", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "@Url.Action("BNE", "SankeySener")" },
-                    { title: "Visualización de Flujos Animada", desc: "Acceso directo al Sankey animado interactivo.", actionText: "Ir a Sankey animado", icon: "bi-bezier2", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "@Url.Action("FlujoEnergia", "SankeySener")" }
-                ]
+                regulacion: [],
+                consulta: []
             },
             {
                 title: "Manuales del Sistema",
                 desc: "Guías detalladas e instructivos técnicos para la operación y uso del portal institucional SNIEr.",
-                infografias: [
-                    { title: "Guía de Inicio Rápido para Operadores", desc: "Paso a paso ilustrado de cómo ingresar información al portal.", actionText: "Ver Guía", icon: "bi-image", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "#" }
-                ],
-                presentaciones: [
-                    { title: "Taller de Inducción para Nuevos Usuarios", desc: "Capacitación práctica para el uso de módulos y perfiles.", actionText: "Ver Taller", icon: "bi-presentation-play", color: "rgba(180, 137, 52, 0.08)", textCol: "#b48934", url: "#" }
-                ],
+                infografias: [],
+                presentaciones: [],
                 regulacion: [],
-                consulta: [
-                    { title: "Manual Oficial del Sistema SNIEr (Completo)", desc: "Manual técnico integral para el manejo y administración de datos.", actionText: "Descargar Manual", icon: "bi-book", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "/Documentos/ManualSNIEr.pdf" }
-                ]
+                consulta: []
             }
         ];
 
-        let currentTopicIndex = 0;
+        const resourceTabs = ['infografias', 'presentaciones', 'regulacion', 'consulta'];
+        const resourceTabLabels = {
+            infografias: 'Infografías',
+            presentaciones: 'Presentaciones',
+            regulacion: 'Leyes y Regulación',
+            consulta: 'Material de Consulta'
+        };
+
+        let currentTopicIndex = 1;
         let currentTab = 'infografias';
+
+        function resourceLabel(count) {
+            return `${count} ${count === 1 ? 'recurso' : 'recursos'}`;
+        }
+
+        function updateTopicCounters() {
+            document.querySelectorAll('.topic-item').forEach((button, index) => {
+                const topic = libraryData[index];
+                const total = resourceTabs.reduce((sum, tabName) => sum + (topic[tabName]?.length || 0), 0);
+                const badge = button.querySelector('.topic-count');
+
+                badge.textContent = total;
+                button.setAttribute('aria-label', `${topic.title}: ${resourceLabel(total)}`);
+            });
+        }
+
+        function updateTabCounters(topic) {
+            document.querySelectorAll('.resource-tab[data-tab]').forEach(button => {
+                const tabName = button.dataset.tab;
+                const count = topic[tabName]?.length || 0;
+                const badge = button.querySelector('.resource-count');
+
+                badge.textContent = count;
+                button.setAttribute('aria-label', `${resourceTabLabels[tabName]}: ${resourceLabel(count)}`);
+            });
+        }
 
         function switchTopic(index) {
             currentTopicIndex = index;
@@ -342,10 +479,13 @@
             // Actualizar botones de temas
             $('.topic-item').removeClass('active');
             $('.topic-item').eq(index).addClass('active');
+            $('.topic-item').attr('aria-pressed', 'false');
+            $('.topic-item').eq(index).attr('aria-pressed', 'true');
 
             // Actualizar títulos
             $('#topic-title').text(topic.title);
             $('#topic-desc').text(topic.desc);
+            updateTabCounters(topic);
 
             // Renderizar la pestaña activa
             renderContent();
@@ -364,7 +504,8 @@
         function switchTab(tabName) {
             currentTab = tabName;
             $('.resource-tab').removeClass('active');
-            $(`button[onclick="switchTab('${tabName}')"]`).addClass('active');
+            $('.resource-tab').attr('aria-selected', 'false');
+            $(`.resource-tab[data-tab="${tabName}"]`).addClass('active').attr('aria-selected', 'true');
 
             renderContent();
 
@@ -399,7 +540,9 @@
                 const card = document.createElement('div');
                 card.className = 'resource-card';
 
-                const targetAttr = item.url.startsWith('http') || item.url.endsWith('.pdf') ? 'target="_blank" rel="noopener noreferrer"' : '';
+                const targetAttr = item.url.startsWith('http') || item.url.endsWith('.pdf') || item.url.endsWith('.html')
+                    ? 'target="_blank" rel="noopener noreferrer"'
+                    : '';
 
                 card.innerHTML = `
                     <div class="resource-meta">
@@ -422,6 +565,8 @@
 
         // Carga inicial
         $(function () {
+            updateTopicCounters();
+            updateTabCounters(libraryData[currentTopicIndex]);
             renderContent();
 
             // Animación de entrada inicial con AnimeJS

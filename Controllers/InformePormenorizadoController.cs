@@ -23,16 +23,36 @@ namespace NSIE.Controllers
             _environment = environment;
         }
 
-        public async Task<IActionResult> Index(string busqueda = null, string etapa = null, string tipoFinanciamiento = null, string universo = null)
+        private const int TamanoPagina = 20;
+
+        public async Task<IActionResult> Index(string busqueda = null, string etapa = null, string tipoFinanciamiento = null, string universo = null, int pagina = 1)
         {
-            var registrosTask = _repositorio.ObtenerAsync(busqueda, etapa, tipoFinanciamiento, universo);
+            if (pagina < 1)
+            {
+                pagina = 1;
+            }
+
+            // Todo se resuelve en SQL: proyección ligera paginada + agregados con GROUP BY.
+            // Los textos largos por proyecto se cargan bajo demanda vía Detalle(id).
+            var registrosTask = _repositorio.ObtenerPaginaAsync(busqueda, etapa, tipoFinanciamiento, universo, pagina, TamanoPagina);
+            var agregadosTask = _repositorio.ObtenerAgregadosAsync(busqueda, etapa, tipoFinanciamiento, universo);
             var etapasTask = _repositorio.ObtenerEtapasAsync();
             var financiamientosTask = _repositorio.ObtenerTiposFinanciamientoAsync();
             var universosTask = _repositorio.ObtenerUniversosAsync();
 
-            await Task.WhenAll(registrosTask, etapasTask, financiamientosTask, universosTask);
+            await Task.WhenAll(registrosTask, agregadosTask, etapasTask, financiamientosTask, universosTask);
 
             var registros = registrosTask.Result;
+            var agregados = agregadosTask.Result;
+            var totalFiltrado = registros.FirstOrDefault()?.TotalFiltrado ?? agregados.TotalRegistros;
+
+            // Si la página pedida quedó fuera de rango (p.ej. tras filtrar), regresar a la última válida.
+            var totalPaginas = Math.Max(1, (int)Math.Ceiling((double)totalFiltrado / TamanoPagina));
+            if (pagina > totalPaginas && totalFiltrado > 0)
+            {
+                return RedirectToAction(nameof(Index), new { busqueda, etapa, tipoFinanciamiento, universo, pagina = totalPaginas });
+            }
+
             var model = new InformePormenorizadoViewModel
             {
                 Header = BuildHeader(),
@@ -44,38 +64,48 @@ namespace NSIE.Controllers
                 EtapasDisponibles = etapasTask.Result,
                 TiposFinanciamientoDisponibles = financiamientosTask.Result,
                 UniversosDisponibles = universosTask.Result,
-                TotalRegistros = registros.Count,
-                MontoTotalMdp = registros.Sum(x => x.MontoProyectoMdp ?? 0),
-                AvancePromedio = registros.Count == 0 ? 0 : Math.Round(registros.Where(x => x.PorcentajeAvanceEjecucion.HasValue).Select(x => x.PorcentajeAvanceEjecucion ?? 0).DefaultIfEmpty(0).Average(), 1),
-                ProyectosOperacion = registros.Count(x => (x.EtapaProyecto ?? string.Empty).Contains("Operación", StringComparison.OrdinalIgnoreCase)),
-                ProyectosPriorizados = registros.Count(x => string.Equals(x.UniversoPresentacionPresidencia, "Sí", StringComparison.OrdinalIgnoreCase))
+                Pagina = pagina,
+                TamanoPagina = TamanoPagina,
+                TotalRegistros = totalFiltrado,
+                MontoTotalMdp = agregados.MontoTotalMdp,
+                AvancePromedio = agregados.AvancePromedio,
+                ProyectosOperacion = agregados.ProyectosOperacion,
+                ProyectosPriorizados = agregados.ProyectosPriorizados,
+                ResumenEtapas = agregados.ResumenEtapas,
+                ResumenFinanciamiento = agregados.ResumenFinanciamiento
             };
 
-            model.ResumenEtapas = registros
-                .GroupBy(x => string.IsNullOrWhiteSpace(x.EtapaProyecto) ? "Sin etapa" : x.EtapaProyecto.Trim())
-                .OrderByDescending(group => group.Count())
-                .Take(6)
-                .Select(group => new InformePormenorizadoResumenItem
-                {
-                    Etiqueta = group.Key,
-                    Total = group.Count(),
-                    Monto = group.Sum(x => x.MontoProyectoMdp ?? 0)
-                })
-                .ToList();
-
-            model.ResumenFinanciamiento = registros
-                .GroupBy(x => string.IsNullOrWhiteSpace(x.TipoFinanciamiento) ? "Sin tipo" : x.TipoFinanciamiento.Trim())
-                .OrderByDescending(group => group.Sum(x => x.MontoProyectoMdp ?? 0))
-                .Take(4)
-                .Select(group => new InformePormenorizadoResumenItem
-                {
-                    Etiqueta = group.Key,
-                    Total = group.Count(),
-                    Monto = group.Sum(x => x.MontoProyectoMdp ?? 0)
-                })
-                .ToList();
-
             return View(model);
+        }
+
+        /// <summary>Detalle largo de un proyecto (textos extensos), cargado bajo demanda al expandir la fila.</summary>
+        [HttpGet]
+        public async Task<IActionResult> Detalle(int id)
+        {
+            var registro = await _repositorio.ObtenerPorIdAsync(id);
+            if (registro == null)
+            {
+                return NotFound();
+            }
+
+            return Json(new
+            {
+                tipoFinanciamiento = registro.TipoFinanciamiento,
+                anioInstruccion = registro.AnioInstruccion,
+                clasificacionSener = registro.ClasificacionSener,
+                fechaProgramacionTrimestre = registro.FechaProgramacionTrimestre,
+                quincenaPublicacion = registro.QuincenaPublicacion,
+                fechaEstimadaInicio = registro.FechaEstimadaInicio,
+                feoIndicadaOficioSener = registro.FeoIndicadaOficioSener,
+                feoFactible = registro.FeoFactible,
+                estadoRealProyecto = registro.EstadoRealProyecto,
+                circunstanciasAtrasos = registro.CircunstanciasAtrasos,
+                accionesMitigacionCorreccion = registro.AccionesMitigacionCorreccion,
+                elementosEquiposAsociados = registro.ElementosEquiposAsociados,
+                mva = registro.Mva,
+                mvar = registro.Mvar,
+                kmC = registro.KmC
+            });
         }
 
         public IActionResult Crear()

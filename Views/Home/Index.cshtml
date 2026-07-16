@@ -56,10 +56,26 @@
     var modulosDisponibles = Model.Secciones
         .Where(s => s.Modulos != null)
         .SelectMany(s => s.Modulos.Select(m => new { Seccion = s, Modulo = m }))
-        .Where(x => x.Modulo != null && !string.IsNullOrWhiteSpace(x.Modulo.Controller) && !string.IsNullOrWhiteSpace(x.Modulo.Action))
-        .GroupBy(x => $"{x.Modulo.Controller}|{x.Modulo.Action}")
+        .Where(x => x.Modulo != null
+            && !string.IsNullOrWhiteSpace(x.Modulo.Action)
+            && (x.Modulo.EsExterno || !string.IsNullOrWhiteSpace(x.Modulo.Controller)))
+        .GroupBy(x => $"{x.Modulo.EsExterno}|{x.Modulo.Controller}|{x.Modulo.Action}")
         .Select(g => g.First())
         .ToList();
+
+    var accesosGenerales = new[]
+    {
+        new { Titulo = "Reportes", Descripcion = "Generar reportes e informes", Icono = "bi-file-text", Href = Url.Action("EnConstruccion", "Home"), AbrirNuevaPestana = false, EsNuevo = false, Tono = 0 },
+        new { Titulo = "Dashboards de proyectos", Descripcion = "Explorar proyectos energéticos interactivos", Icono = "bi-speedometer2", Href = Url.Action("Index", "DashboardProyectos"), AbrirNuevaPestana = false, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Áreas de interés", Descripcion = "Geovisualizador dinámico de capas espaciales", Icono = "bi-map", Href = Url.Action("Index", "AreasInteres"), AbrirNuevaPestana = false, EsNuevo = true, Tono = 2 },
+        new { Titulo = "Balance de energía", Descripcion = "Balance Nacional de Energía Oficial", Icono = "bi-bezier2", Href = Url.Action("BNE", "SankeySener"), AbrirNuevaPestana = false, EsNuevo = false, Tono = 0 },
+        new { Titulo = "Balance animado", Descripcion = "Diagrama de flujos y transiciones", Icono = "bi-lightning-charge", Href = Url.Action("FlujoEnergia", "SankeySener"), AbrirNuevaPestana = false, EsNuevo = false, Tono = 0 },
+        new { Titulo = "Atlas AZEL", Descripcion = "Zonas con alto potencial de energías limpias", Icono = "bi-sun", Href = Url.Action("AZEL_Publico", "Atlas"), AbrirNuevaPestana = false, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Buscador de leyes", Descripcion = "Consulta de leyes y reglamentos", Icono = "bi-bank", Href = "https://buscador-leyes.pages.dev", AbrirNuevaPestana = true, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Manuales, guías y presentaciones", Descripcion = "Documentación y material institucional", Icono = "bi-book", Href = Url.Action("Index", "Manuales"), AbrirNuevaPestana = false, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Guía de transparencia", Descripcion = "Gestión y flujo de solicitudes", Icono = "bi-file-earmark-slides", Href = Url.Content("~/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html"), AbrirNuevaPestana = true, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Atribuciones DGMESNIE", Descripcion = "Atribuciones y objetivos de la DGMESNIE", Icono = "bi-file-slides", Href = Url.Content("~/Presentaciones/Presentacion%20DGMESNIE.html"), AbrirNuevaPestana = true, EsNuevo = false, Tono = 0 }
+    };
 
     var totalSecciones = Model.Secciones.Count;
     var totalModulos = modulosDisponibles.Count;
@@ -129,6 +145,30 @@
             box-sizing: border-box;
         }
 
+        /* Contención: nada del carrusel se sale del marco del hero */
+        #heroCarousel,
+        #heroCarousel .carousel-inner {
+            overflow: hidden;
+            border-radius: inherit;
+        }
+
+        /* Aire inferior: el CTA no debe pegar con el borde de la tarjeta */
+        .carousel-item .hero-home__copy {
+            padding-bottom: 1.9rem !important;
+        }
+
+        .carousel-item .hero-home__cta-row {
+            margin-bottom: 0.35rem;
+        }
+
+        .hero-home__mock-preview {
+            min-width: 0;
+        }
+
+        .mockup-card {
+            max-width: min(360px, 100%);
+        }
+
         @@media (max-width: 991px) {
             .hero-home__mock-preview {
                 display: none !important;
@@ -139,25 +179,34 @@
             .hero-home__copy {
                 padding: 1rem !important;
             }
+            /* Aire para los indicadores: que no pisen el CTA */
+            .home-dashboard-page #hero-home {
+                padding-bottom: 2.2rem !important;
+            }
         }
 
-        /* Fuerza el diseño de dos columnas (3/4 y 1/4) y áreas grid en pantallas grandes */
+        /* La cenefa ocupa la franja superior; el contenido principal queda a todo lo ancho. */
         @@media (min-width: 992px) {
+            /* min-height en vez de height fijo: las tarjetas se alinean entre
+               slides pero crecen si el contenido lo pide (antes el CTA se cortaba
+               porque .hero-home__copy tiene overflow:hidden) */
             .carousel-item .hero-home__copy {
-                height: 415px !important;
+                height: auto !important;
+                min-height: 415px !important;
             }
 
             .carousel-item .hero-home__stats-card,
             .carousel-item .hero-home__mock-preview {
-                height: 415px !important;
+                height: auto !important;
+                min-height: 415px !important;
             }
 
             .home-dashboard-page .dashboard-grid--landing {
                 display: grid !important;
-                grid-template-columns: 3fr 1fr !important;
+                grid-template-columns: minmax(0, 1fr) !important;
                 grid-template-areas: 
-                    "hero sidebar"
-                    "presentation sidebar" !important;
+                    "hero"
+                    "presentation" !important;
                 align-items: start !important;
                 gap: 1.5rem !important;
             }
@@ -170,9 +219,6 @@
                 grid-area: presentation !important;
             }
 
-            #accesos-rapidos {
-                grid-area: sidebar !important;
-            }
         }
 
         /* Estilo para el título de novedad */
@@ -440,11 +486,75 @@
             width: 32px;
         }
 
-        /* Destacado item in quick access */
-        .quick-access-item--featured {
-            border-color: rgba(138, 0, 49, 0.3) !important;
-            background: rgba(138, 0, 49, 0.03) !important;
+        /* --- Modo oscuro: mockups del carrusel y features del hero --- */
+        [data-bs-theme="dark"] .hero-home__title--novedad {
+            color: var(--shell-ink, #ece7e2) !important;
         }
+
+        /* Badges de slide: fondo uniforme legible; el guinda pleno no
+           contrasta en oscuro, se sube a acento (los inline dorado/verde/azul
+           sí son legibles y conservan su identidad) */
+        [data-bs-theme="dark"] .badge-novedad {
+            background-color: rgba(255, 255, 255, 0.08) !important;
+        }
+
+        [data-bs-theme="dark"] .badge-novedad:not([style]),
+        [data-bs-theme="dark"] .badge-novedad[style*="#8A0031"] {
+            color: var(--shell-accent, #d4537e) !important;
+        }
+
+        [data-bs-theme="dark"] .text-guinda {
+            color: var(--shell-accent, #d4537e) !important;
+        }
+
+        [data-bs-theme="dark"] .hero-feature-item strong {
+            color: var(--shell-ink, #ece7e2);
+        }
+
+        [data-bs-theme="dark"] .hero-feature-item small {
+            color: var(--shell-muted, #a39aa8);
+        }
+
+        [data-bs-theme="dark"] .mockup-card {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+
+        [data-bs-theme="dark"] .mockup-header {
+            background: var(--shell-surface-2, #241f2e);
+            border-bottom-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .mockup-address {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+            color: var(--shell-muted, #a39aa8);
+        }
+
+        [data-bs-theme="dark"] .mockup-map,
+        [data-bs-theme="dark"] .mockup-bar-chart,
+        [data-bs-theme="dark"] .mockup-donut {
+            background: var(--shell-surface-2, #241f2e);
+        }
+
+        [data-bs-theme="dark"] .mockup-donut {
+            border-color: var(--shell-surface, #1d1925);
+            box-shadow: inset 0 0 0 4px rgba(212, 83, 126, 0.2);
+        }
+
+        [data-bs-theme="dark"] .mockup-map {
+            color: rgba(212, 83, 126, 0.3);
+        }
+
+        [data-bs-theme="dark"] .carousel-indicators-custom button {
+            background: rgba(255,255,255,0.2);
+        }
+
+        [data-bs-theme="dark"] .carousel-indicators-custom button.active {
+            background: var(--shell-accent, #d4537e);
+        }
+
     </style>
 }
 
@@ -452,6 +562,72 @@
     <div class="home-dashboard-page__view-header">
         @await Html.PartialAsync("_ViewHeader", header)
     </div>
+
+    @if (accesosGenerales.Any())
+    {
+        <section id="accesos-rapidos"
+                 class="quick-access-ribbon"
+                 data-quick-access-ribbon
+                 aria-labelledby="quickAccessRibbonTitle">
+            <h2 id="quickAccessRibbonTitle" class="visually-hidden">Accesos rápidos</h2>
+            <div class="quick-access-ribbon__shell">
+                <div id="quickAccessViewport"
+                     class="quick-access-ribbon__viewport"
+                     data-quick-access-viewport
+                     tabindex="0"
+                     aria-label="Accesos rápidos generales">
+                    <div class="quick-access-ribbon__track" data-quick-access-track>
+                        @foreach (var acceso in accesosGenerales)
+                        {
+                            var claseTono = $"quick-access-bubble--tone-{acceso.Tono}";
+
+                            <a class="quick-access-bubble @claseTono"
+                               href="@acceso.Href"
+                               target="@(acceso.AbrirNuevaPestana ? "_blank" : null)"
+                               rel="@(acceso.AbrirNuevaPestana ? "noopener noreferrer" : null)"
+                               title="@acceso.Titulo">
+                                <span class="quick-access-bubble__icon" aria-hidden="true">
+                                    <i class="bi @acceso.Icono"></i>
+                                </span>
+                                <span class="quick-access-bubble__copy">
+                                    <span class="quick-access-bubble__title-row">
+                                        <strong>@acceso.Titulo</strong>
+                                        @if (acceso.EsNuevo)
+                                        {
+                                            <span class="quick-access-bubble__badge">Nuevo</span>
+                                        }
+                                    </span>
+                                    <small>@acceso.Descripcion</small>
+                                </span>
+                                @if (acceso.AbrirNuevaPestana)
+                                {
+                                    <i class="bi bi-box-arrow-up-right quick-access-bubble__external" aria-hidden="true"></i>
+                                    <span class="visually-hidden">(abre en una pestaña nueva)</span>
+                                }
+                            </a>
+                        }
+                    </div>
+                </div>
+
+                <div class="quick-access-ribbon__controls" aria-label="Controles de la cenefa">
+                    <button type="button"
+                            class="quick-access-ribbon__control"
+                            data-quick-access-prev
+                            aria-controls="quickAccessViewport"
+                            aria-label="Ver accesos anteriores">
+                        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                    </button>
+                    <button type="button"
+                            class="quick-access-ribbon__control"
+                            data-quick-access-next
+                            aria-controls="quickAccessViewport"
+                            aria-label="Ver más accesos">
+                        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+    }
 
     <div class="dashboard-container mt-2">
         <div class="container">
@@ -830,101 +1006,6 @@
                     </section>
                 </div>
 
-                <!-- Columna: Accesos Rápidos -->
-                <section id="accesos-rapidos" class="home-panel home-panel--quick" aria-label="Accesos rápidos" style="margin-bottom: 0; height: 100%;">
-                    <div class="card-header">
-                        <h3 class="card-title mb-1" style="font-size: 1.25rem; font-weight: 700; color: #333;">Accesos rápidos</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="quick-access-list">
-                            <a href="@Url.Action("Index", "Gestor")" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-file-earmark-text"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Seguimiento de actividades</span>
-                                    <span class="quick-access-desc">Monitoreo y control de actividades</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Action("EnConstruccion", "Home")" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-bar-chart-line"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Indicadores</span>
-                                    <span class="quick-access-desc">Ver métricas clave sectoriales</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Action("EnConstruccion", "Home")" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-file-text"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Reportes</span>
-                                    <span class="quick-access-desc">Generar reportes e informes</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Action("Index", "DashboardProyectos")" class="quick-access-item quick-access-item--featured">
-                                <span class="quick-access-icon" style="background: rgba(138, 0, 49, 0.1); color: #8A0031;"><i class="bi bi-speedometer2"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title" style="color: #8A0031; font-weight: 700;">Dashboards de proyectos<span class="badge-new-pulse">Nuevo</span></span>
-                                    <span class="quick-access-desc">Explora proyectos energéticos interactivos</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Action("Index", "AreasInteres")" class="quick-access-item quick-access-item--featured">
-                                <span class="quick-access-icon" style="background: rgba(40, 167, 69, 0.1); color: #28a745;"><i class="bi bi-map"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title" style="color: #28a745; font-weight: 700;">Áreas de interés<span class="badge-new-pulse">Nuevo</span></span>
-                                    <span class="quick-access-desc">Geovisualizador dinámico de capas espaciales</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Action("BNE", "SankeySener")" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-bezier2"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Balance de energía</span>
-                                    <span class="quick-access-desc">Balance Nacional de Energía Oficial</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Action("FlujoEnergia", "SankeySener")" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-lightning-charge"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Balance animado</span>
-                                    <span class="quick-access-desc">Diagrama de flujos y transiciones</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Action("AZEL_Publico", "Atlas")" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-sun"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Atlas AZEL<span class="badge-new-pulse">Nuevo</span></span>
-                                    <span class="quick-access-desc">Zonas con alto potencial de energías limpias</span>
-                                </div>
-                            </a>
-                            <a href="https://buscador-leyes.pages.dev" target="_blank" rel="noopener noreferrer" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-bank"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Buscador de leyes<span class="badge-new-pulse">Nuevo</span></span>
-                                    <span class="quick-access-desc">Consulta de leyes y reglamentos</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Action("Index", "Manuales")" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-book"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Manuales y guías<span class="badge-new-pulse">Nuevo</span></span>
-                                    <span class="quick-access-desc">Documentación técnica</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Content("~/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html")" target="_blank" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-file-earmark-slides"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Guía de transparencia<span class="badge-new-pulse">Nuevo</span></span>
-                                    <span class="quick-access-desc">Gestión y flujo de solicitudes</span>
-                                </div>
-                            </a>
-                            <a href="@Url.Content("~/Presentaciones/Presentacion%20DGMESNIE.html")" target="_blank" class="quick-access-item">
-                                <span class="quick-access-icon"><i class="bi bi-file-slides"></i></span>
-                                <div class="quick-access-info">
-                                    <span class="quick-access-title">Presentación institucional</span>
-                                    <span class="quick-access-desc">Atribuciones y objetivos DGMESNIE</span>
-                                </div>
-                            </a>
-                        </div>
-                    </div>
-                </section>
-
                 <!-- Columna: Atribuciones -->
                 <section id="atribuciones-section" class="home-panel" aria-label="Atribuciones DGMESNIE 2026" style="margin-bottom: 0;">
                     <div class="card-header card-header--split align-items-center">
@@ -974,19 +1055,168 @@
                 aplicarFondoBienvenida(fondosBienvenida[0]);
             }
 
+            function inicializarCenefaAccesos() {
+                const ribbon = document.querySelector('[data-quick-access-ribbon]');
+                const viewport = ribbon?.querySelector('[data-quick-access-viewport]');
+                const track = ribbon?.querySelector('[data-quick-access-track]');
+
+                if (!ribbon || !viewport || !track) {
+                    return;
+                }
+
+                const accesosOriginales = Array.from(track.children);
+                const botonAnterior = ribbon.querySelector('[data-quick-access-prev]');
+                const botonSiguiente = ribbon.querySelector('[data-quick-access-next]');
+                const preferenciaMovimientoReducido = window.matchMedia('(prefers-reduced-motion: reduce)');
+                const accesosClonados = [];
+                let hayDesbordamiento = false;
+                let puntoReinicio = 0;
+                let punteroEncima = false;
+                let arrastreActivo = false;
+                let pausadoPorFoco = false;
+                let pausaTemporalHasta = performance.now() + 1800;
+                let ultimoFotograma = 0;
+
+                if (accesosOriginales.length > 1) {
+                    accesosOriginales.forEach((acceso) => {
+                        const clon = acceso.cloneNode(true);
+                        clon.setAttribute('aria-hidden', 'true');
+                        clon.setAttribute('tabindex', '-1');
+                        clon.dataset.quickAccessClone = 'true';
+                        track.appendChild(clon);
+                        accesosClonados.push(clon);
+                    });
+                }
+
+                const actualizarMedidas = () => {
+                    const primerAcceso = accesosOriginales[0];
+                    const ultimoAcceso = accesosOriginales[accesosOriginales.length - 1];
+                    const estilosTrack = window.getComputedStyle(track);
+                    const separacion = Number.parseFloat(estilosTrack.columnGap || estilosTrack.gap) || 0;
+                    const anchoOriginal = primerAcceso && ultimoAcceso
+                        ? (ultimoAcceso.offsetLeft + ultimoAcceso.offsetWidth - primerAcceso.offsetLeft + separacion)
+                        : 0;
+
+                    hayDesbordamiento = anchoOriginal > viewport.clientWidth + 4;
+
+                    accesosClonados.forEach((clon) => {
+                        clon.hidden = !hayDesbordamiento || preferenciaMovimientoReducido.matches;
+                    });
+
+                    puntoReinicio = hayDesbordamiento && accesosClonados.length && !preferenciaMovimientoReducido.matches
+                        ? accesosClonados[0].offsetLeft
+                        : 0;
+
+                    [botonAnterior, botonSiguiente].forEach((boton) => {
+                        if (boton) {
+                            boton.disabled = !hayDesbordamiento;
+                        }
+                    });
+
+                    if (!hayDesbordamiento) {
+                        viewport.scrollLeft = 0;
+                    }
+                };
+
+                actualizarMedidas();
+
+                if (typeof ResizeObserver !== 'undefined') {
+                    const observadorTamano = new ResizeObserver(actualizarMedidas);
+                    observadorTamano.observe(viewport);
+                } else {
+                    window.addEventListener('resize', actualizarMedidas, { passive: true });
+                }
+
+                preferenciaMovimientoReducido.addEventListener?.('change', actualizarMedidas);
+
+                const pausarTemporalmente = (milisegundos = 2400) => {
+                    pausaTemporalHasta = performance.now() + milisegundos;
+                };
+
+                const desplazarManualmente = (direccion) => {
+                    if (!hayDesbordamiento) {
+                        return;
+                    }
+
+                    pausarTemporalmente();
+                    const paso = Math.min(360, Math.max(210, viewport.clientWidth * 0.7));
+
+                    if (direccion < 0 && viewport.scrollLeft <= 2 && puntoReinicio > 0) {
+                        viewport.scrollLeft = puntoReinicio;
+                    }
+
+                    viewport.scrollBy({
+                        left: direccion * paso,
+                        behavior: preferenciaMovimientoReducido.matches ? 'auto' : 'smooth'
+                    });
+                };
+
+                botonAnterior?.addEventListener('click', () => desplazarManualmente(-1));
+                botonSiguiente?.addEventListener('click', () => desplazarManualmente(1));
+
+                ribbon.addEventListener('mouseenter', () => { punteroEncima = true; });
+                ribbon.addEventListener('mouseleave', () => { punteroEncima = false; });
+                ribbon.addEventListener('focusin', () => { pausadoPorFoco = true; });
+                ribbon.addEventListener('focusout', () => {
+                    requestAnimationFrame(() => {
+                        pausadoPorFoco = ribbon.contains(document.activeElement);
+                    });
+                });
+                viewport.addEventListener('pointerdown', () => { arrastreActivo = true; });
+                window.addEventListener('pointerup', () => {
+                    arrastreActivo = false;
+                    pausarTemporalmente(1200);
+                });
+                window.addEventListener('pointercancel', () => { arrastreActivo = false; });
+                viewport.addEventListener('wheel', () => pausarTemporalmente(), { passive: true });
+
+                const animarCenefa = (marcaTiempo) => {
+                    if (!ultimoFotograma) {
+                        ultimoFotograma = marcaTiempo;
+                    }
+
+                    const delta = Math.min(marcaTiempo - ultimoFotograma, 34);
+                    ultimoFotograma = marcaTiempo;
+
+                    const puedeAvanzar = hayDesbordamiento
+                        && puntoReinicio > 0
+                        && !preferenciaMovimientoReducido.matches
+                        && !punteroEncima
+                        && !arrastreActivo
+                        && !pausadoPorFoco
+                        && !document.hidden
+                        && marcaTiempo >= pausaTemporalHasta;
+
+                    if (puedeAvanzar) {
+                        viewport.scrollLeft += delta * 0.025;
+
+                        if (viewport.scrollLeft >= puntoReinicio) {
+                            viewport.scrollLeft -= puntoReinicio;
+                        }
+                    }
+
+                    requestAnimationFrame(animarCenefa);
+                };
+
+                requestAnimationFrame(animarCenefa);
+            }
+
+            inicializarCenefaAccesos();
+
             // Animación de entrada con AnimeJS (estilo login)
             if (typeof anime !== 'undefined') {
                 // Estado inicial
                 anime.set([
                     '.home-dashboard-page__view-header',
+                    '.quick-access-ribbon',
+                    '.quick-access-bubble:not([data-quick-access-clone])',
                     '.hero-home__background',
                     '.hero-home__copy > span',
                     '.hero-home__copy > h1',
                     '.hero-home__copy > p',
                     '.hero-home__cta-row',
                     '.hero-home__stats-item',
-                    '.home-panel',
-                    '.quick-access-item'
+                    '.home-panel'
                 ], {
                     opacity: 0,
                     translateY: 15
@@ -1004,6 +1234,19 @@
                         translateY: [10, 0],
                         duration: 600
                     })
+                    .add({
+                        targets: '.quick-access-ribbon',
+                        opacity: [0, 1],
+                        translateY: [10, 0],
+                        duration: 650
+                    }, '-=420')
+                    .add({
+                        targets: '.quick-access-bubble:not([data-quick-access-clone])',
+                        opacity: [0, 1],
+                        translateY: [10, 0],
+                        delay: anime.stagger(35),
+                        duration: 430
+                    }, '-=430')
                     .add({
                         targets: '.hero-home__background',
                         opacity: [0, 1],
@@ -1035,14 +1278,8 @@
                         translateY: [20, 0],
                         delay: anime.stagger(120),
                         duration: 700
-                    }, '-=500')
-                    .add({
-                        targets: '.quick-access-item',
-                        opacity: [0, 1],
-                        translateY: [12, 0],
-                        delay: anime.stagger(60),
-                        duration: 500
                     }, '-=400');
+            }
         });
 
         function makeFullscreen() {

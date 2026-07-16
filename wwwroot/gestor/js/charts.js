@@ -1,6 +1,8 @@
 // Gráficos con Highcharts — cargado globalmente en _Layout.cshtml
+// Paleta dual: sigue a data-bs-theme (claro/oscuro). El fondo es transparente
+// para que mande la superficie de la tarjeta (.chart-box) vía CSS.
 
-const C = {
+const PALETA_CLARA = {
     guinda: '#8a0031',
     verde: '#1e5b4f',
     dorado: '#245b8f',
@@ -12,14 +14,51 @@ const C = {
     textoSuave: '#6c7a89',
     linea: '#d9e0e7',
     grid: '#edf0f3',
-    fondo: '#ffffff'
+    fondo: 'transparent',
+    tooltipFondo: '#ffffff',
+    gaugeTrack: '#e8eaf0',
+    borde: '#ffffff',
+    treemapStops: [[0, '#fbe3e1'], [0.35, '#f8ecd4'], [0.7, '#eaf6e1'], [1, '#d6f0df']],
+    treemapMin: '#fdecec',
+    treemapMax: '#dff7ea',
+    treemapL1: '#6f1233',
+    treemapL2: '#22313f'
 };
-const ESTATUS_COLOR = { Pendiente: C.pendiente, 'En proceso': C.proceso, Vencida: C.riesgo, Concluida: C.ok };
-const PRIORIDAD_COLOR = { Alta: C.riesgo, Media: C.proceso, Baja: C.ok };
+
+const PALETA_OSCURA = {
+    guinda: '#d4537e',
+    verde: '#4ccfae',
+    dorado: '#d4ab52',
+    ok: '#4ccfae',
+    proceso: '#d4537e',
+    riesgo: '#e08098',
+    pendiente: '#a39aa8',
+    texto: '#ece7e2',
+    textoSuave: '#a39aa8',
+    linea: 'rgba(255, 255, 255, 0.16)',
+    grid: 'rgba(255, 255, 255, 0.08)',
+    fondo: 'transparent',
+    tooltipFondo: '#241f2e',
+    gaugeTrack: 'rgba(255, 255, 255, 0.10)',
+    borde: '#1d1925',
+    treemapStops: [[0, '#54222f'], [0.35, '#544527'], [0.7, '#2c4a3b'], [1, '#1f5244']],
+    treemapMin: '#54222f',
+    treemapMax: '#1f5244',
+    treemapL1: '#f2d9a6',
+    treemapL2: '#ece7e2'
+};
+
+function isDarkTheme() {
+    return document.documentElement.getAttribute('data-bs-theme') === 'dark';
+}
+
+const C = { ...PALETA_CLARA };
+const ESTATUS_COLOR = {};
+const PRIORIDAD_COLOR = {};
 
 const BASE_CHART = {
     style: { fontFamily: 'Montserrat, sans-serif' },
-    backgroundColor: C.fondo,
+    backgroundColor: 'transparent',
     animation: { duration: 600 },
     spacingTop: 12,
     spacingRight: 12,
@@ -27,7 +66,15 @@ const BASE_CHART = {
     spacingLeft: 12
 };
 
-let themeApplied = false;
+function syncPalette() {
+    Object.assign(C, isDarkTheme() ? PALETA_OSCURA : PALETA_CLARA);
+    Object.assign(ESTATUS_COLOR, { Pendiente: C.pendiente, 'En proceso': C.proceso, Vencida: C.riesgo, Concluida: C.ok });
+    Object.assign(PRIORIDAD_COLOR, { Alta: C.riesgo, Media: C.proceso, Baja: C.ok });
+    BASE_CHART.backgroundColor = C.fondo;
+}
+syncPalette();
+
+let appliedTheme = null;
 let fullscreenWired = false;
 
 function activeFullscreenElement() {
@@ -35,7 +82,10 @@ function activeFullscreenElement() {
 }
 
 function applyInstitutionalTheme() {
-    if (themeApplied || !window.Highcharts) return;
+    if (!window.Highcharts) return;
+    const mode = isDarkTheme() ? 'dark' : 'light';
+    if (appliedTheme === mode) return;
+    syncPalette();
     Highcharts.setOptions({
         chart: {
             backgroundColor: C.fondo,
@@ -84,7 +134,7 @@ function applyInstitutionalTheme() {
             }
         },
         tooltip: {
-            backgroundColor: '#ffffff',
+            backgroundColor: C.tooltipFondo,
             borderColor: C.linea,
             style: {
                 color: C.texto
@@ -94,7 +144,7 @@ function applyInstitutionalTheme() {
             enabled: false
         }
     });
-    themeApplied = true;
+    appliedTheme = mode;
 }
 
 // ============ DONUT — Estatus actividades ============
@@ -155,7 +205,7 @@ export function gaugeAvance(temas) {
         credits: { enabled: false }, title: { text: '' }, exporting: { enabled: false },
         pane: {
             center: ['50%', '75%'], size: '120%', startAngle: -90, endAngle: 90,
-            background: { backgroundColor: '#e8eaf0', innerRadius: '70%', outerRadius: '100%', shape: 'arc', borderWidth: 0 }
+            background: { backgroundColor: C.gaugeTrack, innerRadius: '70%', outerRadius: '100%', shape: 'arc', borderWidth: 0 }
         },
         yAxis: {
             min: 0, max: 100, lineWidth: 0, tickWidth: 0, minorTickInterval: null,
@@ -436,14 +486,9 @@ export function treemapTemas(actividades, temas) {
         colorAxis: {
             min: 0,
             max: 100,
-            minColor: '#fdecec',
-            maxColor: '#dff7ea',
-            stops: [
-                [0, '#fbe3e1'],
-                [0.35, '#f8ecd4'],
-                [0.7, '#eaf6e1'],
-                [1, '#d6f0df']
-            ]
+            minColor: C.treemapMin,
+            maxColor: C.treemapMax,
+            stops: C.treemapStops
         },
         tooltip: {
             useHTML: true,
@@ -483,7 +528,7 @@ export function treemapTemas(actividades, temas) {
                     style: {
                         fontSize: '13px',
                         fontWeight: 'bold',
-                        color: '#6f1233'
+                        color: C.treemapL1
                     }
                 },
                 borderWidth: 2,
@@ -495,11 +540,11 @@ export function treemapTemas(actividades, temas) {
                     style: {
                         fontSize: '10px',
                         fontWeight: '600',
-                        color: '#22313f'
+                        color: C.treemapL2
                     }
                 },
                 borderWidth: 1,
-                borderColor: '#ffffff'
+                borderColor: C.borde
             }],
             data
         }]
