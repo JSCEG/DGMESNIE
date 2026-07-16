@@ -52,6 +52,11 @@ WITH Filtrado AS
       AND (@Estatus IS NULL
            OR v.EstatusLicitacion = @Estatus
            OR (@Estatus = N'Por clasificar' AND NULLIF(LTRIM(RTRIM(v.EstatusLicitacion)), N'') IS NULL))
+      AND (@Equipo IS NULL
+           OR (@Equipo = N'lineas' AND v.KmC > 0)
+           OR (@Equipo = N'transformacion' AND v.Mva > 0)
+           OR (@Equipo = N'compensacion' AND v.Mvar > 0))
+      AND (@FiltrarEmpalme = 0 OR v.ProyectoId IN @EmpalmeIds)
       AND
       (
           @Universo = N'todos'
@@ -127,6 +132,11 @@ WHERE
   AND (@Estatus IS NULL
        OR v.EstatusLicitacion = @Estatus
        OR (@Estatus = N'Por clasificar' AND NULLIF(LTRIM(RTRIM(v.EstatusLicitacion)), N'') IS NULL))
+  AND (@Equipo IS NULL
+       OR (@Equipo = N'lineas' AND v.KmC > 0)
+       OR (@Equipo = N'transformacion' AND v.Mva > 0)
+       OR (@Equipo = N'compensacion' AND v.Mvar > 0))
+  AND (@FiltrarEmpalme = 0 OR v.ProyectoId IN @EmpalmeIds)
   AND
   (
       @Universo = N'todos'
@@ -165,6 +175,28 @@ SELECT DISTINCT GRT FROM dgmesnie.vw_PAMProyectoVigente WHERE NULLIF(LTRIM(RTRIM
 SELECT DISTINCT TipoProyecto FROM dgmesnie.vw_PAMProyectoVigente WHERE NULLIF(LTRIM(RTRIM(TipoProyecto)), N'') IS NOT NULL ORDER BY TipoProyecto;
 SELECT DISTINCT FuenteDocumento FROM dgmesnie.vw_PAMProyectoVigente WHERE NULLIF(LTRIM(RTRIM(FuenteDocumento)), N'') IS NOT NULL ORDER BY FuenteDocumento;";
 
+            await using var connection = new SqlConnection(_connectionString);
+
+            // Pre-cálculo del filtro de empalme: el nivel se deriva en C# con el parser
+            // de fechas, así que se resuelven aquí los IDs del nivel pedido y el SQL filtra por ellos.
+            IEnumerable<long> empalmeIds = new List<long> { -1 };
+            var filtrarEmpalme = false;
+            if (!string.IsNullOrWhiteSpace(filtro.Empalme))
+            {
+                var fechasFiltro = await connection.QueryAsync<(long ProyectoId, string FechaNecesaria, string FeoFactible)>(
+                    "SELECT ProyectoId, FechaNecesaria, FeoFactible FROM dgmesnie.vw_PAMProyectoVigente WHERE EstadoVigenciaCartera = N'Vigente';");
+                var ids = fechasFiltro
+                    .Where(f => new PamEmpalme
+                    {
+                        FechaNecesaria = PamFechaParser.Parsear(f.FechaNecesaria),
+                        FeoFactible = PamFechaParser.Parsear(f.FeoFactible)
+                    }.Nivel == filtro.Empalme)
+                    .Select(f => f.ProyectoId)
+                    .ToList();
+                empalmeIds = ids.Count > 0 ? ids : new List<long> { -1 };
+                filtrarEmpalme = true;
+            }
+
             var parameters = new
             {
                 Busqueda = Normalizar(filtro.Busqueda),
@@ -175,12 +207,14 @@ SELECT DISTINCT FuenteDocumento FROM dgmesnie.vw_PAMProyectoVigente WHERE NULLIF
                 Tipo = Normalizar(filtro.Tipo),
                 Fuente = Normalizar(filtro.Fuente),
                 Estatus = Normalizar(filtro.Estatus),
+                Equipo = Normalizar(filtro.Equipo),
+                EmpalmeIds = empalmeIds,
+                FiltrarEmpalme = filtrarEmpalme,
                 filtro.Universo,
                 Offset = (filtro.Pagina - 1) * filtro.TamanoPagina,
                 filtro.TamanoPagina
             };
 
-            await using var connection = new SqlConnection(_connectionString);
             using var multi = await connection.QueryMultipleAsync(sql, parameters);
             var proyectos = (await multi.ReadAsync<PamrntProyectoIdentificado>()).ToList();
             var totalFiltrado = await multi.ReadSingleAsync<int>();

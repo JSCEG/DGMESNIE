@@ -287,6 +287,8 @@ namespace NSIE.Models
         public string Tipo { get; set; }
         public string Fuente { get; set; }
         public string Estatus { get; set; }
+        public string Empalme { get; set; }
+        public string Equipo { get; set; }
         public int Pagina { get; set; } = 1;
         public int TamanoPagina { get; set; } = 25;
 
@@ -296,6 +298,10 @@ namespace NSIE.Models
             Universo = universos.Contains(Universo?.ToLowerInvariant()) ? Universo.ToLowerInvariant() : "vigentes";
             var estatusValidos = new[] { "En operación", "En ejecución", "Concursado", "En concurso", "Por concursar", "Sin iniciar", "Por clasificar" };
             Estatus = estatusValidos.FirstOrDefault(e => string.Equals(e, Estatus?.Trim(), StringComparison.OrdinalIgnoreCase));
+            var empalmeValidos = new[] { "A tiempo", "Holgura ajustada", "Riesgo de empalme", "Sin evaluar" };
+            Empalme = empalmeValidos.FirstOrDefault(e => string.Equals(e, Empalme?.Trim(), StringComparison.OrdinalIgnoreCase));
+            var equipoValidos = new[] { "lineas", "transformacion", "compensacion" };
+            Equipo = equipoValidos.FirstOrDefault(e => string.Equals(e, Equipo?.Trim().ToLowerInvariant()));
             Pagina = Math.Max(1, Pagina);
             TamanoPagina = new[] { 10, 25, 50, 100 }.Contains(TamanoPagina) ? TamanoPagina : 25;
         }

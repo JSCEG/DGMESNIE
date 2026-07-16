@@ -33,6 +33,8 @@
         tipo = Model.Filtro.Tipo,
         fuente = Model.Filtro.Fuente,
         estatus = Model.Filtro.Estatus,
+        empalme = Model.Filtro.Empalme,
+        equipo = Model.Filtro.Equipo,
         tamanoPagina = Model.Filtro.TamanoPagina,
         pagina = p
     });
@@ -47,6 +49,24 @@
         tipo = Model.Filtro.Tipo,
         fuente = Model.Filtro.Fuente,
         estatus = string.Equals(Model.Filtro.Estatus, estatus, StringComparison.OrdinalIgnoreCase) ? null : estatus,
+        empalme = Model.Filtro.Empalme,
+        equipo = Model.Filtro.Equipo,
+        tamanoPagina = Model.Filtro.TamanoPagina,
+        pagina = 1
+    });
+
+    string UrlEmpalme(string nivel) => Url.Action("Index", new
+    {
+        universo = Model.Filtro.Universo,
+        busqueda = Model.Filtro.Busqueda,
+        origen = Model.Filtro.Origen,
+        etapa = Model.Filtro.Etapa,
+        region = Model.Filtro.Region,
+        tipo = Model.Filtro.Tipo,
+        fuente = Model.Filtro.Fuente,
+        estatus = Model.Filtro.Estatus,
+        empalme = string.Equals(Model.Filtro.Empalme, nivel, StringComparison.OrdinalIgnoreCase) ? null : nivel,
+        equipo = Model.Filtro.Equipo,
         tamanoPagina = Model.Filtro.TamanoPagina,
         pagina = 1
     });
@@ -221,17 +241,22 @@
             }
         </nav>
 
-        <nav class="pam-empalme-resumen" aria-label="Empalme de cronograma: red vigente contra fecha necesaria">
+        <nav class="pam-empalme-resumen" aria-label="Filtrar por empalme de cronograma: red vigente contra fecha necesaria">
             <span class="pam-empalme-resumen__titulo" title="Compara la fecha necesaria de cada proyecto con su FEO factible (cuándo la red está lista). Un retraso expone a la generación a vertimientos.">Empalme de cronograma</span>
-            <span class="pam-emp is-ok"><i aria-hidden="true"></i>A tiempo <strong>@Model.EmpalmeConteo("A tiempo").ToString("N0")</strong></span>
-            <span class="pam-emp is-warn"><i aria-hidden="true"></i>Holgura ajustada <strong>@Model.EmpalmeConteo("Holgura ajustada").ToString("N0")</strong></span>
-            <span class="pam-emp is-critico"><i aria-hidden="true"></i>Riesgo de empalme <strong>@Model.EmpalmeConteo("Riesgo de empalme").ToString("N0")</strong></span>
-            <span class="pam-emp is-sindato"><i aria-hidden="true"></i>Sin evaluar <strong>@Model.EmpalmeConteo("Sin evaluar").ToString("N0")</strong></span>
+            @foreach (var (nivel, clase) in new[] { ("A tiempo", "is-ok"), ("Holgura ajustada", "is-warn"), ("Riesgo de empalme", "is-critico"), ("Sin evaluar", "is-sindato") })
+            {
+                var activo = string.Equals(Model.Filtro.Empalme, nivel, StringComparison.OrdinalIgnoreCase);
+                <a class="pam-emp @clase @(activo ? "is-active" : null)" href="@UrlEmpalme(nivel)"
+                   aria-pressed="@(activo ? "true" : "false")" title="@(activo ? $"Quitar filtro {nivel}" : $"Filtrar por {nivel}")">
+                    <i aria-hidden="true"></i>@nivel <strong>@Model.EmpalmeConteo(nivel).ToString("N0")</strong>
+                </a>
+            }
         </nav>
 
         <form asp-action="Index" method="get" class="pam-filters" id="pam-filtros">
             <input type="hidden" name="universo" value="@Model.Filtro.Universo" />
             <input type="hidden" name="estatus" value="@Model.Filtro.Estatus" />
+            <input type="hidden" name="empalme" value="@Model.Filtro.Empalme" />
             <input type="hidden" name="pagina" value="1" />
             <label class="pam-search">
                 <i class="fas fa-magnifying-glass"></i>
@@ -257,6 +282,12 @@
             <select name="fuente" aria-label="Filtrar por fuente">
                 <option value="">Todas las fuentes</option>
                 @foreach (var valor in Model.FuentesDisponibles) { <option value="@valor" selected="@(Model.Filtro.Fuente == valor ? "selected" : null)">@valor</option> }
+            </select>
+            <select name="equipo" aria-label="Filtrar por tipo de equipo">
+                <option value="">Todos los equipos</option>
+                <option value="lineas" selected="@(Model.Filtro.Equipo == "lineas" ? "selected" : null)">Líneas (km-C)</option>
+                <option value="transformacion" selected="@(Model.Filtro.Equipo == "transformacion" ? "selected" : null)">Transformación (MVA)</option>
+                <option value="compensacion" selected="@(Model.Filtro.Equipo == "compensacion" ? "selected" : null)">Compensación (MVAr)</option>
             </select>
             <select name="tamanoPagina" aria-label="Resultados por página">
                 @foreach (var valor in new[] { 10, 25, 50, 100 }) { <option value="@valor" selected="@(Model.Filtro.TamanoPagina == valor ? "selected" : null)">@valor por página</option> }
@@ -885,6 +916,15 @@
         color: var(--emp-color);
         font-variant-numeric: tabular-nums;
     }
+
+    .pam-emp { text-decoration: none; transition: border-color .15s ease, background .15s ease; }
+    .pam-emp:hover { border-color: var(--emp-color); }
+    .pam-emp.is-active {
+        border-color: var(--emp-color);
+        box-shadow: inset 0 0 0 1px var(--emp-color);
+        background: color-mix(in srgb, var(--emp-color) 8%, var(--pam-surface));
+    }
+    .pam-emp:focus-visible { outline: 3px solid rgba(155, 34, 71, 0.24); outline-offset: 2px; }
 
     .pam-emp.is-ok { --emp-color: #0E8A6E; }
     .pam-emp.is-warn { --emp-color: #C8901E; }
