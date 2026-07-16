@@ -262,6 +262,9 @@
                 <i class="fas fa-magnifying-glass"></i>
                 <input name="busqueda" value="@Model.Filtro.Busqueda" type="search" placeholder="Buscar clave, proyecto, región o fuente" />
             </label>
+            @* Origen (PAM/PAMRNT) ya vive en las pestañas superiores; etapa, tipo y fuente
+               se ocultan para simplificar. Se reactivan quitando el comentario. *@
+            @*
             <select name="origen" aria-label="Filtrar por origen">
                 <option value="">Todos los orígenes</option>
                 <option value="PAM" selected="@(Model.Filtro.Origen == "PAM" ? "selected" : null)">PAM</option>
@@ -271,10 +274,6 @@
                 <option value="">Todas las etapas</option>
                 @foreach (var valor in Model.EtapasDisponibles) { <option value="@valor" selected="@(Model.Filtro.Etapa == valor ? "selected" : null)">@valor</option> }
             </select>
-            <select name="region" aria-label="Filtrar por región">
-                <option value="">Todas las regiones</option>
-                @foreach (var valor in Model.RegionesDisponibles) { <option value="@valor" selected="@(Model.Filtro.Region == valor ? "selected" : null)">@valor</option> }
-            </select>
             <select name="tipo" aria-label="Filtrar por tipo">
                 <option value="">Todos los tipos</option>
                 @foreach (var valor in Model.TiposDisponibles) { <option value="@valor" selected="@(Model.Filtro.Tipo == valor ? "selected" : null)">@valor</option> }
@@ -282,6 +281,11 @@
             <select name="fuente" aria-label="Filtrar por fuente">
                 <option value="">Todas las fuentes</option>
                 @foreach (var valor in Model.FuentesDisponibles) { <option value="@valor" selected="@(Model.Filtro.Fuente == valor ? "selected" : null)">@valor</option> }
+            </select>
+            *@
+            <select name="region" aria-label="Filtrar por región">
+                <option value="">Todas las regiones</option>
+                @foreach (var valor in Model.RegionesDisponibles) { <option value="@valor" selected="@(Model.Filtro.Region == valor ? "selected" : null)">@valor</option> }
             </select>
             <select name="equipo" aria-label="Filtrar por tipo de equipo">
                 <option value="">Todos los equipos</option>
@@ -312,7 +316,8 @@
                         <th>Proyecto</th>
                         <th>Etapa / vigencia</th>
                         <th>Región / tipo</th>
-                        <th>Jerarquía</th>
+                        @* Jerarquía oculta mientras no haya relaciones padre-hijo cargadas; se reactiva quitando pam-col-jerarquia del CSS. *@
+                        <th class="pam-col-jerarquia">Jerarquía</th>
                         <th>Fuente / corte</th>
                         <th class="text-end">Inversión MDP</th>
                         <th class="text-end">Acciones</th>
@@ -347,7 +352,7 @@
                                 <div>@(string.IsNullOrWhiteSpace(item.Gcr) ? "Sin región" : item.Gcr)</div>
                                 <small>@item.TipoProyecto</small>
                             </td>
-                            <td data-label="Jerarquía">
+                            <td data-label="Jerarquía" class="pam-col-jerarquia">
                                 @if (!string.IsNullOrWhiteSpace(item.ClavePadre))
                                 {
                                     <code>@item.ClavePadre</code>
@@ -364,14 +369,15 @@
                             </td>
                             <td data-label="Inversión MDP" class="text-end fw-semibold pam-td-inversion">@(item.InversionMdp?.ToString("N3") ?? "—")</td>
                             <td data-label="Acciones" class="text-end pam-td-acciones">
-                                <div class="pam-action-icons">
-                                    <a asp-action="Detalle" asp-route-proyectoId="@item.ProyectoId" title="Ver detalle" aria-label="Ver detalle"><i class="fas fa-eye"></i></a>
-                                    <a asp-action="Detalle" asp-route-proyectoId="@item.ProyectoId" asp-fragment="historial" title="Ver historial" aria-label="Ver historial"><i class="fas fa-clock-rotate-left"></i></a>
-                                    <a asp-action="Detalle" asp-route-proyectoId="@item.ProyectoId" asp-fragment="fuentes" title="Ver fuentes" aria-label="Ver fuentes"><i class="fas fa-file-lines"></i></a>
-                                    <a asp-action="Detalle" asp-route-proyectoId="@item.ProyectoId" asp-fragment="relaciones" title="Ver relaciones" aria-label="Ver relaciones"><i class="fas fa-diagram-project"></i></a>
+                                <div class="pam-action-botones">
+                                    <a class="pam-accion pam-accion--ver" asp-action="Detalle" asp-route-proyectoId="@item.ProyectoId" title="Ver detalle, historial, fuentes y relaciones">
+                                        <i class="fas fa-eye" aria-hidden="true"></i><span>Ver</span>
+                                    </a>
                                     @if (item.FichaDisponible)
                                     {
-                                        <a class="is-primary" asp-action="Ficha" asp-route-clavePem="@item.ClavePem" title="Abrir ficha" aria-label="Abrir ficha"><i class="fas fa-chart-column"></i></a>
+                                        <a class="pam-accion pam-accion--ficha" asp-action="Ficha" asp-route-clavePem="@item.ClavePem" title="Abrir ficha ejecutiva">
+                                            <i class="fas fa-chart-column" aria-hidden="true"></i><span>Ficha</span>
+                                        </a>
                                     }
                                 </div>
                             </td>
@@ -1016,44 +1022,56 @@
 
     .pam-texto-suave { color: var(--pam-muted); }
 
-    .pam-action-icons {
+    /* Columna Jerarquía oculta (0 relaciones cargadas); reversible quitando esta regla */
+    .pam-col-jerarquia { display: none !important; }
+
+    /* Acciones: 2 botones claros con texto en vez de 5 iconos crípticos */
+    .pam-action-botones {
         display: flex;
         align-items: center;
-        gap: .3rem;
+        gap: .4rem;
         flex-wrap: wrap;
     }
 
-    .pam-action-icons a {
-        display: inline-grid;
-        place-items: center;
-        width: 2.1rem;
-        height: 2.1rem;
+    .pam-accion {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        min-height: 2.1rem;
+        padding: .35rem .7rem;
         border: 1px solid var(--pam-line);
         border-radius: 8px;
         background: var(--pam-surface);
-        color: var(--pam-muted);
+        color: var(--pam-ink);
+        font-size: .78rem;
+        font-weight: 700;
         text-decoration: none;
+        white-space: nowrap;
+        transition: border-color .15s ease, color .15s ease, background .15s ease;
     }
 
-    .pam-action-icons a:hover {
+    .pam-accion i { font-size: .82rem; }
+
+    .pam-accion--ver:hover {
         border-color: var(--pam-guinda);
         color: var(--pam-guinda);
         background: rgba(155, 34, 71, 0.06);
     }
 
-    .pam-action-icons a.is-primary {
+    .pam-accion--ficha {
         border-color: var(--pam-guinda);
         background: var(--pam-guinda);
         color: #fff;
     }
 
-    .pam-action-icons a { transition: border-color .15s ease, color .15s ease, background .15s ease; }
+    .pam-accion--ficha:hover { background: #83183a; border-color: #83183a; }
+
     .pam-tabs a:hover { color: var(--pam-guinda); }
     .pam-pages a:hover:not(.is-active):not(.disabled) { border-color: var(--pam-guinda); }
 
     .pam-tabs a:focus-visible,
     .pam-pages a:focus-visible,
-    .pam-action-icons a:focus-visible {
+    .pam-accion:focus-visible {
         outline: 3px solid rgba(155, 34, 71, 0.24);
         outline-offset: 2px;
     }
@@ -1166,14 +1184,14 @@
     @@media (min-width: 1200px) {
         .pam-analitica { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr) minmax(260px, .8fr); align-items: stretch; }
         .pam-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .pam-filters { grid-template-columns: minmax(240px, 2fr) repeat(6, minmax(130px, 1fr)) auto auto; }
+        .pam-filters { grid-template-columns: minmax(260px, 2.4fr) repeat(3, minmax(150px, 1fr)) auto auto; }
         .pam-search { grid-column: auto; }
     }
 
     /* Tabla de escritorio: encabezado pegajoso y columna de acciones fija */
     @@media (min-width: 992px) {
         .pam-table-wrap { max-height: 68vh; overflow: auto; scrollbar-gutter: stable; }
-        .pam-table { width: 100%; min-width: 1400px; }
+        .pam-table { width: 100%; min-width: 1120px; }
         .pam-table thead { position: sticky; top: 0; z-index: 2; }
 
         .pam-table thead th {
@@ -1194,26 +1212,26 @@
             color: var(--pam-ink);
         }
 
-        .pam-table th:nth-child(1), .pam-table td:nth-child(1) { width: 145px; }
-        .pam-table th:nth-child(2), .pam-table td:nth-child(2) { width: 290px; }
-        .pam-table th:nth-child(3), .pam-table td:nth-child(3) { width: 155px; }
-        .pam-table th:nth-child(4), .pam-table td:nth-child(4) { width: 140px; }
-        .pam-table th:nth-child(5), .pam-table td:nth-child(5) { width: 160px; }
-        .pam-table th:nth-child(6), .pam-table td:nth-child(6) { width: 220px; }
-        .pam-table th:nth-child(7), .pam-table td:nth-child(7) { width: 135px; }
+        .pam-table th:nth-child(1), .pam-table td:nth-child(1) { width: 150px; }
+        .pam-table th:nth-child(2), .pam-table td:nth-child(2) { width: 320px; }
+        .pam-table th:nth-child(3), .pam-table td:nth-child(3) { width: 175px; }
+        .pam-table th:nth-child(4), .pam-table td:nth-child(4) { width: 150px; }
+        /* nth-child(5) = Jerarquía, oculta */
+        .pam-table th:nth-child(6), .pam-table td:nth-child(6) { width: 230px; }
+        .pam-table th:nth-child(7), .pam-table td:nth-child(7) { width: 140px; }
 
         .pam-table th:last-child, .pam-table td:last-child {
             position: sticky;
             right: 0;
-            width: 195px;
-            min-width: 195px;
+            width: 170px;
+            min-width: 170px;
             background: var(--pam-surface);
             border-left: 1px solid var(--pam-line);
             z-index: 1;
         }
 
         .pam-table thead th:last-child { background: var(--pam-surface-2); z-index: 3; }
-        .pam-action-icons { justify-content: flex-end; flex-wrap: nowrap; }
+        .pam-action-botones { justify-content: flex-end; flex-wrap: nowrap; }
     }
 </style>
 
