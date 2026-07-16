@@ -353,10 +353,21 @@ ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;";
             var proyecto = ConstruirProyectoIdentificado(detalle.Actual);
             var ficha = await ObtenerFichaDesdeBaseAsync(proyecto.ProyectoId);
 
+            // Enriquecida = viene de ficha validada (BD/JSON) con alternativas, comparativa
+            // y evaluación económica reales; las dinámicas ocultan esas láminas para no
+            // dejar huecos "en integración".
+            var enriquecida = ficha != null;
             if (ficha == null && string.Equals(proyecto.ClavePem, "I26-PE1", StringComparison.OrdinalIgnoreCase))
+            {
                 ficha = await IntentarLeerJsonAsync<PamrntFichaProyecto>(RutaFichaI26);
+                enriquecida = ficha != null;
+            }
 
-            ficha ??= ConstruirFichaDinamica(proyecto, detalle);
+            if (ficha == null)
+            {
+                ficha = ConstruirFichaDinamica(proyecto, detalle);
+                enriquecida = false;
+            }
             NormalizarFicha(ficha, proyecto, detalle);
 
             var contexto = await ObtenerProyectosAsync(new PamDashboardFiltro
@@ -368,13 +379,31 @@ ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;";
 
             var impacto = await ObtenerImpactoRegionalAsync(proyecto.ProyectoId, detalle.Actual.GRT);
 
+            // Panorama contextual: los PAMRNT identificados muestran los 8; los PAM
+            // muestran los proyectos vigentes de su misma GCR (más relevante que los 8).
+            var esPamrnt = string.Equals(proyecto.OrigenPrograma, "PAMRNT", StringComparison.OrdinalIgnoreCase);
+            var proyectosRegion = new List<PamrntProyectoIdentificado>();
+            if (!esPamrnt && !string.IsNullOrWhiteSpace(detalle.Actual.GRT))
+            {
+                var region = await ObtenerProyectosAsync(new PamDashboardFiltro
+                {
+                    Universo = "vigentes",
+                    Region = detalle.Actual.GRT,
+                    Pagina = 1,
+                    TamanoPagina = 10
+                });
+                proyectosRegion = region.Proyectos;
+            }
+
             return new PamrntFichaProyectoViewModel
             {
                 Proyecto = proyecto,
                 Ficha = ficha,
                 Detalle = detalle,
                 ImpactoRegional = impacto,
-                ContextoCartera = contexto.Proyectos
+                ContextoCartera = contexto.Proyectos,
+                ProyectosRegion = proyectosRegion,
+                FichaEnriquecida = enriquecida
             };
         }
 
@@ -609,27 +638,69 @@ END;";
 
         private static List<PamrntRiesgoProyecto> ConstruirRiesgos(PamProyectoDetalleActual actual)
         {
-            return new List<PamrntRiesgoProyecto>
+            var riesgos = new List<PamrntRiesgoProyecto>();
+
+            // 1. Riesgo real reportado: circunstancias de atraso + acción de mitigación (campos de BD).
+            if (!string.IsNullOrWhiteSpace(actual.CircunstanciasAtrasos))
             {
-                new()
+                riesgos.Add(new PamrntRiesgoProyecto
                 {
-                    Riesgo = "Información técnica incompleta",
-                    Impacto = "La ficha ejecutiva queda limitada a los campos vigentes de cartera.",
-                    Mitigacion = "Registrar ficha JSON validada y recursos técnicos asociados al proyecto."
-                },
-                new()
+                    Riesgo = "Circunstancias de atraso reportadas",
+                    Impacto = Recortar(actual.CircunstanciasAtrasos, 240),
+                    Mitigacion = PrimerTexto(actual.AccionesMitigacionCorreccion,
+                        "Sin acción de mitigación registrada; dar seguimiento en el próximo corte del Informe.")
+                });
+            }
+
+            // 2. Riesgo de empalme con la generación, calculado de las fechas vigentes.
+            var necesaria = PamFechaParser.Parsear(actual.FechaNecesaria);
+            var factible = PamFechaParser.Parsear(actual.FeoFactible);
+            if (necesaria.HasValue && factible.HasValue && factible.Value > necesaria.Value)
+            {
+                var meses = (factible.Value.Year - necesaria.Value.Year) * 12 + factible.Value.Month - necesaria.Value.Month;
+                riesgos.Add(new PamrntRiesgoProyecto
                 {
-                    Riesgo = PrimerTexto(actual.CircunstanciasAtrasos, "Atrasos o restricciones por validar"),
-                    Impacto = "Puede modificar fecha necesaria, alcance o priorización.",
-                    Mitigacion = PrimerTexto(actual.AccionesMitigacionCorreccion, "Dar seguimiento a la fuente oficial y a la trazabilidad de cambios.")
-                },
-                new()
+                    Riesgo = "Empalme con la fecha necesaria",
+                    Impacto = $"La red entraría {meses} mes(es) después de cuando se requiere, exponiendo a la generación asociada de la región a vertimientos.",
+                    Mitigacion = "Priorizar el proceso de licitación y sincronizar el cronograma con la generación de la GCR."
+                });
+            }
+
+            // 3. Riesgo desde el estado real de ejecución (campo de BD).
+            if (riesgos.Count < 3 && !string.IsNullOrWhiteSpace(actual.EstadoRealProyecto))
+            {
+                riesgos.Add(new PamrntRiesgoProyecto
                 {
-                    Riesgo = "Trazabilidad documental",
-                    Impacto = "Diferencias entre versiones de cartera y minuta técnica.",
-                    Mitigacion = "Conservar fuente, corte y hash documental por versión."
-                }
-            };
+                    Riesgo = "Estado de ejecución reportado",
+                    Impacto = Recortar(actual.EstadoRealProyecto, 240),
+                    Mitigacion = PrimerTexto(actual.ComentariosNivelPriorizacion,
+                        "Mantener el seguimiento del avance en cada corte del Informe Pormenorizado.")
+                });
+            }
+
+            // Respaldo sólo si el proyecto no tiene ningún campo de riesgo capturado.
+            if (riesgos.Count == 0)
+            {
+                riesgos.Add(new PamrntRiesgoProyecto
+                {
+                    Riesgo = "Información de riesgos en integración",
+                    Impacto = "Aún no se registran circunstancias de atraso ni estado de ejecución para este proyecto.",
+                    Mitigacion = "Se poblará automáticamente cuando el Informe Pormenorizado incorpore estos campos."
+                });
+            }
+
+            return riesgos;
+        }
+
+        /// <summary>Trunca respetando palabras y agrega puntos suspensivos si excede el límite.</summary>
+        private static string Recortar(string texto, int limite)
+        {
+            if (string.IsNullOrWhiteSpace(texto)) return texto;
+            var t = System.Text.RegularExpressions.Regex.Replace(texto.Trim(), @"\s+", " ");
+            if (t.Length <= limite) return t;
+            var corte = t.LastIndexOf(' ', Math.Min(limite, t.Length - 1));
+            if (corte < limite / 2) corte = limite;
+            return t[..corte].TrimEnd(',', ';', '.', ' ') + "…";
         }
 
         private static List<PamrntAlternativaProyecto> ConstruirAlternativas(PamProyectoDetalleActual actual, decimal inversion)

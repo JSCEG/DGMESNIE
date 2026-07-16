@@ -209,9 +209,19 @@
             }
         }
 
+        // Resuelve una lámina destino: por índice fijo (data-goto) o por su
+        // etiqueta de pantalla (data-goto-label), robusto ante láminas ocultas.
+        const indicePorLabel = label => {
+            const idx = slides.findIndex(slide => slide.dataset.screenLabel === label);
+            return idx >= 0 ? idx : 0;
+        };
+        const destino = button => button.dataset.gotoLabel != null
+            ? indicePorLabel(button.dataset.gotoLabel)
+            : Number(button.dataset.goto);
+
         document.querySelectorAll("[data-prev]").forEach(button => button.addEventListener("click", () => show(current - 1)));
         document.querySelectorAll("[data-next]").forEach(button => button.addEventListener("click", () => show(current + 1)));
-        document.querySelectorAll("[data-goto]").forEach(button => button.addEventListener("click", () => show(Number(button.dataset.goto))));
+        document.querySelectorAll("[data-goto], [data-goto-label]").forEach(button => button.addEventListener("click", () => show(destino(button))));
         document.querySelectorAll("[data-fullscreen]").forEach(button => button.addEventListener("click", toggleFullscreen));
         document.querySelectorAll("[data-export]").forEach(button => button.addEventListener("click", () => exportDeck(button.dataset.export)));
 

@@ -358,6 +358,11 @@ namespace NSIE.Models
         public PamProyectoDetalleViewModel Detalle { get; set; }
         public PamImpactoRegional ImpactoRegional { get; set; }
         public List<PamrntProyectoIdentificado> ContextoCartera { get; set; } = new();
+        public List<PamrntProyectoIdentificado> ProyectosRegion { get; set; } = new();
+        public bool FichaEnriquecida { get; set; }
+        public bool EsPamrntIdentificado => string.Equals(Proyecto?.OrigenPrograma, "PAMRNT", StringComparison.OrdinalIgnoreCase);
+        /// <summary>Contexto de panorama: los 8 PAMRNT para identificados, o los proyectos de la GCR para PAM.</summary>
+        public List<PamrntProyectoIdentificado> Panorama => EsPamrntIdentificado ? ContextoCartera : ProyectosRegion;
         public IReadOnlyList<PamrntFichaRecurso> Recursos => Ficha?.Recursos ?? new List<PamrntFichaRecurso>();
         public IReadOnlyList<PamrntFichaRecurso> Diagramas => Recursos
             .Where(x => x.Aplica && (x.EsDiagramaUnifilar || x.EsGeoespacial || x.EsC7U))
