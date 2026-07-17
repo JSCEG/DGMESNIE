@@ -337,6 +337,26 @@ namespace NSIE.Models
         public string EstatusSemaforoClase => PamSemaforo.Clase(EstatusLicitacion);
     }
 
+    /// <summary>Usuario elegible como destinatario del envío de ficha por correo.</summary>
+    public class PamUsuarioDestinatario
+    {
+        public int IdUsuario { get; set; }
+        public string Nombre { get; set; }
+        public string Correo { get; set; }
+        public string Cargo { get; set; }
+    }
+
+    /// <summary>Payload del envío de ficha por correo (archivo generado en el cliente).</summary>
+    public class PamEnviarFichaInput
+    {
+        public string ClavePem { get; set; }
+        public string Formato { get; set; }        // pdf | pptx
+        public string ArchivoBase64 { get; set; }
+        public string NombreArchivo { get; set; }
+        public List<int> UsuarioIds { get; set; } = new();
+        public string MensajeAdicional { get; set; }
+    }
+
     public class PamImpactoRegional
     {
         public string Region { get; set; }
@@ -365,6 +385,7 @@ namespace NSIE.Models
         public PamImpactoRegional ImpactoRegional { get; set; }
         public List<PamrntProyectoIdentificado> ContextoCartera { get; set; } = new();
         public List<PamrntProyectoIdentificado> ProyectosRegion { get; set; } = new();
+        public List<PamUsuarioDestinatario> Destinatarios { get; set; } = new();
         public bool FichaEnriquecida { get; set; }
         public bool EsPamrntIdentificado => string.Equals(Proyecto?.OrigenPrograma, "PAMRNT", StringComparison.OrdinalIgnoreCase);
         /// <summary>Contexto de panorama: los 8 PAMRNT para identificados, o los proyectos de la GCR para PAM.</summary>

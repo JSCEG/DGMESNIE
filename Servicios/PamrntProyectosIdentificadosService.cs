@@ -10,6 +10,7 @@ namespace NSIE.Servicios
         Task<PamrntProyectosIdentificadosViewModel> ObtenerProyectosAsync(PamDashboardFiltro filtro = null);
         Task<PamProyectoDetalleViewModel> ObtenerDetalleAsync(long proyectoId);
         Task<PamrntFichaProyectoViewModel> ObtenerFichaAsync(string clavePem);
+        Task<List<PamUsuarioDestinatario>> ObtenerDestinatariosAsync();
     }
 
     public class PamrntProyectosIdentificadosService : IPamrntProyectosIdentificadosService
@@ -439,6 +440,18 @@ ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;";
                 ProyectosRegion = proyectosRegion,
                 FichaEnriquecida = enriquecida
             };
+        }
+
+        public async Task<List<PamUsuarioDestinatario>> ObtenerDestinatariosAsync()
+        {
+            const string sql = @"
+SELECT IdUsuario, Nombre, Correo, Cargo
+FROM dgmesnie.Usuario
+WHERE Vigente = 1 AND NULLIF(LTRIM(RTRIM(Correo)), N'') IS NOT NULL
+  AND Correo LIKE N'%@%.%'
+ORDER BY Nombre;";
+            await using var connection = new SqlConnection(_connectionString);
+            return (await connection.QueryAsync<PamUsuarioDestinatario>(sql)).ToList();
         }
 
         private async Task<PamImpactoRegional> ObtenerImpactoRegionalAsync(long proyectoId, string region)

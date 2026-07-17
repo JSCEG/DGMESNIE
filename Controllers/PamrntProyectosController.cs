@@ -14,17 +14,20 @@ namespace NSIE.Controllers
         private readonly IPamrntProyectosIdentificadosService _service;
         private readonly IPamActualizacionService _actualizacionService;
         private readonly IPamAnalisisService _analisisService;
+        private readonly IServicioEmailSMTP _emailService;
         private readonly ILogger<PamrntProyectosController> _logger;
 
         public PamrntProyectosController(
             IPamrntProyectosIdentificadosService service,
             IPamActualizacionService actualizacionService,
             IPamAnalisisService analisisService,
+            IServicioEmailSMTP emailService,
             ILogger<PamrntProyectosController> logger)
         {
             _service = service;
             _actualizacionService = actualizacionService;
             _analisisService = analisisService;
+            _emailService = emailService;
             _logger = logger;
         }
 
@@ -659,7 +662,115 @@ namespace NSIE.Controllers
             }
 
             model.Header = BuildHeader();
+            model.Destinatarios = await _service.ObtenerDestinatariosAsync();
             return View(model);
+        }
+
+        [HttpPost("Ficha/Enviar")]
+        [ValidateAntiForgeryToken]
+        [RequestSizeLimit(67108864)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 67108864)]
+        public async Task<IActionResult> EnviarFicha([FromBody] PamEnviarFichaInput input)
+        {
+            if (input == null || string.IsNullOrWhiteSpace(input.ArchivoBase64) || input.UsuarioIds is not { Count: > 0 })
+                return BadRequest(new { ok = false, mensaje = "Selecciona al menos un destinatario y espera a que el archivo se genere." });
+
+            var formato = string.Equals(input.Formato, "pptx", StringComparison.OrdinalIgnoreCase) ? "pptx" : "pdf";
+            var clave = string.IsNullOrWhiteSpace(input.ClavePem) ? "PAMRNT" : input.ClavePem.Trim();
+
+            byte[] adjunto;
+            try
+            {
+                var base64 = input.ArchivoBase64;
+                var coma = base64.IndexOf(',');
+                if (coma >= 0) base64 = base64[(coma + 1)..]; // quita el prefijo data:...;base64,
+                adjunto = Convert.FromBase64String(base64);
+            }
+            catch
+            {
+                return BadRequest(new { ok = false, mensaje = "El archivo adjunto no se pudo procesar. Vuelve a generarlo." });
+            }
+
+            if (adjunto.Length == 0 || adjunto.Length > 25 * 1024 * 1024)
+                return BadRequest(new { ok = false, mensaje = "El archivo está vacío o supera el límite de 25 MB." });
+
+            var nombreArchivo = string.IsNullOrWhiteSpace(input.NombreArchivo)
+                ? $"Ficha_{clave}.{formato}"
+                : (input.NombreArchivo.EndsWith($".{formato}", StringComparison.OrdinalIgnoreCase) ? input.NombreArchivo : $"{input.NombreArchivo}.{formato}");
+
+            var destinatarios = await _service.ObtenerDestinatariosAsync();
+            var seleccionados = destinatarios.Where(d => input.UsuarioIds.Contains(d.IdUsuario)).ToList();
+            if (seleccionados.Count == 0)
+                return BadRequest(new { ok = false, mensaje = "Los destinatarios seleccionados no son válidos." });
+
+            var perfil = ObtenerPerfilUsuario();
+            var remitente = string.IsNullOrWhiteSpace(perfil?.Nombre) ? "el equipo de la DGMESNIE" : perfil.Nombre;
+            // Cargo actualizado desde BD (el de la sesión puede ser previo a un cambio); fallback al perfil.
+            string remitenteCargo = null;
+            if (perfil != null && int.TryParse(perfil.IdUsuario, out var remitenteId))
+                remitenteCargo = destinatarios.FirstOrDefault(d => d.IdUsuario == remitenteId)?.Cargo;
+            if (string.IsNullOrWhiteSpace(remitenteCargo)) remitenteCargo = perfil?.Cargo;
+            var enviados = new List<string>();
+            var fallidos = new List<string>();
+
+            foreach (var destino in seleccionados)
+            {
+                try
+                {
+                    var cuerpo = ConstruirCorreoFicha(destino.Nombre, clave, formato, remitente, remitenteCargo, input.MensajeAdicional);
+                    await _emailService.EnviarCorreo(destino.Correo,
+                        $"Ficha ejecutiva del proyecto {clave} — PAM/PAMRNT",
+                        cuerpo, adjunto, nombreArchivo);
+                    enviados.Add(destino.Nombre);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "No fue posible enviar la ficha {Clave} a {Correo}.", clave, destino.Correo);
+                    fallidos.Add(destino.Nombre);
+                }
+            }
+
+            if (enviados.Count == 0)
+                return StatusCode(500, new { ok = false, mensaje = "No fue posible enviar la ficha a ningún destinatario." });
+
+            var mensaje = $"Ficha enviada a {enviados.Count} destinatario(s): {string.Join(", ", enviados)}.";
+            if (fallidos.Count > 0) mensaje += $" No se pudo enviar a: {string.Join(", ", fallidos)}.";
+            return Ok(new { ok = true, mensaje });
+        }
+
+        private static string ConstruirCorreoFicha(string nombreDestino, string clave, string formato, string remitente, string remitenteCargo, string mensajeAdicional)
+        {
+            var cargo = string.IsNullOrWhiteSpace(remitenteCargo) ? "Secretaría de Energía · DGMESNIE" : System.Net.WebUtility.HtmlEncode(remitenteCargo);
+            var saludo = string.IsNullOrWhiteSpace(nombreDestino) ? "Estimada(o)" : $"Estimada(o) {System.Net.WebUtility.HtmlEncode(nombreDestino)}";
+            var extra = string.IsNullOrWhiteSpace(mensajeAdicional)
+                ? string.Empty
+                : $"<p style=\"margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6\">{System.Net.WebUtility.HtmlEncode(mensajeAdicional)}</p>";
+            return $@"
+<div style=""font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #ece8e2;border-radius:12px;overflow:hidden"">
+  <div style=""background:#9B2247;padding:22px 28px"">
+    <div style=""color:#fff;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase"">Secretaría de Energía · DGMESNIE</div>
+    <div style=""color:#F5D9E2;font-size:12px;margin-top:4px"">Repositorio maestro PAM / PAMRNT</div>
+  </div>
+  <div style=""padding:26px 28px"">
+    <p style=""margin:0 0 16px;color:#1c1b1a;font-size:15px"">{saludo}:</p>
+    <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
+      {System.Net.WebUtility.HtmlEncode(remitente)} le comparte la <strong>ficha ejecutiva del proyecto de transmisión
+      {System.Net.WebUtility.HtmlEncode(clave)}</strong> del Programa de Ampliación y Modernización de la Red Nacional de Transmisión (PAM/PAMRNT).
+    </p>
+    {extra}
+    <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
+      Encontrará la ficha adjunta en formato <strong>{formato.ToUpperInvariant()}</strong>, con el diagnóstico, las metas físicas,
+      el análisis de riesgos, el empalme de cronograma y la trazabilidad del proyecto, generada directamente desde la base vigente.
+    </p>
+    <div style=""margin:20px 0;padding:14px 18px;border-left:4px solid #E0A12E;background:#faf8f5;color:#5f5954;font-size:13px"">
+      Documento informativo. Los datos provienen del Informe Pormenorizado vigente y pueden actualizarse en cada corte.
+    </div>
+    <p style=""margin:16px 0 0;color:#6F6B66;font-size:13px"">Atentamente,<br><strong>{System.Net.WebUtility.HtmlEncode(remitente)}</strong><br>{cargo}</p>
+  </div>
+  <div style=""background:#faf8f5;padding:14px 28px;border-top:1px solid #ece8e2;color:#9A958E;font-size:11px"">
+    Correo generado automáticamente por la plataforma DGMESNIE. Por favor no responda a este mensaje.
+  </div>
+</div>";
         }
 
         private static HeaderViewModel BuildHeader()

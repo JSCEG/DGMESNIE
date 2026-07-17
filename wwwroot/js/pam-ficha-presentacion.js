@@ -39,6 +39,8 @@
             if (updateHash !== false && history.replaceState) {
                 history.replaceState(null, "", `#lamina-${pad(current + 1)}`);
             }
+            // Avisa a módulos con contenido perezoso (mapas Leaflet) que hay lámina nueva visible.
+            document.dispatchEvent(new CustomEvent("pam:slide-shown", { detail: { index: current } }));
         }
 
         function resizeDeck() {
@@ -105,19 +107,42 @@
 
         async function renderSlide(slide, slideNumber) {
             if (exportMessage) exportMessage.textContent = `Capturando lámina ${slideNumber} de ${slides.length}`;
+            // Garantiza que los mapas Leaflet de la lámina existan antes de capturarla.
+            if (window.pamFichaMapas && slide.querySelector(".pam-mapa-gcr, .pam-mapa-red")) await window.pamFichaMapas();
             await nextPaint();
             return window.html2canvas(slide, {
                 backgroundColor: "#ffffff",
-                scale: 1.2,
+                scale: 2,
                 useCORS: true,
                 allowTaint: false,
                 logging: false,
+                imageTimeout: 15000,
                 width: WIDTH,
                 height: HEIGHT,
                 windowWidth: WIDTH,
                 windowHeight: HEIGHT,
                 scrollX: 0,
                 scrollY: 0
+            });
+        }
+
+        // Coloca links internos sobre los botones del índice para que el PDF sea navegable.
+        function agregarLinksIndicePdf(pdf, slide) {
+            if (!slide || slide.dataset.screenLabel !== "02") return;
+            const rectSlide = slide.getBoundingClientRect();
+            if (!rectSlide.width || !rectSlide.height) return;
+            const escalaX = PDF_WIDTH_MM / rectSlide.width;
+            const escalaY = PDF_HEIGHT_MM / rectSlide.height;
+            slide.querySelectorAll("[data-goto-label]").forEach(btn => {
+                const destino = slides.findIndex(s => s.dataset.screenLabel === btn.dataset.gotoLabel);
+                if (destino < 0) return;
+                const r = btn.getBoundingClientRect();
+                pdf.link(
+                    (r.left - rectSlide.left) * escalaX,
+                    (r.top - rectSlide.top) * escalaY,
+                    r.width * escalaX,
+                    r.height * escalaY,
+                    { pageNumber: destino + 1 });
             });
         }
 
@@ -138,9 +163,10 @@
             for (let index = 0; index < slides.length; index += 1) {
                 slides.forEach((slide, slideIndex) => slide.classList.toggle("is-active", slideIndex === index));
                 const canvas = await renderSlide(slides[index], index + 1);
-                const imageData = canvas.toDataURL("image/jpeg", 0.93);
+                const imageData = canvas.toDataURL("image/jpeg", 0.96);
                 if (index > 0) pdf.addPage([PDF_WIDTH_MM, PDF_HEIGHT_MM], "landscape");
                 pdf.addImage(imageData, "JPEG", 0, 0, PDF_WIDTH_MM, PDF_HEIGHT_MM, undefined, "FAST");
+                agregarLinksIndicePdf(pdf, slides[index]);
                 canvas.width = 1;
                 canvas.height = 1;
             }
@@ -208,6 +234,55 @@
                 resizeDeck();
             }
         }
+
+        // Genera el archivo (sin descargar) y devuelve { base64, nombre } para el envío por correo.
+        async function generarBase64(format) {
+            const previous = current;
+            const previousTransform = deck.style.transform;
+            setBusy(true, "Generando la ficha para enviar");
+            deck.style.transform = "none";
+            try {
+                if (document.fonts?.ready) await document.fonts.ready;
+                if (format === "pptx") {
+                    const Pptx = window.PptxGenJS || window.pptxgen;
+                    const pptx = new Pptx();
+                    pptx.layout = "LAYOUT_WIDE";
+                    pptx.author = "Secretaría de Energía - DGMESNIE";
+                    pptx.title = `Ficha ejecutiva ${page.dataset.projectKey || "PAMRNT"}`;
+                    for (let index = 0; index < slides.length; index += 1) {
+                        slides.forEach((slide, si) => slide.classList.toggle("is-active", si === index));
+                        const canvas = await renderSlide(slides[index], index + 1);
+                        const pptSlide = pptx.addSlide();
+                        pptSlide.background = { color: "FFFFFF" };
+                        pptSlide.addImage({ data: canvas.toDataURL("image/jpeg", 0.93), x: 0, y: 0, w: 13.333, h: 7.5 });
+                        canvas.width = 1; canvas.height = 1;
+                    }
+                    const base64 = await pptx.write("base64");
+                    return { base64, nombre: `${filename}.pptx` };
+                }
+                const JsPdf = window.jspdf?.jsPDF || window.jsPDF;
+                const pdf = new JsPdf({ orientation: "landscape", unit: "mm", format: [PDF_WIDTH_MM, PDF_HEIGHT_MM], compress: true });
+                for (let index = 0; index < slides.length; index += 1) {
+                    slides.forEach((slide, si) => slide.classList.toggle("is-active", si === index));
+                    const canvas = await renderSlide(slides[index], index + 1);
+                    if (index > 0) pdf.addPage([PDF_WIDTH_MM, PDF_HEIGHT_MM], "landscape");
+                    pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, PDF_WIDTH_MM, PDF_HEIGHT_MM, undefined, "FAST");
+                    agregarLinksIndicePdf(pdf, slides[index]);
+                    canvas.width = 1; canvas.height = 1;
+                }
+                return { base64: pdf.output("datauristring"), nombre: `${filename}.pdf` };
+            } finally {
+                current = previous;
+                slides.forEach((slide, si) => slide.classList.toggle("is-active", si === current));
+                deck.style.transform = previousTransform;
+                setCounter();
+                setBusy(false);
+                resizeDeck();
+            }
+        }
+
+        // Expuesto para el módulo de envío por correo.
+        window.pamFichaGenerar = generarBase64;
 
         // Resuelve una lámina destino: por índice fijo (data-goto) o por su
         // etiqueta de pantalla (data-goto-label), robusto ante láminas ocultas.

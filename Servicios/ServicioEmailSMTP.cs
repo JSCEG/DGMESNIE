@@ -15,7 +15,7 @@ namespace NSIE.Servicios
 {
     public interface IServicioEmailSMTP
     {
-        Task EnviarCorreo(string destinatario, string asunto, string cuerpo);
+        Task EnviarCorreo(string destinatario, string asunto, string cuerpo, byte[] adjunto = null, string nombreAdjunto = null);
     }
 
     public class ServicioEmailSmtp : IServicioEmailSMTP
@@ -29,7 +29,7 @@ namespace NSIE.Servicios
             _logger = logger;
         }
 
-        public async Task EnviarCorreo(string destinatario, string asunto, string cuerpo)
+        public async Task EnviarCorreo(string destinatario, string asunto, string cuerpo, byte[] adjunto = null, string nombreAdjunto = null)
         {
             try
             {
@@ -111,7 +111,7 @@ namespace NSIE.Servicios
                 if (sendGridConfigured)
                 {
                     _logger.LogInformation("Intentando envío primero con SendGrid para reducir latencia de timeouts SMTP.");
-                    var sendGridFirst = await TrySendWithSendGridAsync(destinatario, asunto, cuerpo, username);
+                    var sendGridFirst = await TrySendWithSendGridAsync(destinatario, asunto, cuerpo, username, adjunto, nombreAdjunto);
                     if (sendGridFirst.Success)
                     {
                         _logger.LogInformation("Email enviado exitosamente usando SendGrid (prioritario).");
@@ -136,10 +136,10 @@ namespace NSIE.Servicios
                         message.From.Add(MailboxAddress.Parse(username));
                         message.To.Add(MailboxAddress.Parse(destinatario));
                         message.Subject = asunto;
-                        message.Body = new BodyBuilder
-                        {
-                            HtmlBody = cuerpo
-                        }.ToMessageBody();
+                        var builder = new BodyBuilder { HtmlBody = cuerpo };
+                        if (adjunto is { Length: > 0 } && !string.IsNullOrWhiteSpace(nombreAdjunto))
+                            builder.Attachments.Add(nombreAdjunto, adjunto);
+                        message.Body = builder.ToMessageBody();
 
                         using var client = new MailKit.Net.Smtp.SmtpClient();
                         client.Timeout = 30000;
@@ -176,7 +176,7 @@ namespace NSIE.Servicios
 
                 if (!sendGridConfigured)
                 {
-                    var sendGridResult = await TrySendWithSendGridAsync(destinatario, asunto, cuerpo, username);
+                    var sendGridResult = await TrySendWithSendGridAsync(destinatario, asunto, cuerpo, username, adjunto, nombreAdjunto);
                     if (sendGridResult.Success)
                     {
                         _logger.LogInformation("Email enviado exitosamente usando SendGrid fallback.");
@@ -250,7 +250,7 @@ namespace NSIE.Servicios
             throw lastError ?? new Exception($"No fue posible conectar a {host}:{port}");
         }
 
-        private async Task<(bool Success, string Error)> TrySendWithSendGridAsync(string destinatario, string asunto, string cuerpoHtml, string defaultFrom)
+        private async Task<(bool Success, string Error)> TrySendWithSendGridAsync(string destinatario, string asunto, string cuerpoHtml, string defaultFrom, byte[] adjunto = null, string nombreAdjunto = null)
         {
             var apiKey = _configuration["EmailSettings:SendGrid:ApiKey"]
                          ?? _configuration["SEND_GRID_API_KEY"];
@@ -274,6 +274,13 @@ namespace NSIE.Servicios
                 var toEmail = new EmailAddress(destinatario);
                 var plainText = "Notificación institucional SNIER.";
                 var msg = MailHelper.CreateSingleEmail(fromEmail, toEmail, asunto, plainText, cuerpoHtml);
+                if (adjunto is { Length: > 0 } && !string.IsNullOrWhiteSpace(nombreAdjunto))
+                {
+                    var tipo = nombreAdjunto.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase)
+                        ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        : "application/pdf";
+                    msg.AddAttachment(nombreAdjunto, Convert.ToBase64String(adjunto), tipo);
+                }
                 var response = await client.SendEmailAsync(msg);
 
                 if ((int)response.StatusCode >= 200 && (int)response.StatusCode < 300)

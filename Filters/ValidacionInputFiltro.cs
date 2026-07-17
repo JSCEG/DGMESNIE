@@ -36,7 +36,9 @@ public class ValidacionInputFiltro : ActionFilterAttribute
         "Sec-CH-UA",
         "Sec-CH-UA-Mobile",
         "Sec-CH-UA-Platform",
-        "Priority"
+        "Priority",
+        "RequestVerificationToken",
+        "X-Requested-With"
     };
 
     private static readonly HashSet<string> SafeAjaxRoutes = new(StringComparer.OrdinalIgnoreCase)
@@ -57,7 +59,8 @@ public class ValidacionInputFiltro : ActionFilterAttribute
         "ProyectosPrivados.ApiAcciones",
         "ProyectosPrivados.ApiActualizarEstatusAccion",
         "ProyectosPrivados.ApiCrearAccion",
-        "ProyectosPrivados.Minuta"
+        "ProyectosPrivados.Minuta",
+        "PamrntProyectos.EnviarFicha"
     };
 
     public ValidacionInputFiltro(ILogger<ValidacionInputFiltro> logger)

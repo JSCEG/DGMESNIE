@@ -34,6 +34,38 @@
     var seccion01 = $"Sección 01 · {Model.Ficha.ClavePem}";
     var seccion02 = "Sección 02 · Cierre y trazabilidad";
     var inv = System.Globalization.CultureInfo.InvariantCulture;
+
+    // Reduce el tamaño del título cuando el texto es largo (nombres técnicos extensos).
+    Func<string, string> ClaseTitulo = texto => (texto?.Length ?? 0) switch
+    {
+        > 260 => "is-xs",
+        > 170 => "is-sm",
+        > 100 => "is-md",
+        _ => string.Empty
+    };
+
+    Func<string, int, string> Recortar = (t, max) =>
+    {
+        if (string.IsNullOrWhiteSpace(t)) return t;
+        var s = System.Text.RegularExpressions.Regex.Replace(t.Trim(), @"\s+", " ");
+        return s.Length <= max ? s : s[..max].TrimEnd(',', ';', '.', ' ') + "…";
+    };
+
+    // Diagnóstico real (EstadoRealProyecto, 97% de cobertura) y ámbito para la lámina 06.
+    var estadoRealProyecto = Model.Detalle?.Actual?.EstadoRealProyecto;
+    var diagnosticoTexto = !string.IsNullOrWhiteSpace(estadoRealProyecto)
+        ? estadoRealProyecto
+        : Model.Ficha.DiagnosticoOperativo;
+    var equiposTexto = Model.Detalle?.Actual?.ElementosEquiposAsociados;
+    var comentarioPriorizacion = Model.Detalle?.Actual?.ComentariosNivelPriorizacion;
+    // Escala el diagnóstico según su longitud para que quepa sin desbordar.
+    var claseDiagnostico = (diagnosticoTexto?.Length ?? 0) switch
+    {
+        > 900 => "is-xs",
+        > 500 => "is-sm",
+        > 240 => "is-md",
+        _ => string.Empty
+    };
     var esMX = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
 
     // ── Datos para gráficos ECharts (dona de cartera y anillo B/C) ──
@@ -116,6 +148,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="~/Geovisualizador/css/leaflet.css" />
 <link rel="stylesheet" href="~/css/pam-ficha-presentacion.css" asp-append-version="true" />
 
 <main class="pam-ficha-page" data-filename="@archivoBase" data-project-key="@Model.Ficha.ClavePem">
@@ -129,7 +162,64 @@
         <div class="pam-ficha-toolbar__actions">
             <button type="button" data-export="pdf" title="Descargar ficha en PDF"><i class="fas fa-file-pdf"></i><span>PDF</span></button>
             <button type="button" data-export="pptx" title="Descargar ficha en PowerPoint"><i class="fas fa-file-powerpoint"></i><span>PPT</span></button>
+            <button type="button" id="pam-btn-enviar" title="Enviar la ficha por correo"><i class="fas fa-paper-plane"></i><span>Enviar</span></button>
             <button type="button" data-fullscreen title="Presentar en pantalla completa"><i class="fas fa-expand"></i><span>Presentar</span></button>
+        </div>
+    </div>
+
+    @* ── Modal de envío de ficha por correo ── *@
+    <div id="pam-envio-modal" class="pam-envio-modal" hidden>
+        <div class="pam-envio-backdrop" data-envio-cerrar></div>
+        <div class="pam-envio-dialog" role="dialog" aria-modal="true" aria-labelledby="pam-envio-titulo">
+            <div class="pam-envio-head">
+                <div>
+                    <h3 id="pam-envio-titulo">Enviar ficha por correo</h3>
+                    <p>Proyecto <strong>@Model.Ficha.ClavePem</strong> · la ficha se genera y se adjunta al correo.</p>
+                </div>
+                <button type="button" class="pam-envio-x" data-envio-cerrar aria-label="Cerrar"><i class="fas fa-xmark"></i></button>
+            </div>
+            <form id="pam-envio-form" data-clave="@Model.Ficha.ClavePem" data-skip-page-preloader="true">
+                @Html.AntiForgeryToken()
+                <label class="pam-envio-label">Formato del archivo</label>
+                <div class="pam-envio-formato">
+                    <label><input type="radio" name="formato" value="pdf" checked /><span><i class="fas fa-file-pdf"></i> PDF</span></label>
+                    <label><input type="radio" name="formato" value="pptx" /><span><i class="fas fa-file-powerpoint"></i> PowerPoint</span></label>
+                </div>
+
+                <label class="pam-envio-label" for="pam-envio-buscar">Destinatarios <span>(uno o más)</span></label>
+                <input type="search" id="pam-envio-buscar" class="pam-envio-buscar" placeholder="Buscar por nombre o correo…" autocomplete="off" />
+                <div class="pam-envio-lista" id="pam-envio-lista" role="listbox" aria-multiselectable="true">
+                    @if (Model.Destinatarios.Count == 0)
+                    {
+                        <div class="pam-envio-vacio">No hay usuarios con correo registrado.</div>
+                    }
+                    else
+                    {
+                        @foreach (var u in Model.Destinatarios)
+                        {
+                            <label class="pam-envio-item" data-nombre="@u.Nombre.ToLowerInvariant()" data-correo="@u.Correo.ToLowerInvariant()">
+                                <input type="checkbox" name="usuario" value="@u.IdUsuario" />
+                                <span class="pam-envio-item__ini">@(string.IsNullOrWhiteSpace(u.Nombre) ? "?" : u.Nombre.Trim()[..1].ToUpperInvariant())</span>
+                                <span class="pam-envio-item__info">
+                                    <strong>@u.Nombre</strong>
+                                    <small>@u.Correo@(string.IsNullOrWhiteSpace(u.Cargo) ? "" : $" · {u.Cargo}")</small>
+                                </span>
+                            </label>
+                        }
+                    }
+                </div>
+
+                <label class="pam-envio-label" for="pam-envio-mensaje">Mensaje adicional <span>(opcional)</span></label>
+                <textarea id="pam-envio-mensaje" name="mensaje" rows="2" class="pam-envio-mensaje" placeholder="Ej. Se comparte la ficha para la reunión de seguimiento."></textarea>
+
+                <div class="pam-envio-feedback" id="pam-envio-feedback" hidden></div>
+                <div class="pam-envio-actions">
+                    <button type="button" class="pam-envio-btn pam-envio-btn--cancel" data-envio-cerrar>Cancelar</button>
+                    <button type="submit" class="pam-envio-btn pam-envio-btn--send" id="pam-envio-enviar">
+                        <i class="fas fa-paper-plane" aria-hidden="true"></i> Enviar ficha
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -158,8 +248,7 @@
                         </div>
                     }
                 </div>
-                <div class="pam-cover__photo">
-                    <img src="~/img/pamrnt/reno_portada.png" alt="" aria-hidden="true" />
+                <div class="pam-cover__photo" style="background-image:url('/img/pamrnt/reno_portada.png')" role="img" aria-label="Infraestructura energética">
                     <i class="pam-cover__goldline"></i>
                     <i class="pam-cover__shade"></i>
                 </div>
@@ -186,6 +275,7 @@
                     <button type="button" class="pam-index__entry" data-goto-label="04"><span>Decisión ejecutiva</span><i></i><small>04</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="05"><span>@(Model.EsPamrntIdentificado ? "Panorama del PAMRNT 2026–2040" : "Contexto regional de cartera")</span><i></i><small>05</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="06"><span>Diagnóstico operativo</span><i></i><small>06</small></button>
+                    <button type="button" class="pam-index__entry" data-goto-label="06B"><span>Red de transmisión regional</span><i></i><small>06·red</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="07"><span>Pronóstico e impacto regional</span><i></i><small>07</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="08"><span>Riesgos y dependencias</span><i></i><small>08</small></button>
                     @if (Model.FichaEnriquecida)
@@ -235,7 +325,7 @@
                     <span class="pam-lamina-head__kicker">@seccion01</span>
                     <span class="pam-lamina-head__aside">Decisión ejecutiva</span>
                 </header>
-                <h2 class="pam-lamina-title">Proyecto recomendado: @Model.Ficha.AlternativaSeleccionada.</h2>
+                <h2 class="pam-lamina-title @ClaseTitulo("Proyecto recomendado: " + Model.Ficha.AlternativaSeleccionada)">Proyecto recomendado: @Model.Ficha.AlternativaSeleccionada.</h2>
                 <div class="pam-lamina-body">
                     <p class="pam-lead">@Model.Ficha.ResumenEjecutivo</p>
                     <div class="pam-metrics pam-metrics--four">
@@ -323,27 +413,60 @@
                     <span class="pam-lamina-head__kicker">@seccion01</span>
                     <span class="pam-lamina-head__aside">Diagnóstico operativo</span>
                 </header>
-                <h2 class="pam-lamina-title">Problema y ámbito: @Model.Ficha.CorredorPrincipal.</h2>
-                <div class="pam-lamina-body pam-problem">
-                    <div class="pam-problem__layout">
-                        <div class="pam-problem__corridor" aria-label="Ámbito del proyecto">
-                            <div class="pam-corridor-line"></div>
-                            @for (var i = 0; i < Math.Min(5, Model.Ficha.Estados.Count); i++)
+                <h2 class="pam-lamina-title">Diagnóstico operativo y ámbito del proyecto.</h2>
+                <div class="pam-lamina-body pam-diagnostico">
+                    <div class="pam-diagnostico__texto">
+                        <span class="pam-chart-caption">Estado y problema reportado</span>
+                        <p class="pam-lead pam-diagnostico__lead @claseDiagnostico">@diagnosticoTexto</p>
+                        <div class="pam-diagnostico__ambito">
+                            <article><span>Tipo de proyecto</span><strong>@tipoProyecto</strong></article>
+                            <article><span>Fecha necesaria</span><strong>@Model.Ficha.FechaNecesaria</strong></article>
+                            @if (!string.IsNullOrWhiteSpace(equiposTexto))
                             {
-                                <span style="--i:@i">@Model.Ficha.Estados[i]</span>
+                                <article class="is-wide"><span>Elementos y equipos asociados</span><strong>@Recortar(equiposTexto, 180)</strong></article>
                             }
                         </div>
-                        <div>
-                            <p class="pam-lead">@Model.Ficha.DiagnosticoOperativo</p>
-                            <div class="pam-alert-card"><strong>Fecha necesaria</strong><span>@Model.Ficha.FechaNecesaria</span></div>
-                        </div>
                     </div>
+                    <aside class="pam-diagnostico__mapa">
+                        <div class="pam-chart-caption">Gerencia de Control Regional</div>
+                        <div id="pam-mapa-gcr" class="pam-mapa-gcr" data-gcr="@regionProyecto"
+                             data-proyectos="@(Model.ImpactoRegional?.TotalProyectos ?? 0)"></div>
+                        <div class="pam-mapa-leyenda">
+                            <span class="pam-mapa-leyenda__punto"></span>
+                            <strong>@regionProyecto</strong>
+                            <span id="pam-mapa-datos"></span>
+                        </div>
+                    </aside>
                 </div>
                 <div class="pam-lamina-foot">
-                    <span>PAMRNT 2026–2040 · Ficha @Model.Ficha.ClavePem, diagnóstico operativo.</span>
+                    <span>Estado real del proyecto y ámbito desde la versión vigente de la base SQL · Ficha @Model.Ficha.ClavePem.</span>
                     <span class="pam-lamina-foot__meta">
                         <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
                         06
+                    </span>
+                </div>
+            </section>
+
+            @* ── 06B · Red de transmisión regional (capas GeoJSON del Geovisualizador) ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Red regional" data-screen-label="06B">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Red de transmisión regional</span>
+                </header>
+                <h2 class="pam-lamina-title">Red de transmisión en la GCR @regionProyecto.</h2>
+                <div class="pam-lamina-body pam-red">
+                    <div id="pam-mapa-red" class="pam-mapa-red" data-gcr="@regionProyecto"></div>
+                    <div class="pam-red__leyenda">
+                        <span class="pam-red__item"><i class="pam-red__gcr"></i>GCR @regionProyecto</span>
+                        <span id="pam-red-kv" class="pam-red__kv" aria-label="Niveles de tensión"></span>
+                        <span class="pam-red__conteo" id="pam-red-conteo"></span>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Red Nacional de Transmisión y subestaciones con nivel de tensión (GeoJSON oficial DGMESNIE · CDN). Diagramas unifilares del proyecto pendientes de integrar.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        06·red
                     </span>
                 </div>
             </section>
@@ -354,29 +477,28 @@
                     <span class="pam-lamina-head__kicker">@seccion01</span>
                     <span class="pam-lamina-head__aside">Pronóstico e impacto regional</span>
                 </header>
-                <h2 class="pam-lamina-title">La demanda crece y el proyecto refuerza la capacidad de su región.</h2>
+                <h2 class="pam-lamina-title">@(hayGraficoDemanda ? "La demanda crece y el proyecto refuerza la capacidad de su región." : "Aporte del proyecto y seguimiento en su región.")</h2>
                 <div class="pam-lamina-body">
-                    <div class="pam-forecast">
-                        <div class="pam-forecast__chart">
-                            @if (hayGraficoDemanda)
-                            {
+                    @if (hayGraficoDemanda)
+                    {
+                        <div class="pam-forecast">
+                            <div class="pam-forecast__chart">
                                 <div id="pam-chart-demanda" class="pam-chart-demanda"></div>
-                            }
-                            else
-                            {
-                                <div class="pam-forecast__sindatos">
-                                    <i class="fas fa-chart-line" aria-hidden="true"></i>
-                                    <strong>Pronóstico de demanda en integración</strong>
-                                    <span>La curva se generará automáticamente al registrar la demanda máxima observada y la tasa de crecimiento del proyecto.</span>
-                                </div>
-                            }
+                            </div>
+                            <div class="pam-forecast__facts">
+                                <article><strong>@crecimientoTexto</strong><span>crecimiento medio anual a 2030</span></article>
+                                <article><strong>@Model.Ficha.DemandaMaxima</strong><span>demanda máxima observada</span></article>
+                                <p>@Model.Ficha.PronosticoDemanda</p>
+                            </div>
                         </div>
-                        <div class="pam-forecast__facts">
-                            <article><strong>@crecimientoTexto</strong><span>crecimiento medio anual a 2030</span></article>
-                            <article><strong>@Model.Ficha.DemandaMaxima</strong><span>demanda máxima observada</span></article>
-                            <p>@Model.Ficha.PronosticoDemanda</p>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(comentarioPriorizacion))
+                    {
+                        <div class="pam-seguimiento">
+                            <span class="pam-chart-caption">Nivel de priorización y seguimiento</span>
+                            <p class="pam-lead">@comentarioPriorizacion</p>
                         </div>
-                    </div>
+                    }
                     @if (Model.ImpactoRegional?.TieneDatos == true)
                     {
                         var ir = Model.ImpactoRegional;
@@ -976,5 +1098,10 @@
 <script src="~/vendor/pam-export/html2canvas.min.js" asp-append-version="true"></script>
 <script src="~/vendor/pam-export/jspdf.umd.min.js" asp-append-version="true"></script>
 <script src="~/vendor/pam-export/pptxgen.bundle.js" asp-append-version="true"></script>
+<script src="~/Geovisualizador/dist/leaflet.js"></script>
+<script src="~/Geovisualizador/zonas/GerenciadeControlRegional_23.js"></script>
+<script src="~/js/gcr-data.js"></script>
 <script src="~/js/pam-ficha-presentacion.js" asp-append-version="true"></script>
 <script src="~/js/pam-ficha-charts.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-mapa.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-envio.js" asp-append-version="true"></script>
