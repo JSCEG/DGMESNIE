@@ -23,8 +23,8 @@ namespace NSIE.Controllers
         private const string SpRegistrarSesion = "dgmesnie.sp_RegistrarSesion";
         private const string SpCerrarSesion = "dgmesnie.sp_CerrarSesion";
         private const string SpActualizarActividadSesion = "dgmesnie.sp_ActualizarActividadSesion";
-        private const int MinutosInactividadSesion = 10;
-        private const int MinutosDuracionSesion = 30;
+        private const int MinutosInactividadSesion = 120; // 2 horas (antes 10)
+        private const int MinutosDuracionSesion = 480; // 8 horas (antes 30)
 
         private readonly IServicioEmailSMTP _servicioEmailSMTP;
         //private readonly IServicioEmail _servicioEmail;
@@ -267,7 +267,7 @@ namespace NSIE.Controllers
             var authProperties = new AuthenticationProperties
             {
                 IsPersistent = true,                 // Que la cookie sea persistente
-                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(2) // Expira en 2 horas
+                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(8) // Expira en 8 horas
             };
 
             // Firmar al usuario

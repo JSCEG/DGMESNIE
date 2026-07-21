@@ -147,7 +147,7 @@ builder.Services.AddSession(options =>
 {
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
-    options.IdleTimeout = TimeSpan.FromMinutes(30); // Tiempo de inactividad antes de expirar la sesión
+    options.IdleTimeout = TimeSpan.FromMinutes(120); // Tiempo de inactividad antes de expirar la sesión
 });
 
 // IP
