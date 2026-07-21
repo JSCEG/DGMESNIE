@@ -392,13 +392,14 @@ namespace NSIE.Models
         public List<PamrntProyectoIdentificado> Panorama => EsPamrntIdentificado ? ContextoCartera : ProyectosRegion;
         public IReadOnlyList<PamrntFichaRecurso> Recursos => Ficha?.Recursos ?? new List<PamrntFichaRecurso>();
         public IReadOnlyList<PamrntFichaRecurso> Diagramas => Recursos
-            .Where(x => x.Aplica && (x.EsDiagramaUnifilar || x.EsGeoespacial || x.EsC7U))
-            .OrderBy(x => x.Orden)
+            .Where(x => x.Aplica && (!string.IsNullOrWhiteSpace(x.Url) || !string.IsNullOrWhiteSpace(x.UrlCDN)))
+            .OrderBy(x => x.OrdenImagen > 0 ? x.OrdenImagen : (x.Orden > 0 ? x.Orden : 10))
             .ToList();
-        public bool TieneDiagramaUnifilar => Recursos.Any(x => x.Aplica && x.EsDiagramaUnifilar && !string.IsNullOrWhiteSpace(x.Url));
-        public bool TieneGeoespacial => Recursos.Any(x => x.Aplica && x.EsGeoespacial && !string.IsNullOrWhiteSpace(x.Url));
-        public bool TieneC7U => Recursos.Any(x => x.Aplica && x.EsC7U && !string.IsNullOrWhiteSpace(x.Url));
-        public bool TieneRecursosVisuales => TieneDiagramaUnifilar || TieneGeoespacial || TieneC7U;
+        public bool TieneDiagramas => Diagramas.Count > 0;
+        public bool TieneDiagramaUnifilar => Diagramas.Any(x => x.EsDiagramaUnifilar || (x.TipoImagenCodigo != null && x.TipoImagenCodigo.Contains("unifilar")));
+        public bool TieneGeoespacial => Diagramas.Any(x => x.EsGeoespacial || (x.TipoImagenCodigo != null && x.TipoImagenCodigo.Contains("geo")));
+        public bool TieneC7U => Diagramas.Any(x => x.EsC7U);
+        public bool TieneRecursosVisuales => Diagramas.Count > 0;
         public List<PamFaseProyecto> Fases => PamFasesParser.Desde(Detalle?.Actual?.EtapaProyecto, Detalle?.Actual?.FeoFactible);
         public PamEmpalme Empalme => new()
         {
@@ -620,8 +621,35 @@ namespace NSIE.Models
         public string AltText { get; set; }
         public int Orden { get; set; }
         public bool Aplica { get; set; } = true;
-        public bool EsDiagramaUnifilar => string.Equals(TipoRecurso, "DiagramaUnifilar", StringComparison.OrdinalIgnoreCase);
-        public bool EsGeoespacial => string.Equals(TipoRecurso, "Geoespacial", StringComparison.OrdinalIgnoreCase);
+
+        // Campos extendidos para figuras del PAMRNT 2026-2040 desde el CDN (dgmesnie.PAMProyectoImagen)
+        public int OrdenImagen { get; set; }
+        public string FiguraNumeroPAM { get; set; }
+        public string FiguraTituloPAM { get; set; }
+        public string DescripcionImagen { get; set; }
+        public string ContextoPAM { get; set; }
+        public string TextoAlternativo { get; set; }
+        public string TipoImagenCodigo { get; set; }
+        public string TipoImagenDescripcion { get; set; }
+        public string Variante { get; set; }
+        public string TipoRelacion { get; set; }
+        public bool EsCompartida { get; set; }
+        public string AssetId { get; set; }
+        public string NombreArchivo { get; set; }
+        public string RutaCDN { get; set; }
+        public string UrlCDN { get; set; }
+        public string FuenteDescripcion { get; set; }
+
+        public string TituloVisual => !string.IsNullOrWhiteSpace(FiguraTituloPAM) ? FiguraTituloPAM : (string.IsNullOrWhiteSpace(Titulo) ? "Figura técnica" : Titulo);
+        public string NumeroVisual => FiguraNumeroPAM;
+        public string DescripcionVisual => !string.IsNullOrWhiteSpace(DescripcionImagen) ? DescripcionImagen : Descripcion;
+        public string ContextoVisual => ContextoPAM;
+        public string UrlVisual => !string.IsNullOrWhiteSpace(UrlCDN) ? UrlCDN : Url;
+        public string AltVisual => !string.IsNullOrWhiteSpace(TextoAlternativo) ? TextoAlternativo : AltText;
+        public string TipoLabel => !string.IsNullOrWhiteSpace(TipoImagenDescripcion) ? TipoImagenDescripcion : TipoRecurso;
+
+        public bool EsDiagramaUnifilar => string.Equals(TipoRecurso, "DiagramaUnifilar", StringComparison.OrdinalIgnoreCase) || (TipoImagenCodigo != null && TipoImagenCodigo.Contains("unifilar"));
+        public bool EsGeoespacial => string.Equals(TipoRecurso, "Geoespacial", StringComparison.OrdinalIgnoreCase) || (TipoImagenCodigo != null && TipoImagenCodigo.Contains("geo"));
         public bool EsC7U => string.Equals(TipoRecurso, "C7U", StringComparison.OrdinalIgnoreCase);
     }
 

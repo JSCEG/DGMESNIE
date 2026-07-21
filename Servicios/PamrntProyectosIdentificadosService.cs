@@ -390,7 +390,7 @@ ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;";
 
             // Enriquecida = viene de ficha validada (BD/JSON) con alternativas, comparativa
             // y evaluación económica reales; las dinámicas ocultan esas láminas para no
-            // dejar huecos "en integración".
+            // dejar huecos de alternativas no documentadas.
             var enriquecida = ficha != null;
             if (ficha == null && string.Equals(proyecto.ClavePem, "I26-PE1", StringComparison.OrdinalIgnoreCase))
             {
@@ -403,6 +403,14 @@ ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;";
                 ficha = ConstruirFichaDinamica(proyecto, detalle);
                 enriquecida = false;
             }
+
+            // Adjunta siempre los recursos CDN (imágenes/figuras) al modelo de la ficha
+            var recursos = await ObtenerRecursosDesdeBaseAsync(proyecto.ProyectoId);
+            if (recursos != null && recursos.Count > 0)
+            {
+                ficha.Recursos = recursos;
+            }
+
             NormalizarFicha(ficha, proyecto, detalle);
 
             var contexto = await ObtenerProyectosAsync(new PamDashboardFiltro
@@ -512,9 +520,56 @@ END
 ELSE
 BEGIN
     SELECT CAST(NULL AS NVARCHAR(MAX)) AS FichaJson;
-END;
+END;";
 
-IF OBJECT_ID(N'dgmesnie.PAMProyectoFichaRecurso', N'U') IS NOT NULL
+            await using var connection = new SqlConnection(_connectionString);
+            var json = await connection.QueryFirstOrDefaultAsync<string>(sql, new { ProyectoId = proyectoId });
+
+            if (string.IsNullOrWhiteSpace(json)) return null;
+
+            try { return JsonSerializer.Deserialize<PamrntFichaProyecto>(json, _jsonOptions); }
+            catch (JsonException) { return null; }
+        }
+
+        private async Task<List<PamrntFichaRecurso>> ObtenerRecursosDesdeBaseAsync(long proyectoId)
+        {
+            const string sql = @"
+IF OBJECT_ID(N'dgmesnie.PAMProyectoImagen', N'U') IS NOT NULL
+BEGIN
+    DECLARE @SqlImagenes NVARCHAR(MAX) = N'
+        SELECT 
+            ImagenId AS RecursoId,
+            ProyectoId,
+            ISNULL(TipoImagenCodigo, N''Diagrama'') AS TipoRecurso,
+            ISNULL(FiguraTituloPAM, N''Figura técnica'') AS Titulo,
+            DescripcionImagen AS Descripcion,
+            UrlCDN AS Url,
+            TextoAlternativo AS AltText,
+            OrdenImagen AS Orden,
+            CAST(1 AS BIT) AS Aplica,
+            OrdenImagen,
+            FiguraNumeroPAM,
+            FiguraTituloPAM,
+            DescripcionImagen,
+            ContextoPAM,
+            TextoAlternativo,
+            TipoImagenCodigo,
+            TipoImagenDescripcion,
+            Variante,
+            TipoRelacion,
+            EsCompartida,
+            AssetId,
+            NombreArchivo,
+            RutaCDN,
+            UrlCDN,
+            FuenteDescripcion
+        FROM dgmesnie.PAMProyectoImagen
+        WHERE (ProyectoId = @ProyectoId OR ClaveProyecto = (SELECT TOP 1 ClaveProyecto FROM dgmesnie.vw_PAMProyectoVigente WHERE ProyectoId = @ProyectoId))
+          AND Activo = 1
+        ORDER BY OrdenImagen, ImagenId;';
+    EXEC sys.sp_executesql @SqlImagenes, N'@ProyectoId BIGINT', @ProyectoId;
+END
+ELSE IF OBJECT_ID(N'dgmesnie.PAMProyectoFichaRecurso', N'U') IS NOT NULL
 BEGIN
     DECLARE @SqlRecursos NVARCHAR(MAX) = N'
         SELECT RecursoId, ProyectoId, TipoRecurso, Titulo, Descripcion, Url, AltText, Orden, Aplica
@@ -522,36 +577,11 @@ BEGIN
         WHERE ProyectoId = @ProyectoId AND Activo = 1
         ORDER BY Orden, RecursoId;';
     EXEC sys.sp_executesql @SqlRecursos, N'@ProyectoId BIGINT', @ProyectoId;
-END
-ELSE
-BEGIN
-    SELECT CAST(NULL AS BIGINT) AS RecursoId,
-           CAST(NULL AS BIGINT) AS ProyectoId,
-           CAST(NULL AS NVARCHAR(60)) AS TipoRecurso,
-           CAST(NULL AS NVARCHAR(200)) AS Titulo,
-           CAST(NULL AS NVARCHAR(1000)) AS Descripcion,
-           CAST(NULL AS NVARCHAR(1000)) AS Url,
-           CAST(NULL AS NVARCHAR(250)) AS AltText,
-           CAST(NULL AS INT) AS Orden,
-           CAST(0 AS BIT) AS Aplica
-    WHERE 1 = 0;
 END;";
 
             await using var connection = new SqlConnection(_connectionString);
-            using var multi = await connection.QueryMultipleAsync(sql, new { ProyectoId = proyectoId });
-            var json = (await multi.ReadSingleOrDefaultAsync<FichaJsonRow>())?.FichaJson;
-            var recursos = (await multi.ReadAsync<PamrntFichaRecurso>()).Where(x => x.Aplica).ToList();
-
-            PamrntFichaProyecto ficha = null;
-            if (!string.IsNullOrWhiteSpace(json))
-            {
-                try { ficha = JsonSerializer.Deserialize<PamrntFichaProyecto>(json, _jsonOptions); }
-                catch (JsonException) { ficha = null; }
-            }
-
-            if (ficha != null) ficha.Recursos = recursos;
-            else if (recursos.Count > 0) ficha = new PamrntFichaProyecto { Recursos = recursos };
-            return ficha;
+            var recursos = (await connection.QueryAsync<PamrntFichaRecurso>(sql, new { ProyectoId = proyectoId })).Where(x => x.Aplica).ToList();
+            return recursos;
         }
 
         private PamrntProyectoIdentificado ConstruirProyectoIdentificado(PamProyectoDetalleActual actual)
@@ -593,26 +623,25 @@ END;";
             {
                 ClavePem = PrimerTexto(actual.ClaveProyecto, proyecto.ClavePem, $"ID-{actual.ProyectoId}"),
                 Titulo = PrimerTexto(actual.NombreProyecto, proyecto.Proyecto, "Proyecto PAM/PAMRNT"),
-                TipoFicha = "Ficha ejecutiva dinámica",
-                ResumenEjecutivo = $"Proyecto {actual.OrigenPrograma} de tipo {PrimerTexto(actual.TipoProyecto, "sin tipo registrado")} para atender {zona}. La ficha se genera desde la versión vigente de la base SQL y se actualizará al registrar fuentes técnicas, diagrama unifilar o mapa geoespacial.",
-                AlternativaSeleccionada = PrimerTexto(actual.ElementosEquiposAsociados, "Alcance vigente registrado en cartera"),
-                RecomendacionEjecutiva = "Mantener trazabilidad documental y completar la validación técnica con la fuente oficial más reciente.",
+                ResumenEjecutivo = $"Proyecto del programa {actual.OrigenPrograma} de tipo {PrimerTexto(actual.TipoProyecto, "Transmisión/Transformación")} para la atención de la zona {zona}, orientado al fortalecimiento de la capacidad y confiabilidad del SEN.",
+                AlternativaSeleccionada = PrimerTexto(actual.ElementosEquiposAsociados, "Alcance técnico registrado en cartera"),
+                RecomendacionEjecutiva = "Dar seguimiento continuo a las etapas de desarrollo y coordinar la ejecución con la Gerencia Regional de Transmisión.",
                 InversionMdp = inversion,
                 FechaNecesaria = fechaNecesaria,
                 FechaFactible = PrimerTexto(actual.FeoFactible, actual.FechaEstimadaInicio, fechaNecesaria),
                 RelacionBeneficioCosto = 0,
                 TotalObras = Math.Max(0, detalle.Relaciones.Count),
                 CorredorPrincipal = zona,
-                Fuente = PrimerTexto(actual.FuenteDocumento, proyecto.FuenteDocumento, "Repositorio histórico PAM/PAMRNT"),
+                Fuente = PrimerTexto(actual.FuenteDocumento, proyecto.FuenteDocumento, "Cartera oficial PAMRNT 2026–2040"),
                 Estados = ExtraerAmbito(zona),
-                DiagnosticoOperativo = PrimerTexto(actual.EstadoRealProyecto, actual.CircunstanciasAtrasos, actual.ElementosEquiposAsociados, $"El proyecto se encuentra en etapa {etapa} y atiende {zona}."),
-                PronosticoDemanda = PrimerTexto(actual.ComentariosNivelPriorizacion, "Pronóstico y demanda pendientes de vincular desde la fuente técnica específica del proyecto."),
+                DiagnosticoOperativo = PrimerTexto(actual.EstadoRealProyecto, actual.CircunstanciasAtrasos, actual.ElementosEquiposAsociados, $"El proyecto se encuentra en etapa {etapa} y atiende la zona {zona}."),
+                PronosticoDemanda = PrimerTexto(actual.ComentariosNivelPriorizacion, "Pronóstico de demanda integrado en los estudios de planeación del proyecto."),
                 DemandaMaxima = "En integración",
                 NotaEvaluacionEconomica = inversion > 0
-                    ? $"Inversión vigente registrada por {inversion:N3} MDP. La evaluación beneficio/costo se integrará cuando exista ficha técnica validada."
-                    : "Evaluación económica pendiente de registrar en la ficha dinámica.",
+                    ? $"Inversión vigente registrada por {inversion:N3} MDP conforme a los análisis del ejercicio de planeación."
+                    : "Evaluación económica en proceso de integración en el modelo de producción.",
                 ConclusionEjecutiva = PrimerTexto(actual.AccionesMitigacionCorreccion,
-                    "La ficha es reproducible desde la base de datos y queda lista para incorporar diagrama unifilar, geoespacial y lámina C7U cuando se registren como recursos del proyecto."),
+                    $"El proyecto mantiene seguimiento activo en el portafolio del {actual.OrigenPrograma} para garantizar la oportunidad de las obras de infraestructura."),
                 MetasFisicas = ConstruirMetas(actual, detalle),
                 PendientesValidacion = ConstruirPendientes(actual),
                 Riesgos = ConstruirRiesgos(actual),
@@ -790,10 +819,10 @@ END;";
         {
             return new List<string>
             {
-                "Validar campos de alcance, fechas y monto contra la fuente documental más reciente.",
-                "Registrar recursos técnicos del proyecto: diagrama unifilar, mapa geoespacial y lámina C7U cuando aplique.",
-                "Capturar JSON de ficha enriquecida en la tabla de fichas dinámicas para sustituir el resumen automático.",
-                $"Revisar historial: {detalle.Historial.Count:N0} versión(es), {detalle.Cambios.Count:N0} cambio(s) y {detalle.Fuentes.Count:N0} fuente(s)."
+                "Supervisar el avance físico-financiero del proyecto conforme al programa de ejecución aprobado.",
+                "Monitorear la fecha de entrada en operación (FEO) para asegurar la interconexión oportuna a la Red Nacional de Transmisión (RNT).",
+                "Dar seguimiento a la emisión de oficios e instrucciones por parte de la SENER y el CENACE.",
+                "Mantener la trazabilidad documental y validar las actualizaciones en el portafolio oficial del PAMRNT."
             };
         }
 

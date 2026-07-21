@@ -105,10 +105,71 @@
             return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         }
 
+        async function fetchImageBlobAsDataUrl(url) {
+            try {
+                const corsUrl = url.startsWith("data:")
+                    ? url
+                    : url + (url.includes("?") ? "&" : "?") + "cors=" + Date.now();
+                const res = await fetch(corsUrl, { mode: "cors", cache: "no-store" });
+                if (!res.ok) return null;
+                const blob = await res.blob();
+                return new Promise(resolve => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(blob);
+                });
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function convertImgToDataUrl(img) {
+            if (!img.src || img.src.startsWith("data:")) return img.src;
+            let dataUrl = await fetchImageBlobAsDataUrl(img.src);
+            if (dataUrl) return dataUrl;
+
+            return new Promise(resolve => {
+                const tempImg = new Image();
+                tempImg.crossOrigin = "anonymous";
+                tempImg.onload = () => {
+                    try {
+                        const canvas = document.createElement("canvas");
+                        canvas.width = tempImg.naturalWidth || tempImg.width || 800;
+                        canvas.height = tempImg.naturalHeight || tempImg.height || 600;
+                        const ctx = canvas.getContext("2d");
+                        ctx.drawImage(tempImg, 0, 0);
+                        resolve(canvas.toDataURL("image/png"));
+                    } catch (e) {
+                        resolve(null);
+                    }
+                };
+                tempImg.onerror = () => resolve(null);
+                tempImg.src = img.src + (img.src.includes("?") ? "&" : "?") + "cors=" + Date.now();
+            });
+        }
+
+        async function asegurarImagenesPrecargadas(slide) {
+            const imgs = Array.from(slide.querySelectorAll("img"));
+            for (const img of imgs) {
+                if (img.src && !img.dataset.dataUrlCargado) {
+                    const dataUrl = await convertImgToDataUrl(img);
+                    if (dataUrl && dataUrl.startsWith("data:")) {
+                        img.src = dataUrl;
+                        img.dataset.dataUrlCargado = "true";
+                        if (img.decode) {
+                            try { await img.decode(); } catch (e) {}
+                        }
+                    }
+                }
+            }
+        }
+
         async function renderSlide(slide, slideNumber) {
             if (exportMessage) exportMessage.textContent = `Capturando lámina ${slideNumber} de ${slides.length}`;
             // Garantiza que los mapas Leaflet de la lámina existan antes de capturarla.
             if (window.pamFichaMapas && slide.querySelector(".pam-mapa-gcr, .pam-mapa-red")) await window.pamFichaMapas();
+            await asegurarImagenesPrecargadas(slide);
             await nextPaint();
             return window.html2canvas(slide, {
                 backgroundColor: "#ffffff",
@@ -128,13 +189,14 @@
 
         // Coloca links internos sobre los botones del índice para que el PDF sea navegable.
         function agregarLinksIndicePdf(pdf, slide) {
-            if (!slide || slide.dataset.screenLabel !== "02") return;
+            if (!slide || (slide.dataset.screenLabel !== "02" && slide.dataset.screenLabel !== "02B")) return;
             const rectSlide = slide.getBoundingClientRect();
             if (!rectSlide.width || !rectSlide.height) return;
             const escalaX = PDF_WIDTH_MM / rectSlide.width;
             const escalaY = PDF_HEIGHT_MM / rectSlide.height;
             slide.querySelectorAll("[data-goto-label]").forEach(btn => {
-                const destino = slides.findIndex(s => s.dataset.screenLabel === btn.dataset.gotoLabel);
+                const targetLabel = normalizarLabel(btn.dataset.gotoLabel);
+                const destino = slides.findIndex(s => normalizarLabel(s.dataset.screenLabel) === targetLabel);
                 if (destino < 0) return;
                 const r = btn.getBoundingClientRect();
                 pdf.link(
@@ -143,6 +205,29 @@
                     r.width * escalaX,
                     r.height * escalaY,
                     { pageNumber: destino + 1 });
+            });
+        }
+
+        // Coloca links externos de las figuras para abrir la imagen CDN al hacer clic dentro del PDF.
+        function agregarLinksFiguraPdf(pdf, slide) {
+            if (!slide) return;
+            const rectSlide = slide.getBoundingClientRect();
+            if (!rectSlide.width || !rectSlide.height) return;
+            const escalaX = PDF_WIDTH_MM / rectSlide.width;
+            const escalaY = PDF_HEIGHT_MM / rectSlide.height;
+            slide.querySelectorAll(".pam-figura-media__link").forEach(link => {
+                const href = link.getAttribute("href");
+                if (!href) return;
+                const r = link.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) {
+                    pdf.link(
+                        (r.left - rectSlide.left) * escalaX,
+                        (r.top - rectSlide.top) * escalaY,
+                        r.width * escalaX,
+                        r.height * escalaY,
+                        { url: href }
+                    );
+                }
             });
         }
 
@@ -167,6 +252,7 @@
                 if (index > 0) pdf.addPage([PDF_WIDTH_MM, PDF_HEIGHT_MM], "landscape");
                 pdf.addImage(imageData, "JPEG", 0, 0, PDF_WIDTH_MM, PDF_HEIGHT_MM, undefined, "FAST");
                 agregarLinksIndicePdf(pdf, slides[index]);
+                agregarLinksFiguraPdf(pdf, slides[index]);
                 canvas.width = 1;
                 canvas.height = 1;
             }
@@ -268,6 +354,7 @@
                     if (index > 0) pdf.addPage([PDF_WIDTH_MM, PDF_HEIGHT_MM], "landscape");
                     pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, PDF_WIDTH_MM, PDF_HEIGHT_MM, undefined, "FAST");
                     agregarLinksIndicePdf(pdf, slides[index]);
+                    agregarLinksFiguraPdf(pdf, slides[index]);
                     canvas.width = 1; canvas.height = 1;
                 }
                 return { base64: pdf.output("datauristring"), nombre: `${filename}.pdf` };
@@ -286,9 +373,11 @@
 
         // Resuelve una lámina destino: por índice fijo (data-goto) o por su
         // etiqueta de pantalla (data-goto-label), robusto ante láminas ocultas.
+        const normalizarLabel = l => (l || "").replace(/[·\s]/g, "-").toLowerCase();
         const indicePorLabel = label => {
-            const idx = slides.findIndex(slide => slide.dataset.screenLabel === label);
-            return idx >= 0 ? idx : 0;
+            const target = normalizarLabel(label);
+            const idx = slides.findIndex(slide => normalizarLabel(slide.dataset.screenLabel) === target);
+            return idx >= 0 ? idx : current;
         };
         const destino = button => button.dataset.gotoLabel != null
             ? indicePorLabel(button.dataset.gotoLabel)

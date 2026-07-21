@@ -284,7 +284,24 @@
                         <button type="button" class="pam-index__entry" data-goto-label="10"><span>Comparativa de confiabilidad</span><i></i><small>10</small></button>
                         <button type="button" class="pam-index__entry" data-goto-label="11"><span>Evaluación económica</span><i></i><small>11</small></button>
                     }
-                    <button type="button" class="pam-index__entry" data-goto-label="12"><span>Diagramas y geoespacial</span><i></i><small>12</small></button>
+                    @if (Model.TieneRecursosVisuales)
+                    {
+                        if (Model.Diagramas.Count <= 6)
+                        {
+                            for (var i = 0; i < Model.Diagramas.Count; i++)
+                            {
+                                var fig = Model.Diagramas[i];
+                                var lbl = Model.Diagramas.Count == 1 ? "12" : $"12-{(i + 1)}";
+                                var smallLbl = Model.Diagramas.Count == 1 ? "12" : $"12·{(i + 1)}";
+                                var titleIndex = fig.TituloVisual;
+                                <button type="button" class="pam-index__entry" data-goto-label="@lbl"><span>@Recortar(titleIndex, 55)</span><i></i><small>@smallLbl</small></button>
+                            }
+                        }
+                        else
+                        {
+                            <button type="button" class="pam-index__entry" data-goto-label="02B"><span>Diagramas y figuras técnicas (@Model.Diagramas.Count láminas)</span><i></i><small>02B</small></button>
+                        }
+                    }
                     <button type="button" class="pam-index__entry" data-goto-label="13"><span>Fases y licitación</span><i></i><small>13</small></button>
                     <button type="button" class="pam-index__group" data-goto-label="14"><b>02</b><span>Cierre y trazabilidad</span></button>
                     <button type="button" class="pam-index__entry" data-goto-label="15"><span>Conclusión ejecutiva</span><i></i><small>15</small></button>
@@ -298,6 +315,37 @@
                     <span class="pam-lamina-foot__meta">02</span>
                 </div>
             </section>
+
+            @* ── 02B · Índice complementario de figuras (solo si hay más de 6 figuras en el proyecto) ── *@
+            @if (Model.TieneRecursosVisuales && Model.Diagramas.Count > 6)
+            {
+                <section class="pam-slide pam-slide--content" data-slide data-label="Índice figuras" data-screen-label="02B">
+                    <header class="pam-lamina-head">
+                        <span class="pam-lamina-head__kicker">@seccion01</span>
+                        <span class="pam-lamina-head__aside">ÍNDICE NAVEGABLE DE FIGURAS</span>
+                    </header>
+                    <h2 class="pam-lamina-title is-guinda">Índice · Diagramas y figuras técnicas (@Model.Diagramas.Count)</h2>
+                    <div class="pam-lamina-body pam-index pam-index--figuras">
+                        @for (var i = 0; i < Model.Diagramas.Count; i++)
+                        {
+                            var fig = Model.Diagramas[i];
+                            var lbl = $"12-{(i + 1)}";
+                            var smallLbl = $"12·{(i + 1)}";
+                            var titleIndex = fig.TituloVisual;
+                            <button type="button" class="pam-index__entry" data-goto-label="@lbl">
+                                <span>@(i + 1). @Recortar(titleIndex, 65)</span><i></i><small>@smallLbl</small>
+                            </button>
+                        }
+                    </div>
+                    <div class="pam-lamina-foot">
+                        <span>Recursos visuales oficiales del proyecto servidos desde CDN DGMESNIE.</span>
+                        <span class="pam-lamina-foot__meta">
+                            <button type="button" class="pam-home" data-goto="1" title="Volver al índice principal"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                            02B
+                        </span>
+                    </div>
+                </section>
+            }
 
             @* ── 03 · Divisoria Sección 01 (patrón insumo: barra guinda, número gigante, kicker con punto, Patria, regla dorada) ── *@
             <section class="pam-slide pam-slide--divider" data-slide data-label="Sección 01" data-screen-label="03">
@@ -672,60 +720,76 @@
             </section>
             }
 
-            @* ── 12 · Diagramas y geoespacial (recursos BD) ── *@
-            <section class="pam-slide pam-slide--content" data-slide data-label="Diagramas y geoespacial" data-screen-label="12">
-                <header class="pam-lamina-head">
-                    <span class="pam-lamina-head__kicker">@seccion01</span>
-                    <span class="pam-lamina-head__aside">Recursos técnicos del proyecto</span>
-                </header>
-                <h2 class="pam-lamina-title">Diagrama unifilar, mapa geoespacial y lámina C7U según disponibilidad.</h2>
-                <div class="pam-lamina-body pam-network">
-                    @if (recursosVisuales.Count > 0)
-                    {
-                        <div class="pam-assets-grid @(recursosVisuales.Count == 1 ? "is-single" : null)">
-                            @foreach (var recurso in recursosVisuales.Take(3))
-                            {
-                                <article class="pam-asset-card">
-                                    <div class="pam-asset-card__media">
-                                        @if (!string.IsNullOrWhiteSpace(recurso.Url))
+            @* ── 12 · Figuras y diagramas técnicos (1 lámina por imagen registrada en CDN BD; 0 si no hay) ── *@
+            @if (Model.TieneRecursosVisuales)
+            {
+                for (var i = 0; i < Model.Diagramas.Count; i++)
+                {
+                    var recurso = Model.Diagramas[i];
+                    var numLabel = Model.Diagramas.Count == 1 ? "12" : $"12-{(i + 1)}";
+                    var numTotal = Model.Diagramas.Count;
+                    var figTag = string.IsNullOrWhiteSpace(recurso.NumeroVisual) ? $"Figura {i + 1}" : $"Figura {recurso.NumeroVisual}";
+                    <section class="pam-slide pam-slide--content pam-slide--figura" data-slide data-label="@figTag" data-screen-label="@numLabel">
+                        <header class="pam-lamina-head">
+                            <span class="pam-lamina-head__kicker">@seccion01</span>
+                            <span class="pam-lamina-head__aside">
+                                @(numTotal > 1 ? $"Diagrama {i + 1} de {numTotal} · " : "")@recurso.TipoLabel
+                            </span>
+                        </header>
+                        <h2 class="pam-lamina-title @(recurso.TituloVisual.Length > 120 ? "is-sm" : "")">
+                            @(string.IsNullOrWhiteSpace(recurso.NumeroVisual) ? "" : $"Figura {recurso.NumeroVisual}: ")@recurso.TituloVisual
+                        </h2>
+                        <div class="pam-lamina-body pam-figura-body">
+                            <div class="pam-figura-card">
+                                <div class="pam-figura-card__media">
+                                    <a href="@recurso.UrlVisual" target="_blank" rel="noopener noreferrer" class="pam-figura-media__link" onclick="window.open(this.href, '_blank', 'noopener,noreferrer'); return false;" title="Abrir diagrama en alta resolución">
+                                        <img src="@recurso.UrlVisual" alt="@recurso.AltVisual" loading="eager" />
+                                        <span class="pam-figura-media__zoom"><i class="fas fa-search-plus"></i> Ampliar diagrama</span>
+                                    </a>
+                                </div>
+                                <aside class="pam-figura-card__info">
+                                    <div class="pam-figura-card__tag">
+                                        <i class="fas fa-diagram-project"></i>
+                                        <strong>@recurso.TipoLabel</strong>
+                                        @if (recurso.EsCompartida)
                                         {
-                                            <img src="@recurso.Url" alt="@(string.IsNullOrWhiteSpace(recurso.AltText) ? recurso.Titulo : recurso.AltText)" />
-                                        }
-                                        else
-                                        {
-                                            <div class="pam-asset-card__placeholder"><i class="fas fa-image"></i><span>Recurso pendiente</span></div>
+                                            <span class="pam-figura-card__shared">· Esquema compartido</span>
                                         }
                                     </div>
-                                    <div class="pam-asset-card__caption">
-                                        <strong>@recurso.Titulo</strong>
-                                        <span>@recurso.Descripcion</span>
-                                    </div>
-                                </article>
-                            }
+                                    @if (!string.IsNullOrWhiteSpace(recurso.DescripcionVisual))
+                                    {
+                                        <div class="pam-figura-card__block">
+                                            <span class="pam-chart-caption">Descripción técnica</span>
+                                            <p class="pam-figura-card__desc">@recurso.DescripcionVisual</p>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(recurso.ContextoVisual))
+                                    {
+                                        <div class="pam-figura-card__block">
+                                            <span class="pam-chart-caption">Contexto del proyecto</span>
+                                            <p class="pam-figura-card__contexto">@Recortar(recurso.ContextoVisual, 380)</p>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(recurso.FuenteDescripcion) && !recurso.FuenteDescripcion.ToLowerInvariant().Contains("leyenda"))
+                                    {
+                                        <div class="pam-figura-card__fuente">
+                                            <i class="fas fa-info-circle"></i>
+                                            <span>@recurso.FuenteDescripcion</span>
+                                        </div>
+                                    }
+                                </aside>
+                            </div>
                         </div>
-                    }
-                    else
-                    {
-                        <div class="pam-network__canvas pam-network__canvas--placeholder">
-                            <div class="pam-empty-resource"><i class="fas fa-map-location-dot"></i><strong>Recursos visuales pendientes</strong><span>La ficha reserva este espacio para diagrama unifilar, geoespacial, lámina C7U, ambos o ninguno. Se activará automáticamente al registrar el PNG o URL en la base de datos.</span></div>
-                            <div class="pam-network__badge"><strong>@Model.Ficha.TotalObras</strong><span>obras / relaciones registradas</span></div>
+                        <div class="pam-lamina-foot">
+                            <span>PAMRNT 2026–2040 · Ficha ejecutiva @Model.Ficha.ClavePem · @recurso.TipoLabel.</span>
+                            <span class="pam-lamina-foot__meta">
+                                <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                                @numLabel
+                            </span>
                         </div>
-                    }
-                    <div class="pam-physical-metrics">
-                        @foreach (var meta in Model.Ficha.MetasFisicas)
-                        {
-                            <article><strong>@meta.Valor</strong><span>@meta.Concepto</span><small>@meta.Unidad</small></article>
-                        }
-                    </div>
-                </div>
-                <div class="pam-lamina-foot">
-                    <span>Recursos leídos desde dgmesnie.PAMProyectoFichaRecurso cuando existan; de lo contrario se conserva el espacio institucional.</span>
-                    <span class="pam-lamina-foot__meta">
-                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
-                        12
-                    </span>
-                </div>
-            </section>
+                    </section>
+                }
+            }
 
             @* ── 13 · Fases constructivas y estatus de licitación ── *@
             <section class="pam-slide pam-slide--content" data-slide data-label="Fases y licitación" data-screen-label="13">
@@ -733,10 +797,10 @@
                     <span class="pam-lamina-head__kicker">@seccion01</span>
                     <span class="pam-lamina-head__aside">Fases y licitación</span>
                 </header>
-                <h2 class="pam-lamina-title">Fases constructivas, estatus de licitación y empalme con la fecha necesaria.</h2>
+                <h2 class="pam-lamina-title">Fases constructivas, estatus de licitación y alineación con la fecha necesaria.</h2>
                 <div class="pam-lamina-body">
                     @{ var emp = Model.Empalme; }
-                    <div class="pam-empalme @emp.Clase" aria-label="Empalme de cronograma: fecha necesaria contra red lista">
+                    <div class="pam-empalme @emp.Clase" aria-label="Alineación de cronograma: fecha necesaria contra red lista">
                         <div class="pam-empalme__linea">
                             <div class="pam-empalme__hito">
                                 <span>Fecha necesaria</span>
@@ -861,9 +925,9 @@
             <section class="pam-slide pam-slide--content" data-slide data-label="Trazabilidad" data-screen-label="16">
                 <header class="pam-lamina-head">
                     <span class="pam-lamina-head__kicker">@seccion02</span>
-                    <span class="pam-lamina-head__aside">Trazabilidad metodológica</span>
+                    <span class="pam-lamina-head__aside">Seguimiento y trazabilidad documental</span>
                 </header>
-                <h2 class="pam-lamina-title">Una ficha reproducible desde la cartera maestra y sus fuentes.</h2>
+                <h2 class="pam-lamina-title">Seguimiento institucional, vigencia y soporte documental del proyecto.</h2>
                 <div class="pam-lamina-body pam-trace">
                     <div class="pam-trace__layout">
                         <ol>
@@ -873,10 +937,10 @@
                             }
                         </ol>
                         <div class="pam-trace__cards">
-                            <article><span>Proyecto SQL</span><strong>ID @Model.Proyecto.ProyectoId</strong><small>versión @(detalle?.NumeroVersion ?? 1)</small></article>
-                            <article><span>Trazabilidad</span><strong>@versiones versiones</strong><small>@cambios cambios históricos</small></article>
-                            <article><span>Evidencia</span><strong>@fuentes fuentes</strong><small>corte @fechaCorte.ToString("yyyy-MM-dd")</small></article>
-                            <article><span>Estado</span><strong>@Model.Proyecto.EstadoVigenciaCartera</strong><small>@Model.Proyecto.EtapaProyecto</small></article>
+                            <article><span>Clave de registro</span><strong>ID @Model.Proyecto.ProyectoId</strong><small>versión @(detalle?.NumeroVersion ?? 1).0</small></article>
+                            <article><span>Trazabilidad</span><strong>@versiones versión(es)</strong><small>@cambios registros de seguimiento</small></article>
+                            <article><span>Soporte documental</span><strong>@fuentes fuente(s)</strong><small>corte @fechaCorte.ToString("yyyy-MM-dd")</small></article>
+                            <article><span>Estatus cartera</span><strong>@Model.Proyecto.EstadoVigenciaCartera</strong><small>@Model.Proyecto.EtapaProyecto</small></article>
                         </div>
                     </div>
                 </div>
