@@ -1,0 +1,1148 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@* @{
+    Layout = "~/Views/Shared/_LayoutTailwind.cshtml";
+} *@
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+@{
+    ViewData["Title"] = "Balance Nacional de Energía";
+}
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Balance Nacional de Energía",
+        IconPath = "sankey.png",
+        Description = "Visualiza cómo fluye la energía a través de las distintas fuentes y sectores del país con base en información oficial.",
+        Section = "Balance Nacional de Energía",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Balance Nacional de Energía",
+            description = "Este módulo permite analizar la distribución de energía desde su origen hasta su uso final, a través de un diagrama Sankey interactivo.",
+            functionality = "Consulta interactiva y visual del flujo energético nacional.",
+            stage = "Análisis de Datos",
+            roles = new[] {
+                new { icon = "chart-line", text = "Secretaría de Energía: Seguimiento y planificación energética" },
+                new { icon = "database", text = "Unidad SNIEr: Visualización y validación de datos energéticos" },
+                new { icon = "user-cog", text = "CRE y CNH: Control regulatorio de flujos" },
+                new { icon = "eye", text = "Consulta Pública: Transparencia energética" }
+            },
+            order = new { step = 2, description = "Análisis y visualización conforme a la Ley de Transición Energética" }
+        }),
+        LegalDescription = "Basado en los Lineamientos del SNIEr y la Ley de Transición Energética para garantizar el monitoreo del flujo energético.",
+        Fundamentos = new List<FundamentoLegal> {
+            new() { Reference = "Art. 70 Reglamento SNIEr", Description = "Establece la obligación de registrar y visualizar flujos energéticos" },
+            new() { Reference = "Ley de Transición Energética", Description = "Obliga a reportar y dar seguimiento a la eficiencia y trazabilidad energética" },
+            new() { Reference = "Artículo 33 LIE", Description = "Define la segmentación y reporte de usos de energía" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+@* <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link href="/css/output.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script src="/js/datos.js"></script> *@
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<script>
+  tailwind.config = {
+    prefix: 'tw-',
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          primary: "#9F2241",
+          secondary: "#13322B",
+          accent: "#BC955C",
+          "background-light": "#F8F7F2",
+          "background-dark": "#121212",
+          "card-light": "#FFFFFF",
+          "card-dark": "#1E1E1E",
+          "gobmx-guinda": "#6a1c32",
+          "gobmx-verde": "#13322B",
+          "gobmx-dorado": "#BC955C"
+        },
+        fontFamily: {
+          display: ["Montserrat", "sans-serif"],
+          sans: ["Montserrat", "sans-serif"],
+          body: ["Noto Sans", "sans-serif"],
+          headings: ["Montserrat", "sans-serif"]
+        },
+        borderRadius: {
+          DEFAULT: "0.5rem",
+          xl: "1rem"
+        }
+      }
+    }
+  }
+</script>
+
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="/js/sankeyEnergia_config.js"></script>
+<script src="/js/data_processor.js"></script>
+<script src="/js/datosEnergia.js"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+    rel="stylesheet">
+<link href="/css/output.css" rel="stylesheet">
+  <style>
+    :root {
+      --color-guinda: #6a1c32;
+      --color-gris-oscuro: #374151;
+      --color-blanco: #ffffff;
+      --color-gris-claro: #f3f4f6;
+      --color-bordes: #e5e7eb;
+      --color-verde-acento: #136235;
+      --glass-shadow: 0 10px 30px rgba(17, 24, 39, 0.12);
+      --border-radius: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    @* .analytics-body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-family: 'Montserrat', sans-serif;
+      color: var(--color-gris-oscuro);
+      background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+      padding-top: 175px;
+    }  *@
+
+    .analytics-header {
+        background: var(--color-blanco);
+        position: relative; /* 👈 importante */
+        padding: 0.9rem 1.6rem 1.4rem;
+        border-bottom: 1px solid rgba(17, 24, 39, 0.08);
+        box-shadow: var(--glass-shadow);
+    }
+
+    .analytics-header .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .analytics-header .header-logo {
+      height: 65px;
+      max-width: 220px;
+      object-fit: contain;
+    }
+
+    .analytics-header .header-text {
+      flex: 1;
+      text-align: center;
+    }
+
+    .analytics-header .header-text h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      font-weight: 700;
+    }
+
+    .analytics-header .header-text p {
+      margin: 0.35rem 0 0;
+      font-size: 0.9rem;
+      color: rgba(55, 65, 81, 0.75);
+    }
+
+    .analytics-header .main-nav {
+      margin-top: 1.1rem;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .nav-button {
+      display: inline-flex;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.6rem 1.1rem;
+      background: rgba(106, 28, 50, 0.08);
+      border: 1px solid rgba(106, 28, 50, 0.15);
+      border-radius: 999px;
+      color: var(--color-guinda);
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.25s ease;
+      backdrop-filter: blur(8px);
+    }
+
+    .nav-button:hover {
+      background: rgba(106, 28, 50, 0.12);
+      border-color: rgba(106, 28, 50, 0.25);
+      transform: translateY(-2px);
+    }
+
+    .nav-button.active {
+      background: var(--color-guinda);
+      color: var(--color-blanco);
+      border-color: transparent;
+      box-shadow: 0 12px 28px rgba(106, 28, 50, 0.25);
+    }
+
+    .main-container-analytics {
+      width: 100%;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      flex: 1;
+    }
+
+    .card-analytic {
+      background: rgba(255, 255, 255, 0.96);
+      border-radius: var(--border-radius);
+      border: 1px solid rgba(17, 24, 39, 0.08);
+      box-shadow: 0 10px 25px rgba(17, 24, 39, 0.08);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .filters {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      align-items: end;
+    }
+
+    .chart-container {
+      width: 100%;
+      min-height: 360px;
+      height: clamp(340px, 52vh, 520px);
+      position: relative;
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.18);
+    }
+
+    .chart-container:fullscreen,
+    .chart-container:-webkit-full-screen,
+    .chart-container:-moz-full-screen {
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+      background: #ffffff;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .chart-container:fullscreen canvas,
+    .chart-container:-webkit-full-screen canvas,
+    .chart-container:-moz-full-screen canvas {
+      border-radius: 0;
+    }
+
+
+    .multi-select {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      border: 1px solid rgba(17, 24, 39, 0.12);
+      border-radius: 12px;
+      background: rgba(249, 250, 251, 0.85);
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(106, 28, 50, 0.12);
+      border: 1px solid rgba(106, 28, 50, 0.2);
+      color: var(--color-guinda);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .chip input {
+      margin: 0;
+    }
+
+    .chip.disabled {
+      background: rgba(148, 163, 184, 0.22);
+      border: 1px dashed rgba(148, 163, 184, 0.5);
+      color: rgba(71, 85, 105, 0.7);
+      cursor: not-allowed;
+    }
+
+    .chip.disabled span {
+      text-decoration: line-through;
+    }
+
+    .inactive-note {
+      width: 100%;
+      font-size: 0.78rem;
+      color: #94a3b8;
+      margin-top: 0.35rem;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    footer {
+      margin-top: auto;
+      background: rgba(255, 255, 255, 0.9);
+      border-top: 1px solid rgba(17, 24, 39, 0.08);
+      padding: 1rem 1.5rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+
+    @@media (max-width: 768px) {
+      .analytics-body {
+        padding-top: 205px;
+      }
+
+      .analytics-header .header-content {
+        flex-direction: column;
+        gap: 0.8rem;
+      }
+
+      .analytics-header .header-logo {
+        height: 58px;
+      }
+    }
+  </style>
+
+<div class="analytics-body">
+  <header class="analytics-header">
+    <div class="header-content">
+      <img src="https://balance2024.pages.dev/img/logo_gob.png" alt="Logo Gobierno de Mexico" class="header-logo">
+      <div class="header-text">
+        <h1>Analitica del Balance Energetico</h1>
+        <p>Tendencias historicas y proyeccion de energeticos</p>
+      </div>
+      <img src="https://balance2024.pages.dev/img/logo_sener.png" alt="Logo SENER" class="header-logo">
+    </div>
+    <nav class="main-nav" aria-label="Navegacion principal">
+      <!-- <a class="nav-button" href="tablero.html"><i class="fa-solid fa-table-columns"></i> Tablero</a> -->
+        <a class="nav-button" href="@Url.Action("BNE", "SankeySener")">
+            <i class="fa-solid fa-diagram-project"></i> Ver Sankey
+        </a>
+      <!-- <a class="nav-button" href="editor.html"><i class="fa-solid fa-pen-to-square"></i> Editor de datos</a>
+      <a class="nav-button" href="personalizador.html"><i class="fa-solid fa-palette"></i> Personalizador</a> -->
+      <!-- <a class="nav-button" href="agregar.html"><i class="fa-solid fa-sitemap"></i> Nodos</a> -->
+      <!-- <a class="nav-button active" href="graficos.html" aria-current="page"><i class="fa-solid fa-chart-line"></i>
+        Analitica</a> -->
+    </nav>
+  </header>
+
+  <main class="main-container-analytics">
+
+    <!-- Preloader -->
+    <div class="preloader hidden" id="preloader">
+        <div class="preloader-content">
+            <img src="https://balance2024.pages.dev/img/mujer.png" alt="Cargando" class="preloader-logo">
+            <h3>Balance Nacional de Energía</h3>
+            <div class="preloader-message" id="preloader-message">Cargando...</div>
+            <div class="preloader-progress">
+                <div class="preloader-progress-bar" id="preloader-progress-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <section class="card-analytic">
+      <div class="d-flex flex-column flex-md-row justify-content-between gap-2 align-items-md-center">
+        <h2>Evolucion historica del nodo seleccionado</h2>
+        <div class="actions d-flex gap-2 flex-wrap justify-content-end">
+          <button class="btn btn-outline-primary btn-sm" id="export-parent-chart">
+            <i class="fa-solid fa-file-image"></i> Exportar PNG
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" id="toggle-projection">
+            <i class="fa-solid fa-chart-simple"></i> Ocultar proyeccion
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" id="fullscreen-parent-chart">
+            <i class="fa-solid fa-up-right-and-down-left-from-center"></i> Pantalla completa
+          </button>
+        </div>
+      </div>
+      <div class="filters">
+        <div>
+          <label for="parent-select" class="form-label">Selecciona el nodo del Sankey</label>
+          <select id="parent-select" class="form-select form-select-sm"></select>
+        </div>
+        <div>
+          <label for="agg-mode-select" class="form-label">Modo de agregacion</label>
+          <select id="agg-mode-select" class="form-select form-select-sm">
+            <option value="total">Total (suma hijos)</option>
+            <option value="promedio">Promedio</option>
+            <option value="mediana">Mediana</option>
+          </select>
+        </div>
+      </div>
+      <div id="parent-chart" class="chart-container"></div>
+      <small class="text-muted">Nota: la proyeccion utiliza una regresion lineal simple para estimar el valor
+        2025.</small>
+    </section>
+
+    <section class="card-analytic">
+      <div class="d-flex flex-column flex-md-row justify-content-between gap-2 align-items-md-center">
+        <h2>Participacion de energeticos primarios y secundarios</h2>
+        <div class="actions d-flex gap-2 flex-wrap justify-content-end">
+          <button class="btn btn-outline-primary btn-sm" id="export-child-chart">
+            <i class="fa-solid fa-file-image"></i> Exportar PNG
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" id="fullscreen-child-chart">
+            <i class="fa-solid fa-up-right-and-down-left-from-center"></i> Pantalla completa
+          </button>
+        </div>
+      </div>
+      <div class="filters">
+        <div>
+          <label class="form-label">Selecciona energeticos activos</label>
+          <div id="child-selector" class="multi-select"></div>
+        </div>
+        <div>
+          <label for="chart-type-select" class="form-label">Tipo de grafico</label>
+          <select id="chart-type-select" class="form-select form-select-sm">
+            <option value="line">Lineas multiples</option>
+            <option value="stacked">Area apilada</option>
+          </select>
+        </div>
+      </div>
+      <div id="children-chart" class="chart-container"></div>
+    </section>
+  </main>
+
+  <footer>
+    Secretaria de Energia · Subsecretaria de Planeacion y Transicion Energetica · Datos en Petajoules (PJ)
+  </footer>
+    <script>
+        // Funciones para controlar el preloader
+        function showPreloader(message = 'Cargando...') {
+            const preloader = document.getElementById('preloader');
+            const messageEl = document.getElementById('preloader-message');
+            const progressBar = document.getElementById('preloader-progress-bar');
+
+            // Actualizar mensaje
+            messageEl.textContent = message;
+
+            // Mostrar preloader
+            preloader.classList.remove('hidden');
+
+            // Iniciar animación de progreso
+            let progress = 0;
+            progressBar.style.width = '0%';
+
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 90) progress = 90;
+                progressBar.style.width = progress + '%';
+            }, 200);
+
+            return {
+                complete: () => {
+                    clearInterval(progressInterval);
+                    progressBar.style.width = '100%';
+                    setTimeout(() => {
+                        preloader.classList.add('hidden');
+                        progressBar.style.width = '0%';
+                    }, 300);
+                },
+                updateMessage: (newMessage) => {
+                    messageEl.textContent = newMessage;
+                },
+                updateProgress: (value) => {
+                    progress = Math.min(90, value);
+                    progressBar.style.width = progress + '%';
+                },
+                updateProgress: (value) => {
+                    progressBar.style.width = value + '%';
+                }
+            };
+        }
+
+    </script>
+  <script>
+    (function () {
+
+        document.addEventListener("DOMContentLoaded", iniciarSankey);
+
+        async function iniciarSankey() {
+
+            const loader = showPreloader('Cargando colores...');
+
+            try {
+
+                await cargarColoresEnergeticos();
+
+                loader.updateMessage('Procesando datos...');
+                procesarDatosEnergia();
+
+                loader.updateMessage('Construyendo visualización...');
+                await generarSankey();
+
+                loader.updateMessage('Cargando analíticas...');
+                iniciarGraficas();   // 👈 aquí
+
+                console.log('Sankey generado con éxito');
+
+            }
+            catch (error) {
+
+                console.error(error);
+                alert("Error cargando el Sankey");
+
+            }
+            finally {
+
+                loader.complete();
+
+            }
+
+        }
+      const PROJECTION_YEAR = 2025;
+      const TYPE_LABELS = {
+        primario: 'Energeticos primarios',
+        secundario: 'Energeticos secundarios',
+        otro: 'Otros energeticos'
+      };
+      const TYPE_COLORS = {
+        primario: '#136235',
+        secundario: '#1D4ED8',
+        otro: '#7C3AED'
+      };
+
+      const state = {
+        data: null,
+        parents: [],
+        currentParent: null,
+        showProjection: true,
+        childSelections: new Set()
+      };
+
+      const parentSelect = document.getElementById('parent-select');
+      const aggModeSelect = document.getElementById('agg-mode-select');
+      const chartTypeSelect = document.getElementById('chart-type-select');
+      const childSelector = document.getElementById('child-selector');
+      const toggleProjectionBtn = document.getElementById('toggle-projection');
+      const exportParentBtn = document.getElementById('export-parent-chart');
+      const exportChildBtn = document.getElementById('export-child-chart');
+      const fullscreenParentBtn = document.getElementById('fullscreen-parent-chart');
+      const fullscreenChildBtn = document.getElementById('fullscreen-child-chart');
+
+      const parentChart = echarts.init(document.getElementById('parent-chart'));
+      const childrenChart = echarts.init(document.getElementById('children-chart'));
+      const fullscreenTargets = new Map([
+        [parentChart.getDom(), fullscreenParentBtn],
+        [childrenChart.getDom(), fullscreenChildBtn]
+      ]);
+
+      window.addEventListener('resize', () => {
+        parentChart.resize();
+        childrenChart.resize();
+      });
+
+      document.addEventListener('fullscreenchange', updateFullscreenButtons);
+      document.addEventListener('webkitfullscreenchange', updateFullscreenButtons);
+      document.addEventListener('msfullscreenchange', updateFullscreenButtons);
+
+      function toggleFullscreen(element) {
+        if (!element) return;
+        const request = () => {
+          if (element.requestFullscreen) {
+            element.requestFullscreen();
+          } else if (element.webkitRequestFullscreen) {
+            element.webkitRequestFullscreen();
+          } else if (element.msRequestFullscreen) {
+            element.msRequestFullscreen();
+          }
+        };
+
+        if (document.fullscreenElement === element || document.webkitFullscreenElement === element || document.msFullscreenElement === element) {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+          } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+          }
+          return;
+        }
+
+        if (document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement) {
+          const exit =
+            document.exitFullscreen?.() ||
+            document.webkitExitFullscreen?.() ||
+            document.msExitFullscreen?.() ||
+            Promise.resolve();
+          Promise.resolve(exit).finally(request);
+          return;
+        }
+
+        request();
+      }
+
+      function updateFullscreenButtons() {
+        const active =
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.msFullscreenElement ||
+          null;
+
+        fullscreenTargets.forEach((button, element) => {
+          if (!button) return;
+          const isActive = active === element;
+          button.classList.toggle('btn-secondary', isActive);
+          button.classList.toggle('btn-outline-secondary', !isActive);
+          button.innerHTML = isActive
+            ? '<i class="fa-solid fa-down-left-and-up-right-to-center"></i> Salir pantalla completa'
+            : '<i class="fa-solid fa-up-right-and-down-left-from-center"></i> Pantalla completa';
+        });
+
+        parentChart.resize();
+        childrenChart.resize();
+      }
+
+      function showAlert(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.textContent = message;
+        toast.style.cssText = `
+          position: fixed;
+          top: 110px;
+          right: 20px;
+          padding: 0.8rem 1.1rem;
+          background: ${type === 'success' ? '#136235' : type === 'danger' ? '#b91c1c' : '#6b7280'};
+          color: #fff;
+          border-radius: 12px;
+          box-shadow: 0 12px 30px rgba(17,24,39,0.2);
+          z-index: 2000;
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2600);
+      }
+
+      function sum(values) {
+        return values.reduce((acc, v) => acc + (Number.isFinite(v) ? v : 0), 0);
+      }
+
+      function median(values) {
+        const nums = values.filter(Number.isFinite).sort((a, b) => a - b);
+        if (!nums.length) return 0;
+        const mid = Math.floor(nums.length / 2);
+        return nums.length % 2 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
+      }
+
+      function linearRegression(xs, ys) {
+        const n = xs.length;
+        if (!n) return { slope: 0, intercept: 0 };
+        const sumX = xs.reduce((a, b) => a + b, 0);
+        const sumY = ys.reduce((a, b) => a + b, 0);
+        const sumXY = xs.reduce((acc, x, i) => acc + x * ys[i], 0);
+        const sumX2 = xs.reduce((acc, x) => acc + x * x, 0);
+        const denom = n * sumX2 - sumX * sumX;
+        if (denom === 0) return { slope: 0, intercept: sumY / n };
+        const slope = (n * sumXY - sumX * sumY) / denom;
+        const intercept = (sumY - slope * sumX) / n;
+        return { slope, intercept };
+      }
+
+      function hasParticipation(child) {
+        const years = Object.keys(child).filter(k => /^\d{4}$/.test(k));
+        return years.some(year => {
+          const raw = child[year];
+          const num = typeof raw === 'string' ? parseFloat(raw.replace(/,/g, '.')) : raw;
+          return Number.isFinite(num) && Math.abs(num) > 1e-9;
+        });
+      }
+
+      function classifyType(child) {
+        const value = (child.tipo || '').toLowerCase();
+        if (value.includes('primario') || value.includes('primaria')) return 'primario';
+        if (value.includes('secundario') || value.includes('secundaria')) return 'secundario';
+        return 'otro';
+      }
+
+      function getData() {
+        if (window.energyData && window.energyData.Datos) {
+          return Promise.resolve(window.energyData);
+        }
+        return fetch('/api/datos', { cache: 'no-store' })
+          .then(resp => resp.json())
+          .catch(() => {
+            showAlert('No se pudo obtener datos desde el servidor. Verifique la conexion.', 'warning');
+            return window.energyData || null;
+          });
+      }
+
+      function populateParents() {
+        const datos = state.data?.Datos || [];
+        state.parents = datos.map(item => item['Nodo Padre']).filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
+        parentSelect.innerHTML = state.parents.map(name => `<option value="${name}">${name}</option>`).join('');
+        state.currentParent = state.parents[0] || null;
+      }
+
+      function populateChildrenSelector(parentName) {
+        const parent = (state.data?.Datos || []).find(item => item['Nodo Padre'] === parentName);
+        if (!parent) return;
+        const hijos = parent['Nodos Hijo'] || [];
+        const applicableChildren = [];
+        const inactiveChildren = [];
+        const nonApplicableChildren = [];
+
+        hijos.forEach(hijo => {
+          if (!hasParticipation(hijo)) {
+            inactiveChildren.push(hijo);
+            return;
+          }
+          const typeKey = classifyType(hijo);
+          if (typeKey === 'primario' || typeKey === 'secundario') {
+            applicableChildren.push(hijo);
+          } else {
+            nonApplicableChildren.push(hijo);
+          }
+        });
+
+        const previous = new Set(state.childSelections);
+        state.childSelections.clear();
+        childSelector.innerHTML = '';
+
+        if (applicableChildren.length) {
+          const wrapper = document.createElement('div');
+          wrapper.style.display = 'flex';
+          wrapper.style.flexWrap = 'wrap';
+          wrapper.style.gap = '0.5rem';
+          applicableChildren.forEach((hijo, idx) => {
+            const value = hijo['Nodo Hijo'];
+            const id = `child-${idx}`;
+            const label = document.createElement('label');
+            label.className = 'chip';
+            label.innerHTML = `
+              <input type="checkbox" id="${id}" value="${value}" ${previous.size === 0 || previous.has(value) ? 'checked' : ''}>
+              <span>${value}</span>
+            `;
+            const checkbox = label.querySelector('input');
+            checkbox.addEventListener('change', () => {
+              if (checkbox.checked) {
+                state.childSelections.add(value);
+              } else {
+                state.childSelections.delete(value);
+              }
+              updateChildrenChart();
+            });
+            if (checkbox.checked) state.childSelections.add(value);
+            wrapper.appendChild(label);
+          });
+          childSelector.appendChild(wrapper);
+        }
+
+        if (nonApplicableChildren.length) {
+          const note = document.createElement('div');
+          note.className = 'inactive-note';
+          note.textContent = 'Energeticos fuera de clasificacion primaria/secundaria:';
+          childSelector.appendChild(note);
+
+          const nonApplicableWrapper = document.createElement('div');
+          nonApplicableWrapper.style.display = 'flex';
+          nonApplicableWrapper.style.flexWrap = 'wrap';
+          nonApplicableWrapper.style.gap = '0.5rem';
+          nonApplicableChildren.forEach(hijo => {
+            const label = document.createElement('label');
+            label.className = 'chip disabled';
+            label.innerHTML = `
+              <input type="checkbox" disabled>
+              <span>${hijo['Nodo Hijo']}</span>
+            `;
+            nonApplicableWrapper.appendChild(label);
+          });
+          childSelector.appendChild(nonApplicableWrapper);
+        }
+
+        if (inactiveChildren.length) {
+          const note = document.createElement('div');
+          note.className = 'inactive-note';
+          note.textContent = 'Sin participacion en este nodo:';
+          childSelector.appendChild(note);
+
+          const inactiveWrapper = document.createElement('div');
+          inactiveWrapper.style.display = 'flex';
+          inactiveWrapper.style.flexWrap = 'wrap';
+          inactiveWrapper.style.gap = '0.5rem';
+          inactiveChildren.forEach(hijo => {
+            const label = document.createElement('label');
+            label.className = 'chip disabled';
+            label.innerHTML = `
+              <input type="checkbox" disabled>
+              <span>${hijo['Nodo Hijo']}</span>
+            `;
+            inactiveWrapper.appendChild(label);
+          });
+          childSelector.appendChild(inactiveWrapper);
+        }
+
+        if (!state.childSelections.size && applicableChildren.length) {
+          applicableChildren.forEach(hijo => state.childSelections.add(hijo['Nodo Hijo']));
+        }
+      }
+
+      function getYearsAndChildren(parentName) {
+        const parent = (state.data?.Datos || []).find(item => item['Nodo Padre'] === parentName);
+        if (!parent) return { years: [], children: [] };
+        const hijos = parent['Nodos Hijo'] || [];
+        const yearSet = new Set();
+        hijos.forEach(hijo => {
+          Object.keys(hijo).forEach(key => {
+            if (/^\d{4}$/.test(key)) yearSet.add(Number(key));
+          });
+        });
+        const years = Array.from(yearSet).sort((a, b) => a - b);
+        return { years, children: hijos };
+      }
+
+      function updateParentChart() {
+        const parentName = state.currentParent;
+        if (!parentName) return;
+        const { years, children } = getYearsAndChildren(parentName);
+        if (!years.length) {
+          parentChart.clear();
+          return;
+        }
+
+        const mode = aggModeSelect.value;
+        const totals = years.map(year => {
+          const values = children.map(child => {
+            const raw = child[String(year)];
+            const num = typeof raw === 'string' ? parseFloat(raw.replace(/,/g, '.')) : raw;
+            return Number.isFinite(num) ? num : 0;
+          });
+          if (mode === 'promedio') {
+            const filtered = values.filter(Number.isFinite);
+            return filtered.length ? sum(filtered) / filtered.length : 0;
+          }
+          if (mode === 'mediana') return median(values);
+          return sum(values);
+        });
+
+        let categories = [...years];
+        let projectionPoint = null;
+        if (state.showProjection && years.length >= 2) {
+          const { slope, intercept } = linearRegression(years, totals);
+          const targetYear = Math.max(PROJECTION_YEAR, Math.max(...years) + 1);
+          projectionPoint = { year: targetYear, value: slope * targetYear + intercept };
+          if (!categories.includes(targetYear)) categories.push(targetYear);
+        }
+
+        const actualSeries = [...totals];
+        const projectionSeries = [];
+        if (projectionPoint) {
+          actualSeries.push(null);
+          const padded = totals.slice();
+          if (padded.length) padded[padded.length - 1] = totals[totals.length - 1];
+          projectionSeries.push(...padded, projectionPoint.value);
+        }
+
+        parentChart.setOption({
+          backgroundColor: '#ffffff',
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'line' },
+            formatter: params => {
+              const header = `<strong>${params[0].axisValue}</strong>`;
+              const lines = params
+                .filter(p => p.value !== null && p.value !== undefined && !Number.isNaN(p.value))
+                .map(p => `<span style="font-size:0.75rem;color:${p.color}">● ${p.seriesName}: ${Number(p.value).toFixed(2)} PJ</span>`);
+              return [header].concat(lines).join('<br>');
+            }
+          },
+          legend: {
+            top: 8,
+            left: 'center',
+            icon: 'roundRect',
+            itemWidth: 12,
+            itemHeight: 12,
+            itemGap: 16,
+            textStyle: { color: '#374151', fontSize: 11 },
+            selectedMode: true
+          },
+          grid: { left: '6%', right: '4%', top: 70, bottom: 70 },
+          xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: categories,
+            axisLine: { lineStyle: { color: '#6b7280' } },
+            axisLabel: { color: '#4b5563' }
+          },
+          yAxis: {
+            type: 'value',
+            axisLine: { show: false },
+            splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.35)' } },
+            axisLabel: { formatter: value => value.toLocaleString('es-MX'), color: '#4b5563' },
+            name: 'PJ',
+            nameGap: 18
+          },
+          series: [
+            {
+              name: `${parentName} (${mode})`,
+              type: 'line',
+              smooth: true,
+              symbol: 'circle',
+              symbolSize: 7,
+              lineStyle: { width: 3, color: '#6a1c32' },
+              areaStyle: { color: 'rgba(106, 28, 50, 0.14)' },
+              itemStyle: { color: '#6a1c32' },
+              data: actualSeries
+            },
+            projectionPoint ? {
+              name: `Proyeccion ${projectionPoint.year}`,
+              type: 'line',
+              symbol: 'diamond',
+              symbolSize: 10,
+              lineStyle: { type: 'dashed', width: 2, color: '#0f766e' },
+              itemStyle: { color: '#0f766e' },
+              data: projectionSeries
+            } : {}
+          ]
+        }, true);
+      }
+
+      function updateChildrenChart() {
+        const parentName = state.currentParent;
+        if (!parentName) return;
+        const { years, children } = getYearsAndChildren(parentName);
+        if (!years.length) {
+          childrenChart.clear();
+          return;
+        }
+
+        const selectedChildren = children.filter(child => {
+          const name = child['Nodo Hijo'];
+          if (!state.childSelections.has(name)) return false;
+          const typeKey = classifyType(child);
+          return typeKey === 'primario' || typeKey === 'secundario';
+        });
+        if (!selectedChildren.length) {
+          childrenChart.clear();
+          showAlert('Selecciona al menos un energetico primario o secundario para graficar.', 'warning');
+          return;
+        }
+
+        let categories = [...years];
+        let projectionYear = Math.max(PROJECTION_YEAR, Math.max(...years) + 1);
+        const showProjection = state.showProjection && years.length >= 2;
+        if (showProjection && !categories.includes(projectionYear)) {
+          categories.push(projectionYear);
+        }
+
+        const isStacked = chartTypeSelect.value === 'stacked';
+        const series = [];
+        let hasRenderableSeries = false;
+        selectedChildren.forEach(child => {
+          const typeKey = classifyType(child);
+          const label = child['Nodo Hijo'] || 'Energetico';
+          const color = typeof child.color === 'string' ? child.color : (TYPE_COLORS[typeKey] || '#7C3AED');
+          const totals = years.map(year => {
+            const raw = child[String(year)];
+            const num = typeof raw === 'string' ? parseFloat(raw.replace(/,/g, '.')) : raw;
+            return Number.isFinite(num) ? num : 0;
+          });
+          if (totals.every(value => Math.abs(value) < 1e-9)) return;
+          const actualSeries = [...totals];
+          let projectionSeries = null;
+          if (showProjection) {
+            const { slope, intercept } = linearRegression(years, totals);
+            const projectionValue = slope * projectionYear + intercept;
+            actualSeries.push(null);
+            projectionSeries = totals.map((value, idx) => idx === totals.length - 1 ? value : null);
+            projectionSeries.push(projectionValue);
+          }
+
+          series.push({
+            name: label,
+            type: 'line',
+            smooth: true,
+            symbolSize: 6,
+            lineStyle: { width: 2, color },
+            areaStyle: isStacked ? { color, opacity: 0.25 } : undefined,
+            stack: isStacked ? `stack-${typeKey}` : undefined,
+            emphasis: { focus: 'series' },
+            data: actualSeries
+          });
+          hasRenderableSeries = true;
+
+          if (projectionSeries) {
+            series.push({
+              name: `${label} Proyeccion ${projectionYear}`,
+              type: 'line',
+              smooth: true,
+              symbol: 'diamond',
+              symbolSize: 8,
+              lineStyle: { type: 'dashed', width: 2, color },
+              data: projectionSeries
+            });
+          }
+        });
+
+        if (!hasRenderableSeries) {
+          childrenChart.clear();
+          showAlert('No hay energeticos primarios o secundarios con datos para graficar.', 'warning');
+          return;
+        }
+
+        childrenChart.setOption({
+          backgroundColor: '#ffffff',
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'line' },
+            formatter: params => {
+              const header = `<strong>${params[0].axisValue}</strong>`;
+              const lines = params
+                .filter(p => p.value !== null && p.value !== undefined && !Number.isNaN(p.value))
+                .map(p => `<span style="font-size:0.75rem;color:${p.color}">● ${p.seriesName}: ${Number(p.value).toFixed(2)} PJ</span>`);
+              return [header].concat(lines).join('<br>');
+            }
+          },
+          legend: {
+            type: 'plain',
+            orient: 'vertical',
+            align: 'left',
+            right: 8,
+            top: 20,
+            bottom: 20,
+            itemGap: 12,
+            icon: 'roundRect',
+            textStyle: { fontSize: 11, color: '#374151' }
+          },
+          grid: { left: '6%', right: '26%', top: 60, bottom: 80 },
+          xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: categories,
+            axisLine: { lineStyle: { color: '#6b7280' } },
+            axisLabel: { color: '#4b5563' }
+          },
+          yAxis: {
+            type: 'value',
+            axisLine: { show: false },
+            splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.35)' } },
+            axisLabel: { formatter: value => value.toLocaleString('es-MX'), color: '#4b5563' },
+            name: 'PJ',
+            nameGap: 18
+          },
+          series
+        }, true);
+      }
+
+      function exportChart(chart, defaultName) {
+        const dataUrl = chart.getDataURL({ pixelRatio: 3, backgroundColor: '#ffffff' });
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = `${defaultName}-${new Date().toISOString().slice(0, 10)}.png`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+
+      parentSelect.addEventListener('change', () => {
+        state.currentParent = parentSelect.value;
+        populateChildrenSelector(state.currentParent);
+        updateParentChart();
+        updateChildrenChart();
+      });
+
+      aggModeSelect.addEventListener('change', updateParentChart);
+      chartTypeSelect.addEventListener('change', updateChildrenChart);
+
+      toggleProjectionBtn.addEventListener('click', () => {
+        state.showProjection = !state.showProjection;
+        toggleProjectionBtn.classList.toggle('btn-outline-secondary', state.showProjection);
+        toggleProjectionBtn.classList.toggle('btn-secondary', !state.showProjection);
+        toggleProjectionBtn.innerHTML = state.showProjection
+          ? '<i class="fa-solid fa-chart-simple"></i> Ocultar proyeccion'
+          : '<i class="fa-solid fa-chart-simple"></i> Mostrar proyeccion 2025';
+        updateParentChart();
+        updateChildrenChart();
+      });
+
+      exportParentBtn.addEventListener('click', () => {
+        exportChart(parentChart, `tendencia-${state.currentParent || 'analitica'}`);
+      });
+
+      exportChildBtn.addEventListener('click', () => {
+        exportChart(childrenChart, `energeticos-${state.currentParent || 'analitica'}`);
+      });
+
+      if (fullscreenParentBtn) {
+        fullscreenParentBtn.addEventListener('click', () => {
+          toggleFullscreen(parentChart.getDom());
+        });
+      }
+
+      if (fullscreenChildBtn) {
+        fullscreenChildBtn.addEventListener('click', () => {
+          toggleFullscreen(childrenChart.getDom());
+        });
+      }
+
+      updateFullscreenButtons();
+
+        function iniciarGraficas() {
+
+            getData().then(data => {
+
+                state.data = data;
+
+                populateParents();
+
+                if (state.parents.length) {
+
+                parentSelect.value = state.parents[0];
+                state.currentParent = state.parents[0];
+
+                populateChildrenSelector(state.currentParent);
+                updateParentChart();
+                updateChildrenChart();
+
+                }
+
+            });
+        }
+    })();
+  </script>
+</div>

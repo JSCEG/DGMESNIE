@@ -1,0 +1,1169 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Buzón de Asuntos del Consejo";
+}
+
+<div class="text-center mb-4">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/modulos/buzon_consejo.png" alt="Buzón del Consejo" class="iconomenu">
+        @ViewData["Title"]
+        <button class="btn btn-link text-info" onclick="mostrarAyudaModulo()" data-bs-toggle="tooltip"
+            title="¿Qué es este módulo?">
+            <i class="fas fa-question-circle fa-lg"></i>
+        </button>
+    </h3>
+    <div class="text-muted mt-2 text-justify px-5">
+        <i class="fas fa-info-circle text-primary"></i>
+        <em>Sistema de registro y gestión de propuestas formales para temas a tratar en sesiones del Consejo.</em>
+    </div>
+</div>
+
+<div class="alert alert-light mb-4" role="alert">
+    <nav aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="container-fluid ps-5 pe-5">
+    <!-- Fundamento Legal -->
+    <div class="alert alert-success mb-4" role="alert">
+        <div class="row align-items-center">
+            <div class="col-md-2 text-center">
+                <img src="@Cdn.Url/img_snier/vistas/iconos/legal_buzón.png" alt="Fundamento Legal" class="img-fluid"
+                    style="max-height: 100px;">
+            </div>
+            <div class="col-md-10">
+                <h5 class="alert-heading mb-2">
+                    <i class="fas fa-book-reader"></i> Fundamento Legal del Buzón de Asuntos
+                </h5>
+                <p class="mb-1">
+                    <span class="badge bg-primary" data-bs-toggle="tooltip"
+                        title="El Consejo establecerá mecanismos para la organización y deliberación de sesiones">
+                        Art. 76 RLPT
+                    </span>
+                    <span class="badge bg-info ms-2" data-bs-toggle="tooltip"
+                        title="Establece requisitos para presentar propuestas de asuntos">
+                        Art. 21-22 Lineamientos
+                    </span>
+                    <span class="badge bg-success ms-2" data-bs-toggle="tooltip"
+                        title="Define el proceso de revisión por Secretaría Técnica">
+                        Art. 23-25 Lineamientos
+                    </span>
+                </p>
+                <hr>
+                <p class="mb-0 small">
+                    <i class="fas fa-info-circle"></i>
+                    Sistema formal para registro y seguimiento de propuestas de asuntos para las sesiones del Consejo.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botones de Acción -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <button class="btn btn-primary" onclick="toggleFormSection()">
+                <i class="fas fa-plus-circle"></i> Nueva Propuesta
+            </button>
+            <button class="btn btn-outline-secondary ms-2" data-bs-toggle="tooltip"
+                title="Descargar formato de propuesta">
+                <i class="fas fa-download"></i> Formato
+            </button>
+            <button class="btn btn-outline-info ms-2" onclick="mostrarInstrucciones()">
+                <i class="fas fa-book-reader"></i> Leer Instrucciones
+            </button>
+        </div>
+        <div class="col-md-4 text-end">
+            <div class="btn-group">
+                <button class="btn btn-outline-primary" data-bs-toggle="tooltip" title="Exportar listado a Excel">
+                    <i class="fas fa-file-excel"></i>
+                </button>
+                <button class="btn btn-outline-danger" data-bs-toggle="tooltip" title="Exportar listado a PDF">
+                    <i class="fas fa-file-pdf"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Nueva sección de formulario -->
+    <div id="formSection" class="mb-4 bg-light p-4 rounded" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h5 class="mb-0">
+                <i class="fas fa-edit"></i> Nueva Propuesta de Asunto
+            </h5>
+            <button type="button" class="btn-close" onclick="toggleFormSection()"></button>
+        </div>
+
+        <form id="formPropuesta" class="needs-validation" novalidate>
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                Los campos marcados con <span class="text-danger">*</span> son obligatorios según Art. 22 de los
+                Lineamientos.
+            </div>
+
+            <div class="row g-3">
+                <!-- Título -->
+                <div class="col-12">
+                    <label class="form-label">
+                        Título del Asunto <span class="text-danger">*</span>
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Encabezado claro que identifique el tema a tratar"></i>
+                    </label>
+                    <input type="text" class="form-control" name="titulo" required maxlength="200"
+                        placeholder="Ej: Actualización de lineamientos técnicos">
+                    <div class="invalid-feedback">Por favor ingrese un título para el asunto.</div>
+                </div>
+
+                <!-- Tipo de Acuerdo -->
+                <div class="col-md-6">
+                    <label class="form-label">
+                        Tipo de Acuerdo <span class="text-danger">*</span>
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Art. 22 - Define el tipo de resolución esperada"></i>
+                    </label>
+                    <select class="form-select" name="tipoAcuerdo" required>
+                        <option value="">Seleccione...</option>
+                        <option value="opinion">Opinión Técnica</option>
+                        <option value="recomendacion">Recomendación</option>
+                        <option value="conocimiento">Conocimiento</option>
+                    </select>
+                    <div class="invalid-feedback">Por favor seleccione el tipo de acuerdo.</div>
+                </div>
+
+                <!-- Área Temática -->
+                <div class="col-md-6">
+                    <label class="form-label">
+                        Área Temática
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Facilita la clasificación y seguimiento"></i>
+                    </label>
+                    <select class="form-select" name="areaTematica">
+                        <option value="">Seleccione...</option>
+                        <option value="planeacion">Planeación</option>
+                        <option value="regulacion">Regulación</option>
+                        <option value="informacion">Información Pública</option>
+                        <option value="sanciones">Sanciones</option>
+                    </select>
+                </div>
+
+                <!-- Resumen Ejecutivo -->
+                <div class="col-12">
+                    <label class="form-label">
+                        Resumen Ejecutivo <span class="text-danger">*</span>
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Descripción concisa del tema y su relevancia"></i>
+                    </label>
+                    <textarea class="form-control" name="resumen" rows="3" required maxlength="1000"
+                        placeholder="Describa brevemente el asunto..."></textarea>
+                    <div class="invalid-feedback">Por favor proporcione un resumen del asunto.</div>
+                </div>
+
+                <!-- Fundamento Legal -->
+                <div class="col-12">
+                    <label class="form-label">
+                        Fundamento Legal <span class="text-danger">*</span>
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Art. 22 - Base jurídica que sustenta la propuesta"></i>
+                    </label>
+                    <textarea class="form-control" name="fundamento" rows="2" required
+                        placeholder="Cite los artículos aplicables..."></textarea>
+                    <div class="invalid-feedback">Por favor indique el fundamento legal.</div>
+                </div>
+
+                <!-- Urgencia y Fecha -->
+                <div class="col-md-6">
+                    <label class="form-label">
+                        Nivel de Urgencia
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Prioridad para incluir en siguiente sesión"></i>
+                    </label>
+                    <select class="form-select" name="urgencia">
+                        <option value="baja">Baja</option>
+                        <option value="media">Media</option>
+                        <option value="alta">Alta</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">
+                        Fecha Límite Sugerida <span class="text-danger">*</span>
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Fecha deseada para resolución"></i>
+                    </label>
+                    <input type="date" class="form-control" name="fechaLimite" required
+                        min="@DateTime.Now.ToString("yyyy-MM-dd")">
+                    <div class="invalid-feedback">Por favor seleccione una fecha límite válida.</div>
+                </div>
+
+                <!-- Seguimiento -->
+                <div class="col-md-12">
+                    <label class="form-label">
+                        ¿Requiere Seguimiento?
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Indica si generará acuerdo de cumplimiento"></i>
+                    </label>
+                    <select class="form-select" name="requiereSeguimiento">
+                        <option value="no">No</option>
+                        <option value="si">Sí</option>
+                    </select>
+                </div>
+
+                <!-- Documentos -->
+                <div class="col-12">
+                    <label class="form-label">
+                        Documentación Anexa
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Máximo 10MB por archivo. Formatos: PDF, DOCX"></i>
+                    </label>
+                    <input type="file" class="form-control" name="documentos" multiple accept=".pdf,.docx,.doc">
+                    <div class="form-text">Puede adjuntar múltiples archivos (máx. 10MB c/u)</div>
+                </div>
+
+                <!-- Observaciones -->
+                <div class="col-12">
+                    <label class="form-label">
+                        Observaciones Adicionales
+                        <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip"
+                            title="Información complementaria opcional"></i>
+                    </label>
+                    <textarea class="form-control" name="observaciones" rows="2"
+                        placeholder="Comentarios adicionales..."></textarea>
+                </div>
+            </div>
+
+            <div class="text-end mt-4">
+                <button type="button" class="btn btn-secondary" onclick="toggleFormSection()">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-primary ms-2" onclick="validateAndSubmit()">
+                    <i class="fas fa-paper-plane"></i> Enviar Propuesta
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Tabla de Asuntos Mejorada -->
+    <div class="table-responsive mb-4">
+        <table class="table table-hover align-middle" id="tablaAsuntos">
+            <thead class="table-light">
+                <tr>
+                    <th>Folio</th>
+                    <th>Título</th>
+                    <th>Tipo</th>
+                    <th>Fecha Límite</th>
+                    <th>Fundamento</th>
+                    <th>Estatus</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Ejemplos de asuntos con más detalle -->
+                <tr>
+                    <td>SNIER-2024-001</td>
+                    <td>Actualización de lineamientos técnicos</td>
+                    <td><span class="badge bg-info">Opinión Técnica</span></td>
+                    <td>15/06/2024</td>
+                    <td>Art. 76 RLPT</td>
+                    <td><span class="badge bg-success">Aprobado</span></td>
+                    <td>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Ver detalles"
+                                onclick="verDetalles('SNIER-2024-001')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <a href="/docs/propuesta-001.pdf" class="btn btn-sm btn-outline-info" target="_blank"
+                                data-bs-toggle="tooltip" title="Descargar propuesta">
+                                <i class="fas fa-file-pdf"></i>
+                            </a>
+                            <button class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip"
+                                title="Ver historial" onclick="verHistorial('SNIER-2024-001')">
+                                <i class="fas fa-history"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td>SNIER-2024-002</td>
+                    <td>Propuesta de indicadores energéticos</td>
+                    <td><span class="badge bg-warning">Recomendación</span></td>
+                    <td>30/07/2024</td>
+                    <td>Art. 22-23 Lineamientos</td>
+                    <td><span class="badge bg-warning">En Revisión</span></td>
+                    <td>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Ver detalles"
+                                onclick="verDetalles('SNIER-2024-002')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip"
+                                title="Dar seguimiento" onclick="darSeguimiento('SNIER-2024-002')">
+                                <i class="fas fa-tasks"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td>SNIER-2024-003</td>
+                    <td>Informe de avance trimestral</td>
+                    <td><span class="badge bg-secondary">Conocimiento</span></td>
+                    <td>15/08/2024</td>
+                    <td>Art. 47 Lineamientos</td>
+                    <td><span class="badge bg-danger">Rechazado</span></td>
+                    <td>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Ver detalles"
+                                onclick="verDetalles('SNIER-2024-003')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip"
+                                title="Ver motivo de rechazo" onclick="verMotivoRechazo('SNIER-2024-003')">
+                                <i class="fas fa-comment-alt"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal de Firma Digital -->
+<div class="modal fade" id="modalFirmaDigital" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-signature"></i> Firma Digital
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    Para finalizar el envío, se requiere su firma digital conforme al Art. 22 de los Lineamientos.
+                </div>
+                <form id="formFirma" class="needs-validation" novalidate>
+                    <div class="mb-3">
+                        <label class="form-label">Certificado (.cer)</label>
+                        <div class="input-group">
+                            <input type="file" class="form-control" accept=".cer" required>
+                            <span class="input-group-text">
+                                <i class="fas fa-certificate"></i>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Llave Privada (.key)</label>
+                        <div class="input-group">
+                            <input type="file" class="form-control" accept=".key" required>
+                            <span class="input-group-text">
+                                <i class="fas fa-key"></i>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña de Llave Privada</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" required>
+                            <span class="input-group-text">
+                                <i class="fas fa-lock"></i>
+                            </span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" onclick="procesarFirma()">
+                    <i class="fas fa-signature"></i> Firmar y Enviar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ver Detalles -->
+<div class="modal fade" id="modalDetalles" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-info-circle"></i> Detalles de la Propuesta
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <dl>
+                            <dt>Folio</dt>
+                            <dd class="propuesta-folio">SNIER-2024-001</dd>
+
+                            <dt>Título</dt>
+                            <dd class="propuesta-titulo">Actualización de lineamientos técnicos</dd>
+
+                            <dt>Tipo de Acuerdo</dt>
+                            <dd class="propuesta-tipo">Opinión Técnica</dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-6">
+                        <dl>
+                            <dt>Fecha de Registro</dt>
+                            <dd class="propuesta-fecha">15/03/2024</dd>
+
+                            <dt>Área Temática</dt>
+                            <dd class="propuesta-area">Planeación</dd>
+
+                            <dt>Estatus Actual</dt>
+                            <dd class="propuesta-estatus"><span class="badge bg-success">Aprobado</span></dd>
+                        </dl>
+                    </div>
+                    <div class="col-12">
+                        <dl>
+                            <dt>Resumen</dt>
+                            <dd class="propuesta-resumen">Descripción detallada del asunto...</dd>
+
+                            <dt>Fundamento Legal</dt>
+                            <dd class="propuesta-fundamento">Art. 76 RLPT</dd>
+
+                            <dt>Documentos Anexos</dt>
+                            <dd>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-file-pdf text-danger"></i> Documento_1.pdf</li>
+                                    <li><i class="fas fa-file-word text-primary"></i> Anexo_Técnico.docx</li>
+                                </ul>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Historial -->
+<div class="modal fade" id="modalHistorial" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-history"></i> Historial de la Propuesta
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <div class="timeline-point bg-success">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="timeline-content">
+                            <h6>Aprobado</h6>
+                            <p class="text-muted mb-1">15/03/2024 10:30</p>
+                            <p class="mb-0">Propuesta aprobada en sesión ordinaria</p>
+                        </div>
+                    </div>
+                    <div class="timeline-item">
+                        <div class="timeline-point bg-info">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <div class="timeline-content">
+                            <h6>En Revisión</h6>
+                            <p class="text-muted mb-1">10/03/2024 15:45</p>
+                            <p class="mb-0">Revisión por Secretaría Técnica</p>
+                        </div>
+                    </div>
+                    <div class="timeline-item">
+                        <div class="timeline-point bg-primary">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div class="timeline-content">
+                            <h6>Registrado</h6>
+                            <p class="text-muted mb-1">05/03/2024 09:15</p>
+                            <p class="mb-0">Propuesta registrada en el sistema</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Seguimiento -->
+<div class="modal fade" id="modalSeguimiento" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-tasks"></i> Seguimiento de la Propuesta
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="progress-tracker">
+                    <div class="progress mb-4" style="height: 25px;">
+                        <div class="progress-bar bg-success" role="progressbar" style="width: 60%">60%</div>
+                    </div>
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6><i class="fas fa-clipboard-check"></i> Acciones Completadas</h6>
+                                    <ul class="list-unstyled">
+                                        <li><i class="fas fa-check text-success"></i> Revisión inicial</li>
+                                        <li><i class="fas fa-check text-success"></i> Análisis técnico</li>
+                                        <li><i class="fas fa-clock text-warning"></i> Consulta a áreas</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6><i class="fas fa-calendar-alt"></i> Próximos Pasos</h6>
+                                    <ul class="list-unstyled">
+                                        <li><i class="fas fa-hourglass-half text-info"></i> Dictamen final</li>
+                                        <li><i class="fas fa-hourglass-half text-info"></i> Presentación en sesión</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary">
+                    <i class="fas fa-file-pdf"></i> Generar Reporte
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Motivo Rechazo -->
+<div class="modal fade" id="modalRechazo" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-times-circle"></i> Motivo de Rechazo
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <h6><i class="fas fa-exclamation-triangle"></i> La propuesta fue rechazada por:</h6>
+                    <p>Insuficiente fundamentación legal y falta de documentación soporte según Art. 22.</p>
+                </div>
+                <div class="mt-3">
+                    <h6>Recomendaciones:</h6>
+                    <ul>
+                        <li>Revisar y ampliar el fundamento legal</li>
+                        <li>Adjuntar documentación técnica faltante</li>
+                        <li>Actualizar justificación del asunto</li>
+                    </ul>
+                </div>
+                <small class="text-muted">
+                    <i class="fas fa-info-circle"></i>
+                    Puede presentar una nueva propuesta atendiendo estas observaciones.
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Estilos para la línea de tiempo */
+    .timeline {
+        position: relative;
+        padding: 20px 0;
+    }
+
+    .timeline:before {
+        content: '';
+        position: absolute;
+        left: 12px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #e9ecef;
+    }
+
+    .timeline-item {
+        position: relative;
+        padding-left: 40px;
+        margin-bottom: 25px;
+    }
+
+    .timeline-point {
+        position: absolute;
+        left: 0;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        text-align: center;
+        line-height: 24px;
+        margin-left: 1px;
+    }
+
+    .timeline-point i {
+        color: white;
+        font-size: 12px;
+    }
+
+    .timeline-content {
+        background: #fff;
+        padding: 15px;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .timeline-content h6 {
+        margin-bottom: 5px;
+        font-weight: 600;
+    }
+
+    .swal-wide {
+        width: 600px !important;
+    }
+
+    .timeline-content .text-muted {
+        font-size: 0.9em;
+    }
+</style>
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Initialize tooltips and DataTable
+            var tooltips = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+            tooltips.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl)
+            });
+
+            // Inicializar DataTable
+            $('#tablaAsuntos').DataTable({
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+                }
+            });
+
+            // Define toggleFormSection in global scope
+            window.toggleFormSection = function () {
+                const formSection = document.getElementById('formSection');
+                const isVisible = formSection.style.display !== 'none';
+
+                if (isVisible) {
+                    // Hide form with animation
+                    formSection.style.opacity = '0';
+                    setTimeout(() => {
+                        formSection.style.display = 'none';
+                        document.getElementById('formPropuesta').reset();
+                    }, 300);
+                } else {
+                    // Show form with animation
+                    formSection.style.display = 'block';
+                    setTimeout(() => {
+                        formSection.style.opacity = '1';
+                    }, 10);
+                }
+            };
+
+            // Form validation function
+            window.validateAndSubmit = function () {
+                const form = document.getElementById('formPropuesta');
+
+                // Campos requeridos según Art. 22
+                const requiredFields = {
+                    titulo: 'Título del asunto',
+                    tipoAcuerdo: 'Tipo de acuerdo',
+                    resumen: 'Resumen ejecutivo',
+                    fundamento: 'Fundamento legal',
+                    fechaLimite: 'Fecha límite'
+                };
+
+                let errors = [];
+
+                // Validar campos requeridos
+                for (const [fieldName, fieldLabel] of Object.entries(requiredFields)) {
+                    const field = form.querySelector(`[name="${fieldName}"]`);
+                    if (!field.value.trim()) {
+                        errors.push(fieldLabel);
+                        field.classList.add('is-invalid');
+                    } else {
+                        field.classList.remove('is-invalid');
+                    }
+                }
+
+                // Validar longitud mínima del resumen
+                const resumen = form.querySelector('[name="resumen"]');
+                if (resumen.value.trim().length < 50) {
+                    errors.push('El resumen debe tener al menos 50 caracteres');
+                    resumen.classList.add('is-invalid');
+                }
+
+                // Validar archivos adjuntos
+                const files = form.querySelector('[name="documentos"]').files;
+                let totalSize = 0;
+                for (let file of files) {
+                    totalSize += file.size;
+                    if (file.size > 10 * 1024 * 1024) { // 10MB
+                        errors.push(`El archivo ${file.name} excede el límite de 10MB`);
+                    }
+                }
+
+                // Agregar validación de archivos
+                function validarArchivos(files) {
+                    const maxSize = 10 * 1024 * 1024; // 10MB
+                    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+
+                    for (let file of files) {
+                        if (file.size > maxSize) {
+                            return `El archivo ${file.name} excede el límite de 10MB`;
+                        }
+                        if (!allowedTypes.includes(file.type)) {
+                            return `El archivo ${file.name} no es un tipo permitido`;
+                        }
+                    }
+                    return null;
+                }
+
+                const archivoError = validarArchivos(files);
+                if (archivoError) {
+                    errors.push(archivoError);
+                }
+
+                if (errors.length > 0) {
+                    // Mostrar errores con SweetAlert2
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Campos incompletos',
+                        html: `
+                                                                                                                                                                <div class="text-start">
+                                                                                                                                                                    <p>Por favor complete los siguientes campos:</p>
+                                                                                                                                                                    <ul class="list-unstyled">
+                                                                                                                                                                        ${errors.map(error => `<li><i class="fas fa-exclamation-circle text-danger"></i> ${error}</li>`).join('')}
+                                                                                                                                                                    </ul>
+                                                                                                                                                                </div>
+                                                                                                                                                            `,
+                        confirmButtonText: 'Entendido'
+                    });
+                    form.classList.add('was-validated');
+                    return false;
+                }
+
+                // Si todo está válido, mostrar modal de firma
+                if (form.checkValidity()) {
+                    // Guardar datos en sessionStorage para recuperarlos después
+                    sessionStorage.setItem('propuestaData', JSON.stringify({
+                        titulo: form.querySelector('[name="titulo"]').value,
+                        tipo: form.querySelector('[name="tipoAcuerdo"]').value,
+                        fechaLimite: form.querySelector('[name="fechaLimite"]').value,
+                        fundamento: form.querySelector('[name="fundamento"]').value
+                    }));
+
+                    $('#modalFirmaDigital').modal('show');
+                }
+            };
+
+            // Initialize date validation
+            const fechaLimiteInput = document.querySelector('input[name="fechaLimite"]');
+            if (fechaLimiteInput) {
+                fechaLimiteInput.addEventListener('change', function (e) {
+                    const selectedDate = new Date(this.value);
+                    const today = new Date();
+
+                    if (selectedDate < today) {
+                        this.setCustomValidity('La fecha debe ser posterior a hoy');
+                    } else {
+                        this.setCustomValidity('');
+                    }
+                });
+            }
+        });
+
+        // Agregar estas funciones
+        function verDetalles(folio) {
+            const modal = new bootstrap.Modal(document.getElementById('modalDetalles'));
+            // Aquí podrías cargar los datos según el folio
+            modal.show();
+        }
+
+        function darSeguimiento(folio) {
+            const modal = new bootstrap.Modal(document.getElementById('modalSeguimiento'));
+            modal.show();
+        }
+
+        function verMotivoRechazo(folio) {
+            const modal = new bootstrap.Modal(document.getElementById('modalRechazo'));
+            modal.show();
+        }
+
+        function verHistorial(folio) {
+            const modal = new bootstrap.Modal(document.getElementById('modalHistorial'));
+            modal.show();
+        }
+
+        function mostrarInstrucciones() {
+            Swal.fire({
+                title: 'Instrucciones para presentar propuestas',
+                html: `
+                                                                            <div class="text-start">
+                                                                                <p>Por favor, siga estas instrucciones para presentar su propuesta:</p>
+                                                                                <ul class="list-unstyled">
+                                                                                    <li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i> Complete todos los campos obligatorios.</li>
+                                                                                    <li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i> Adjunte la documentación requerida.</li>
+                                                                                    <li class="mb-2"><i class="fas fa-check-circle text-success me-2"></i> Revise que la información sea clara y precisa.</li>
+                                                                                    <li class="mb-2"><i class="fas fa-exclamation-triangle text-warning me-2"></i> Tenga en cuenta los plazos establecidos.</li>
+                                                                                    <li class="mb-2"><i class="fas fa-info-circle text-info me-2"></i> Para más detalles, consulte los lineamientos.</li>
+                                                                                </ul>
+                                                                            </div>
+                                                                        `,
+                confirmButtonText: 'Entendido',
+                showCloseButton: true,
+                customClass: {
+                    popup: 'swal-wide',
+                    content: 'text-start'
+                }
+            });
+        }
+
+        // Update your table buttons to use these functions:
+        $('#tablaAsuntos').on('click', '.btn-outline-primary', function () {
+            mostrarDetalles($(this).closest('tr').find('td:first').text());
+        });
+
+        $('#tablaAsuntos').on('click', '.btn-outline-success', function () {
+            mostrarHistorial($(this).closest('tr').find('td:first').text());
+        });
+
+        $('#tablaAsuntos').on('click', '.btn-outline-warning', function () {
+            mostrarSeguimiento($(this).closest('tr').find('td:first').text());
+        });
+
+        $('#tablaAsuntos').on('click', '.btn-outline-danger', function () {
+            mostrarRechazo($(this).closest('tr').find('td:first').text());
+        });
+
+        // Agregar esta función
+        function reinicializarTooltips() {
+            const tooltips = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltips.map(function (tooltipTriggerEl) {
+                m;
+            });
+        }
+
+        function procesarFirma() {
+            const formFirma = document.getElementById('formFirma');
+
+            if (!formFirma.checkValidity()) {
+                formFirma.classList.add('was-validated');
+                return;
+            }
+
+            // Recuperar datos guardados
+            const dataPropuesta = JSON.parse(sessionStorage.getItem('propuestaData'));
+            if (!dataPropuesta) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'No se encontraron los datos del formulario'
+                });
+                return;
+            }
+
+            $('#modalFirmaDigital').modal('hide');
+
+            // Mostrar proceso de firma con barra de progreso
+            Swal.fire({
+                title: 'Procesando firma digital...',
+                html: `
+                                                                <div class="progress mb-3">
+                                                                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                                                         role="progressbar" style="width: 0%">
+                                                                    </div>
+                                                                </div>
+                                                                <div class="text-start mt-3">
+                                                                    <p class="step-validating">
+                                                                        <i class="fas fa-spinner fa-spin"></i> Validando certificados...
+                                                                    </p>
+                                                                    <p class="step-signing text-muted">
+                                                                        <i class="fas fa-clock"></i> Firmando documento...
+                                                                    </p>
+                                                                    <p class="step-saving text-muted">
+                                                                        <i class="fas fa-clock"></i> Guardando propuesta...
+                                                                    </p>
+                                                                </div>
+                                                            `,
+                showConfirmButton: false,
+                allowOutsideClick: false,
+                didOpen: async () => {
+                    const barra = Swal.getHtmlContainer().querySelector('.progress-bar');
+                    const stepValidating = Swal.getHtmlContainer().querySelector('.step-validating');
+                    const stepSigning = Swal.getHtmlContainer().querySelector('.step-signing');
+                    const stepSaving = Swal.getHtmlContainer().querySelector('.step-saving');
+
+                    // Simular validación de certificados
+                    barra.style.width = '33%';
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    stepValidating.innerHTML = '<i class="fas fa-check text-success"></i> Certificados validados';
+
+                    // Simular firma
+                    stepSigning.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Firmando documento...';
+                    barra.style.width = '66%';
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    stepSigning.innerHTML = '<i class="fas fa-check text-success"></i> Documento firmado';
+
+                    // Simular guardado
+                    stepSaving.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando propuesta...';
+                    barra.style.width = '100%';
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    stepSaving.innerHTML = '<i class="fas fa-check text-success"></i> Propuesta guardada';
+
+                    // Mostrar acuse de recibo
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                    Swal.fire({
+                        icon: 'success',
+                        title: '¡Propuesta registrada exitosamente!',
+                        html: `
+                                                                        <div class="text-start">
+                                                                            <div class="alert alert-success">
+                                                                                <h6><i class="fas fa-check-circle"></i> Acuse de recibo</h6>
+                                                                                <hr>
+                                                                                <p><strong>Folio:</strong> SNIER-2024-004</p>
+                                                                                <p><strong>Fecha y hora:</strong> ${new Date().toLocaleString()}</p>
+                                                                                <p><strong>Firmado por:</strong> ${dataPropuesta.firmante || 'Usuario'}</p>
+                                                                                <p><strong>Sello digital:</strong></p>
+                                                                                <small class="text-muted">hQIMA0yVHZKhN8ELAQf9H8...</small>
+                                                                            </div>
+                                                                            <p class="text-muted small">
+                                                                                <i class="fas fa-info-circle"></i>
+                                                                                Se ha enviado una copia del acuse a su correo electrónico.
+                                                                            </p>
+                                                                        </div>
+                                                                    `,
+                        showCancelButton: true,
+                        confirmButtonText: '<i class="fas fa-file-pdf"></i> Descargar Acuse',
+                        cancelButtonText: 'Cerrar',
+                        cancelButtonColor: '#6c757d'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.open('data:application/pdf;base64,JVBERi0x...', '_blank');
+                        }
+
+                        // Limpiar formularios y datos
+                        formFirma.reset();
+                        document.getElementById('formPropuesta').reset();
+                        formFirma.classList.remove('was-validated');
+                        sessionStorage.removeItem('propuestaData');
+
+                        // Cerrar modal y limpiar backdrop
+                        $('#modalFirmaDigital').modal('hide');
+                        $('body').removeClass('modal-open');
+                        $('.modal-backdrop').remove();
+
+                        // Actualizar tabla con nueva propuesta
+                        const table = $('#tablaAsuntos').DataTable();
+                        const nextFolio = 'SNIER-2024-' + String(table.rows().count() + 1).padStart(3, '0');
+
+                        table.row.add([
+                            nextFolio,
+                            dataPropuesta.titulo,
+                            `<span class="badge bg-info">${dataPropuesta.tipo}</span>`,
+                            new Date(dataPropuesta.fechaLimite).toLocaleDateString(),
+                            dataPropuesta.fundamento,
+                            '<span class="badge bg-warning text-dark">En Revisión</span>',
+                            `<div class="btn-group">
+                                                            <button class="btn btn-sm btn-outline-primary" onclick="verDetalles('${nextFolio}')" 
+                                                                    data-bs-toggle="tooltip" title="Ver detalles">
+                                                                <i class="fas fa-eye"></i>
+                                                            </button>
+                                                            <button class="btn btn-sm btn-outline-warning" onclick="darSeguimiento('${nextFolio}')"
+                                                                    data-bs-toggle="tooltip" title="Dar seguimiento">
+                                                                <i class="fas fa-tasks"></i>
+                                                            </button>
+                                                        </div>`
+                        ]).draw();
+
+                        // Cerrar formulario
+                        toggleFormSection();
+
+                        // Reinicializar tooltips
+                        reinicializarTooltips();
+
+                        // Actualizar eventos de la tabla
+                        actualizarEventosTabla();
+                    });
+                }
+            });
+        }
+
+        // Función para actualizar eventos de la tabla
+        function actualizarEventosTabla() {
+            $('#tablaAsuntos').off('click', '.btn-outline-primary');
+            $('#tablaAsuntos').off('click', '.btn-outline-warning');
+            $('#tablaAsuntos').off('click', '.btn-outline-success');
+            $('#tablaAsuntos').off('click', '.btn-outline-danger');
+
+            $('#tablaAsuntos').on('click', '.btn-outline-primary', function () {
+                const folio = $(this).closest('tr').find('td:first').text();
+                verDetalles(folio);
+            });
+
+            $('#tablaAsuntos').on('click', '.btn-outline-warning', function () {
+                const folio = $(this).closest('tr').find('td:first').text();
+                darSeguimiento(folio);
+            });
+
+            $('#tablaAsuntos').on('click', '.btn-outline-success', function () {
+                const folio = $(this).closest('tr').find('td:first').text();
+                verHistorial(folio);
+            });
+
+            $('#tablaAsuntos').on('click', '.btn-outline-danger', function () {
+                const folio = $(this).closest('tr').find('td:first').text();
+                verMotivoRechazo(folio);
+            });
+        }
+
+        // Función para ver detalles
+        function verDetalles(folio) {
+            const row = $('#tablaAsuntos').DataTable()
+                .rows()
+                .data()
+                .filter(row => row[0] === folio)[0];
+
+            if (row) {
+                $('.propuesta-folio').text(row[0]);
+                $('.propuesta-titulo').text(row[1]);
+                $('.propuesta-tipo').text($(row[2]).text());
+                $('.propuesta-fecha').text(row[3]);
+                $('.propuesta-fundamento').text(row[4]);
+                $('.propuesta-estatus').html(row[5]);
+            }
+
+            const modal = new bootstrap.Modal(document.getElementById('modalDetalles'));
+            modal.show();
+        }
+
+        // También agregar esta limpieza a los otros modales
+        $('#modalDetalles').on('hidden.bs.modal', function () {
+            $('body').removeClass('modal-open');
+            $('.modal-backdrop').remove();
+        });
+
+        $('#modalSeguimiento').on('hidden.bs.modal', function () {
+            $('body').removeClass('modal-open');
+            $('.modal-backdrop').remove();
+        });
+
+        $('#modalHistorial').on('hidden.bs.modal', function () {
+            $('body').removeClass('modal-open');
+            $('.modal-backdrop').remove();
+        });
+
+        $('#modalRechazo').on('hidden.bs.modal', function () {
+            $('body').removeClass('modal-open');
+            $('.modal-backdrop').remove();
+        });
+
+        function mostrarAyudaModulo() {
+            Swal.fire({
+                title: 'Buzón de Asuntos del Consejo',
+                html: `
+                    <div class="text-start">
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">
+                                <i class="fas fa-info-circle"></i> Descripción
+                            </h6>
+                            <p>Sistema de registro y gestión de propuestas para temas del Consejo.</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">
+                                <i class="fas fa-tasks"></i> Funcionalidad
+                            </h6>
+                            <p>Permite registrar y dar seguimiento a propuestas formales de asuntos.</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">
+                                <i class="fas fa-sync-alt"></i> Etapa del Ciclo
+                            </h6>
+                            <p>Registro de propuestas</p>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">
+                                <i class="fas fa-users-cog"></i> Interacción entre Roles
+                            </h6>
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-user-edit text-primary"></i> Integrantes: Presentan asuntos</li>
+                                <li><i class="fas fa-clipboard-check text-success"></i> Secretaría: Evalúa y da seguimiento</li>
+                            </ul>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">
+                                <i class="fas fa-puzzle-piece"></i> Elementos
+                            </h6>
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-file-alt text-primary"></i> Formulario normativo</li>
+                                <li><i class="fas fa-check-double text-success"></i> Validación automática</li>
+                                <li><i class="fas fa-tasks text-info"></i> Seguimiento de estatus</li>
+                            </ul>
+                        </div>
+
+                        <div class="mb-4">
+                            <h6 class="border-bottom pb-2">
+                                <i class="fas fa-star"></i> Importancia
+                            </h6>
+                            <p class="mb-0">
+                                Asegura que las propuestas cumplan con los requisitos establecidos y
+                                reciban la validación necesaria antes de ser consideradas en sesión.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h6 class="border-bottom pb-2">
+                                <i class="fas fa-check-double"></i> Orden en el Ciclo
+                            </h6>
+                            <p class="mb-0">
+                                <span class="badge bg-primary">7</span>
+                                <span class="ms-2">
+                                    Inicia el ciclo de trazabilidad normativa al recibir propuestas
+                                    formales para ser tratadas en sesión del Consejo.
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+                `,
+                width: '400px',
+                customClass: {
+                    container: 'text-start',
+                    popup: 'swal-responsive',
+                    htmlContainer: 'swal-scrollable'
+                },
+                confirmButtonText: 'Entendido'
+            });
+        }
+    </script>
+}

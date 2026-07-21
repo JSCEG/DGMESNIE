@@ -1,0 +1,2032 @@
+@inject IHttpContextAccessor HttpContextAccessor
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+@{
+var httpContext = HttpContextAccessor.HttpContext;
+var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+	ViewData["Title"] = "Mercado Eléctrico Mayorista - SNIEr";
+	ViewData["NombreUsuario"] = perfilUsuario?.Nombre;
+	ViewData["RolUsuario"] = perfilUsuario?.Rol;
+	ViewData["IDUsuario"] = perfilUsuario?.IdUsuario;
+
+	var header = new HeaderViewModel
+	{
+	Title = "Mercado Eléctrico Mayorista",
+	IconPath = "electricidad.png",
+	Description = "Sistema integral de monitoreo y análisis del desempeño del Mercado Eléctrico Mayorista (MEM).",
+	Section = "⚡ SNIEr > 📊 Mercado Eléctrico Mayorista",
+	ModuleInfo = JsonConvert.SerializeObject(new
+	{
+	title = "Mercado Eléctrico Mayorista",
+	description = "Plataforma completa para el análisis del MEM con datos de operación, precios y transacciones.",
+	functionality = "Visualización de PMLs, balances de energía, servicios conexos, CELs y datos geoespaciales.",
+	stage = "Operacional",
+	roles = new[] {
+	new { icon = "lightning-charge", text = "CENACE: Operación del mercado" },
+	new { icon = "graph-up", text = "Analistas: Estudios de mercado" },
+	new { icon = "eye", text = "Público: Transparencia de datos" }
+	},
+	order = new { step = 1, description = "Sistema integral de información del MEM" }
+	})
+	};
+	}
+
+	@await Html.PartialAsync("_ViewHeader", header)
+
+	<!-- Dashboard de Indicadores Clave del MEM -->
+	<div class="container-fluid px-4 mb-5" data-aos="fade-up">
+		<div class="row g-4">
+			<!-- Card 1: Volumen de Energía -->
+			<div class="col-12 col-sm-6 col-lg-3">
+				<div class="card border-0 shadow-lg h-100 elegant-card" style="background: linear-gradient(145deg, #ffffff 0%, #f8fbff 50%, #e3f2fd 100%); 
+						   border-left: 5px solid #1565c0 !important; 
+						   border-radius: 15px; 
+						   transition: all 0.3s ease-in-out;">
+					<div class="card-body p-4" style="color: #2c3e50;">
+						<div class="d-flex justify-content-between align-items-start">
+							<div>
+								<h6 class="card-title text-muted mb-2 fw-semibold" data-bs-toggle="tooltip"
+									data-bs-placement="top"
+									title="Energía total transaccionada en el Mercado Eléctrico Mayorista en las últimas 24 horas">
+									Energía Transaccionada
+									<i class="bi bi-info-circle text-primary ms-1" style="font-size: 12px;"></i>
+								</h6>
+								<h2 class="mb-0 fw-bold text-primary" id="totalEnergia" style="font-size: 2.2rem;">
+									1,847,392</h2>
+								<small class="text-muted fw-medium">MWh (24h)</small>
+							</div>
+							<div class="fs-1 text-primary opacity-80"
+								style="filter: drop-shadow(0 2px 4px rgba(21, 101, 192, 0.2));">
+								<i class="bi bi-lightning-charge"></i>
+							</div>
+						</div>
+						<div class="mt-3 p-2 rounded" style="background: rgba(21, 101, 192, 0.05);">
+							<small class="text-muted fw-medium">
+								<i class="bi bi-arrow-up text-success me-1"></i> +2.3% vs ayer
+							</small>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Card 2: PML Promedio -->
+			<div class="col-12 col-sm-6 col-lg-3">
+				<div class="card border-0 shadow-lg h-100 elegant-card" style="background: linear-gradient(145deg, #ffffff 0%, #f9fffe 50%, #e8f5e8 100%); 
+						   border-left: 5px solid #2e7d32 !important; 
+						   border-radius: 15px; 
+						   transition: all 0.3s ease-in-out;">
+					<div class="card-body p-4" style="color: #2c3e50;">
+						<div class="d-flex justify-content-between align-items-start">
+							<div>
+								<h6 class="card-title text-muted mb-2 fw-semibold" data-bs-toggle="tooltip"
+									data-bs-placement="top"
+									title="Precio Marginal Local promedio nacional. Incluye componentes de energía, congestión y pérdidas">
+									PML Promedio Nacional
+									<i class="bi bi-info-circle text-success ms-1" style="font-size: 12px;"></i>
+								</h6>
+								<h2 class="mb-0 fw-bold text-success" id="pmlPromedio" style="font-size: 2.2rem;">
+									$1,247.85</h2>
+								<small class="text-muted fw-medium">Pesos/MWh</small>
+							</div>
+							<div class="fs-1 text-success opacity-80"
+								style="filter: drop-shadow(0 2px 4px rgba(46, 125, 50, 0.2));">
+								<i class="bi bi-currency-dollar"></i>
+							</div>
+						</div>
+						<div class="mt-3 p-2 rounded" style="background: rgba(46, 125, 50, 0.05);">
+							<small class="text-muted fw-medium">
+								<i class="bi bi-arrow-down text-danger me-1"></i> -1.8% vs ayer
+							</small>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Card 3: Balance de Potencia -->
+			<div class="col-12 col-sm-6 col-lg-3">
+				<div class="card border-0 shadow-lg h-100 elegant-card" style="background: linear-gradient(145deg, #ffffff 0%, #fffdf7 50%, #fff8e1 100%); 
+						   border-left: 5px solid #ef6c00 !important; 
+						   border-radius: 15px; 
+						   transition: all 0.3s ease-in-out;">
+					<div class="card-body p-4" style="color: #2c3e50;">
+						<div class="d-flex justify-content-between align-items-start">
+							<div>
+								<h6 class="card-title text-muted mb-2 fw-semibold" data-bs-toggle="tooltip"
+									data-bs-placement="top"
+									title="Potencia disponible actual en el sistema eléctrico nacional para el balance de energía">
+									Potencia Disponible
+									<i class="bi bi-info-circle text-warning ms-1" style="font-size: 12px;"></i>
+								</h6>
+								<h2 class="mb-0 fw-bold text-warning" id="potenciaDisponible"
+									style="font-size: 2.2rem;">54,782</h2>
+								<small class="text-muted fw-medium">MW</small>
+							</div>
+							<div class="fs-1 text-warning opacity-80"
+								style="filter: drop-shadow(0 2px 4px rgba(239, 108, 0, 0.2));">
+								<i class="bi bi-speedometer2"></i>
+							</div>
+						</div>
+						<div class="mt-3 p-2 rounded" style="background: rgba(239, 108, 0, 0.05);">
+							<small class="text-muted fw-medium">
+								<i class="bi bi-check-circle text-success me-1"></i> Operación normal
+							</small>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Card 4: Energías Limpias -->
+			<div class="col-12 col-sm-6 col-lg-3">
+				<div class="card border-0 shadow-lg h-100 elegant-card" style="background: linear-gradient(145deg, #ffffff 0%, #f7fffe 50%, #e0f2f1 100%); 
+						   border-left: 5px solid #00695c !important; 
+						   border-radius: 15px; 
+						   transition: all 0.3s ease-in-out;">
+					<div class="card-body p-4" style="color: #2c3e50;">
+						<div class="d-flex justify-content-between align-items-start">
+							<div>
+								<h6 class="card-title text-muted mb-2 fw-semibold" data-bs-toggle="tooltip"
+									data-bs-placement="top"
+									title="Porcentaje de energía limpia respecto al despacho total. Incluye renovables y tecnologías limpias">
+									Energía Limpia
+									<i class="bi bi-info-circle ms-1" style="font-size: 12px; color: #00695c;"></i>
+								</h6>
+								<h2 class="mb-0 fw-bold" style="color: #00695c; font-size: 2.2rem;" id="energiaLimpia">
+									28.7%</h2>
+								<small class="text-muted fw-medium">del despacho total</small>
+							</div>
+							<div class="fs-1 opacity-80"
+								style="color: #00695c; filter: drop-shadow(0 2px 4px rgba(0, 105, 92, 0.2));">
+								<i class="bi bi-leaf"></i>
+							</div>
+						</div>
+						<div class="mt-3 p-2 rounded" style="background: rgba(0, 105, 92, 0.05);">
+							<small class="text-muted fw-medium">
+								<i class="bi bi-arrow-up text-success me-1"></i> +0.5% vs ayer
+							</small>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Filtros Globales -->
+	<div class="container-fluid px-4 mb-4" data-aos="fade-up" data-aos-delay="100">
+		<div class="card border-0 shadow-sm">
+			<div class="card-body">
+				<div class="row g-3 align-items-end">
+					<div class="col-md-3">
+						<label class="form-label fw-semibold">Fecha Inicio</label>
+						<input type="date" class="form-control" id="fechaInicio" value="2024-01-01">
+					</div>
+					<div class="col-md-3">
+						<label class="form-label fw-semibold">Fecha Fin</label>
+						<input type="date" class="form-control" id="fechaFin" value="2024-12-31">
+					</div>
+					<div class="col-md-3">
+						<label class="form-label fw-semibold">Región/Zona</label>
+						<select class="form-select" id="regionSelect">
+							<option value="all">Todas las regiones</option>
+							<option value="norte">Norte</option>
+							<option value="centro">Centro</option>
+							<option value="sur">Sur</option>
+							<option value="noreste">Noreste</option>
+							<option value="noroeste">Noroeste</option>
+						</select>
+					</div>
+					<div class="col-md-2">
+						<button class="btn btn-primary w-100" onclick="aplicarFiltros()">
+							<i class="bi bi-funnel me-2"></i>Aplicar Filtros
+						</button>
+					</div>
+					<div class="col-md-1">
+						<button class="btn btn-info w-100" data-bs-toggle="modal" data-bs-target="#modalInfoMEM"
+							data-bs-toggle="tooltip" title="Información detallada sobre el MEM">
+							<i class="bi bi-info-circle"></i>
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Sección: Mercado de Energía de Corto Plazo -->
+	<div class="container-fluid px-4 mb-5" data-aos="fade-up" data-aos-delay="200">
+		<h3 class="mb-4">
+			<i class="bi bi-clock-history text-primary me-2"></i>
+			Mercado de Energía de Corto Plazo
+		</h3>
+
+		<div class="row g-4">
+			<!-- Tendencias de PML -->
+			<div class="col-12 col-lg-8">
+				<div class="card border-0 shadow-sm h-100">
+					<div class="card-header bg-transparent border-0 pt-4">
+						<div class="d-flex justify-content-between align-items-center">
+							<h5 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top"
+								title="Los PML consideran el valor neto del componente de pérdidas y energía. Reflejan costos marginales de producción, congestión y pérdidas en cada nodo">
+								Evolución de Precios Marginales Locales (PML)
+								<i class="bi bi-info-circle text-primary ms-1" style="font-size: 14px;"></i>
+							</h5>
+							<div class="btn-group btn-group-sm" role="group">
+								<input type="radio" class="btn-check" name="pmlPeriodo" id="pml24h" checked>
+								<label class="btn btn-outline-primary" for="pml24h">24h</label>
+								<input type="radio" class="btn-check" name="pmlPeriodo" id="pml7d">
+								<label class="btn btn-outline-primary" for="pml7d">7d</label>
+								<input type="radio" class="btn-check" name="pmlPeriodo" id="pml30d">
+								<label class="btn btn-outline-primary" for="pml30d">30d</label>
+							</div>
+						</div>
+					</div>
+					<div class="card-body">
+						<div id="graficoPML" style="height: 400px;"></div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Componentes del PML -->
+			<div class="col-12 col-lg-4">
+				<div class="card border-0 shadow-sm h-100">
+					<div class="card-header bg-transparent border-0 pt-4">
+						<h5 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top"
+							title="Desglose de los componentes que forman el PML: Energía (costo de producción), Congestión (limitaciones de transmisión) y Pérdidas (eficiencia del sistema)">
+							Componentes del PML
+							<i class="bi bi-info-circle text-primary ms-1" style="font-size: 14px;"></i>
+						</h5>
+					</div>
+					<div class="card-body">
+						<div id="graficoComponentesPML" style="height: 400px;"></div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Balances de Energía -->
+		<div class="row g-4 mt-2">
+			<div class="col-12">
+				<div class="card border-0 shadow-sm">
+					<div class="card-header bg-transparent border-0 pt-4">
+						<h5 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top"
+							title="Comparación entre la energía inyectada al sistema vs. la energía retirada por la demanda. Fundamental para el equilibrio del MEM">
+							Balance de Energía: Inyección vs. Retiro
+							<i class="bi bi-info-circle text-primary ms-1" style="font-size: 14px;"></i>
+						</h5>
+					</div>
+					<div class="card-body">
+						<div id="graficoBalance" style="height: 400px;"></div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Sección: Mercado de Balance de Potencia y Servicios Conexos -->
+	<div class="container-fluid px-4 mb-5" data-aos="fade-up" data-aos-delay="300">
+		<h3 class="mb-4">
+			<i class="bi bi-gear text-warning me-2"></i>
+			Balance de Potencia y Servicios Conexos
+		</h3>
+
+		<div class="row g-4">
+			<!-- Disponibilidad de Potencia -->
+			<div class="col-12 col-lg-6">
+				<div class="card border-0 shadow-sm h-100">
+					<div class="card-header bg-transparent border-0 pt-4">
+						<h5 class="mb-0">Disponibilidad de Potencia</h5>
+					</div>
+					<div class="card-body">
+						<div id="graficoPotencia" style="height: 350px;"></div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Información de Congestión -->
+			<div class="col-12 col-lg-6">
+				<div class="card border-0 shadow-sm h-100">
+					<div class="card-header bg-transparent border-0 pt-4">
+						<h5 class="mb-0">Mapa de Congestión</h5>
+					</div>
+					<div class="card-body">
+						<div id="graficoCongestión" style="height: 350px;"></div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Sección: Información Geoespacial del MEM -->
+	<div class="container-fluid px-4 mb-5" data-aos="fade-up" data-aos-delay="400">
+		<h3 class="mb-4">
+			<i class="bi bi-geo-alt text-success me-2"></i>
+			Información Geoespacial del MEM
+		</h3>
+
+		<div class="card border-0 shadow-sm">
+			<div class="card-body p-0">
+				<!-- Búsqueda en el mapa -->
+				<div class="search-container p-3 border-bottom">
+					<div class="row g-3 align-items-end">
+						<div class="col-md-8">
+							<label class="form-label fw-semibold">Buscar en el Mapa:</label>
+							<input type="text" id="busquedaGeneralInput" class="form-control"
+								placeholder="Entidad Federativa, Municipio, Nodo o Subestación...">
+							<div id="autocomplete-list" class="autocomplete-items"></div>
+						</div>
+						<div class="col-md-2">
+							<button class="btn btn-primary w-100" onclick="buscarGeneral()">
+								<i class="bi bi-search"></i>
+							</button>
+						</div>
+						<div class="col-md-2">
+							<button id="fullscreen-btn" class="btn btn-primary w-250">
+								<i class="bi bi-arrows-fullscreen me-1"></i>Pantalla Completa
+							</button>
+						</div>
+					</div>
+				</div>
+
+				<!-- Contenedor del mapa -->
+				<div id="main-container">
+					<div id="map" style="height: 600px;"></div>
+				</div>
+
+				<!-- Leyenda del mapa -->
+				<div class="p-3 border-top bg-light">
+					<div class="row g-2 align-items-center">
+						<div class="col-auto">
+							<strong>Leyenda:</strong>
+						</div>
+						<div class="col-auto">
+							<span class="badge bg-success me-2">●</span> Nodos con PML bajo
+						</div>
+						<div class="col-auto">
+							<span class="badge bg-warning me-2">●</span> Nodos con PML medio
+						</div>
+						<div class="col-auto">
+							<span class="badge bg-danger me-2">●</span> Nodos con PML alto
+						</div>
+						<div class="col-auto">
+							<span style="background: blue; color: white; padding: 2px 6px; font-size: 12px;">━</span>
+							400 kV
+						</div>
+						<div class="col-auto">
+							<span style="background: yellow; color: black; padding: 2px 6px; font-size: 12px;">━</span>
+							230 kV
+						</div>
+						<div class="col-auto">
+							<span style="background: green; color: white; padding: 2px 6px; font-size: 12px;">━</span>
+							161-138 kV
+						</div>
+						<div class="col-auto">
+							<span class="badge bg-info me-2">●</span> Subestaciones
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Sección: Certificados de Energías Limpias (CELs) -->
+	<div class="container-fluid px-4 mb-5" data-aos="fade-up" data-aos-delay="500">
+		<h3 class="mb-4">
+			<i class="bi bi-award text-success me-2"></i>
+			Certificados de Energías Limpias (CELs)
+		</h3>
+
+		<div class="row g-4">
+			<!-- Volumen y Precios de CELs -->
+			<div class="col-12 col-lg-8">
+				<div class="card border-0 shadow-sm">
+					<div class="card-header bg-transparent border-0 pt-4">
+						<h5 class="mb-0" data-bs-toggle="tooltip" data-bs-placement="top"
+							title="Los CELs fomentan inversiones en energías renovables y limpias. Son negociables en el MEM y pueden homologarse con bonos de carbono">
+							Volumen y Precios de CELs
+							<i class="bi bi-info-circle text-primary ms-1" style="font-size: 14px;"></i>
+						</h5>
+					</div>
+					<div class="card-body">
+						<div id="graficoCELs" style="height: 400px;"></div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Estadísticas de CELs -->
+			<div class="col-12 col-lg-4">
+				<div class="card border-0 shadow-sm">
+					<div class="card-header bg-transparent border-0 pt-4">
+						<h5 class="mb-0">Estadísticas CELs</h5>
+					</div>
+					<div class="card-body">
+						<div class="row g-3">
+							<div class="col-12">
+								<div class="p-3 bg-light rounded">
+									<h6 class="text-muted mb-1">CELs Otorgados (Año)</h6>
+									<h4 class="mb-0 text-success">2,847,392</h4>
+								</div>
+							</div>
+							<div class="col-12">
+								<div class="p-3 bg-light rounded">
+									<h6 class="text-muted mb-1">CELs Liquidados</h6>
+									<h4 class="mb-0 text-primary">2,645,123</h4>
+								</div>
+							</div>
+							<div class="col-12">
+								<div class="p-3 bg-light rounded">
+									<h6 class="text-muted mb-1">Entidades Registradas</h6>
+									<h4 class="mb-0 text-info">1,247</h4>
+								</div>
+							</div>
+							<div class="col-12">
+								<div class="p-3 bg-light rounded">
+									<h6 class="text-muted mb-1">Precio Promedio</h6>
+									<h4 class="mb-0 text-warning">$485.50/CEL</h4>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Tabla de Registro de CELs -->
+		<div class="row g-4 mt-2">
+			<div class="col-12">
+				<div class="card border-0 shadow-sm">
+					<div class="card-header bg-transparent border-0 pt-4">
+						<div class="d-flex justify-content-between align-items-center">
+							<h5 class="mb-0">Registro Histórico de CELs</h5>
+							<button class="btn btn-sm btn-outline-success" onclick="exportarCELs()">
+								<i class="bi bi-download me-1"></i>Exportar
+							</button>
+						</div>
+					</div>
+					<div class="card-body">
+						<div class="table-responsive">
+							<table id="tablaCELs" class="table table-striped table-hover">
+								<thead class="table-dark">
+									<tr>
+										<th>Año</th>
+										<th>CELs Otorgados</th>
+										<th>CELs Liquidados</th>
+										<th>CELs Cancelados</th>
+										<th>Entidades Inscritas</th>
+										<th>Precio Promedio</th>
+										<th>Volumen Negociado</th>
+									</tr>
+								</thead>
+								<tbody>
+									<!-- Los datos se cargan dinámicamente -->
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal Informativo del MEM -->
+	<div class="modal fade" id="modalInfoMEM" tabindex="-1" aria-labelledby="modalInfoMEMLabel" aria-hidden="true">
+		<div class="modal-dialog modal-lg">
+			<div class="modal-content">
+				<div class="modal-header bg-primary text-white">
+					<h5 class="modal-title" id="modalInfoMEMLabel">
+						<i class="bi bi-lightning-charge me-2"></i>
+						Información Detallada del MEM
+					</h5>
+					<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+						aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<div class="row">
+						<div class="col-12">
+							<div class="accordion" id="accordionMEM">
+								<!-- Acordeón 1: PML -->
+								<div class="accordion-item">
+									<h2 class="accordion-header" id="headingPML">
+										<button class="accordion-button" type="button" data-bs-toggle="collapse"
+											data-bs-target="#collapsePML" aria-expanded="true"
+											aria-controls="collapsePML">
+											<i class="bi bi-currency-dollar text-primary me-2"></i>
+											Precios Marginales Locales (PML)
+										</button>
+									</h2>
+									<div id="collapsePML" class="accordion-collapse collapse show"
+										aria-labelledby="headingPML" data-bs-parent="#accordionMEM">
+										<div class="accordion-body">
+											<p><strong>Definición:</strong> Los PML son un componente crucial en el MEM.
+												Su cálculo considera el valor neto del componente de pérdidas y el
+												componente de energía al cobrar la energía retirada y pagar la energía
+												inyectada en cada nodo.</p>
+											<p><strong>Componentes:</strong></p>
+											<ul>
+												<li><strong>Energía:</strong> Costos marginales de producción</li>
+												<li><strong>Congestión:</strong> Limitaciones de transmisión en la red
+												</li>
+												<li><strong>Pérdidas:</strong> Eficiencia del sistema eléctrico</li>
+											</ul>
+											<p><strong>Uso:</strong> Los PML reflejan los costos marginales de
+												producción, congestión y pérdidas en cada nodo del sistema eléctrico,
+												siendo fundamentales para la formación de precios en el mercado.</p>
+										</div>
+									</div>
+								</div>
+
+								<!-- Acordeón 2: CELs -->
+								<div class="accordion-item">
+									<h2 class="accordion-header" id="headingCELs">
+										<button class="accordion-button collapsed" type="button"
+											data-bs-toggle="collapse" data-bs-target="#collapseCELs"
+											aria-expanded="false" aria-controls="collapseCELs">
+											<i class="bi bi-award text-success me-2"></i>
+											Certificados de Energías Limpias (CELs)
+										</button>
+									</h2>
+									<div id="collapseCELs" class="accordion-collapse collapse"
+										aria-labelledby="headingCELs" data-bs-parent="#accordionMEM">
+										<div class="accordion-body">
+											<p><strong>Propósito:</strong> Los CELs buscan "fomentar y dar certeza a las
+												inversiones en el desarrollo de proyectos de energías renovables y
+												limpias".</p>
+											<p><strong>Características:</strong></p>
+											<ul>
+												<li><strong>Negociabilidad:</strong> Pueden ser negociables a través del
+													Mercado Eléctrico Mayorista</li>
+												<li><strong>Homologación:</strong> Pueden homologarse con instrumentos
+													de otros mercados, como los bonos de carbono</li>
+												<li><strong>Metas:</strong> Se establecen como porcentajes mínimos de la
+													generación total de electricidad en México</li>
+											</ul>
+											<p><strong>Registro:</strong> Incluye otorgamiento, liquidación,
+												cancelación, entidades inscritas, precios promedio, y asignación de
+												folios electrónicos.</p>
+										</div>
+									</div>
+								</div>
+
+								<!-- Acordeón 3: Información Geoespacial -->
+								<div class="accordion-item">
+									<h2 class="accordion-header" id="headingGeo">
+										<button class="accordion-button collapsed" type="button"
+											data-bs-toggle="collapse" data-bs-target="#collapseGeo"
+											aria-expanded="false" aria-controls="collapseGeo">
+											<i class="bi bi-geo-alt text-info me-2"></i>
+											Información Geoespacial
+										</button>
+									</h2>
+									<div id="collapseGeo" class="accordion-collapse collapse"
+										aria-labelledby="headingGeo" data-bs-parent="#accordionMEM">
+										<div class="accordion-body">
+											<p><strong>Nodos del Sistema:</strong> Cada punto en el mapa representa un
+												nodo de la red eléctrica con su PML específico.</p>
+											<p><strong>Líneas de Transmisión:</strong></p>
+											<ul>
+												<li><span
+														style="background: blue; color: white; padding: 2px 6px; font-size: 12px;">━</span>
+													400 kV - Alta tensión</li>
+												<li><span
+														style="background: yellow; color: black; padding: 2px 6px; font-size: 12px;">━</span>
+													230 kV - Media tensión</li>
+												<li><span
+														style="background: green; color: white; padding: 2px 6px; font-size: 12px;">━</span>
+													161-138 kV - Distribución</li>
+											</ul>
+											<p><strong>Congestión:</strong> La información sobre congestiones en la red
+												impacta directamente en los PML de cada zona, afectando la eficiencia
+												del mercado.</p>
+										</div>
+									</div>
+								</div>
+
+								<!-- Acordeón 4: Consideraciones de Datos -->
+								<div class="accordion-item">
+									<h2 class="accordion-header" id="headingDatos">
+										<button class="accordion-button collapsed" type="button"
+											data-bs-toggle="collapse" data-bs-target="#collapseDatos"
+											aria-expanded="false" aria-controls="collapseDatos">
+											<i class="bi bi-shield-check text-warning me-2"></i>
+											Consideraciones sobre los Datos
+										</button>
+									</h2>
+									<div id="collapseDatos" class="accordion-collapse collapse"
+										aria-labelledby="headingDatos" data-bs-parent="#accordionMEM">
+										<div class="accordion-body">
+											<p><strong>Fuente Oficial:</strong> El SNIEr constituye la "fuente oficial
+												de información del sector energético y de uso obligatorio para sus
+												organismos sectorizados".</p>
+											<p><strong>Confidencialidad:</strong> La información proporcionada con fines
+												estadísticos al SNIEr se sujeta a las disposiciones legales que regulan
+												la confidencialidad y reserva de los datos.</p>
+											<p><strong>Verificación:</strong> Si se identifica información incongruente
+												o incompleta, la Secretaría puede solicitar a los Organismos
+												Sectorizados la realización de visitas de verificación.</p>
+											<p><strong>Actualización:</strong> Los datos se actualizan conforme a los
+												reportes oficiales de CENACE y otros organismos del sector eléctrico.
+											</p>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+					<button type="button" class="btn btn-primary"
+						onclick="window.open('https://www.gob.mx/sener', '_blank')">
+						<i class="bi bi-box-arrow-up-right me-1"></i>Más información oficial
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Estilos personalizados -->
+	<style>
+		/* Cards elegantes mejoradas */
+		.elegant-card {
+			backdrop-filter: blur(10px);
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+		}
+
+		.elegant-card:hover {
+			transform: translateY(-5px);
+			box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15) !important;
+		}
+
+		.elegant-card .card-body {
+			position: relative;
+			overflow: hidden;
+		}
+
+		.elegant-card .card-body::before {
+			content: '';
+			position: absolute;
+			top: 0;
+			right: 0;
+			width: 100px;
+			height: 100px;
+			background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+			border-radius: 50%;
+			transform: translate(30px, -30px);
+			pointer-events: none;
+		}
+
+		/* =====================================================
+		   ESTILOS MEJORADOS PARA POPUPS DEL MAPA MEM
+		   ===================================================== */
+
+		/* Popup principal del MEM */
+		.popup-content-mem {
+			min-width: 280px;
+			max-width: 350px;
+			max-height: 350px;
+			width: auto;
+			font-family: var(--font-family, 'Inter', sans-serif);
+			border-radius: 12px;
+			overflow-y: auto;
+			overflow-x: hidden;
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+			border: 1px solid rgba(255, 255, 255, 0.2);
+			scrollbar-width: thin;
+			scrollbar-color: #189c90 #f0f0f0;
+		}
+
+		/* Scrollbar personalizado para webkit */
+		.popup-content-mem::-webkit-scrollbar {
+			width: 5px;
+		}
+
+		.popup-content-mem::-webkit-scrollbar-track {
+			background: rgba(240, 240, 240, 0.5);
+			border-radius: 3px;
+		}
+
+		.popup-content-mem::-webkit-scrollbar-thumb {
+			background: #189c90;
+			border-radius: 3px;
+		}
+
+		.popup-content-mem::-webkit-scrollbar-thumb:hover {
+			background: #147a70;
+		}
+
+		/* Ajustes adicionales para prevenir cortes de contenido */
+		.popup-content-mem * {
+			box-sizing: border-box;
+		}
+
+		.popup-content-mem p {
+			word-wrap: break-word;
+			overflow-wrap: break-word;
+			hyphens: auto;
+		}
+
+		/* Header del popup */
+		.popup-header-mem {
+
+			color: white;
+			padding: 16px 30px;
+			/* margin: -20px -20px 15px -20px; */
+			font-weight: 600;
+		}
+
+		.popup-header-mem h6 {
+			margin: 0;
+			font-size: 16px;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.popup-header-mem i {
+			font-size: 18px;
+			opacity: 0.9;
+		}
+
+		/* Body del popup */
+		.popup-body-mem {
+			padding: 0 4px;
+		}
+
+		.popup-body-mem p {
+			margin: 8px 0;
+			font-size: 14px;
+			line-height: 1.4;
+			color: #2c3e50;
+		}
+
+		.popup-body-mem strong {
+			color: #1a202c;
+			font-weight: 600;
+		}
+
+		/* Badges personalizados */
+		.voltage-badge {
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			color: white;
+			padding: 3px 8px;
+			border-radius: 12px;
+			font-size: 12px;
+			font-weight: 600;
+			display: inline-block;
+		}
+
+		.pml-value {
+			background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+			color: white;
+			padding: 3px 8px;
+			border-radius: 12px;
+			font-size: 13px;
+			font-weight: 700;
+			display: inline-block;
+		}
+
+		/* Información especial de PML */
+		.pml-info {
+			background: rgba(24, 156, 144, 0.05);
+			border-left: 4px solid #189c90;
+			padding: 12px;
+			margin: 8px -4px -4px -4px;
+			border-radius: 0 8px 8px 0;
+			word-wrap: break-word;
+			overflow-wrap: break-word;
+		}
+
+		/* Mejoras específicas para popups de PML */
+		.popup-content-mem .pml-info p {
+			white-space: normal !important;
+			word-break: normal;
+			overflow: visible;
+			text-overflow: clip;
+		}
+
+		/* Asegurar que el texto de PML no se corte */
+		.popup-content-mem .pml-value {
+			white-space: nowrap;
+			display: inline-block;
+			max-width: 140px;
+			overflow: visible;
+			text-overflow: clip;
+			font-size: 12px;
+		}
+
+		/* Mejoras para el contenido del PML */
+		.popup-content-mem .pml-info {
+			overflow: visible;
+		}
+
+		.popup-content-mem .pml-info p {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 5px;
+		}
+
+		/* Mejoras para badges de Bootstrap en popups */
+		.popup-content-mem .badge {
+			font-size: 11px;
+			padding: 4px 8px;
+		}
+
+		/* Mapa responsive y fullscreen */
+		#fullscreen-search-container {
+			background-color: white;
+		}
+
+		#fullscreen-elements {
+			display: flex;
+			flex-direction: column;
+			height: auto;
+		}
+
+		#fullscreen-last-update,
+		#fullscreen-select,
+		#fullscreen-search-container {
+			flex-shrink: 0;
+		}
+
+		#map {
+			flex-grow: 1;
+		}
+
+		#main-container.fullscreen-active #fullscreen-elements {
+			height: 100vh;
+		}
+
+		#main-container.fullscreen-active #map {
+			height: calc(100vh - 60px);
+		}
+
+		#main-container:not(.fullscreen-active) #map {
+			height: 600px;
+		}
+
+		/* Autocompletado */
+		.autocomplete-items {
+			position: absolute;
+			border: 1px solid #d4d4d4;
+			border-bottom: none;
+			border-top: none;
+			z-index: 99;
+			top: 100%;
+			left: 0;
+			right: 0;
+			background-color: white;
+			max-height: 200px;
+			overflow-y: auto;
+			box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+		}
+
+		.autocomplete-items div {
+			padding: 10px;
+			cursor: pointer;
+			background-color: #fff;
+			border-bottom: 1px solid #d4d4d4;
+			transition: background-color 0.2s;
+		}
+
+		.autocomplete-items div:hover {
+			background-color: #e9e9e9;
+		}
+
+		.autocomplete-active {
+			background-color: #007bff !important;
+			color: #ffffff;
+		}
+
+		/* Cards con gradientes */
+		.card h2 {
+			font-weight: 700;
+			letter-spacing: -0.5px;
+		}
+
+		/* Animaciones suaves */
+		.card {
+			transition: transform 0.2s ease-in-out;
+		}
+
+		.card:hover {
+			transform: translateY(-2px);
+		}
+
+		/* Badges personalizados */
+		.badge {
+			font-size: 14px;
+			padding: 6px 8px;
+		}
+
+		/* Mejoras para popups del mapa */
+		.popup-content {
+			font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+		}
+
+		.popup-content h6 {
+			color: #2c3e50;
+			margin-bottom: 8px;
+		}
+
+		.popup-content p {
+			margin-bottom: 4px;
+			font-size: 13px;
+		}
+
+		/* Mejoras para elementos de autocompletado */
+		.autocomplete-items div strong {
+			color: #007bff;
+		}
+
+		/* Estilos responsivos específicos para popups MEM */
+		@@media (max-width: 768px) {
+			.popup-content-mem {
+				min-width: 260px !important;
+				max-width: 300px !important;
+				max-height: 300px !important;
+				font-size: 13px;
+			}
+
+			.popup-header-mem h6 {
+				font-size: 14px;
+			}
+
+			.popup-body-mem p {
+				font-size: 12px;
+			}
+
+			.pml-value {
+				font-size: 11px !important;
+				max-width: 110px;
+			}
+		}
+
+		@@media (max-width: 480px) {
+			.popup-content-mem {
+				min-width: 240px !important;
+				max-width: 280px !important;
+				max-height: 250px !important;
+			}
+
+			.popup-header-mem {
+				padding: 10px 12px;
+			}
+
+			.popup-body-mem {
+				padding: 0 2px;
+			}
+
+			.pml-info {
+				padding: 8px;
+			}
+		}
+
+		/* Mejoras para visibilidad del popup completo */
+		.popup-content-mem .popup-body-mem {
+			padding: 8px 12px;
+			max-height: 280px;
+			overflow-y: auto;
+		}
+	</style>
+
+	@section scripts {
+	<!-- Scripts de Shapes y Mapas (del Reporte_Demanda y LineasTyS) -->
+	<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/regiones_poligon_0.js"></script>
+	<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+	<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+	<!-- Capas de Líneas de Transmisión y Subestaciones -->
+	<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/lineastrans.js"></script>
+	<script type="text/javascript" src="@Cdn.Url/Geovisualizador/data/subestaciones_0.js"></script>
+
+	<!-- Inicialización de AOS (Animate On Scroll) -->
+	<script>
+		AOS.init({
+			duration: 800,
+			easing: 'ease-in-out',
+			once: true,
+			offset: 100
+		});
+	</script>
+
+	<!-- Script de Pantalla Completa para el Mapa -->
+	<script>
+		document.addEventListener('DOMContentLoaded', (event) => {
+			const mapElement = document.getElementById('map');
+			const fullscreenButton = document.getElementById('fullscreen-btn');
+			const searchContainer = document.querySelector('.search-container');
+			const mainContainer = document.getElementById('main-container');
+			const fullscreenElements = document.createElement('div');
+			fullscreenElements.id = 'fullscreen-elements';
+
+			const originalMapParent = mapElement.parentNode;
+			const originalSearchParent = searchContainer.parentNode;
+			const originalMapNextSibling = mapElement.nextSibling;
+			const originalSearchNextSibling = searchContainer.nextSibling;
+
+			fullscreenButton.addEventListener('click', () => {
+				if (!document.fullscreenElement) {
+					mainContainer.appendChild(fullscreenElements);
+					fullscreenElements.appendChild(searchContainer);
+					fullscreenElements.appendChild(mapElement);
+					fullscreenElements.requestFullscreen().catch(err => {
+						alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+					});
+				} else {
+					document.exitFullscreen();
+				}
+			});
+
+			document.addEventListener('fullscreenchange', (event) => {
+				if (document.fullscreenElement) {
+					fullscreenButton.innerHTML = '<i class="bi bi-fullscreen-exit me-1"></i>Salir';
+					mainContainer.classList.add('fullscreen-active');
+					mapElement.style.height = "calc(100vh - 120px)";
+					searchContainer.style.backgroundColor = "white";
+				} else {
+					fullscreenButton.innerHTML = '<i class="bi bi-arrows-fullscreen me-1"></i>Pantalla Completa';
+					if (originalSearchNextSibling) {
+						originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+					} else {
+						originalSearchParent.appendChild(searchContainer);
+					}
+					if (originalMapNextSibling) {
+						originalMapParent.insertBefore(mapElement, originalMapNextSibling);
+					} else {
+						originalMapParent.appendChild(mapElement);
+					}
+					mainContainer.classList.remove('fullscreen-active');
+					mapElement.style.height = "600px";
+					fullscreenElements.style.height = 'auto';
+				}
+			});
+		});
+	</script>
+
+	<!-- Configuración e Inicialización de Gráficos Highcharts -->
+	<script>
+		// Función para mostrar información detallada en modal
+		function mostrarInfoDetallada(tipo, datos) {
+			const modal = document.getElementById('modalInfoMEM');
+			const modalTitle = document.getElementById('modalInfoMEMLabel');
+
+			// Actualizar título del modal según el tipo
+			switch (tipo) {
+				case 'pml':
+					modalTitle.innerHTML = '<i class="bi bi-currency-dollar me-2"></i>Información Detallada - PML';
+					break;
+				case 'cel':
+					modalTitle.innerHTML = '<i class="bi bi-award me-2"></i>Información Detallada - CELs';
+					break;
+				case 'balance':
+					modalTitle.innerHTML = '<i class="bi bi-bar-chart me-2"></i>Información Detallada - Balance de Energía';
+					break;
+				default:
+					modalTitle.innerHTML = '<i class="bi bi-lightning-charge me-2"></i>Información Detallada del MEM';
+			}
+
+			// Expandir acordeón correspondiente
+			const acordeonTarget = tipo === 'pml' ? 'collapsePML' :
+				tipo === 'cel' ? 'collapseCELs' :
+					tipo === 'balance' ? 'collapseGeo' : 'collapsePML';
+
+			// Mostrar modal
+			const modalInstance = new bootstrap.Modal(modal);
+			modalInstance.show();
+
+			// Expandir acordeón específico después de mostrar el modal
+			setTimeout(() => {
+				const acordeon = document.getElementById(acordeonTarget);
+				if (acordeon && !acordeon.classList.contains('show')) {
+					const bsCollapse = new bootstrap.Collapse(acordeon, { show: true });
+				}
+			}, 500);
+		}
+
+		// Variables globales para los gráficos
+		let graficoPML, graficoComponentesPML, graficoBalance, graficoPotencia, graficoCongestión, graficoCELs;
+
+		// Datos demo para los gráficos
+		const datosPML = {
+			categories: ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'],
+			series: [
+				{ name: 'Norte', data: [1200, 1150, 1100, 1300, 1450, 1380, 1420, 1350, 1280, 1320, 1250, 1180] },
+				{ name: 'Centro', data: [1250, 1200, 1180, 1350, 1500, 1420, 1460, 1400, 1330, 1370, 1300, 1220] },
+				{ name: 'Sur', data: [1180, 1130, 1080, 1280, 1420, 1350, 1390, 1320, 1250, 1290, 1210, 1150] },
+				{ name: 'Promedio Nacional', data: [1210, 1160, 1120, 1310, 1457, 1383, 1423, 1357, 1287, 1327, 1253, 1183] }
+			]
+		};
+
+		const datosComponentesPML = [
+			{ name: 'Energía', y: 68.5, color: '#2E86AB' },
+			{ name: 'Congestión', y: 18.3, color: '#A23B72' },
+			{ name: 'Pérdidas', y: 13.2, color: '#F18F01' }
+		];
+
+		const datosBalance = {
+			categories: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+			inyeccion: [28450, 26800, 29200, 31500, 33200, 35800, 38200, 37600, 35400, 33800, 31200, 29800],
+			retiro: [28200, 26500, 28900, 31200, 32900, 35500, 37900, 37300, 35100, 33500, 30900, 29500]
+		};
+
+		const datosPotencia = {
+			categories: ['Instalada', 'Efectiva', 'Disponible', 'En Operación'],
+			valores: [85420, 78650, 65280, 54782]
+		};
+
+		const datosCongestión = [
+			{ name: 'Sin Congestión', y: 45.2, color: '#28a745' },
+			{ name: 'Congestión Leve', y: 32.1, color: '#ffc107' },
+			{ name: 'Congestión Moderada', y: 15.4, color: '#fd7e14' },
+			{ name: 'Congestión Severa', y: 7.3, color: '#dc3545' }
+		];
+
+		const datosCELs = {
+			categories: ['2019', '2020', '2021', '2022', '2023', '2024'],
+			volumen: [1800000, 2100000, 2450000, 2780000, 2950000, 3200000],
+			precio: [320, 380, 450, 485, 465, 490]
+		};
+
+		// Función para inicializar todos los gráficos
+		function inicializarGraficos() {
+			// Gráfico de PML
+			graficoPML = Highcharts.chart('graficoPML', {
+				chart: { type: 'line' },
+				title: { text: '' },
+				xAxis: { categories: datosPML.categories },
+				yAxis: {
+					title: { text: 'Precio (Pesos/MWh)' },
+					min: 1000
+				},
+				series: datosPML.series,
+				colors: ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D'],
+				tooltip: {
+					pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>${point.y:,.0f}</b> pesos/MWh<br/>',
+					shared: true
+				},
+				legend: { enabled: true },
+				plotOptions: {
+					series: {
+						cursor: 'pointer',
+						point: {
+							events: {
+								click: function () {
+									mostrarInfoDetallada('pml', { region: this.series.name, precio: this.y, hora: this.category });
+								}
+							}
+						}
+					}
+				},
+				responsive: {
+					rules: [{
+						condition: { maxWidth: 500 },
+						chartOptions: { legend: { layout: 'horizontal', align: 'center', verticalAlign: 'bottom' } }
+					}]
+				}
+			});
+
+			// Gráfico de Componentes del PML
+			graficoComponentesPML = Highcharts.chart('graficoComponentesPML', {
+				chart: { type: 'pie' },
+				title: { text: '' },
+				series: [{
+					name: 'Componentes',
+					data: datosComponentesPML,
+					dataLabels: {
+						enabled: true,
+						format: '<b>{point.name}</b>: {point.percentage:.1f}%'
+					},
+					point: {
+						events: {
+							click: function () {
+								mostrarInfoDetallada('pml', { componente: this.name, porcentaje: this.percentage });
+							}
+						}
+					}
+				}],
+				tooltip: {
+					pointFormat: '<span style="color:{point.color}">{point.name}</span>: <b>{point.percentage:.1f}%</b><br/>'
+				},
+				plotOptions: {
+					pie: {
+						cursor: 'pointer'
+					}
+				}
+			});
+
+			// Gráfico de Balance de Energía
+			graficoBalance = Highcharts.chart('graficoBalance', {
+				chart: { type: 'column' },
+				title: { text: '' },
+				xAxis: { categories: datosBalance.categories },
+				yAxis: { title: { text: 'Energía (MWh)' } },
+				series: [
+					{ name: 'Inyección', data: datosBalance.inyeccion, color: '#28a745' },
+					{ name: 'Retiro', data: datosBalance.retiro, color: '#dc3545' }
+				],
+				tooltip: {
+					pointFormat: '<span style="color:{series.color}">{series.name}</span>: <b>{point.y:,.0f}</b> MWh<br/>',
+					shared: true
+				}
+			});
+
+			// Gráfico de Potencia
+			graficoPotencia = Highcharts.chart('graficoPotencia', {
+				chart: { type: 'bar' },
+				title: { text: '' },
+				xAxis: { categories: datosPotencia.categories },
+				yAxis: { title: { text: 'Potencia (MW)' } },
+				series: [{
+					name: 'MW',
+					data: datosPotencia.valores,
+					colorByPoint: true,
+					colors: ['#2E86AB', '#A23B72', '#F18F01', '#28a745']
+				}],
+				tooltip: {
+					pointFormat: '<b>{point.y:,.0f}</b> MW'
+				}
+			});
+
+			// Gráfico de Congestión
+			graficoCongestión = Highcharts.chart('graficoCongestión', {
+				chart: { type: 'pie' },
+				title: { text: '' },
+				series: [{
+					name: 'Estado',
+					data: datosCongestión,
+					dataLabels: {
+						enabled: true,
+						format: '<b>{point.name}</b>: {point.percentage:.1f}%'
+					}
+				}],
+				tooltip: {
+					pointFormat: '<span style="color:{point.color}">{point.name}</span>: <b>{point.percentage:.1f}%</b><br/>'
+				}
+			});
+
+			// Gráfico de CELs
+			graficoCELs = Highcharts.chart('graficoCELs', {
+				chart: { type: 'line' },
+				title: { text: '' },
+				xAxis: { categories: datosCELs.categories },
+				yAxis: [{
+					title: { text: 'Volumen (CELs)', style: { color: '#2E86AB' } },
+					labels: { style: { color: '#2E86AB' } }
+				}, {
+					title: { text: 'Precio (Pesos/CEL)', style: { color: '#A23B72' } },
+					labels: { style: { color: '#A23B72' } },
+					opposite: true
+				}],
+				series: [{
+					name: 'Volumen',
+					data: datosCELs.volumen,
+					color: '#2E86AB',
+					yAxis: 0,
+					point: {
+						events: {
+							click: function () {
+								mostrarInfoDetallada('cel', { año: this.category, volumen: this.y });
+							}
+						}
+					}
+				}, {
+					name: 'Precio',
+					data: datosCELs.precio,
+					color: '#A23B72',
+					type: 'column',
+					yAxis: 1,
+					point: {
+						events: {
+							click: function () {
+								mostrarInfoDetallada('cel', { año: this.category, precio: this.y });
+							}
+						}
+					}
+				}],
+				tooltip: {
+					shared: true
+				},
+				plotOptions: {
+					series: {
+						cursor: 'pointer'
+					}
+				}
+			});
+		}
+
+		// Función para aplicar filtros con datos reales
+		function aplicarFiltros() {
+			const fechaInicio = document.getElementById('fechaInicio').value;
+			const fechaFin = document.getElementById('fechaFin').value;
+			const region = document.getElementById('regionSelect').value;
+
+			if (!fechaInicio || !fechaFin) {
+				Swal.fire('Error', 'Por favor selecciona ambas fechas', 'warning');
+				return;
+			}
+
+			console.log('Aplicando filtros:', { fechaInicio, fechaFin, region });
+
+			// Mostrar loading
+			Swal.fire({
+				title: 'Cargando datos...',
+				text: 'Obteniendo información del MEM',
+				allowOutsideClick: false,
+				didOpen: () => {
+					Swal.showLoading();
+				}
+			});
+
+			// Llamar al endpoint para obtener datos reales
+			fetch(`/SNIER/DemandaMEM?inicio=${fechaInicio}&fin=${fechaFin}`)
+				.then(response => response.json())
+				.then(data => {
+					Swal.close();
+
+					if (data.success) {
+						// Actualizar KPIs con datos reales
+						actualizarKPIsReales(data.kpis);
+
+						// Actualizar gráficos con datos reales
+						actualizarGraficosConDatosReales(data);
+
+						Swal.fire({
+							title: 'Datos Actualizados',
+							text: `Procesados ${data.kpis.totalRegistros} registros`,
+							icon: 'success',
+							timer: 2000,
+							showConfirmButton: false
+						});
+					} else {
+						Swal.fire('Error', data.message || 'Error al obtener los datos', 'error');
+					}
+				})
+				.catch(error => {
+					Swal.close();
+					console.error('Error:', error);
+					Swal.fire('Error', 'Error de conexión al servidor', 'error');
+				});
+		}
+
+		// Función para actualizar KPIs con datos reales
+		function actualizarKPIsReales(kpis) {
+			// Actualizar card de energía transaccionada con demanda total
+			document.getElementById('totalEnergia').textContent = Math.round(kpis.demandaPromedio).toLocaleString();
+
+			// Simular otros KPIs basados en los datos reales
+			const pmlEstimado = 1200 + (kpis.demandaPromedio / 1000); // Estimación simple
+			document.getElementById('pmlPromedio').textContent = '$' + pmlEstimado.toFixed(2);
+
+			// Potencia disponible estimada
+			const potenciaEstimada = Math.round(kpis.demandaMaxima * 1.2); // 20% más que la demanda máxima
+			document.getElementById('potenciaDisponible').textContent = potenciaEstimada.toLocaleString();
+
+			console.log('KPIs actualizados con datos reales:', kpis);
+		}
+
+		// Función para actualizar gráficos con datos reales
+		function actualizarGraficosConDatosReales(data) {
+			// Actualizar gráfico de PML con datos de demanda real
+			if (graficoPML) {
+				graficoPML.xAxis[0].setCategories(data.fechas);
+				graficoPML.series.forEach(s => s.remove());
+
+				// Convertir series de demanda a estimaciones de PML
+				data.series.forEach(serie => {
+					if (serie.name !== 'Total') {
+						const pmlData = serie.data.map(value => value ? 1000 + (value / 100) : null);
+						graficoPML.addSeries({
+							name: `PML ${serie.name}`,
+							data: pmlData
+						});
+					}
+				});
+			}
+
+			// Actualizar gráfico de balance con datos reales
+			if (graficoBalance && data.series.length > 0) {
+				const totalData = data.series[0].data; // Usar primera serie como ejemplo
+				graficoBalance.series[0].setData(totalData.slice(0, 12)); // Primeros 12 meses
+				graficoBalance.series[1].setData(totalData.slice(0, 12).map(v => v * 0.95)); // Simular retiro
+			}
+		}
+
+		// Función para exportar datos de CELs
+		function exportarCELs() {
+			// Simulación de exportación
+			Swal.fire({
+				title: 'Exportando Datos',
+				text: 'Descargando archivo de datos de CELs...',
+				icon: 'info',
+				timer: 2000,
+				showConfirmButton: false
+			});
+		}
+
+		// Función de búsqueda en el mapa (mejorada para búsqueda parcial)
+		function buscarGeneral() {
+			const termino = document.getElementById('busquedaGeneralInput').value.trim();
+			if (termino === '') {
+				Swal.fire('Error', 'Por favor ingresa un término de búsqueda', 'warning');
+				return;
+			}
+
+			console.log('Buscando en el mapa:', termino);
+
+			let encontrado = false;
+			const mapaActual = mapMEM || (mapas && mapas[0]);
+
+			if (!mapaActual) {
+				Swal.fire('Error', 'El mapa no está disponible', 'error');
+				return;
+			}
+
+			// Buscar por entidad federativa (búsqueda parcial mejorada)
+			if (typeof estadosLayer !== 'undefined' && estadosLayer) {
+				estadosLayer.eachLayer(function (layer) {
+					if (layer.feature.properties.NOMGEO &&
+						layer.feature.properties.NOMGEO.toLowerCase().includes(termino.toLowerCase())) {
+						mapaActual.fitBounds(layer.getBounds());
+
+						// Restablecer estilo anterior si existe
+						if (lastSearchedEstadoLayer) {
+							estadosLayer.resetStyle(lastSearchedEstadoLayer);
+						}
+
+						// Resaltar la entidad encontrada
+						layer.setStyle({
+							color: '#FF0000',
+							fillColor: '#FF0000',
+							fillOpacity: 0.5,
+							weight: 3
+						});
+
+						lastSearchedEstadoLayer = layer;
+
+						// Restaurar estilo después de 5 segundos
+						setTimeout(function () {
+							if (lastSearchedEstadoLayer) {
+								estadosLayer.resetStyle(lastSearchedEstadoLayer);
+								lastSearchedEstadoLayer = null;
+							}
+						}, 5000);
+
+						encontrado = true;
+					}
+				});
+			}
+
+			// Buscar por municipio si no se encontró entidad (búsqueda parcial mejorada)
+			if (!encontrado && typeof municipios_mapa !== 'undefined') {
+				const terminos = termino.split(',');
+				const buscadoMunicipio = terminos[0].trim().toLowerCase();
+				const buscadoEstado = terminos.length > 1 ? terminos[1].trim().toLowerCase() : '';
+
+				for (let i = 0; i < municipios_mapa.features.length; i++) {
+					const municipio = municipios_mapa.features[i];
+					const nombreMunicipio = municipio.properties.NOM_MUN ? municipio.properties.NOM_MUN.toLowerCase() : '';
+					const nombreEstado = municipio.properties.NOMGEO ? municipio.properties.NOMGEO.toLowerCase() : '';
+
+					const coincideMunicipio = nombreMunicipio.includes(buscadoMunicipio);
+					const coincideEstado = buscadoEstado === '' || nombreEstado.includes(buscadoEstado);
+
+					if (coincideMunicipio && coincideEstado) {
+						const bounds = L.geoJSON(municipio).getBounds();
+						mapaActual.fitBounds(bounds);
+
+						// Eliminar búsqueda anterior
+						if (lastSearchedMunicipioLayer) {
+							mapaActual.removeLayer(lastSearchedMunicipioLayer);
+						}
+
+						// Agregar y resaltar municipio encontrado
+						lastSearchedMunicipioLayer = L.geoJSON(municipio, {
+							style: {
+								color: '#FF0000',
+								fillColor: '#FF0000',
+								fillOpacity: 0.5,
+								weight: 3
+							}
+						}).addTo(mapaActual);
+
+						// Remover después de 5 segundos
+						setTimeout(function () {
+							if (lastSearchedMunicipioLayer) {
+								mapaActual.removeLayer(lastSearchedMunicipioLayer);
+								lastSearchedMunicipioLayer = null;
+							}
+						}, 5000);
+
+						encontrado = true;
+						break;
+					}
+				}
+			}
+
+			if (encontrado) {
+				Swal.fire({
+					title: 'Ubicación Encontrada',
+					text: `Se encontró: "${termino}"`,
+					icon: 'success',
+					timer: 2000,
+					showConfirmButton: false
+				});
+			} else {
+				Swal.fire('No encontrado', `No se encontró "${termino}" en el mapa`, 'info');
+			}
+		}
+
+		// Inicialización al cargar la página
+		$(document).ready(function () {
+			// Establecer fechas por defecto (últimos 30 días)
+			const fechaFin = new Date();
+			const fechaInicio = new Date();
+			fechaInicio.setDate(fechaInicio.getDate() - 30);
+
+			document.getElementById('fechaInicio').value = fechaInicio.toISOString().split('T')[0];
+			document.getElementById('fechaFin').value = fechaFin.toISOString().split('T')[0];
+
+			// Inicializar gráficos
+			inicializarGraficos();
+
+			// Inicializar DataTable para CELs
+			$('#tablaCELs').DataTable({
+				data: [
+					['2024', '2,847,392', '2,645,123', '45,287', '1,247', '$485.50', '2,645,123'],
+					['2023', '2,654,123', '2,456,890', '38,456', '1,189', '$465.20', '2,456,890'],
+					['2022', '2,435,678', '2,287,345', '32,123', '1,098', '$485.80', '2,287,345'],
+					['2021', '2,187,456', '2,054,789', '28,789', '987', '$450.30', '2,054,789'],
+					['2020', '1,987,234', '1,876,543', '25,456', '876', '$380.50', '1,876,543'],
+					['2019', '1,756,890', '1,654,321', '22,234', '754', '$320.80', '1,654,321']
+				],
+				columns: [
+					{ title: "Año" },
+					{ title: "CELs Otorgados" },
+					{ title: "CELs Liquidados" },
+					{ title: "CELs Cancelados" },
+					{ title: "Entidades Inscritas" },
+					{ title: "Precio Promedio" },
+					{ title: "Volumen Negociado" }
+				],
+				language: {
+					url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+				},
+				responsive: true,
+				pageLength: 10,
+				order: [[0, 'desc']],
+				dom: 'Bfrtip',
+				buttons: [
+					'copy', 'csv', 'excel', 'pdf', 'print'
+				]
+			});
+
+			// Cargar datos iniciales DESACTIVADO - Usuario debe hacer clic en "Aplicar Filtros"
+			// setTimeout(() => {
+			//	aplicarFiltros();
+			// }, 2000);
+
+			// Inicializar tooltips de Bootstrap
+			var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+			var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+				return new bootstrap.Tooltip(tooltipTriggerEl);
+			});
+
+			// Actualizar contadores cada 30 segundos (simulación tiempo real)
+			setInterval(actualizarContadores, 30000);
+		});
+
+		// Función para actualizar contadores en tiempo real
+		function actualizarContadores() {
+			// Simulación de actualización de datos en tiempo real
+			const variacionEnergia = (Math.random() - 0.5) * 1000;
+			const variacionPML = (Math.random() - 0.5) * 50;
+			const variacionPotencia = (Math.random() - 0.5) * 500;
+			const variacionLimpia = (Math.random() - 0.5) * 1;
+
+			const energiaActual = parseInt(document.getElementById('totalEnergia').textContent.replace(/,/g, ''));
+			const pmlActual = parseFloat(document.getElementById('pmlPromedio').textContent.replace(/[$,]/g, ''));
+			const potenciaActual = parseInt(document.getElementById('potenciaDisponible').textContent.replace(/,/g, ''));
+			const limpiaActual = parseFloat(document.getElementById('energiaLimpia').textContent.replace(/%/g, ''));
+
+			document.getElementById('totalEnergia').textContent = Math.round(energiaActual + variacionEnergia).toLocaleString();
+			document.getElementById('pmlPromedio').textContent = '$' + (pmlActual + variacionPML).toFixed(2);
+			document.getElementById('potenciaDisponible').textContent = Math.round(potenciaActual + variacionPotencia).toLocaleString();
+			document.getElementById('energiaLimpia').textContent = (limpiaActual + variacionLimpia).toFixed(1) + '%';
+		}
+	</script>
+
+	<!-- Configuración del Mapa (adaptado de Reporte_Demanda) -->
+	<script type="text/javascript" src="/js/configura_mapa.js"></script>
+	<script type="text/javascript" src="/js/I_e_convencional_y_limpia.js"></script>
+	<!-- Script específico para LineasTyS (funcionalidades de búsqueda y capas) -->
+	<script type="text/javascript" src="/js/lineas_TyS.js"></script>
+
+	<!-- Script específico para inicializar capas del MEM -->
+	<script>
+		// Variables globales para el mapa
+		var mapMEM = null;
+		var availableTermsMEM = [];
+		var lastSearchedEstadoLayer = null;
+		var lastSearchedMunicipioLayer = null;
+
+		// Flag para controlar la carga de capas duplicadas
+		var capasMemCargadas = false;
+
+		// Función para evitar cargas duplicadas de capas desde lineas_TyS.js
+		function deshabilitarCapasAutomaticas() {
+			// Deshabilitar temporalmente las capas automáticas de lineas_TyS.js
+			// para evitar que se carguen al final y alteren el orden
+			if (typeof layer_subestaciones_0 !== 'undefined' && mapMEM) {
+				if (mapMEM.hasLayer(layer_subestaciones_0)) {
+					mapMEM.removeLayer(layer_subestaciones_0);
+					console.log('Capa automática de subestaciones removida para evitar duplicados');
+				}
+			}
+
+			if (typeof geojson !== 'undefined' && mapMEM) {
+				if (mapMEM.hasLayer(geojson)) {
+					mapMEM.removeLayer(geojson);
+					console.log('Capa automática de líneas removida para evitar duplicados');
+				}
+			}
+
+			capasMemCargadas = true;
+		}
+
+		// Función principal de inicialización del mapa MEM con capas integradas
+		function inicializarMapaMEMCompleto() {
+			console.log('Iniciando configuración del mapa MEM...');
+
+			// Esperar a que los mapas estén configurados
+			setTimeout(() => {
+				if (typeof mapas !== 'undefined' && mapas && mapas.length > 0) {
+					mapMEM = mapas[0];
+					console.log('Mapa base disponible:', mapMEM);
+
+					// ORDEN CORRECTO DE CAPAS (de abajo hacia arriba - z-index):
+					// Base: Estados/Municipios (ya cargados desde configura_mapa.js) - z-index automático (~200-300)
+					// ~400: Gerencias (si existen, cargadas por lineas_TyS.js) - z-index automático  
+					// 600: Líneas de transmisión (agregadas manualmente) - MUY ALTO para estar arriba
+					// 650: Subestaciones (agregadas manualmente) - Por encima de líneas
+					// 700: Nodos MEM (agregados manualmente) - Capa superior
+
+					console.log('Capas base (estados/municipios) ya cargadas desde configura_mapa.js');
+
+					// Esperar a que todas las capas base estén completamente cargadas
+					// antes de agregar líneas y subestaciones
+					setTimeout(() => {
+						// 1. Primero deshabilitar capas automáticas que podrían interferir
+						deshabilitarCapasAutomaticas();
+
+						// 2. Agregar líneas de transmisión (z-index 350)
+						agregarCapasLineasTransmision();
+
+						// 3. Después agregar subestaciones (z-index 450) 
+						setTimeout(() => {
+							agregarCapasSubestaciones();
+
+							// 4. Finalmente los nodos del MEM (z-index 500)
+							setTimeout(() => {
+								agregarNodosMEM();
+
+								// 5. Inicializar autocompletado al final
+								setTimeout(() => {
+									inicializarAutocompletadoMEM();
+								}, 500);
+
+								console.log('Mapa del MEM inicializado completamente con orden correcto de capas');
+								console.log('Orden final: Estados/Mun(~300) → Gerencias(~400) → Líneas(600) → Subestaciones(650) → Nodos(700)');
+							}, 300);
+						}, 300);
+					}, 1000); // Tiempo más largo para asegurar que lineas_TyS.js haya terminado
+
+				} else {
+					console.log('Reintentando inicialización del mapa...');
+					setTimeout(inicializarMapaMEMCompleto, 1000);
+				}
+			}, 3000); // Tiempo más largo para evitar conflictos con cargas automáticas
+		}
+
+		// Función para agregar capas de líneas de transmisión
+		function agregarCapasLineasTransmision() {
+			if (typeof lineastrans !== 'undefined' && mapMEM) {
+				console.log('Agregando líneas de transmisión con z-index MUY ALTO...');
+
+				// Función para obtener estilo según voltaje
+				function getLineStyle(feature) {
+					const voltaje = feature.properties.Voltaje_KV || 0;
+					if (voltaje >= 400) return { color: '#0000FF', weight: 4, opacity: 0.9 }; // Azul para 400kV
+					if (voltaje >= 230) return { color: '#FFFF00', weight: 3, opacity: 0.9 }; // Amarillo para 230kV
+					if (voltaje >= 138) return { color: '#008000', weight: 3, opacity: 0.9 }; // Verde para 161-138kV
+					if (voltaje >= 60) return { color: '#FF00FF', weight: 2, opacity: 0.9 };  // Magenta para 115-60kV
+					if (voltaje >= 13.2) return { color: '#808080', weight: 2, opacity: 0.8 }; // Gris para 44-13.2kV
+					return { color: '#FFA500', weight: 1, opacity: 0.8 }; // Naranja para <13.2kV
+				}
+
+				// Crear pane específico para líneas de transmisión (z-index MUY ALTO)
+				mapMEM.createPane('pane_lineas_transmision_mem');
+				mapMEM.getPane('pane_lineas_transmision_mem').style.zIndex = 600; // Muy alto, por encima de todo
+
+				// Crear capa de líneas
+				const lineasLayer = L.geoJson(lineastrans, {
+					pane: 'pane_lineas_transmision_mem',
+					style: getLineStyle,
+					onEachFeature: function (feature, layer) {
+						const voltaje = feature.properties.Voltaje_KV || 'N/D';
+						const nombre = feature.properties.Nombre || 'Línea de Transmisión';
+
+						layer.bindPopup(`
+							<div class="popup-content-mem">
+								<div class="popup-header-mem">
+									<h6><strong>${nombre}</strong></h6>
+								</div>
+								<div class="popup-body-mem">
+									<p><strong>Voltaje:</strong> <span class="voltage-badge">${voltaje} kV</span></p>
+									<p><strong>Tipo:</strong> Línea de Transmisión</p>
+								</div>
+							</div>
+						`, {
+							maxWidth: 350,
+							maxHeight: 400,
+							autoPan: true,
+							autoPanPadding: [20, 20],
+							keepInView: true,
+							closeButton: true
+						});
+
+						// Efectos hover mejorados
+						layer.on('mouseover', function (e) {
+							const originalWeight = layer.options.weight;
+							layer.setStyle({
+								weight: originalWeight + 3,
+								opacity: 1,
+								color: '#FF0000'
+							});
+						});
+
+						layer.on('mouseout', function (e) {
+							lineasLayer.resetStyle(layer);
+						});
+					}
+				});
+
+				// Agregar al mapa con pane específico
+				lineasLayer.addTo(mapMEM);
+				console.log('Líneas de transmisión agregadas al mapa con z-index 600 (MUY ALTO)');
+			} else {
+				console.log('Datos de líneas de transmisión no disponibles o mapa no inicializado');
+			}
+		}
+
+		// Función para agregar capas de subestaciones
+		function agregarCapasSubestaciones() {
+			if (typeof json_subestaciones_0 !== 'undefined' && mapMEM) {
+				console.log('Agregando subestaciones con z-index alto...');
+
+				// Crear pane específico para subestaciones (z-index alto)
+				mapMEM.createPane('pane_subestaciones_mem');
+				mapMEM.getPane('pane_subestaciones_mem').style.zIndex = 650; // Por encima de líneas
+
+				const subestacionesLayer = L.geoJson(json_subestaciones_0, {
+					pane: 'pane_subestaciones_mem',
+					pointToLayer: function (feature, latlng) {
+						return L.circleMarker(latlng, {
+							radius: 7,
+							fillColor: '#4a90a4',
+							color: '#2c3e50',
+							weight: 2,
+							opacity: 1,
+							fillOpacity: 0.9,
+							pane: 'pane_subestaciones_mem'
+						});
+					},
+					onEachFeature: function (feature, layer) {
+						const nombre = feature.properties.Name || 'Subestación';
+						const fase = feature.properties.Fase || 'N/D';
+						const voltaje = feature.properties.Voltaje_KV || 'N/D';
+
+						layer.bindPopup(`
+							<div class="popup-content-mem">
+								<div class="popup-header-mem">
+									<h6><i class="bi bi-lightning-charge"></i> ${nombre}</h6>
+								</div>
+								<div class="popup-body-mem">
+									<p><strong>Fase:</strong> <span class="badge bg-info">${fase}</span></p>
+									<p><strong>Voltaje:</strong> <span class="voltage-badge">${voltaje} kV</span></p>
+									<p><strong>Tipo:</strong> Subestación Eléctrica</p>
+								</div>
+							</div>
+						`, {
+							maxWidth: 350,
+							maxHeight: 400,
+							autoPan: true,
+							autoPanPadding: [20, 20],
+							keepInView: true,
+							closeButton: true
+						});
+
+						// Efectos hover mejorados
+						layer.on('mouseover', function (e) {
+							layer.setStyle({
+								radius: 10,
+								fillColor: '#2ecc71',
+								color: '#27ae60',
+								weight: 3
+							});
+						});
+
+						layer.on('mouseout', function (e) {
+							layer.setStyle({
+								radius: 7,
+								fillColor: '#4a90a4',
+								color: '#2c3e50',
+								weight: 2
+							});
+						});
+					}
+				});
+
+				subestacionesLayer.addTo(mapMEM);
+				console.log('Subestaciones agregadas al mapa con z-index 650');
+			} else {
+				console.log('Datos de subestaciones no disponibles o mapa no inicializado');
+			}
+		}
+
+		// Función para agregar nodos específicos del MEM
+		function agregarNodosMEM() {
+			if (mapMEM) {
+				console.log('Agregando nodos del MEM con z-index más alto...');
+
+				// Crear pane específico para nodos MEM (z-index más alto)
+				mapMEM.createPane('pane_nodos_mem');
+				mapMEM.getPane('pane_nodos_mem').style.zIndex = 700; // Por encima de todo
+
+				const nodosMEM = [
+					{ lat: 19.4326, lng: -99.1332, nombre: "Central", pml: 1247.85, tipo: "Alto" },
+					{ lat: 25.6866, lng: -100.3161, nombre: "Monterrey", pml: 1156.32, tipo: "Medio" },
+					{ lat: 20.6597, lng: -103.3496, nombre: "Guadalajara", pml: 1089.45, tipo: "Bajo" },
+					{ lat: 21.1619, lng: -86.8515, nombre: "Cancún", pml: 1378.92, tipo: "Alto" },
+					{ lat: 32.6519, lng: -115.3689, nombre: "Tijuana", pml: 1067.23, tipo: "Bajo" }
+				];
+
+				nodosMEM.forEach(nodo => {
+					const color = nodo.tipo === 'Alto' ? '#e74c3c' : nodo.tipo === 'Medio' ? '#f39c12' : '#27ae60';
+
+					L.circleMarker([nodo.lat, nodo.lng], {
+						radius: 10,
+						fillColor: color,
+						color: 'white',
+						weight: 3,
+						opacity: 1,
+						fillOpacity: 0.9,
+						pane: 'pane_nodos_mem'
+					}).addTo(mapMEM).bindPopup(`
+						<div class="popup-content-mem">
+							<div class="popup-header-mem">
+								<h6><i class="bi bi-geo-alt-fill"></i> Nodo ${nodo.nombre}</h6>
+							</div>
+							<div class="popup-body-mem">
+								<div class="pml-info">
+									<p class="mb-2"><strong>PML:</strong> <span class="pml-value">$${nodo.pml}</span> pesos/MWh</p>
+									<p class="mb-2"><strong>Clasificación:</strong> <span class="badge bg-${nodo.tipo === 'Alto' ? 'danger' : nodo.tipo === 'Medio' ? 'warning' : 'success'}">${nodo.tipo}</span></p>
+									<p class="mb-0"><strong>Región:</strong> ${nodo.nombre}</p>
+								</div>
+							</div>
+						</div>
+					`, {
+						maxWidth: 350,
+						maxHeight: 400,
+						autoPan: true,
+						autoPanPadding: [20, 20],
+						keepInView: true,
+						closeButton: true
+					});
+				});
+
+				console.log('Nodos del MEM agregados con z-index 700:', nodosMEM.length);
+			}
+		}
+
+		// Función para inicializar autocompletado del MEM
+		function inicializarAutocompletadoMEM() {
+			availableTermsMEM = [];
+
+			// Agregar estados si están disponibles
+			if (typeof estadosLayer !== 'undefined' && estadosLayer) {
+				estadosLayer.eachLayer(function (layer) {
+					if (layer.feature.properties.NOMGEO) {
+						availableTermsMEM.push(layer.feature.properties.NOMGEO);
+					}
+				});
+			}
+
+			// Agregar municipios si están disponibles
+			if (typeof municipios_mapa !== 'undefined') {
+				for (let i = 0; i < municipios_mapa.features.length; i++) {
+					const municipio = municipios_mapa.features[i].properties.NOM_MUN;
+					const estado = municipios_mapa.features[i].properties.NOMGEO;
+
+					if (municipio && estado) {
+						const nombreCompleto = municipio + ", " + estado;
+						availableTermsMEM.push(nombreCompleto);
+					}
+				}
+			}
+
+			// Eliminar duplicados
+			availableTermsMEM = [...new Set(availableTermsMEM)];
+			console.log('Términos de autocompletado cargados:', availableTermsMEM.length);
+
+			// Inicializar autocompletado
+			if (document.getElementById("busquedaGeneralInput")) {
+				autocompleteMEM(document.getElementById("busquedaGeneralInput"), availableTermsMEM);
+			}
+		}
+
+		// Función de autocompletado específica para MEM
+		function autocompleteMEM(inp, arr) {
+			let currentFocus;
+
+			inp.addEventListener("input", function (e) {
+				let a, b, i, val = this.value;
+				closeAllListsMEM();
+				if (!val) { return false; }
+				currentFocus = -1;
+
+				a = document.getElementById("autocomplete-list");
+				a.innerHTML = "";
+
+				for (i = 0; i < arr.length && i < 10; i++) { // Limitar a 10 resultados
+					if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+						b = document.createElement("DIV");
+						b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+						b.innerHTML += arr[i].substr(val.length);
+						b.addEventListener("click", function (e) {
+							inp.value = this.innerText;
+							closeAllListsMEM();
+							buscarGeneral();
+						});
+						a.appendChild(b);
+					}
+				}
+			});
+
+			// Navegación con teclado
+			inp.addEventListener("keydown", function (e) {
+				let x = document.getElementById("autocomplete-list");
+				if (x) x = x.getElementsByTagName("div");
+				if (e.keyCode == 40) {
+					currentFocus++;
+					addActiveMEM(x);
+				} else if (e.keyCode == 38) {
+					currentFocus--;
+					addActiveMEM(x);
+				} else if (e.keyCode == 13) {
+					e.preventDefault();
+					if (currentFocus > -1) {
+						if (x) x[currentFocus].click();
+					}
+				}
+			});
+
+			function addActiveMEM(x) {
+				if (!x) return false;
+				removeActiveMEM(x);
+				if (currentFocus >= x.length) currentFocus = 0;
+				if (currentFocus < 0) currentFocus = (x.length - 1);
+				if (x[currentFocus]) x[currentFocus].classList.add("autocomplete-active");
+			}
+
+			function removeActiveMEM(x) {
+				for (let i = 0; i < x.length; i++) {
+					x[i].classList.remove("autocomplete-active");
+				}
+			}
+
+			function closeAllListsMEM(elmnt) {
+				let x = document.getElementById("autocomplete-list");
+				if (elmnt != x && elmnt != inp) {
+					x.innerHTML = "";
+				}
+			}
+
+			document.addEventListener("click", function (e) {
+				closeAllListsMEM(e.target);
+			});
+		}
+
+		// Inicializar cuando el DOM esté listo
+		document.addEventListener('DOMContentLoaded', function () {
+			console.log('DOM cargado, esperando a que lineas_TyS.js termine antes de iniciar mapa MEM...');
+			// Esperar más tiempo para que lineas_TyS.js termine de cargar sus capas
+			setTimeout(() => {
+				inicializarMapaMEMCompleto();
+			}, 2000);
+		});
+
+		// Backup: inicializar después de un delay más largo para asegurar que todo esté cargado
+		setTimeout(inicializarMapaMEMCompleto, 5000);
+	</script>
+	}

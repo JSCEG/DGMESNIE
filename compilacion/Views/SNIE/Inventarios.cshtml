@@ -1,0 +1,218 @@
+@model dynamic
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Inventarios de Recursos Renovables";
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+}
+
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Inventarios de Recursos Renovables",
+        IconPath = "cel.png",
+        Description = "Sistema de consulta y visualización del inventario nacional de recursos renovables.",
+        Section = "🌿 Energías Limpias",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Inventarios Renovables",
+            description = "Plataforma de monitoreo de recursos renovables disponibles.",
+            functionality = "Permite visualizar y analizar el potencial renovable por región.",
+            stage = "Consulta de Inventarios",
+            roles = new[] {
+new { icon = "sun", text = "Solar: Irradiación y potencial" },
+new { icon = "wind", text = "Eólico: Velocidad y densidad" },
+new { icon = "water", text = "Hidráulico: Cuencas y caudales" }
+},
+            order = new { step = 1, description = "Visualización de recursos" }
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<!-- Cards Resumen con AOS -->
+<div class="container-fluid px-4 mb-5">
+    <div class="row g-4">
+        <!-- Card Solar -->
+        <div class="col-12 col-md-4" data-aos="fade-right">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-warning bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="bi bi-sun-fill text-warning fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Potencial Solar</h5>
+                            <small class="text-muted">Irradiación promedio</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">5.5 kWh/m²/día</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-warning" style="width: 75%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card Eólico -->
+        <div class="col-12 col-md-4" data-aos="fade-up">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-info bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="bi bi-wind text-info fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Potencial Eólico</h5>
+                            <small class="text-muted">Velocidad promedio</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">7.2 m/s</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-info" style="width: 65%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card Hidráulico -->
+        <div class="col-12 col-md-4" data-aos="fade-left">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="bg-primary bg-opacity-10 p-3 rounded-3 me-3">
+                            <i class="bi bi-water text-primary fs-3"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">Potencial Hidráulico</h5>
+                            <small class="text-muted">Capacidad estimada</small>
+                        </div>
+                    </div>
+                    <h3 class="mb-0">23.4 GW</h3>
+                    <div class="progress mt-3" style="height: 8px;">
+                        <div class="progress-bar bg-primary" style="width: 85%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gráfico de Recursos -->
+<div class="container-fluid px-4 mb-5" data-aos="fade-up">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-0">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-graph-up text-primary me-2"></i>
+                Distribución de Recursos Renovables por Región
+            </h5>
+        </div>
+        <div class="card-body">
+            <div id="graficoRecursos" style="height: 400px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla de Datos -->
+<div class="container-fluid px-4" data-aos="fade-up">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-0">
+            <h5 class="card-title mb-0">
+                <i class="bi bi-table text-primary me-2"></i>
+                Inventario Detallado
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table id="tablaInventario" class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Recurso</th>
+                            <th>Región</th>
+                            <th>Potencial</th>
+                            <th>Aprovechamiento</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function mostrarAyudaModulo() {
+            Swal.fire({
+                title: 'Inventarios de Recursos Renovables',
+                html: `<div class='text-start'>
+                                            <p>Consulta el ..</p>
+                                            <ul>
+                                                <li><i class='fas fa-lightbulb text-warning'></i> Medidas adoptadas por el gobierno y sector privado</li>
+                                                <li><i class='fas fa-bolt text-success'></i> Estimaciones de ahorro energético en GWh</li>
+                                                <li><i class='fas fa-chart-line'></i> Gráfico evolutivo del ahorro logrado</li>
+                                            </ul>
+                                        </div>`,
+                confirmButtonText: 'Cerrar',
+                width: 400
+            });
+        }
+    </script>
+
+    <script>
+        $(document).ready(function () {
+            // Inicializar DataTable
+            $('#tablaInventario').DataTable({
+                responsive: true,
+                dom: 'Bfrtip',
+                buttons: ['excel', 'pdf', 'csv'],
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json'
+                }
+            });
+
+            // Gráfico de recursos
+            Highcharts.chart('graficoRecursos', {
+                chart: {
+                    type: 'column'
+                },
+                title: { text: null },
+                xAxis: {
+                    categories: ['Norte', 'Centro', 'Sur', 'Peninsular']
+                },
+                yAxis: [{
+                    title: { text: 'Potencial (GW)' }
+                }],
+                series: [{
+                    name: 'Solar',
+                    data: [45.2, 38.7, 29.4, 42.1],
+                    color: '#ffc107'
+                }, {
+                    name: 'Eólico',
+                    data: [12.3, 8.5, 15.7, 18.9],
+                    color: '#17a2b8'
+                }, {
+                    name: 'Hidráulico',
+                    data: [5.6, 8.9, 15.2, 4.3],
+                    color: '#0d6efd'
+                }],
+                tooltip: {
+                    shared: true,
+                    valueSuffix: ' GW'
+                },
+                plotOptions: {
+                    column: {
+                        borderRadius: 5
+                    }
+                },
+                credits: { enabled: false }
+            });
+        });
+    </script>
+}

@@ -1,0 +1,385 @@
+@model NSIE.Controllers.TransparenciaAsunto
+@using Newtonsoft.Json
+@using NSIE.Models
+
+@{
+    ViewData["Title"] = "Nuevo Asunto - Transparencia";
+    var header = new HeaderViewModel
+    {
+        Title = "Nuevo Asunto",
+        IconPath = "mexico.png",
+        Description = "Carga la información de un expediente de transparencia, podcast explicativo, presentaciones e hitos de la línea del tiempo.",
+        Section = "🌐 Portal Público y Transparencia"
+    };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/transparencia.css" asp-append-version="true" />
+    <style>
+        .form-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+            border: 1px solid rgba(0,0,0,0.05);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .form-card h4 {
+            color: var(--color-gobmx-guinda);
+            font-weight: 700;
+            border-bottom: 2px solid #f1f5f9;
+            padding-bottom: 0.75rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .form-label {
+            font-weight: 600;
+            color: #334155;
+            font-size: 0.9rem;
+            margin-bottom: 0.4rem;
+        }
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            padding: 0.6rem 0.75rem;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--color-gobmx-guinda);
+            box-shadow: 0 0 0 3px rgba(138, 0, 49, 0.15);
+        }
+        .btn-institutional-primary {
+            background-color: var(--color-gobmx-guinda);
+            color: #fff;
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+        .btn-institutional-primary:hover {
+            background-color: #6b0024;
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        .btn-institutional-secondary {
+            background-color: #fff;
+            color: #333;
+            border: 1px solid #cbd5e1;
+            padding: 0.6rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+        .btn-institutional-secondary:hover {
+            background-color: #f8fafc;
+            color: #333;
+        }
+        .hito-item-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+            position: relative;
+            animation: fadeIn 0.3s ease;
+        }
+        .btn-delete-hito {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            color: #ef4444;
+            background: #fee2e2;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .btn-delete-hito:hover {
+            background: #ef4444;
+            color: #fff;
+        }
+        .btn-add-hito {
+            background-color: #1e5b4f;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .btn-add-hito:hover {
+            background-color: #153f37;
+            color: white;
+        }
+        @@keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- Modo oscuro --- */
+        [data-bs-theme="dark"] .form-card {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .btn-institutional-secondary {
+            background-color: var(--shell-surface-2, #241f2e);
+            color: var(--shell-ink, #ece7e2);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .btn-institutional-secondary:hover {
+            background-color: var(--shell-hover, rgba(212, 83, 126, 0.10));
+            color: var(--shell-ink, #ece7e2);
+        }
+
+        [data-bs-theme="dark"] .hito-item-card {
+            background: var(--shell-surface-2, #241f2e);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .btn-delete-hito {
+            background: rgba(239, 68, 68, 0.16);
+        }
+
+        [data-bs-theme="dark"] .btn-add-hito {
+            background-color: var(--shell-accent-3, #4ccfae);
+            color: #06251e;
+        }
+
+        [data-bs-theme="dark"] .btn-add-hito:hover {
+            background-color: #3db99a;
+            color: #06251e;
+        }
+    </style>
+}
+
+<div class="gestor-page__view-header">
+    @await Html.PartialAsync("_ViewHeader", header)
+</div>
+
+<div class="transparencia-container">
+    <!-- Breadcrumbs -->
+    <div class="gestor-breadcrumbs">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Transparencia")">Transparencia</a></li>
+                <li class="breadcrumb-item"><a href="@Url.Action("Administrar", "Transparencia")">Administración</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Nuevo Asunto</li>
+            </ol>
+        </nav>
+    </div>
+
+    <form asp-action="Crear" method="post" id="asuntoForm" onsubmit="return serializeHitos(event)">
+        @Html.AntiForgeryToken()
+        <div class="validation-summary-errors text-danger mb-3" asp-validation-summary="ModelOnly"></div>
+
+        <div class="row">
+            <!-- Columna Izquierda: Información del Asunto -->
+            <div class="col-lg-7">
+                <div class="form-card">
+                    <h4><i class="bi bi-file-earmark-text-fill"></i> Datos Generales</h4>
+                    
+                    <div class="mb-3">
+                        <label asp-for="Titulo" class="form-label">Título del Asunto *</label>
+                        <input asp-for="Titulo" class="form-control" placeholder="Ej. 1. Mesa Unión Europea - PODECOBI" required />
+                        <span asp-validation-for="Titulo" class="text-danger"></span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="FolioSolicitud" class="form-label">Folio de Solicitud *</label>
+                            <input asp-for="FolioSolicitud" class="form-control" placeholder="Ej. 340026100011826" required />
+                            <span asp-validation-for="FolioSolicitud" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="NumeroExpediente" class="form-label">Número de Expediente *</label>
+                            <input asp-for="NumeroExpediente" class="form-control" placeholder="Ej. SENER2603241" required />
+                            <span asp-validation-for="NumeroExpediente" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Fecha" class="form-label">Fecha de Publicación *</label>
+                            <input asp-for="Fecha" type="date" class="form-control" required />
+                            <span asp-validation-for="Fecha" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Estatus" class="form-label">Estatus *</label>
+                            <select asp-for="Estatus" class="form-select" required>
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="En proceso">En proceso</option>
+                                <option value="En revisión">En revisión</option>
+                                <option value="Concluido">Concluido</option>
+                            </select>
+                            <span asp-validation-for="Estatus" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Descripcion" class="form-label">Resumen o Descripción Técnica *</label>
+                        <textarea asp-for="Descripcion" class="form-control" rows="5" placeholder="Escribe el resumen ejecutivo..." required></textarea>
+                        <span asp-validation-for="Descripcion" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="SharePointUrl" class="form-label">Lazo de SharePoint (Link del Expediente)</label>
+                        <input asp-for="SharePointUrl" type="url" class="form-control" placeholder="https://sener.sharepoint.com/..." />
+                        <span asp-validation-for="SharePointUrl" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="form-card">
+                    <h4><i class="bi bi-link-45deg"></i> Recursos Multimedia</h4>
+                    
+                    <div class="mb-3">
+                        <label asp-for="AudioEmbedUrl" class="form-label">Lazo del Resumen de Audio</label>
+                        <input asp-for="AudioEmbedUrl" type="url" class="form-control" placeholder="https://cdn.sassoapps.com/audios/..." />
+                        <span asp-validation-for="AudioEmbedUrl" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="InfografiaEmbedUrl" class="form-label">Lazo Embebido de la Infografía (Google Slides, Canva, o URL de Imagen)</label>
+                        <input asp-for="InfografiaEmbedUrl" type="text" class="form-control" placeholder="https://docs.google.com/presentation/d/e/.../embed o pegue el código iframe/div" />
+                        <small class="text-muted d-block mt-1">Puedes pegar la URL del visor, un enlace de imagen directa (.png, .jpg, .webp), o el código HTML embebido completo de Canva/Google Slides.</small>
+                        <span asp-validation-for="InfografiaEmbedUrl" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="PresentacionEmbedUrl" class="form-label">Lazo Embebido de la Presentación (Google Slides, Canva, o URL de Imagen)</label>
+                        <input asp-for="PresentacionEmbedUrl" type="text" class="form-control" placeholder="https://docs.google.com/presentation/d/e/.../embed o pegue el código iframe/div" />
+                        <span asp-validation-for="PresentacionEmbedUrl" class="text-danger"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna Derecha: Hitos (Línea del Tiempo) -->
+            <div class="col-lg-5">
+                <div class="form-card">
+                    <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                        <h4 class="mb-0 border-0 pb-0"><i class="bi bi-clock-history"></i> Hitos de Línea del Tiempo</h4>
+                        <button type="button" class="btn-add-hito" onclick="addHito()">
+                            <i class="bi bi-plus-circle"></i> Agregar
+                        </button>
+                    </div>
+
+                    <div id="hitosContainer">
+                        <!-- Hitos dinámicos inyectados aquí -->
+                    </div>
+
+                    <input type="hidden" name="timelineJson" id="timelineJson" />
+                </div>
+            </div>
+        </div>
+
+        <!-- Botones de Acción -->
+        <div class="form-card d-flex gap-3 justify-content-end">
+            <a href="@Url.Action("Administrar", "Transparencia")" class="btn-institutional-secondary">
+                <i class="bi bi-x-circle"></i> Cancelar
+            </a>
+            <button type="submit" class="btn-institutional-primary">
+                <i class="bi bi-save"></i> Guardar Asunto
+            </button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        // Array para controlar los hitos localmente en memoria
+        let hitosList = [];
+
+        function addHito(fecha = "", titulo = "", descripcion = "") {
+            const hitoId = Date.now() + Math.random().toString(36).substr(2, 9);
+            
+            const card = document.createElement("div");
+            card.className = "hito-item-card";
+            card.id = `hito-${hitoId}`;
+            card.innerHTML = `
+                <button type="button" class="btn-delete-hito" onclick="removeHito('${hitoId}')" title="Eliminar Hito">
+                    <i class="bi bi-trash-fill"></i>
+                </button>
+                <div class="mb-2">
+                    <label class="form-label small">Fecha del Hito *</label>
+                    <input type="date" class="form-control form-control-sm hito-fecha" value="${fecha}" required />
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">Título del Hito *</label>
+                    <input type="text" class="form-control form-control-sm hito-titulo" value="${titulo}" placeholder="Ej. Solicitud de Información" required />
+                </div>
+                <div>
+                    <label class="form-label small">Descripción *</label>
+                    <textarea class="form-control form-control-sm hito-descripcion" rows="2" placeholder="Ej. Ingreso de la solicitud..." required>${descripcion}</textarea>
+                </div>
+            `;
+            
+            document.getElementById("hitosContainer").appendChild(card);
+        }
+
+        function removeHito(hitoId) {
+            const el = document.getElementById(`hito-${hitoId}`);
+            if (el) {
+                el.remove();
+            }
+        }
+
+        // Antes de enviar el form, serializar todos los hitos del DOM a un input oculto como JSON
+        function serializeHitos(event) {
+            const hitos = [];
+            const cards = document.querySelectorAll(".hito-item-card");
+            
+            let isValid = true;
+            cards.forEach(card => {
+                const fecha = card.querySelector(".hito-fecha").value;
+                const titulo = card.querySelector(".hito-titulo").value.trim();
+                const descripcion = card.querySelector(".hito-descripcion").value.trim();
+                
+                if (!fecha || !titulo || !descripcion) {
+                    isValid = false;
+                }
+                
+                hitos.push({
+                    Fecha: fecha,
+                    Titulo: titulo,
+                    Descripcion: descripcion
+                });
+            });
+
+            if (!isValid) {
+                alert("Por favor completa todos los campos requeridos en la línea del tiempo (Hitos).");
+                return false;
+            }
+
+            document.getElementById("timelineJson").value = JSON.stringify(hitos);
+            return true;
+        }
+
+        // Agregar un hito vacío inicial
+        document.addEventListener("DOMContentLoaded", () => {
+            addHito();
+        });
+    </script>
+}

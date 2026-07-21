@@ -1,0 +1,377 @@
+@{
+    ViewData["Title"] = "Infraestructura | Complejos Procesadores de Gas";
+}
+
+
+<div class="text-center pb-3">
+    <h1 class="display-4 subtitulo fw-bold ">@ViewData["Title"]</h1>
+
+</div>
+
+<div class="container pb-3">
+    <div class="row d-flex justify-content-center">
+        <div class="col">
+            <button class="btn btn-cre-rojo" data-bs-toggle="offcanvas" data-bs-target="#ejemploOffcanvas">
+                <i class="bi bi-info-circle-fill"></i> - Ver Información Acerca de este Mapa
+            </button>
+        </div>
+        <div class="col">
+            <select id="estado" class="form-select">
+                <option value="ags">Aguascalientes</option>
+                <option value="bc">Baja California</option>
+                <option value="bcs">Baja California Sur</option>
+                <option value="camp">Campeche</option>
+                <option value="coah">Coahuila</option>
+                <option value="col">Colima</option>
+                <option value="chis">Chiapas</option>
+                <option value="chih">Chihuahua</option>
+                <option value="cdmx">Ciudad de México</option>
+                <option value="dgo">Durango</option>
+                <option value="gto">Guanajuato</option>
+                <option value="gro">Guerrero</option>
+                <option value="hgo">Hidalgo</option>
+                <option value="jal">Jalisco</option>
+                <option value="mex">México</option>
+                <option value="mich">Michoacán</option>
+                <option value="mor">Morelos</option>
+                <option value="nay">Nayarit</option>
+                <option value="nl">Nuevo León</option>
+                <option value="oax">Oaxaca</option>
+                <option value="pue">Puebla</option>
+                <option value="qro">Querétaro</option>
+                <option value="qroo">Quintana Roo</option>
+                <option value="slp">San Luis Potosí</option>
+                <option value="sin">Sinaloa</option>
+                <option value="son">Sonora</option>
+                <option value="tab">Tabasco</option>
+                <option value="tamps">Tamaulipas</option>
+                <option value="tlax">Tlaxcala</option>
+                <option value="ver">Veracruz</option>
+                <option value="yuc">Yucatán</option>
+                <option value="zac">Zacatecas</option>
+            </select>
+        </div>
+        <partial name="_Infomapas_FEP" />
+    </div>
+</div>
+
+<div id="map" style="height: 500px;"></div>
+
+<br />
+
+<script src="~/Mapas_N/js/qgis2web_expressions.js"></script>
+<script src="~/Mapas_N/js/leaflet.js"></script>
+<script src="~/Mapas_N/js/leaflet-svg-shape-markers.min.js"></script>
+<script src="~/Mapas_N/js/leaflet.rotatedMarker.js"></script>
+<script src="~/Mapas_N/js/leaflet.pattern.js"></script>
+<script src="~/Mapas_N/js/leaflet-hash.js"></script>
+<script src="~/Mapas_N/js/Autolinker.min.js"></script>
+<script src="~/Mapas_N/js/rbush.min.js"></script>
+<script src="~/Mapas_N/js/labelgun.min.js"></script>
+<script src="~/Mapas_N/js/labels.js"></script>
+<script src="~/Mapas_N/js/leaflet-control-geocoder.Geocoder.js"></script>
+<script src="~/Mapas_N/js/leaflet-measure.js"></script>
+<script src="~/Mapas_N/js/leaflet-search.js"></script>
+
+<script src="~/Mapas_N/data/ComplejosProcesadoresdeGas_0.js"></script>
+@*
+<script src="~/Mapas_N/data/Refinerias_1.js"></script>
+<script src="~/Mapas_N/data/Nucleoelectrica_2.js"></script>
+<script src="~/Mapas_N/data/Geotermica_3.js"></script>
+<script src="~/Mapas_N/data/TurbinadeVaporBiomasa_4.js"></script>
+
+*@
+<script>
+
+    ///Inicializa el mapa
+
+    var map = L.map('map', {
+        zoomControl: true, maxZoom: 28, minZoom: 5, zoom:3,
+    }).fitBounds([[15.995373333333363, -116.8688505197187], [32.849693333333335, -87.69476014694729]]);
+    var hash = new L.Hash(map);
+    map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+    var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+    var bounds_group = new L.featureGroup([]);
+    function setBounds() {
+    }
+
+    // Agrega una capa de OpenStreetMap al mapa
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "Map data &copy; <a href='https://www.openstreetmap.org/'>OpenStreetMap</a> contributors",
+        maxZoom: 18,
+    }).addTo(map);
+
+
+    //////////CAPAS DEL MAPA
+
+    // Agrega las capas de mosaicos como opciones de vista
+    var baseLayers = {
+        "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }),
+        "Stamen Toner": L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner/{z}/{x}/{y}{r}.png', {
+            attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, ' +
+                '<a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; ' +
+                'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
+            subdomains: 'abcd',
+            minZoom: 0,
+            maxZoom: 20
+        }),
+        "CartoDB Positron": L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: 'Map tiles by <a href="https://carto.com/attribution">Carto</a>, ' +
+                'under <a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a>. ' +
+                'Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, ' +
+                'under <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC BY SA</a>',
+            subdomains: 'abcd',
+            maxZoom: 19
+        }),
+        // Capa de mosaicos Thunderforest_MobileAtlas
+        //"Stadia_Outdoors": L.tileLayer('https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png', {
+        //    maxZoom: 20,
+        //    attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'
+        //}),
+        "Stadia_AlidadeSmoothDark": L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+            maxZoom: 20,
+            attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'
+        })
+
+
+    };
+
+    // Activa una capa de mosaicos como vista inicial
+    //baseLayers["OpenStreetMap"].addTo(map);
+
+    // Control de capas para seleccionar la vista del mapa
+    L.control.layers(baseLayers).addTo(map);
+
+
+    /////////////DISTANCIAS/////////////////////
+
+    // Inicializar la herramienta de medición
+    var measureControl = new L.Control.Measure({
+        position: 'topright',
+        primaryLengthUnit: 'meters', // Unidad de longitud primaria (metros en este ejemplo)
+        secondaryLengthUnit: 'kilometers', // Unidad de longitud secundaria (kilómetros en este ejemplo)
+        primaryAreaUnit: 'hectares', // Unidad de área primaria (hectáreas en este ejemplo)
+        activeColor: '#e73e3e', // Color activo de la medición
+        completedColor: '#e73e3e' // Color completado de la medición
+    });
+
+    // Agregar la herramienta de medición al mapa
+    measureControl.addTo(map);
+
+
+    //Capas del JS
+    function pop_ComplejosProcesadoresdeGas_0(feature, layer) {
+        var popupContent = '<table>\
+                        <tr>\
+                            <td colspan="2"><strong>complejo</strong><br />' + (feature.properties['complejo'] !== null ? autolinker.link(feature.properties['complejo'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">nmero_de_p</th>\
+                            <td>' + (feature.properties['nmero_de_p'] !== null ? autolinker.link(feature.properties['nmero_de_p'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">capacidad_</th>\
+                            <td>' + (feature.properties['capacidad_'] !== null ? autolinker.link(feature.properties['capacidad_'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">nmero_de_1</th>\
+                            <td>' + (feature.properties['nmero_de_1'] !== null ? autolinker.link(feature.properties['nmero_de_1'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">capacida_1</th>\
+                            <td>' + (feature.properties['capacida_1'] !== null ? autolinker.link(feature.properties['capacida_1'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">nmero_de_2</th>\
+                            <td>' + (feature.properties['nmero_de_2'] !== null ? autolinker.link(feature.properties['nmero_de_2'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">capacida_2</th>\
+                            <td>' + (feature.properties['capacida_2'] !== null ? autolinker.link(feature.properties['capacida_2'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">nmero_de_3</th>\
+                            <td>' + (feature.properties['nmero_de_3'] !== null ? autolinker.link(feature.properties['nmero_de_3'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">capacida_3</th>\
+                            <td>' + (feature.properties['capacida_3'] !== null ? autolinker.link(feature.properties['capacida_3'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">nm_de_perm</th>\
+                            <td>' + (feature.properties['nm_de_perm'] !== null ? autolinker.link(feature.properties['nm_de_perm'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">ao_de_inic</th>\
+                            <td>' + (feature.properties['ao_de_inic'] !== null ? autolinker.link(feature.properties['ao_de_inic'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">licenciado</th>\
+                            <td>' + (feature.properties['licenciado'] !== null ? autolinker.link(feature.properties['licenciado'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">notas</th>\
+                            <td>' + (feature.properties['notas'] !== null ? autolinker.link(feature.properties['notas'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                    </table>';
+        layer.bindPopup(popupContent, { maxHeight: 400 });
+    }
+
+    function style_ComplejosProcesadoresdeGas_0_0() {
+        return {
+            pane: 'pane_ComplejosProcesadoresdeGas_0',
+            shape: 'square',
+            radius: 9.8,
+            opacity: 1,
+            color: 'rgba(35,35,35,1.0)',
+            dashArray: '',
+            lineCap: 'butt',
+            lineJoin: 'miter',
+            weight: 1,
+            fill: true,
+            fillOpacity: 1,
+            fillColor: 'rgba(243,166,178,1.0)',
+            interactive: true,
+        }
+    }
+    map.createPane('pane_ComplejosProcesadoresdeGas_0');
+    map.getPane('pane_ComplejosProcesadoresdeGas_0').style.zIndex = 400;
+    map.getPane('pane_ComplejosProcesadoresdeGas_0').style['mix-blend-mode'] = 'normal';
+    var layer_ComplejosProcesadoresdeGas_0 = new L.geoJson(json_ComplejosProcesadoresdeGas_0, {
+        attribution: '',
+        interactive: true,
+        dataVar: 'json_ComplejosProcesadoresdeGas_0',
+        layerName: 'layer_ComplejosProcesadoresdeGas_0',
+        pane: 'pane_ComplejosProcesadoresdeGas_0',
+        onEachFeature: pop_ComplejosProcesadoresdeGas_0,
+        pointToLayer: function (feature, latlng) {
+            var context = {
+                feature: feature,
+                variables: {}
+            };
+            return L.shapeMarker(latlng, style_ComplejosProcesadoresdeGas_0_0(feature));
+        },
+    });
+    bounds_group.addLayer(layer_ComplejosProcesadoresdeGas_0);
+    map.addLayer(layer_ComplejosProcesadoresdeGas_0);
+
+</script>
+
+
+
+
+<script>
+    // Detecta el cambio de selección en el menú de estados
+    document.getElementById("estado").addEventListener("change", function () {
+        // Obtiene el valor seleccionado del menú de estados
+        var estado = document.getElementById("estado").value;
+
+               // Muestra el estado seleccionado en el mapa
+        switch (estado) {
+            case "ags":
+                map.setView([22.025278, -102.372778], 9);
+                break;
+            case "bc":
+                map.setView([30.391389, -115.291389], 7);
+                break;
+            case "bcs":
+                map.setView([26.044444, -112.399722], 7);
+                break;
+            case "camp":
+                map.setView([18.938333, -90.764722], 7);
+                break;
+            case "coah":
+                map.setView([27.158056, -101.719444], 7);
+                break;
+            case "col":
+                map.setView([19.101944, -103.014722], 9);
+                break;
+            case "chis":
+                map.setView([16.753056, -92.6375], 7);
+                break;
+            case "chih":
+                map.setView([28.673611, -106.102222], 7);
+                break;
+            case "cdmx":
+                map.setView([19.432778, -99.133333], 10);
+                break;
+            case "dgo":
+                map.setView([24.865278, -104.902222], 7);
+                break;
+            case "gto":
+                map.setView([20.875, -101.478611], 8);
+                break;
+            case "gro":
+                map.setView([17.814722, -100.353056], 8);
+                break;
+            case "hgo":
+                map.setView([20.5325, -98.870556], 8);
+                break;
+            case "jal":
+                map.setView([20.673611, -103.343333], 8);
+                break;
+            case "mex":
+                map.setView([19.483611, -99.689722], 8);
+                break;
+            case "mich":
+                map.setView([19.699722, -101.191389], 8);
+                break;
+            case "mor":
+                map.setView([18.858611, -99.223611], 9);
+                break;
+            case "nay":
+                map.setView([21.799444, -105.220833], 8);
+                break;
+            case "nl":
+                map.setView([25.649167, -100.443611], 9);
+                break;
+            case "oax":
+                map.setView([16.895833, -96.806667], 8);
+                break;
+            case "pue":
+                map.setView([19.051389, -98.193889], 8);
+                break;
+            case "qro":
+                map.setView([20.854722, -99.847222], 9);
+                break;
+            case "qroo":
+                map.setView([19.642778, -87.072222], 8);
+                break;
+            case "slp":
+                map.setView([22.156944, -100.985556], 8);
+                break;
+            case "sin":
+                map.setView([24.288611, -107.366944], 8);
+                break;
+            case "son":
+                map.setView([29.089444, -110.961667], 7);
+                break;
+            case "tab":
+                map.setView([17.980000, -92.930000], 8);
+                break;
+            case "tamps":
+
+                map.setView([24.014167, -98.844444], 7);
+                break;
+            case "tlax":
+                map.setView([19.312222, -98.239722], 10);
+                break;
+            case "ver":
+                map.setView([19.546389, -96.914167], 8);
+                break;
+            case "yuc":
+                map.setView([20.891944, -89.528611], 8);
+                break;
+            case "zac":
+                map.setView([22.770833, -102.583611], 8);
+                break;
+            default:
+                map.setView([23.634501, -102.552784], 5);
+                break;
+        }
+    });
+
+</script>
+

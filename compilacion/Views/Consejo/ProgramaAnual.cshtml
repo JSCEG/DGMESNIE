@@ -1,0 +1,793 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Programa Anual del Consejo";
+}
+<!-- Encabezado profesional -->
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Programa Anual del Consejo",
+        IconPath = "programa_anual.png",
+        Description = "Plan normativo con metas, recursos y actividades del SNIEr por ejercicio anual.",
+        Section = "📊 Planeación Normativa",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Programa Anual del Consejo",
+            description = "Contiene objetivos, metas y acciones para el periodo 2024.",
+            functionality = "Permite visualizar el estado de avance, cronograma, y sesiones.",
+            stage = "Planeación",
+            roles = new[] {
+new { icon = "users", text = "Consejo: Aprueba" },
+new { icon = "clipboard-check", text = "Secretaría Técnica: Da seguimiento" }
+},
+            order = new { step = 1, description = "Inicio del ciclo institucional SNIEr" }
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+<style>
+    .stat-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s;
+        margin-bottom: 1rem;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #333;
+    }
+
+    .stat-label {
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .progress-sm {
+        height: 6px;
+        margin-top: 8px;
+    }
+
+    .meta-card {
+        border-left: 4px solid;
+        margin-bottom: 15px;
+        padding: 15px;
+        background: white;
+        border-radius: 0 8px 8px 0;
+        transition: transform 0.2s;
+    }
+
+    .meta-card:hover {
+        transform: translateX(5px);
+    }
+
+    .meta-card.cumplida {
+        border-left-color: #198754;
+    }
+
+    .meta-card.proceso {
+        border-left-color: #ffc107;
+    }
+
+    .meta-card.pendiente {
+        border-left-color: #dc3545;
+    }
+
+    .fundamento-legal {
+        background: #f8f9fa;
+        border-left: 4px solid #0d6efd;
+        padding: 15px;
+        margin-bottom: 20px;
+        font-size: 0.9rem;
+    }
+
+    .btn-primary:hover .fas {
+        transform: scale(1.1);
+        transition: transform 0.2s;
+    }
+
+    .table td {
+        vertical-align: middle;
+    }
+
+    .badge {
+        font-size: 0.9em;
+        padding: 0.5em 0.8em;
+        cursor: help;
+    }
+
+    .alert-success {
+        border-left: 5px solid #198754;
+    }
+
+    .alert hr {
+        margin: 1rem 0;
+        opacity: 0.2;
+    }
+
+    .text-justify {
+        text-align: justify;
+        text-justify: inter-word;
+    }
+
+    .alert p {
+        line-height: 1.6;
+    }
+
+    .alert-success {
+        background-color: rgba(25, 135, 84, 0.05);
+        border-color: rgba(25, 135, 84, 0.1);
+    }
+
+    .alert-success .alert-heading {
+        color: #198754;
+    }
+
+    /* Estilos para el modal de ayuda responsivo */
+    .swal-responsive {
+        margin: 1rem !important;
+        max-height: 90vh !important;
+        max-width: 400px !important;
+    }
+
+    .swal-scrollable {
+        max-height: calc(90vh - 200px) !important;
+        overflow-y: auto !important;
+        padding-right: 10px !important;
+    }
+
+    /* Personalización del scrollbar */
+    .swal-scrollable::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .swal-scrollable::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 3px;
+    }
+
+    .swal-scrollable::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 3px;
+    }
+
+    .swal-scrollable::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+
+    /* Ajustes responsivos */
+    @@media screen and (max-width: 576px) {
+        (max-width: 576px) {
+            .swal-responsive {
+                margin: 0.5rem !important;
+                padding: 1rem !important;
+            }
+
+            .swal-scrollable {
+                max-height: calc(100vh - 180px) !important;
+            }
+        }
+</style>
+
+
+
+
+<!-- Contenedor principal estandarizado -->
+<div class="container-fluid ps-5 pe-5">
+    <!-- Fundamento Legal -->
+    <div class="alert alert-success mb-4" role="alert">
+        <div class="row align-items-center">
+            @* <div class="col-md-2 text-center">
+                <img src="@Cdn.Url/img_snier/vistas/iconos/legal_foundations.png" alt="Fundamento Legal" class="img-fluid"
+                    style="max-height: 100px;">
+            </div> *@
+            <div class="col-md-10">
+                <h5 class="alert-heading mb-2">
+                    <i class="fas fa-book-reader"></i> Fundamento Legal del Programa Anual
+                </h5>
+                <p class="mb-1 text-justify">
+                    <span class="badge bg-primary" data-bs-toggle="tooltip"
+                        title="El Consejo establecerá un Programa Anual que incluirá objetivos, metas, actividades y recursos">
+                        Art. 76 RLPT
+                    </span>
+                    <span class="badge bg-info ms-2" data-bs-toggle="tooltip"
+                        title="El Programa contendrá acciones calendarizadas y temas prioritarios">
+                        Art. 10 Lineamientos
+                    </span>
+                    <span class="badge bg-success ms-2" data-bs-toggle="tooltip"
+                        title="El avance será presentado en el Informe Anual del Consejo">
+                        Art. 47 Lineamientos
+                    </span>
+                </p>
+                <hr>
+                <p class="mb-0 small text-justify">
+                    <i class="fas fa-info-circle"></i>
+                    El Programa Anual es el instrumento que guía las actividades del Consejo. Es el punto de partida
+                    normativo
+                    que establece metas, recursos y actividades anuales, siendo el eje fundamental para una
+                    planificación efectiva
+                    y coordinada del SNIEr.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estado del Programa -->
+    <div class="alert alert-info mb-4" role="alert">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h5 class="alert-heading mb-2">
+                    <i class="fas fa-sync-alt"></i> Estado del Programa
+                </h5>
+                <p class="mb-0">
+                    <span class="badge bg-success">
+                        <i class="fas fa-check-circle"></i> Aprobado en Primera Sesión Ordinaria 2024
+                    </span>
+                    <small class="ms-2 text-muted">
+                        Acuerdo SNIER-2024-001 del 15/03/2024
+                    </small>
+                </p>
+            </div>
+            <div class="col-md-4 text-end">
+                @if (ViewData["RolUsuario"].ToString() == "1") // Secretaría Técnica
+                {
+                    <button class="btn btn-primary" onclick="proponerModificacion()">
+                        <i class="fas fa-edit"></i> Proponer Modificación
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Selector de año -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <label for="selectAnio" class="form-label">
+                <i class="fas fa-calendar-alt"></i> Ejercicio
+            </label>
+            <select id="selectAnio" class="form-select">
+                <option value="2024">Programa Anual 2024</option>
+                <option value="2023">Programa Anual 2023</option>
+            </select>
+        </div>
+        <div class="col-md-8 text-end">
+            <a href="#" class="btn btn-primary" id="btnDescargarPrograma">
+                <i class="fas fa-file-pdf"></i> Descargar Programa
+            </a>
+        </div>
+    </div>
+    <!-- KPIs sin cards, usando clases directas -->
+    <div class="row g-4 mb-5">
+        <div class="col-md-3">
+            <div class="d-flex justify-content-between align-items-center bg-white p-4 rounded shadow-sm">
+                <div>
+                    <div class="h2 mb-0">12</div>
+                    <div class="text-muted">Metas Totales</div>
+                </div>
+                <i class="fas fa-bullseye fa-2x text-primary"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="d-flex justify-content-between align-items-center bg-white p-4 rounded shadow-sm">
+                <div>
+                    <div class="h2 mb-0">4</div>
+                    <div class="text-muted">Metas Cumplidas</div>
+                </div>
+                <i class="fas fa-check-circle fa-2x text-success"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="d-flex justify-content-between align-items-center bg-white p-4 rounded shadow-sm">
+                <div>
+                    <div class="h2 mb-0">35%</div>
+                    <div class="text-muted">Avance General</div>
+                </div>
+                <i class="fas fa-chart-line fa-2x text-info"></i>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="d-flex justify-content-between align-items-center bg-white p-4 rounded shadow-sm">
+                <div>
+                    <div class="h2 mb-0">4</div>
+                    <div class="text-muted">Sesiones Programadas</div>
+                </div>
+                <i class="fas fa-calendar-check fa-2x text-warning"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos directos sin cards -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h5 class="mb-3">
+                <i class="fas fa-chart-line"></i> Avance del Programa
+            </h5>
+            <div id="graficoAvance" class="bg-white p-3 rounded" style="height: 300px"></div>
+        </div>
+        <div class="col-md-4">
+            <h5 class="mb-3">
+                <i class="fas fa-chart-pie"></i> Distribución
+            </h5>
+            <div id="graficoPie" class="bg-white p-3 rounded" style="height: 300px"></div>
+        </div>
+    </div>
+
+    <!-- Gantt directo -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h5 class="mb-3">
+                <i class="fas fa-tasks"></i> Cronograma
+            </h5>
+            <div id="graficoGantt" class="bg-white p-3 rounded" style="height: 400px"></div>
+        </div>
+    </div>
+
+    <!-- Tablas con estilo simple -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h5 class="mb-3">📅 Calendario de Sesiones</h5>
+            <div class="table-responsive bg-white rounded p-3">
+                <table class="table mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Tipo de Sesión</th>
+                            <th>Fecha</th>
+                            <th>Estatus</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                            <td>Primera Sesión Ordinaria</td>
+                            <td>15 de marzo de 2024</td>
+                            <td><span class="badge bg-success">Realizada</span></td>
+                            <td>
+                                <a href="https://www.gob.mx/cms/uploads/attachment/file/691350/Acta_Primera_Sesion_Ordinaria_2024.pdf"
+                                    class="btn btn-sm btn-primary" target="_blank" data-bs-toggle="tooltip"
+                                    title="Ver Acta de la Primera Sesión">
+                                    <i class="fas fa-file-pdf"></i> Ver Acta
+                                </a>
+                                <a href="https://www.gob.mx/cms/uploads/attachment/file/691351/Anexos_Primera_Sesion_2024.pdf"
+                                    class="btn btn-sm btn-outline-secondary ms-2" target="_blank"
+                                    data-bs-toggle="tooltip" title="Ver Anexos de la Sesión">
+                                    <i class="fas fa-paperclip"></i> Anexos
+                                </a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>Segunda Sesión Ordinaria</td>
+                            <td>14 de junio de 2024</td>
+                            <td><span class="badge bg-warning text-dark">Pendiente</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-secondary" disabled data-bs-toggle="tooltip"
+                                    title="El acta estará disponible después de la sesión">
+                                    <i class="fas fa-clock"></i> Pendiente
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>Tercera Sesión Ordinaria</td>
+                            <td>13 de septiembre de 2024</td>
+                            <td><span class="badge bg-warning text-dark">Pendiente</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-secondary" disabled data-bs-toggle="tooltip"
+                                    title="El acta estará disponible después de la sesión">
+                                    <i class="fas fa-clock"></i> Pendiente
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>Cuarta Sesión Ordinaria</td>
+                            <td>13 de diciembre de 2024</td>
+                            <td><span class="badge bg-secondary">Programada</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-secondary" disabled data-bs-toggle="tooltip"
+                                    title="El acta estará disponible después de la sesión">
+                                    <i class="fas fa-clock"></i> Pendiente
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="text-muted small mt-2">
+                    <i class="fas fa-info-circle"></i>
+                    Los documentos se publican en formato PDF después de su aprobación en la siguiente sesión ordinaria.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <h5 class="mb-3">🎯 Seguimiento de Metas</h5>
+            <div class="table-responsive bg-white rounded p-3">
+                <table class="table mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Meta</th>
+                            <th>Responsable</th>
+                            <th>Fecha Límite</th>
+                            <th>Estatus</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                            <td>Publicar Programa Anual</td>
+                            <td>Secretaría Técnica</td>
+                            <td>28 de febrero de 2024</td>
+                            <td><span class="badge bg-success">Cumplida</span></td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>Realizar la Primera Sesión Ordinaria</td>
+                            <td>Presidencia</td>
+                            <td>15 de marzo de 2024</td>
+                            <td><span class="badge bg-success">Cumplida</span></td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>Evaluar Avance del Programa</td>
+                            <td>Comités Técnicos</td>
+                            <td>30 de junio de 2024</td>
+                            <td><span class="badge bg-warning text-dark">En Proceso</span></td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>Preparar Informe Anual</td>
+                            <td>Secretaría Técnica</td>
+                            <td>30 de noviembre de 2024</td>
+                            <td><span class="badge bg-secondary">Pendiente</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/gantt/highcharts-gantt.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Configuración común para todos los gráficos
+            Highcharts.setOptions({
+                lang: {
+                    months: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+                    weekdays: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+                }
+            });
+
+            try {
+                // Gráfico de líneas
+                const chartContainer = document.getElementById('graficoAvance');
+                if (chartContainer) {
+                    Highcharts.chart('graficoAvance', {
+                        chart: {
+                            type: 'line',
+                            style: { fontFamily: 'inherit' }
+                        },
+                        title: { text: null },
+                        xAxis: {
+                            categories: ['T1', 'T2', 'T3', 'T4'],
+                            crosshair: true
+                        },
+                        yAxis: {
+                            title: { text: 'Avance %' },
+                            max: 100,
+                            min: 0
+                        },
+                        tooltip: {
+                            shared: true,
+                            crosshairs: true,
+                            valueSuffix: '%'
+                        },
+                        legend: {
+                            align: 'center',
+                            verticalAlign: 'bottom'
+                        },
+                        series: [{
+                            name: 'Planificado',
+                            data: [25, 50, 75, 100],
+                            dashStyle: 'dash',
+                            color: '#0d6efd'
+                        }, {
+                            name: 'Real',
+                            data: [35, null, null, null],
+                            color: '#198754'
+                        }],
+                        credits: { enabled: false }
+                    });
+                }
+
+                // Gráfico de pie
+                const pieContainer = document.getElementById('graficoPie');
+                if (pieContainer) {
+                    Highcharts.chart('graficoPie', {
+                        chart: {
+                            type: 'pie',
+                            style: { fontFamily: 'inherit' }
+                        },
+                        title: { text: null },
+                        plotOptions: {
+                            pie: {
+                                allowPointSelect: true,
+                                cursor: 'pointer',
+                                dataLabels: {
+                                    enabled: true,
+                                    format: '<b>{point.name}</b>: {point.percentage:.1f}%'
+                                }
+                            }
+                        },
+                        series: [{
+                            name: 'Metas',
+                            colorByPoint: true,
+                            data: [{
+                                name: 'Cumplidas',
+                                y: 4,
+                                color: '#198754'
+                            }, {
+                                name: 'En Proceso',
+                                y: 5,
+                                color: '#ffc107'
+                            }, {
+                                name: 'Pendientes',
+                                y: 3,
+                                color: '#dc3545'
+                            }]
+                        }],
+                        credits: { enabled: false }
+                    });
+                }
+
+                // Gráfico Gantt
+                const ganttContainer = document.getElementById('graficoGantt');
+                if (ganttContainer) {
+                    Highcharts.chart('graficoGantt', {
+                        chart: {
+                            type: 'gantt'
+                        },
+                        title: { text: null },
+                        xAxis: {
+                            type: 'datetime',
+                            min: Date.UTC(2024, 0, 1),
+                            max: Date.UTC(2024, 11, 31),
+                            labels: { enabled: false }
+                        },
+                        yAxis: {
+                            categories: ['Planeación', 'Primer Trimestre', 'Segundo Trimestre', 'Tercer Trimestre', 'Cuarto Trimestre'],
+                            reversed: true,
+                            title: { text: null }
+                        },
+
+                        series: [{
+                            name: 'Programa Anual 2024',
+                            data: [{
+                                start: Date.UTC(2024, 0, 1),
+                                end: Date.UTC(2024, 1, 28),
+                                y: 0,
+                                color: '#20c997',
+                                completed: {
+                                    amount: 1
+                                },
+                                name: 'Planeación y Publicación'
+                            }, {
+                                start: Date.UTC(2024, 2, 1),
+                                end: Date.UTC(2024, 2, 31),
+                                y: 1,
+                                color: '#0d6efd',
+                                completed: {
+                                    amount: 0.8
+                                },
+                                name: 'Primer Trimestre'
+                            }, {
+                                start: Date.UTC(2024, 3, 1),
+                                end: Date.UTC(2024, 5, 30),
+                                y: 2,
+                                color: '#ffc107',
+                                completed: {
+                                    amount: 0.2
+                                },
+                                name: 'Segundo Trimestre'
+                            }, {
+                                start: Date.UTC(2024, 6, 1),
+                                end: Date.UTC(2024, 8, 30),
+                                y: 3,
+                                color: '#dc3545',
+                                name: 'Tercer Trimestre'
+                            }, {
+                                start: Date.UTC(2024, 9, 1),
+                                end: Date.UTC(2024, 11, 31),
+                                y: 4,
+                                color: '#6c757d',
+                                name: 'Cuarto Trimestre'
+                            }]
+                        }]
+                    });
+                }
+            } catch (error) {
+                console.error('Error initializing charts:', error);
+            }
+
+            // Inicializar tooltips
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl)
+            });
+        });
+
+        function proponerModificacion() {
+            Swal.fire({
+                title: 'Proponer Modificación al Programa',
+                html: `
+                                                                                                                                                                <form id="formModificacion">
+                                                                                                                                                                    <div class="mb-3">
+                                                                                                                                                                        <label class="form-label">Tipo de Modificación</label>
+                                                                                                                                                                        <select class="form-select" required>
+                                                                                                                                                                            <option value="">Seleccione...</option>
+                                                                                                                                                                            <option value="1">Actualización de metas</option>
+                                                                                                                                                                            <option value="2">Ajuste de calendario</option>
+                                                                                                                                                                            <option value="3">Modificación de recursos</option>
+                                                                                                                                                                        </select>
+                                                                                                                                                                    </div>
+                                                                                                                                                                    <div class="mb-3">
+                                                                                                                                                                        <label class="form-label">Justificación</label>
+                                                                                                                                                                        <textarea class="form-control" rows="3" required></textarea>
+                                                                                                                                                                    </div>
+                                                                                                                                                                    <div class="mb-3">
+                                                                                                                                                                        <label class="form-label">Fundamento Legal</label>
+                                                                                                                                                                        <input type="text" class="form-control" required>
+                                                                                                                                                                    </div>
+                                                                                                                                                                </form>
+                                                                                                                                                            `,
+                showCancelButton: true,
+                confirmButtonText: 'Enviar propuesta',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const form = document.getElementById('formModificacion');
+                    if (!form.checkValidity()) {
+                        form.reportValidity();
+                        return false;
+                    }
+                    return true;
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Propuesta enviada',
+                        text: 'La modificación será revisada en la siguiente sesión del Consejo'
+                    });
+                }
+            });
+        }
+
+        function mostrarAyudaModulo() {
+            Swal.fire({
+                title: 'Programa de Trabajo del Consejo',
+                html: `
+                                                                    <div class="text-start ayuda-modulo">
+                                                                                        <div class="mb-4">
+                                                                                            <h6 class="border-bottom pb-2">
+                                                                                                <i class="fas fa-info-circle"></i> Descripción
+                                                                                            </h6>
+                                                                                            <p>Consulta los objetivos, metas, recursos y actividades anuales del Consejo.</p>
+                                                                                        </div>
+
+                                                                                        <div class="mb-4">
+                                                                                            <h6 class="border-bottom pb-2">
+                                                                                                <i class="fas fa-tasks"></i> Funcionalidad
+                                                                                            </h6>
+                                                                                            <p>Permite consultar metas, objetivos y recursos definidos en el Programa Anual.</p>
+                                                                                        </div>
+
+                                                                                        <div class="mb-4">
+                                                                                            <h6 class="border-bottom pb-2">
+                                                                                                <i class="fas fa-sync-alt"></i> Etapa del Ciclo
+                                                                                            </h6>
+                                                                                            <p>Planeación y programación</p>
+                                                                                        </div>
+
+                                                                                        <div class="mb-4">
+                                                                                            <h6 class="border-bottom pb-2">
+                                                                                                <i class="fas fa-users-cog"></i> Interacción entre Roles
+                                                                                            </h6>
+                                                                                            <ul class="list-unstyled">
+                                                                                                <li>
+                                                                                                    <i class="fas fa-check-circle text-success"></i> 
+                                                                                                    Secretaría Técnica: Propone el programa
+                                                                                                </li>
+                                                                                                <li>
+                                                                                                    <i class="fas fa-check-circle text-info"></i> 
+                                                                                                    Consejo: Aprueba en sesión
+                                                                                                </li>
+                                                                                            </ul>
+                                                                                        </div>
+
+                                                                                        <div class="mb-4">
+                                                                                            <h6 class="border-bottom pb-2">
+                                                                                                <i class="fas fa-puzzle-piece"></i> Elementos que la Integran
+                                                                                            </h6>
+                                                                                            <ul class="list-unstyled">
+                                                                                                <li><i class="fas fa-chart-bar text-primary"></i> Tarjetas de metas</li>
+                                                                                                <li><i class="fas fa-calendar text-success"></i> Calendario anual</li>
+                                                                                                <li><i class="fas fa-file-pdf text-danger"></i> Botón de descarga del plan en PDF</li>
+                                                                                                <li><i class="fas fa-chart-line text-info"></i> Gráficos de seguimiento</li>
+                                                                                                <li><i class="fas fa-tasks text-warning"></i> Cronograma de actividades</li>
+                                                                                            </ul>
+                                                                                        </div>
+
+                                                                                        <div class="mb-4">
+                                                                                            <h6 class="border-bottom pb-2">
+                                                                                                <i class="fas fa-balance-scale"></i> Fundamento Legal
+                                                                                            </h6>
+                                                                                            <p>
+                                                                                                <span class="badge bg-primary">Art. 76 RLPT</span>
+                                                                                                <span class="badge bg-info ms-2">Art. 10 y 47 Lineamientos</span>
+                                                                                            </p>
+                                                                                            <small class="text-muted">
+                                                                                                El Programa Anual es obligatorio para la planificación del Consejo.
+                                                                                            </small>
+                                                                                        </div>
+
+                                                                                        <div>
+                                                                                            <h6 class="border-bottom pb-2">
+                                                                                                <i class="fas fa-star"></i> Importancia
+                                                                                            </h6>
+                                                                                            <p class="mb-0">
+                                                                                                Módulo fundamental que establece la dirección estratégica del Consejo, siendo el primer paso 
+                                                                                                del ciclo normativo. Define el rumbo a seguir y establece los compromisos institucionales 
+                                                                                                que guiarán las acciones del SNIEr.
+                                                                                            </p>
+                                                                                        </div>
+
+                                                                                        <div>
+                                                                                            <h6 class="border-bottom pb-2">
+                                                                                                <i class="fas fa-check-double"></i> Orden en el Ciclo
+                                                                                            </h6>
+                                                                                            <p class="mb-0">
+                                                                                                <span class="badge bg-primary">Paso 1</span>
+                                                                                                Es el punto de partida normativo del Consejo que establece metas, recursos y 
+                                                                                                actividades anuales. Su correcta definición es crítica para el éxito de las 
+                                                                                                etapas subsecuentes del ciclo.
+                                                                                            </p>
+                                                                                        </div>
+                                                                                    </div>
+                                                                `,
+                width: 'auto',
+                maxWidth: '400px',
+                customClass: {
+                    container: 'text-start',
+                    popup: 'swal-responsive',
+                    htmlContainer: 'swal-scrollable'
+                },
+                confirmButtonText: 'Entendido'
+            });
+        }
+    </script>
+}

@@ -1,0 +1,1149 @@
+@model DetalleCalificacion_EF
+@{
+    ViewData["Title"] = "MEP - Mecanismo de Evaluación y Planeación";
+}
+
+@* Obteniendo los datos para la evaluación a nivel Municipío *@
+@{
+    var firstItem = Model.Detalle_MUN.FirstOrDefault();
+    if (firstItem != null)
+    {
+        <div class="text-center">
+            <h3 class="display-6 fw-bold titulo"> <img src="@Cdn.Url/img_snier/vistas/aguila2.png" alt="Icono personalizado"
+                    class="iconomenu">@firstItem.EF_Nombre , @firstItem.Municipio_Nombre</h3>
+        </div>
+    }
+}
+
+
+<div class="pt-3 ">
+    <center>
+        <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="pills-home-tab" data-bs-toggle="pill" data-bs-target="#pills-home"
+                    type="button" role="tab" aria-controls="pills-home" aria-selected="true">1.-Resultado del
+                    Municipio</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="pills-profile-tab" data-bs-toggle="pill" data-bs-target="#pills-profile"
+                    type="button" role="tab" aria-controls="pills-profile" aria-selected="false">2.-Mecanismo a nivel
+                    Expendio</button>
+            </li>
+        </ul>
+    </center>
+    <div class="tab-content" id="pills-tabContent">
+        <div class="tab-pane fade show active" id="pills-home" role="tabpanel" aria-labelledby="pills-home-tab"
+            tabindex="0">
+
+
+            <partial name="_TotalSolicitudesPartial_MUN" model="@Model" />
+
+            <div id="grafico1"></div>
+            @* <div id="grafico3"></div>*@
+            <partial name="_MapaSolicitudesPartial_MUN" model="@Model" />
+            <partial name="_TablaSolicitudesPartial_MUN" model="@Model" />
+        </div>
+        <div class="tab-pane fade" id="pills-profile" role="tabpanel" aria-labelledby="pills-profile-tab" tabindex="0">
+            <partial name="_En_Construcción" />
+        </div>
+        <br />
+    </div>
+    <br />
+
+
+
+    <link href="//cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" rel="stylesheet" />
+    <link href="//cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css" rel="stylesheet" />
+
+
+@section scripts{
+
+        <script src="//code.jquery.com/jquery-3.5.1.js"> </script>
+        <script src="//cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"> </script>
+        <script src="//cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"> </script>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+        <script src="//cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
+
+
+    @* Slider Vertical *@
+        <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-color/2.1.2/jquery.color.min.js"></script>
+        <script>
+            $("#slider-vertical").slider({
+                orientation: "vertical",
+                range: "min",
+                min: 0.01,
+                max: 1,
+                step: 0.01,
+                value: 0.01,
+                slide: function (event, ui) {
+                    $("#umbral").val(ui.value);
+                    var color = $.Color({ hue: ui.value * 360, saturation: 1, lightness: 0.5, alpha: 1 });
+                    $("#color-scale").css("background-color", color.toHexString());
+                }
+            });
+
+
+        </script>
+    @*Toggle's*@
+        <script>
+            function toggleMapa() {
+                var mapa = document.getElementById("despliega_mapa");
+                var botonMapa = document.getElementById("botonMapa");
+
+                if (mapa.style.display === "none") {
+                    mapa.style.display = "block";
+                    botonMapa.textContent = "Ocultar Mapa con Solicitudes";
+                } else {
+                    mapa.style.display = "none";
+                    botonMapa.textContent = "Desplegar Mapa con Solicitudes";
+                }
+            }
+
+            function toggleMEP() {
+                var mapa = document.getElementById("mecanismo_evaluacion");
+                var botonMapa = document.getElementById("botonMEP");
+
+                if (mapa.style.display === "none") {
+                    mapa.style.display = "block";
+                    botonMapa.textContent = "Ocultar MEP";
+                } else {
+                    mapa.style.display = "none";
+                    botonMapa.textContent = "Desplegar MEP";
+                }
+            }
+
+
+            function toggleResultado() {
+                var mapa = document.getElementById("resultados");
+                var botonMapa = document.getElementById("btnResultados");
+
+                if (mapa.style.display === "none") {
+                    mapa.style.display = "block";
+                    botonMapa.textContent = "Ocultar Resultados de la Evaluación -> MEP";
+                } else {
+                    mapa.style.display = "none";
+                    botonMapa.textContent = "Mostrar Resultados de la Evaluación -> MEP";
+                }
+            }
+        </script>
+
+
+    @*Funcionalidades del Mapa*@
+        <script>
+
+            // Aquí puedes escribir tu código para configurar y utilizar Leaflet
+            //Inicializamos el mapa
+            var map = L.map('map', {
+                center: [23.6345, -102.5528],
+                zoom: 3,
+                zoomControl: true,
+                attributionControl: false,
+                keyboard: true,
+                minZoom: 5,
+            });
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+                maxZoom: 18,
+            }).addTo(map);
+
+            //L.marker([23.6345, -102.5528]).addTo(map)
+            //    .bindPopup('¡Hola, Javs!')
+            //    .openPopup();
+
+
+            ///////////ICONOS//////////////////
+
+            //Crea los Iconos OK
+            var iconoBase = L.Icon.extend({
+                options: {
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 16],
+                    popupAnchor: [-3, -76]
+                }
+            });
+
+            var iconoSolicitudes = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Solicitudes.png' }),
+                iconoExpendio = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Expendio.png' }),
+                iconoAzul = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Expendio.png' });
+            iconoAprobado = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Aprobado.png' });
+            iconoNoaprobado = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/NoAprobado.png' });
+
+
+
+
+            ///////FUNCIONES//////////
+            //Función StreetView de Google
+            map.on('click', function (e) {
+
+                let lat = e.latlng.lat.toPrecision(8);
+                let lon = e.latlng.lng.toPrecision(8);
+                const point = L.marker([lat, lon]).addTo(map)
+                    .bindPopup('<a href="http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0" target="blank"><b> Google Street View </b></a>').openPopup();
+            })
+            //Función para Limpiar los Marcadores del Mapa
+            function limpiarMarcadores() {
+                // Limpiar marcadores existentes
+                map.eachLayer(function (layer) {
+                    if (layer instanceof L.Marker) {
+                        map.removeLayer(layer);
+                    }
+                });
+            }
+            //Datos de Solicitudes a Revisar de Expendios
+            function CargaSolicitudes() {
+                // Limpiar marcadores existentes
+                limpiarMarcadores();
+                //Agreaga las Solicitudes de Permiso a evaluadas en el Mapa
+                var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_MUN));
+                console.log(coordenadasp);
+                for (var j = 0; j < coordenadasp.length; j++) {
+                    var coordenada = coordenadasp[j];
+
+                    // Selecciona el ícono dependiendo del resultado
+                    var iconoSeleccionado;
+                    if (coordenada.resultadoMunicipio === "Aprobado") {
+                        iconoSeleccionado = iconoAprobado;
+                    } else {
+                        iconoSeleccionado = iconoNoaprobado;
+                    }
+
+                    // Crea y agrega el marcador con el ícono seleccionado
+                    var marker = L.marker([coordenada.x_Geo, coordenada.y_Geo], { icon: iconoSeleccionado }).addTo(map);
+                    marker.bindPopup("<h3> <i class='bi bi-fingerprint'></i> ID Solicitud: " + coordenada.id + "</h3><hr/><p><i class='bi bi-geo-alt-fill'></i> Entidad Federetiva: " + coordenada.eF_Nombre + "</p> <hr/><ul><li>Municipio: " + coordenada.municipio_Nombre + "</li><li>¿Documentos Completos?:" + coordenada.documentos_completos + "</li><li>¿Tiene Análisis de Riesgo?:" + coordenada.analisis_riesgo + "</li></ul> ");
+                };
+
+            }
+
+
+            //Función que carga los permisos de Expendio
+            function CargaExpendios() {
+                // Limpiar marcadores existentes
+                limpiarMarcadores();
+                //Carga los Expendios Autorizados
+                var coordenadas1 = @Html.Raw(Json.Serialize(Model.Permisos_Autorizados));
+                console.log(coordenadas1)
+                for (var j = 0; j < coordenadas1.length; j++) {
+                    var coordenada = coordenadas1[j];
+                    var marker = L.marker([coordenada.latitud_GEO, coordenada.longitud_GEO], { icon: iconoExpendio }).addTo(map);
+                    marker.bindPopup("<h3>" + coordenada.numeroPermiso + "</h3><p>" + coordenada.razón_social + "</p> <hr/><ul><li>Fecha de Otorgamiento del Permiso:" + coordenada.fechaOtorgamiento + "</li><li>RFC:" + coordenada.rfc + "</li></ul><a target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>");
+                };
+            };
+            //Función que carga los permisos de Expendio y las Solicitudes
+            function CargaSyE() {
+                // Limpiar marcadores existentes
+                limpiarMarcadores();
+                //Agreaga las Solicitudes de Permiso a evaluadas en el Mapa
+                var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_MUN));
+                console.log(coordenadasp);
+                for (var j = 0; j < coordenadasp.length; j++) {
+                    var coordenada = coordenadasp[j];
+
+                    // Selecciona el ícono dependiendo del resultado
+                    var iconoSeleccionado;
+                    if (coordenada.resultadoMunicipio === "Aprobado") {
+                        iconoSeleccionado = iconoAprobado;
+                    } else {
+                        iconoSeleccionado = iconoNoaprobado;
+                    }
+
+                    // Crea y agrega el marcador con el ícono seleccionado
+                    var marker = L.marker([coordenada.x_Geo, coordenada.y_Geo], { icon: iconoSeleccionado }).addTo(map);
+                    marker.bindPopup("<h3> <i class='bi bi-fingerprint'></i> ID Solicitud: " + coordenada.id + "</h3><hr/><p><i class='bi bi-geo-alt-fill'></i> Entidad Federetiva: " + coordenada.eF_Nombre + "</p> <hr/><ul><li>Municipio: " + coordenada.municipio_Nombre + "</li><li>¿Documentos Completos?:" + coordenada.documentos_completos + "</li><li>¿Tiene Análisis de Riesgo?:" + coordenada.analisis_riesgo + "</li></ul> ");
+                };
+                //Carga los Expendios Autorizados
+                var coordenadas1 = @Html.Raw(Json.Serialize(Model.Permisos_Autorizados));
+                console.log(coordenadas1)
+                for (var j = 0; j < coordenadas1.length; j++) {
+                    var coordenada = coordenadas1[j];
+                    var marker = L.marker([coordenada.latitud_GEO, coordenada.longitud_GEO], { icon: iconoExpendio }).addTo(map);
+                    marker.bindPopup("<h3>" + coordenada.numeroPermiso + "</h3><p>" + coordenada.razón_social + "</p> <hr/><ul><li>Fecha de Otorgamiento del Permiso:" + coordenada.fechaOtorgamiento + "</li><li>RFC:" + coordenada.rfc + "</li></ul><a target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>");
+                };
+            }
+
+
+            /////////DATOS/////////////////
+            // Carga Inicial de resultados de las solicitudes al Mapa y permisos por Entidad
+
+            var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_MUN));
+            console.log(coordenadasp);
+            for (var j = 0; j < coordenadasp.length; j++) {
+                var coordenada = coordenadasp[j];
+
+                // Selecciona el ícono dependiendo del resultado
+                var iconoSeleccionado;
+                if (coordenada.resultadoMunicipio === "Aprobado") {
+                    iconoSeleccionado = iconoAprobado;
+                } else {
+                    iconoSeleccionado = iconoNoaprobado;
+                }
+
+                // Crea y agrega el marcador con el ícono seleccionado
+                var marker = L.marker([coordenada.x_Geo, coordenada.y_Geo], { icon: iconoSeleccionado }).addTo(map);
+                marker.bindPopup("<h3> <i class='bi bi-fingerprint'></i> ID Solicitud: " + coordenada.id + "</h3><hr/><p><i class='bi bi-geo-alt-fill'></i> Entidad Federetiva: " + coordenada.eF_Nombre + "</p> <hr/><ul><li>Municipio: " + coordenada.municipio_Nombre + "</li><li>¿Documentos Completos?:" + coordenada.documentos_completos + "</li><li>¿Tiene Análisis de Riesgo?:" + coordenada.analisis_riesgo + "</li></ul> ");
+            };
+
+            //Carga los Expendios Autorizados
+            var coordenadas1 = @Html.Raw(Json.Serialize(Model.Permisos_Autorizados));
+            console.log(coordenadas1)
+            for (var j = 0; j < coordenadas1.length; j++) {
+                var coordenada = coordenadas1[j];
+                var marker = L.marker([coordenada.latitud_GEO, coordenada.longitud_GEO], { icon: iconoExpendio }).addTo(map);
+                marker.bindPopup("<h3>" + coordenada.numeroPermiso + "</h3><p>" + coordenada.razón_social + "</p> <hr/><ul><li>Fecha de Otorgamiento del Permiso:" + coordenada.fechaOtorgamiento + "</li><li>RFC:" + coordenada.rfc + "</li></ul><a target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>");
+            };
+
+            ////////////////SIDE BAR MUNICIPIOS//////////////////////////////////
+            const municipios = [];
+
+            var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_MUN));
+
+            //for (var j = 0; j < coordenadasp.length; j++) {
+            //    var coordenada = coordenadasp[j];
+            //    var municipio = {
+            //        nombre: coordenada.id,
+            //        coordenadas: [coordenada.x_Geo, coordenada.y_Geo]
+            //    };
+            //    municipios.push(municipio);
+            //}
+            //console.log("MUNICIPIOS",municipios);
+            for (var j = 0; j < coordenadasp.length; j++) {
+                var coordenada = coordenadasp[j];
+                var iconoSeleccionado;
+                if (coordenada.resultadoMunicipio === "Aprobado") {
+                    iconoSeleccionado = iconoAprobado;
+                } else {
+                    iconoSeleccionado = iconoNoaprobado;
+                }
+                var municipio = {
+                    nombre: coordenada.id,
+                    coordenadas: [coordenada.x_Geo, coordenada.y_Geo],
+                    resultado: coordenada.resultadoMunicipio,
+                    icono: iconoSeleccionado
+                };
+                municipios.push(municipio);
+            }
+            console.log("MUNICIPIOS", municipios);
+
+            //Seleccionamos el SIDE BAR
+            const sidebar = document.querySelector('#sidebar');
+            //Eventos Baiscos
+
+            map.on('click', (evento) => {
+                const lat = evento;
+                console.log(lat.latlng)
+            });
+
+            //Metodos
+            map.center
+            //Fly to Place
+            const volar = (latlng) => {
+                map.flyTo(latlng, 16);
+            }
+
+            //Fly to 
+            // Municipio
+            const volar_municipio = (latlng) => {
+                map.flyTo(latlng, 13);
+            }
+
+            //Limpiar Items del Side Bar
+            const limpiaritems = () => {
+                const listadoLi = document.querySelectorAll('li');
+                listadoLi.forEach(li => {
+                    li.classList.remove('active');
+                })
+            }
+
+            const crearitem = () => {
+                const ul = document.createElement('ul');
+                ul.classList.add('list-group');
+                ul.style.overflow = 'auto'; // Habilitar desplazamiento interno
+                ul.style.maxHeight = 'calc(280vh - 80px)'; // Ajustar el tamaño máximo
+
+                sidebar.append(ul);
+
+                // Crear el elemento "Selecciona una Solicitud"
+                const seleccionaSolicitud = document.createElement('h6');
+                seleccionaSolicitud.classList.add('btn', 'btn-cre-verde', 'text-center');
+                seleccionaSolicitud.innerText = 'Selecciona una Solicitud:';
+                seleccionaSolicitud.style.position = 'sticky'; // Establecer la posición sticky
+                seleccionaSolicitud.style.top = '0'; // Asegurar que esté al inicio del sidebar
+                sidebar.prepend(seleccionaSolicitud);
+
+                municipios.forEach((lugar) => {
+                    const li = document.createElement('li');
+                    li.classList.add('list-group-item');
+                    li.style.height = '200px'; // Establecer altura fija
+                    li.style.marginBottom = '10px'; // Agregar margen inferior
+
+                    // Agregar el texto "ID solicitud: lugar.nombre"
+                    const texto = document.createElement('span');
+                    texto.innerText = `ID solicitud: ${lugar.nombre}`;
+                    li.appendChild(texto);
+
+                    // Agregar el icono correspondiente
+                    const icono = document.createElement('img');
+                    icono.src = lugar.icono.options.iconUrl;
+                    icono.classList.add('icono-responsivo'); // Agregar la clase CSS para el icono
+                    li.insertBefore(icono, texto); // Insertar el icono antes del texto
+
+                    ul.append(li);
+
+                    li.addEventListener('click', () => {
+                        limpiaritems();
+                        li.classList.add('active');
+                        volar(lugar.coordenadas);
+                    });
+                });
+            };
+
+            crearitem();
+
+            ////////BARRA DE MUNICIPIOS
+            const menu_municipios = [];
+
+            var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_MUN));
+
+            for (var j = 0; j < coordenadasp.length; j++) {
+                var coordenada = coordenadasp[j];
+
+                // Verificar si el municipio ya existe en menu_municipios
+                var municipioExistente = menu_municipios.find(function (municipio) {
+                    return municipio.nombre === coordenada.municipio_Nombre;
+                });
+
+                // Si el municipio no existe en menu_municipios, agregarlo
+                if (!municipioExistente) {
+                    var municipio = {
+                        nombre: coordenada.municipio_Nombre,
+                        coordenadas: [coordenada.x_Geo, coordenada.y_Geo]
+                    };
+                    menu_municipios.push(municipio);
+                }
+            }
+
+            console.log("MUNICIPIOS_MENU", menu_municipios);
+            //Carga los municipios al Dropdown
+            const dropdownMunicipios = document.querySelector('#dropdown-municipios');
+
+            menu_municipios.forEach((municipio) => {
+                const option = document.createElement('option');
+                option.text = municipio.nombre;
+                option.value = municipio.nombre;
+                dropdownMunicipios.appendChild(option);
+            });
+
+            dropdownMunicipios.addEventListener('change', (event) => {
+                const selectedMunicipio = event.target.value;
+                const selectedCoordenadas = menu_municipios.find((municipio) => municipio.nombre === selectedMunicipio).coordenadas;
+                volar_municipio(selectedCoordenadas);
+            });
+
+            //////////CAPAS DEL MAPA
+
+            // Agrega las capas de mosaicos como opciones de vista
+            var baseLayers = {
+                "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }),
+                "Stamen Toner": L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner/{z}/{x}/{y}{r}.png', {
+                    attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, ' +
+                        '<a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; ' +
+                        'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
+                    subdomains: 'abcd',
+                    minZoom: 0,
+                    maxZoom: 20
+                }),
+                "CartoDB Positron": L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                    attribution: 'Map tiles by <a href="https://carto.com/attribution">Carto</a>, ' +
+                        'under <a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0</a>. ' +
+                        'Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, ' +
+                        'under <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC BY SA</a>',
+                    subdomains: 'abcd',
+                    maxZoom: 19
+                }),
+                // Capa de mosaicos Thunderforest_MobileAtlas
+                //"Stadia_Outdoors": L.tileLayer('https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png', {
+                //    maxZoom: 20,
+                //    attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'
+                //}),
+                "Stadia_AlidadeSmoothDark": L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 20,
+                    attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors'
+                })
+
+            };
+
+            // Activa una capa de mosaicos como vista inicial
+            baseLayers["OpenStreetMap"].addTo(map);
+
+            // Control de capas para seleccionar la vista del mapa
+            L.control.layers(baseLayers).addTo(map);
+
+
+            /////////////DISTANCIAS/////////////////////
+
+            // Inicializar la herramienta de medición
+            var measureControl = new L.Control.Measure({
+                position: 'topright',
+                primaryLengthUnit: 'meters', // Unidad de longitud primaria (metros en este ejemplo)
+                secondaryLengthUnit: 'kilometers', // Unidad de longitud secundaria (kilómetros en este ejemplo)
+                primaryAreaUnit: 'hectares', // Unidad de área primaria (hectáreas en este ejemplo)
+                activeColor: '#e73e3e', // Color activo de la medición
+                completedColor: '#e73e3e' // Color completado de la medición
+            });
+
+            // Agregar la herramienta de medición al mapa
+            measureControl.addTo(map);
+
+            /////////////////////Buscador
+            var geocoderControl = L.Control.geocoder({
+                defaultMarkGeocode: false, // Desactiva el marcador en la ubicación encontrada
+            }).addTo(map);
+
+            // Evento que se dispara cuando se encuentra una ubicación
+            geocoderControl.on('markgeocode', function (e) {
+                var latlng = e.geocode.center; // Obtiene las coordenadas de la ubicación encontrada
+                // Haz lo que necesites con las coordenadas
+            });
+
+
+            ///////////////////////////////////////////////
+            // URL del archivo GeoJSON
+            var url = src = "./js/municipios.geojson";
+
+            // Utiliza la función de Leaflet para leer el archivo GeoJSON y agregarlo al mapa
+            fetch(url)
+                .then(function (response) {
+                    return response.json();
+                })
+                .then(function (data) {
+                    L.geoJSON(data).addTo(map);
+                });
+
+
+        </script>
+
+    @*Tabla de EF*@
+        <script>
+            var table = $('#I_MUN').DataTable({
+                lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                dom: 'Blfrtip',
+                buttons: [
+                    {
+                        extend: 'copyHtml5',
+                        title: 'MEP-Calificación Final por Entidad Federativa'
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: 'MEP-Calificación Final por Entidad Federativa'
+                    },
+                    {
+                        extend: 'csvHtml5',
+                        title: 'MEP-Calificación Final por Entidad Federativa'
+                    },
+                    {
+                        extend: 'pdfHtml5',
+                        title: 'MEP-Calificación Final por Entidad Federativa',
+                        customize: function (doc) {
+                            // Cambia el color de la línea de encabezado a rojo
+                            doc.styles.tableHeader.color = '#9fa1a4';
+                            // Centra la tabla
+                            doc.defaultStyle.alignment = 'center';
+                            // Cambia el color de fondo del encabezado
+                            doc.styles.tableHeader.fillColor = '#4c1922'; // Cambia a tu color preferido
+                        }
+                    }
+                ]
+            });
+        </script>
+
+        <!-- Código JavaScript para generar el gráfico de PIE -->
+        <script>
+            $(document).ready(function () {
+                // Obtener los datos del Resultado Segundo SP del modelo
+                var datos = @Html.Raw(Json.Serialize(Model.Detalle_MUN));
+                console.log("estos datos:", datos)
+
+                // Asegurarse de que hay al menos un objeto en el array
+                if (datos.length > 0) {
+                    // Crear un arreglo de objetos con las categorías y los valores de los datos
+                    var data = [{
+                        name: 'Aprobados',
+                        y: parseInt(datos[0].aprobados),
+                        color: '#13322b'
+                    }, {
+                        name: 'No Aprobados',
+                        y: parseInt(datos[0].noAprobados),
+                        color: '#4c1922'
+                    }];
+
+                    // Configurar opciones del gráfico
+                    var options = {
+                        chart: {
+                            type: 'pie'
+                        },
+                        title: {
+                            text: 'Resultados'
+                        },
+                        series: [{
+                            name: 'Cantidad',
+                            data: data
+                        }],
+                        colors: ['#13322b', '#4c1922']
+                    };
+
+                    // Renderizar el gráfico en el contenedor con el ID 'grafico1'
+                    Highcharts.chart('grafico', options);
+                }
+            });
+
+
+        </script>
+
+        <!-- Código JavaScript para generar el gráfico de Barras Apiladas 3D -->
+        <script>
+            $(document).ready(function () {
+                // Obtener los datos del Resultado Segundo SP del modelo
+                var data = @Html.Raw(Json.Serialize(Model.Detalle_MUN));
+
+                // Obtén los nombres de todos los municipios únicos
+                var municipios = [...new Set(data.map(item => item.municipio_Nombre))];
+
+                // Inicializa arreglos para guardar los datos por categoría
+                var dataAprobados = [];
+                var dataNoAprobados = [];
+
+                // Para cada municipio, calcula el total de aprobados y no aprobados
+                municipios.forEach(function (municipio) {
+                    var aprobados = data.filter(item => item.municipio_Nombre === municipio && item.resultadoMunicipio === 'Aprobado').length;
+                    var noAprobados = data.filter(item => item.municipio_Nombre === municipio && item.resultadoMunicipio === 'No Aprobado').length;
+
+                    dataAprobados.push(aprobados);
+                    dataNoAprobados.push(noAprobados);
+                });
+
+                // Configurar opciones del gráfico
+                var options = {
+                    chart: {
+                        type: 'column',
+                        options3d: {
+                            enabled: true,
+                            alpha: 10,
+                            beta: 25,
+                            depth: 70
+                        }
+                    },
+                    title: {
+                        text: 'Calificación Final por Entidad Federativa'
+                    },
+                    xAxis: {
+                        categories: municipios
+                    },
+                    yAxis: {
+                        title: {
+                            text: 'Cantidad'
+                        }
+                    },
+                    plotOptions: {
+                        column: {
+                            stacking: 'normal',
+                            depth: 40
+                        }
+                    },
+                    series: [
+                        {
+                            name: 'Aprobados',
+                            data: dataAprobados,
+                            color: '#13322b'
+                        },
+                        {
+                            name: 'No Aprobados',
+                            data: dataNoAprobados,
+                            color: '#4c1922'
+                        }
+                    ],
+                    colors: ['#13322b', '#4c1922']
+                };
+
+                // Renderizar el gráfico en el contenedor con el ID 'grafico'
+                Highcharts.chart('grafico1', options);
+            });
+        </script>
+
+        <!-- Código JavaScript para generar el gráfico de Barras Apiladas 3D -->
+        <script>
+            $(document).ready(function () {
+                // Obtener los datos del Resultado Segundo SP del modelo
+                var data = @Html.Raw(Json.Serialize(Model.Detalle_MUN));
+                var municipios = [];
+                var aprobados = [];
+                var noAprobados = [];
+
+                // Llenar los arreglos de municipios, aprobados y noAprobados
+                for (var i = 0; i < data.length; i++) {
+                    municipios.push(data[i].municipio_Nombre);
+                    aprobados.push(data[i].resultadoMunicipio == "Aprobado" ? 1 : 0);
+                    noAprobados.push(data[i].resultadoMunicipio == "No Aprobado" ? 1 : 0);
+                }
+
+                // Ordenar los municipios alfabéticamente
+                municipios.sort();
+
+                // Configurar opciones del gráfico
+                var options = {
+                    chart: {
+                        type: 'column',
+                        options3d: {
+                            enabled: true,
+                            alpha: 10,
+                            beta: 25,
+                            depth: 70
+                        }
+                    },
+                    title: {
+                        text: 'Calificación Final por Municipio'
+                    },
+                    xAxis: {
+                        categories: municipios
+                    },
+                    yAxis: {
+                        title: {
+                            text: 'Cantidad'
+                        }
+                    },
+                    plotOptions: {
+                        column: {
+                            stacking: 'normal',
+                            depth: 40
+                        }
+                    },
+                    series: [
+                        {
+                            name: 'Aprobados',
+                            data: aprobados,
+                            color: '#13322b'
+                        },
+                        {
+                            name: 'No Aprobados',
+                            data: noAprobados,
+                            color: '#4c1922'
+                        }
+                    ],
+                    colors: ['#13322b', '#4c1922']
+                };
+
+                // Renderizar el gráfico en el contenedor con el ID 'grafico'
+                Highcharts.chart('grafico3', options);
+            });
+
+        </script>
+
+    @*Botón Mostrar Resultados Indicadores*@
+        <script>
+            $("#btnMostrar").click(mostrarResultados);
+
+            function mostrarResultados() {
+
+                // Verificamos si el campo 'umbral' está vacío o contiene solo espacios
+                var umbral = $("#umbral").val().trim();
+                if (!umbral || umbral == 0 || umbral > 1) {
+                    $("#result-message").text("¡El campo 'Umbral' no puede estar vacío, llenarse solo con espacios, ni ser cero, ni mayor a 1!").show();
+                    return;
+                }
+
+
+                // Verificamos si se han seleccionado al menos un checkbox
+                if (!$("input[type=checkbox]:checked").length) {
+                    $("#result-message").text("¡Debe seleccionar al menos un indicador primero!").show();
+                    return;
+                }
+
+                // Resto del código para mostrar los resultados
+
+                // Iniciamos la barra de progreso
+                $(".progress").show();
+                $(".progress-bar").css("width", "0%");
+                // Ocultamos todos los divs
+                $("div[id^='div']").hide();
+                // Recorremos los checkboxes y mostramos los divs seleccionados
+
+
+                var count = $("input[type=checkbox]:checked").length;
+                var progress = 100 / count;
+                var progressValue = 0;
+                $("input[type=checkbox]").each(function () {
+                    if ($(this).prop("checked")) {
+                        var idDiv = "#div" + $(this).val();
+                        $(idDiv).show();
+
+                        // Aumentamos la barra de progreso
+                        progressValue += progress;
+                        $(".progress-bar").css("width", progressValue + "%");
+                    }
+                });
+                // Ocultamos la barra de progreso cuando termina
+                setTimeout(function () {
+                    $(".progress").hide();
+                    $("div[id^='div']:visible").each(function (index) {
+                        var delay = index * 500; // Retrasamos cada div en 500ms
+                        $(this).delay(delay).fadeIn(500);
+                    });
+                }, 1000);
+
+                // Ocultamos el botón "Mostrar"
+                $("#btnMostrar").hide();
+
+                // Mostramos el mensaje con los indicadores seleccionados
+                var message =
+                    "Este es el resultado con los siguientes indicadores seleccionados:";
+                $("input[type=checkbox]:checked").each(function () {
+                    message += " Indicador " + $(this).val();
+                });
+                $("#result-message").text(message).show();
+                // Deshabilitamos los checkboxes
+                $("input[type=checkbox]").prop("disabled", true);
+
+                // Mostramos el botón para habilitar los checkboxes
+                $("#btnHabilitar").show();
+
+                // Mostramos el botón de resultados.
+                $("#btnResultados").show();
+
+
+                /////////
+                // Ocultar todos los tabs
+                $(".tablinks.indicator-tab").hide();
+
+                // Recorrer los checkboxes y mostrar los tabs correspondientes
+                $("input[type=checkbox]").each(function () {
+                    if ($(this).prop("checked")) {
+                        var indicatorId = $(this).val();
+                        $("#resultados").find(".tablinks.indicator-tab[data-indicator='" + indicatorId + "']").show();
+                        $("#resultados").find(".tablinks.indicator-tab[data-indicator='13']").show();//muestra siempre el tab de calificación
+                    }
+                });
+
+                // Mostramos la sección de resultados
+                $("#resultados").show();
+                //Mostramos Div Calificacion
+                $("#tbcal").show();
+
+            }
+
+            // Función para habilitar los checkboxes y limpiarlos
+            $("#btnHabilitar").click(function () {
+                $("input[type=checkbox]").prop("disabled", false).prop("checked", false);
+                $("#result-message").hide();
+                $("#btnHabilitar").hide();
+                $("#btnMostrar").show();
+                $("#resultados").hide();
+                // Ocultamos el botón de resultados.
+                $("#btnResultados").hide();
+                // Ajustamos el valor del umbral a 0
+                $("#umbral").val(0);
+                // Ajustamos el valor del slider a 0
+                $("#slider-vertical").slider("value", 0);
+            });
+
+            // Ocultar result-message al cargar la página
+            $(document).ready(function () {
+                $("#result-message").css("display", "none");
+            });
+        </script>
+
+    @*Tabs *@
+        <script>
+            function openTab(event, tabName) {
+                var i, tabcontent, tablinks;
+                tabcontent = document.getElementsByClassName("tabcontent");
+                for (i = 0; i < tabcontent.length; i++) {
+                    tabcontent[i].style.display = "none";
+                }
+                tablinks = document.getElementsByClassName("tablinks");
+                for (i = 0; i < tablinks.length; i++) {
+                    tablinks[i].className = tablinks[i].className.replace(" active", "");
+                }
+                document.getElementById(tabName).style.display = "block";
+                event.currentTarget.className += " active";
+            }
+        </script>
+
+    @*Check 10 u 11*@
+        <script>
+            $(document).ready(function () {
+                // Obtener todos los checkboxes de indicadores
+                var indicadorCheckboxes = $("input[name='checkboxes']");
+
+                // Obtener los checkboxes de los indicadores 10 y 11
+                var indicador10Checkbox = $("#chk10");
+                var indicador11Checkbox = $("#chk11");
+
+                // Obtener el elemento del mensaje de resultado
+                var resultMessage = $("#result-message_1");
+
+                // Evento de cambio de selección en los checkboxes de indicadores
+                indicadorCheckboxes.change(function () {
+                    var checkbox = $(this);
+
+                    if (checkbox.hasClass("indicador-especial")) {
+                        // Si se selecciona un checkbox de indicador especial (10 o 11)
+                        if (checkbox.is(":checked")) {
+                            // Desmarcar el otro checkbox de indicador especial
+                            if (checkbox.attr("id") === "chk10") {
+                                indicador11Checkbox.prop("checked", false);
+                            } else if (checkbox.attr("id") === "chk11") {
+                                indicador10Checkbox.prop("checked", false);
+                            }
+
+                            // Mostrar el mensaje de advertencia
+                            resultMessage.show();
+                        } else {
+                            // Ocultar el mensaje de advertencia si no hay checkboxes de Nearshoring seleccionados
+                            if (!indicador10Checkbox.is(":checked") && !indicador11Checkbox.is(":checked")) {
+                                resultMessage.hide();
+                            }
+                        }
+                    } else {
+                        // Si se selecciona un checkbox de otro indicador
+                        if (checkbox.is(":checked")) {
+                            // Desmarcar los checkboxes de indicadores especiales
+                            indicador10Checkbox.prop("checked", false);
+                            indicador11Checkbox.prop("checked", false);
+
+                            // Ocultar el mensaje de advertencia
+                            resultMessage.hide();
+                        }
+                    }
+                });
+            });
+        </script>
+
+    @* Llendo por los datos *@
+    @*Tabla de Calificación Final por Municipio y Graficos*@
+        <script>
+            $(document).ready(function () {
+                // Guarda la referencia a la tabla
+                var table = $('#I_CF').DataTable({
+                    lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                    dom: 'Blfrtip',
+                    buttons: [
+                        {
+                            extend: 'copyHtml5',
+                            title: 'MEP-Calificación Final por Entidad Federativa'
+                        },
+                        {
+                            extend: 'excelHtml5',
+                            title: 'MEP-Calificación Final por Entidad Federativa'
+                        },
+                        {
+                            extend: 'csvHtml5',
+                            title: 'MEP-Calificación Final por Entidad Federativa'
+                        },
+                        {
+                            extend: 'pdfHtml5',
+                            title: 'MEP-Calificación Final por Entidad Federativa',
+                            customize: function (doc) {
+                                // Cambia el color de la línea de encabezado a rojo
+                                doc.styles.tableHeader.color = '#9fa1a4';
+                                // Centra la tabla
+                                doc.defaultStyle.alignment = 'center';
+                                // Cambia el color de fondo del encabezado
+                                doc.styles.tableHeader.fillColor = '#4c1922'; // Cambia a tu color preferido
+                            }
+                        }
+                    ],
+                    columndefs: [{
+                        targets: [0, 1, 2, 3],
+                        data: null,
+                        defaultcontent: "-"
+                    }],
+
+                    columns: [
+                        { data: "eF_ID" },
+                        { data: "eF_Nombre" },
+                        { data: "mpO_ID" },
+                        { data: "municipio_Nombre" },
+                        { data: "aprobadosMunicipio" },
+                        { data: "noAprobadosMunicipio" },
+                        { data: "columnasSeleccionadas_P1" },
+                        { data: "umbral_P1" },
+                        //{ data: "columnasSeleccionadasMunicipio_P1" },
+                        //{ data: "umbralMunicipio_P1" },
+                        {
+                            data: null,
+                            render: function (data, type, row) {
+                                //   var efId = $(this).data('efid');
+                                var indicadoresSeleccionados = [];
+                                $('#misCheckboxes input:checked').each(function () {
+                                    indicadoresSeleccionados.push($(this).val());
+                                });
+                                // Construye la cadena de indicadores seleccionados separados por comas
+                                var indicadoresCadena = indicadoresSeleccionados.join(',');
+                                var umbralSeleccionado = $('#umbral').val();
+
+                                // Construye la URL con los parámetros de consulta
+                                var url = '/Indicadores/Detalle_MUN?';
+                                url += 'ColumnasSeleccionadas_P1=' + row.columnasSeleccionadas_P1;
+                                url += '&Umbral_P1=' + row.umbral_P1;
+                                url += '&efId=' + row.eF_ID;
+                                url += '&Indicadores_Seleccionados_Municipio=' + encodeURIComponent(indicadoresCadena);
+                                url += '&Umbral_Seleccionado_Municipio=' + umbralSeleccionado;
+                                url += '&MPO_ID=' + row.mpO_ID;
+                                // Construye la URL con los parámetros de consulta
+
+                                return '<a class="btn btn-cre-verde" href="' + url + '" target="_blank">Ver detalle</a>';
+                            }
+                        }
+                    ]
+
+
+                });
+
+                $("#btnMostrar").click(function (event) {
+                    event.preventDefault(); // Evita que el botón envíe el formulario
+                    var indicadores_seleccionados = [];
+                    $('#misCheckboxes input:checked').each(function () {
+                        indicadores_seleccionados.push($(this).val());
+                    });
+
+                    //Pasamos la cadena de texto a lista
+                    var indicadoresSeleccionadosListaEF = $('#indicadores_ef').val().split(',');
+
+                    var datos = {
+                        //Desde EF primera evaluación son del Tipo CalificaciónFinal
+                        Umbral_Seleccionado: $('#umbral_ef').val(),
+                        Indicadores_Seleccionados: indicadoresSeleccionadosListaEF,
+                        EF_ID: $('#efid').val(),
+                        ////Desde municipio para su segunda Evaluación
+                        Umbral_Seleccionado_Municipio: $('#umbral').val(),
+                        Indicadores_Seleccionados_Municipio: indicadores_seleccionados
+                    };
+                    console.log("lo que regresa datos", datos); // ver la respuesta en consola
+                    //alert(JSON.stringify(datos));
+                    // Calificación  por EF
+                    $.ajax({
+                        url: '/Indicadores/C_Calificacion_por_MUN',
+                        type: 'POST',
+                        data: JSON.stringify(datos),
+
+                        contentType: 'application/json',
+                        success: function (response) {
+                            console.log("lo que regresa detalle", response); // ver la respuesta en consola
+                            table.clear();
+                            table.rows.add(response);
+                            table.draw();
+                            $('#I_CF').show();
+
+                            // Crear arreglos para las categorías, los datos de aprobados y los datos de no aprobados
+                            var categories = [];
+                            var dataAprobados = [];
+                            var dataNoAprobados = [];
+
+                            // Iterar sobre la respuesta para llenar los arreglos
+                            for (var i = 0; i < response.length; i++) {
+                                categories.push(response[i].municipio_Nombre);
+                                dataAprobados.push(parseInt(response[i].aprobadosMunicipio));
+                                dataNoAprobados.push(parseInt(response[i].noAprobadosMunicipio));
+                            }
+
+                            //Aprovechando y poniendo los datos en los inputs
+                            // Asignar el resultado a los inputs
+                            // Calcular el total de aprobados y no aprobados
+                            var totalAprobados = dataAprobados.reduce((a, b) => a + b, 0);
+                            var totalNoAprobados = dataNoAprobados.reduce((a, b) => a + b, 0);
+
+                            // Aprovechando y poniendo los datos en los inputs
+                            // Asignar el resultado a los inputs
+                            $("#aprobados").val(totalAprobados);
+                            $("#noAprobados").val(totalNoAprobados);
+                            $("#total").val(totalAprobados + totalNoAprobados);
+
+                            // Configurar opciones del gráfico
+                            var options = {
+                                chart: {
+                                    type: 'column',
+                                    options3d: {
+                                        enabled: true,
+                                        alpha: 10,
+                                        beta: 25,
+                                        depth: 70
+                                    }
+                                },
+                                title: {
+                                    text: 'Calificación Final por Entidad Federativa'
+                                },
+                                xAxis: {
+                                    categories: categories
+                                },
+                                yAxis: {
+                                    title: {
+                                        text: 'Cantidad'
+                                    }
+                                },
+                                plotOptions: {
+                                    column: {
+                                        stacking: 'normal',
+                                        depth: 40
+                                    }
+                                },
+                                series: [
+                                    {
+                                        name: 'Aprobados',
+                                        data: dataAprobados,
+                                        color: '#13322b'
+                                    },
+                                    {
+                                        name: 'No Aprobados',
+                                        data: dataNoAprobados,
+                                        color: '#4c1922'
+                                    }
+                                ],
+                                colors: ['#13322b', '#4c1922']
+                            };
+
+                            // Renderizar el gráfico en el contenedor con el ID 'grafico'
+                            Highcharts.chart('grafico_mun', options);
+                        },
+                        error: function (error) {
+                            // Maneja el error si ocurre.
+                        }
+                    });
+
+
+                    //Calificación por TotalesInput
+                    $(document).ready(function () {
+                        $.ajax({
+                            url: '/Indicadores/B_Calificacion_Total_por_MUN',
+                            type: 'POST',
+                            data: JSON.stringify(datos),
+                            contentType: 'application/json',
+                            success: function (response) {
+                                console.log("TotalesMuntarjeta:", response); // Ver la respuesta en la consola
+
+                                // Asignar el resultado a los inputs de la vista parcial
+                                $("#total_mun").text(response[0].total_Municipios);
+                                $("#total_mun_aprobados").text(response[0].aprobadosMunicipio);
+                                $("#total_mun_noaprobados").text(response[0].noAprobadosMunicipio);
+
+                            },
+                            error: function (error) {
+                                // Manejar el error si ocurre.
+                            }
+                        });
+                    });
+
+
+
+
+                    //Fin Totales
+                });
+            });
+
+
+
+        </script>
+}

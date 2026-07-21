@@ -1,0 +1,259 @@
+@model NSIE.Models.Modulo
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+@{
+    ViewData["Title"] = $"Vistas del Módulo: {Model.Title}";
+    var vistas = ViewData["Vistas"] as List<NSIE.Models.ModulosVista> ?? new List<NSIE.Models.ModulosVista>();
+
+    var header = new HeaderViewModel
+    {
+        Title = ViewData["Title"].ToString(),
+        IconPath = "vistas.png", // Ruta relativa desde img_snier
+        Description = $"Administra las vistas asociadas al módulo: {Model.Title}.",
+        Section = $"Administración > Secciones > {Model.Title} > {Model.Title}",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = $"Vistas del Módulo: {Model.Title}",
+            description = $"Aquí puedes gestionar las vistas que pertenecen al módulo '{Model.Title}'. Puedes crear nuevas vistas, editar las existentes, y definir sus propiedades como roles y perfiles.",
+            functionality = "Creación, edición y eliminación de vistas; asignación de controladores, acciones, roles y perfiles; configuración de vistas externas.",
+            stage = "Operación",
+            roles = new[] {
+                new { icon = "user-shield", text = "Administradores: Gestión completa de vistas." },
+                new { icon = "eye", text = "Usuarios: Acceso a las vistas según sus permisos." }
+            },
+            order = new { step = 3, description = "Configuración detallada de los accesos y funcionalidades del sistema." },
+            manualUrl = "/Documentos/ManualGestionVistas.pdf" // Placeholder for a specific manual
+        })
+    };
+}
+
+@Html.AntiForgeryToken()
+
+@section Styles {
+    <style>
+        /* Asegura que el modal de vistas quede por encima del header fijo */
+        #vistaModal.modal {
+            z-index: 2000 !important;
+        }
+
+        #vistaModal.modal ~ .modal-backdrop.show,
+        .modal-backdrop.show {
+            z-index: 1995 !important;
+        }
+    </style>
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="ps-5 pe-5"> 
+    <!-- Miga de pan (Breadcrumbs) -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")"><i class="fas fa-home me-1"></i>Inicio</a></li>
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Secciones")">Gestión de Secciones</a></li>
+            <li class="breadcrumb-item"><a href="@Url.Action("EditarModulos", "Secciones", new { id = Model.SeccionId })">Módulos</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Vistas de @Model.Title</li>
+        </ol>
+    </nav>
+    <!-- Header con información y botón -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+        <div>
+            <h4 class="mb-1">
+                <i class="fas fa-cube text-guinda"></i>
+                @Model.Title
+            </h4>
+            <p class="text-muted mb-0">Total de Vistas: @vistas.Count</p>
+        </div>
+        <button id="btnAddVista" data-url="@Url.Action("CrearVista", "Secciones", new { moduloId = Model.Id })"
+            class="btn btn-primary w-100 w-md-auto">
+            <i class="fas fa-plus-circle me-1"></i> Nueva Vista
+        </button>
+    </div>
+
+    <!-- Tabla de Vistas (sin card) -->
+@if (vistas.Any())
+{
+        <table id="tablaVistas" class="table table-striped table-hover w-100">
+            <thead>
+                <tr>
+                    <th style="width:5%">#</th>
+                    <th style="width:25%">Título</th>
+                    <th style="width:15%">Controller</th>
+                    <th style="width:15%">Action</th>
+                    <th style="width:10%">Roles</th>
+                    <th style="width:10%">Perfiles</th>
+                    <th style="width:8%">Externo</th>
+                    <th style="width:8%">Activa</th>
+                    <th style="width:4%">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var vista in vistas)
+                {
+                    <tr>
+                        <td>@vista.Orden</td>
+                        <td><strong>@vista.Titulo</strong></td>
+                        <td><code>@vista.Controller</code></td>
+                        <td><code>@vista.Action</code></td>
+                        <td>
+                            <span class="badge bg-info">@(string.IsNullOrEmpty(vista.Roles) ? "Todos" : vista.Roles)</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">@(string.IsNullOrEmpty(vista.Perfiles) ? "Todos" :
+                                                        vista.Perfiles)</span>
+                        </td>
+                        <td>
+                            @if (vista.EsExterno)
+                            {
+                                <span class="badge bg-warning">
+                                    <i class="fas fa-external-link-alt"></i> Sí
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-light text-dark">No</span>
+                            }
+                        </td>
+                        <td>
+                            <span class="badge @(vista.Activa ? "bg-success" : "bg-danger")">
+                                @(vista.Activa ? "Sí" : "No")
+                            </span>
+                        </td>
+                        <td>
+                            <div class="table-actions-container" role="group">
+                                <button class="btn btn-sm btn-outline-warning btn-icon-sm js-edit"
+                                    data-url="@Url.Action("ModalEditarVista", new { id = vista.VistaId })" title="Editar vista">
+                                    <i class="fas fa-pen-to-square"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger btn-icon-sm js-delete"
+                                    data-url="@Url.Action("EliminarVista", new { id = vista.VistaId })" title="Eliminar vista">
+                                    <i class="fas fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+}
+else
+{
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i>
+            <strong>Sin vistas registradas</strong><br>
+            No hay vistas registradas para este módulo. Haz clic en "Nueva Vista" para agregar la primera.
+        </div>
+}
+
+    <!-- Modal para crear/editar vista -->
+    <div class="modal fade" id="vistaModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-fullscreen-md-down">
+            <div class="modal-content">
+                <div id="contenidoModalVista">
+                    <!-- Aquí se carga el contenido dinámico -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+@section Scripts {
+
+    <!-- DataTables CSS y JS -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <script type="text/javascript" charset="utf8"
+        src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" charset="utf8"
+        src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        let vistaModal;
+        let tablaVistas;
+
+        $(document).ready(function () {
+            // Inicializar modal
+            const modalEl = document.getElementById('vistaModal');
+            document.body.appendChild(modalEl);
+            vistaModal = new bootstrap.Modal(modalEl);
+
+            // Inicializar DataTable solo si hay datos
+            if ($('#tablaVistas').length > 0) {
+                tablaVistas = $('#tablaVistas').DataTable({
+                    "language": {
+                        "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json"
+                    },
+                    "responsive": true,
+                    "pageLength": 10,
+                    "order": [[0, "asc"]], // Ordenar por columna Orden
+                    "columnDefs": [
+                        { "orderable": false, "targets": [8] }, // Deshabilitar ordenamiento en columna Acciones
+                        { "searchable": false, "targets": [4, 5, 6, 7, 8] } // Solo buscar en título, controller, action
+                    ]
+                });
+            }
+        });
+
+        function loadVistaModal(url) {
+            $.get(url)
+                .done(function (html) {
+                    $('#contenidoModalVista').html(html);
+                    vistaModal.show();
+                })
+                .fail(function (xhr, status, error) {
+                    console.error('Error cargando modal:', error);
+                    Swal.fire('Error', 'Error al cargar el modal: ' + error, 'error');
+                });
+        }
+
+        // Botón para nueva vista
+        $(document).on('click', '#btnAddVista', function (e) {
+            e.preventDefault();
+            const url = $(this).data('url');
+            loadVistaModal(url);
+        });
+
+        // Botones de editar
+        $(document).on('click', '.js-edit', function (e) {
+            e.preventDefault();
+            const url = $(this).data('url');
+            loadVistaModal(url);
+        });
+
+        // Botones de eliminar
+        $(document).on('click', '.js-delete', function (e) {
+            e.preventDefault();
+            const url = $(this).data('url');
+
+            Swal.fire({
+                title: '¿Eliminar vista?',
+                text: "Esta acción no se puede deshacer",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    $.post(url)
+                        .done(function (data) {
+                            Swal.fire({
+                                title: '¡Eliminada!',
+                                text: data.mensaje || 'Vista eliminada correctamente',
+                                icon: 'success',
+                                timer: 2000,
+                                showConfirmButton: false
+                            }).then(() => {
+                                location.reload();
+                            });
+                        })
+                        .fail(function (xhr, status, error) {
+                            Swal.fire('Error', 'Error al eliminar la vista', 'error');
+                        });
+                }
+            });
+        });
+    </script>
+}

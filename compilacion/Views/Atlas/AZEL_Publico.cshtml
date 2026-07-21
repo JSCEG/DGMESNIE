@@ -1,0 +1,827 @@
+@using NSIE.Models
+@using Newtonsoft.Json
+
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    ViewData["Title"] = "Atlas de Zonas con Energías Limpias";
+
+    var header = new HeaderViewModel
+    {
+        Title = "AZEL",
+        IconPath = "conding.png",
+        Description = "Inventario y potencial territorial de los recursos renovables en México.",
+        Section = "SNIEr > Atlas energético > AZEL",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "AZEL",
+            description = "Consulta geográfica del inventario y potencial de recursos renovables.",
+            functionality = "Explora capas, localiza permisos y analiza el potencial energético del territorio.",
+            stage = "Disponible",
+            roles = new[] { new { icon = "user-shield", text = "Acceso para usuarios autenticados" } },
+            order = new { step = 1, description = "Atlas energético institucional" },
+            manualUrl = "#"
+        })
+    };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/mapa_azel.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/azel-publico.css" asp-append-version="true" />
+}
+
+<div class="azel-view-header">
+    @await Html.PartialAsync("_ViewHeader", header)
+</div>
+
+<div class="container-fluid azel-page-shell">
+    <nav aria-label="Miga de pan" class="breadcrumb-shell azel-breadcrumb-shell">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="@Url.Action("Index", "Home")"><i class="bi bi-house-door me-1" aria-hidden="true"></i>Inicio</a>
+            </li>
+            <li class="breadcrumb-item">Atlas energético</li>
+            <li class="breadcrumb-item active" aria-current="page">AZEL</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="container-fluid azel-page-shell">
+    <div class="azel-intro-card">
+        <div class="azel-intro-card__content">
+            <span class="azel-eyebrow">Exploración geoespacial</span>
+            <h1>Conoce el potencial renovable de México</h1>
+            <p>Consulta recursos solares, eólicos, geotérmicos, hídricos y de biomasa; localiza proyectos autorizados y agrega áreas propias para análisis.</p>
+        </div>
+        <div class="azel-intro-card__meta" aria-label="Características del atlas">
+            <span><i class="bi bi-layers" aria-hidden="true"></i> 13 capas descargables</span>
+            <span><i class="bi bi-geo-alt" aria-hidden="true"></i> Cobertura nacional</span>
+            <span><i class="bi bi-shield-check" aria-hidden="true"></i> Acceso institucional</span>
+        </div>
+    </div>
+</div>
+
+@*Sección que Despliega el Mapa Inicial*@
+<div class="container-fluid azel-page-shell">
+    <section id="despliega_mapa" class="pb-5" aria-labelledby="azel-map-title">
+        <div class="azel-workspace">
+
+            @*Menu*@
+            <div class="navbarmapag azel-summary-row">
+
+
+                <div id="tarjeta-permisos" class="card azel-kpi-card">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <img id="icono-permiso" src="https://cdn.sassoapps.com/img_snier/vistas/fotovoltaica.png"
+                            alt="Recurso seleccionado" class="azel-kpi-card__icon">
+                        <div class="min-w-0 azel-kpi-card__content">
+                            <span class="azel-kpi-card__eyebrow">Capa activa</span>
+                            <h5 id="titulo-permiso" class="card-title">Solar Fotovoltaica</h5>
+                            <div id="total-permisos" class="azel-kpi-card__value" aria-live="polite">Total de permisos: 0</div>
+                        </div>
+                        <span class="azel-kpi-card__status"><i class="bi bi-check-circle-fill" aria-hidden="true"></i><span>Datos disponibles</span></span>
+                    </div>
+                </div>
+
+
+            </div>
+
+
+
+            <div id="main-container">
+
+                <div class="row g-4 mb-4">
+                    <div class="col">
+                        <div class="app-card app-card-chart h-100 azel-map-card">
+                            <!-- Buscador y Pantalla Completa en la misma fila -->
+                            <div class="map-controls-container">
+                                <div class="azel-map-toolbar">
+                                    <div class="search-container" id="search-container">
+                                        <label class="form-label" for="busquedaGeneralInput">Buscar en el mapa</label>
+                                        <div class="input-group">
+                                            <input type="text" id="busquedaGeneralInput" class="form-control"
+                                                placeholder="Número de Permiso, Entidad Federativa o Municipio">
+                                            <button class="btn btn-primary" type="button" onclick="buscarGeneral()" aria-label="Buscar">
+                                                <i class="bi bi-search" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                        <div id="autocomplete-list" class="autocomplete-items"></div>
+                                    </div>
+                                    <button id="fullscreen-btn" type="button" class="btn btn-outline-primary azel-fullscreen-btn">
+                                        <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i><span>Pantalla completa</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Mapa full width -->
+                            <div class="azel-map-frame">
+                                <div id="map" role="application" aria-label="Mapa interactivo del potencial de energías limpias"></div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="leyenda azel-concentration-legend" aria-label="Leyenda de concentración">
+                    <p>Mayor Concentración</p>
+                    <p>Concentración Promedio</p>
+                    <p>Menor Concentración</p>
+                    <p> Ductos</p>
+                </div>
+                <!-- Leyendas y KML debajo del mapa -->
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="azel-ramp-wrap">
+                            <div id="simbol-fotovoltaico" class="color-ramp-container">
+                                <div class="color-ramp-title">
+                                    Potencial fotovoltaico [kWh/kWp] Fuente: <a
+                                        href='https://globalsolaratlas.info/download/world'
+                                        target='_blank'>globalsolaratlas.info</a>
+                                </div>
+                                <div class="color-gradient-bar fotovoltaico-gradient"></div>
+                                <div class="color-labels values">
+                                    <span>3.22</span>
+                                    <span>3.63</span>
+                                    <span>4.04</span>
+                                    <span>4.44</span>
+                                    <span>4.85</span>
+                                    <span>5.26</span>
+                                    <span>5.67</span>
+                                </div>
+                                <div class="color-labels categories">
+                                    <span>Bajo</span>
+                                    <span></span>
+                                    <span>Moderado</span>
+                                    <span></span>
+                                    <span>Bueno</span>
+                                    <span>Alto</span>
+                                    <span>Muy alto</span>
+                                </div>
+                            </div>
+
+                            <div id="simbol-radiacion" class="color-ramp-container" style="display:none;">
+                                <div class="color-ramp-title">
+                                    Radioación horizontal [kWh/m²] Fuente: <a
+                                        href='https://globalsolaratlas.info/download/world'
+                                        target='_blank'>globalsolaratlas.info</a>
+                                </div>
+                                <div class="color-gradient-bar radiacion-gradient"></div>
+                                <div class="color-labels values">
+                                    <span>3.58</span>
+                                    <span>3.99</span>
+                                    <span>4.39</span>
+                                    <span>4.8</span>
+                                    <span>5.2</span>
+                                    <span>5.61</span>
+                                    <span>6.01</span>
+                                    <span>6.42</span>
+                                </div>
+                                <div class="color-labels categories">
+                                    <span>Bajo</span>
+                                    <span></span>
+                                    <span>Moderado</span>
+                                    <span></span>
+                                    <span>Bueno</span>
+                                    <span></span>
+                                    <span>Alto</span>
+                                    <span>Muy alto</span>
+                                </div>
+                            </div>
+
+                            <div id="simbol-viento" class="color-ramp-container" style="display:none;">
+                                <div class="color-ramp-title">
+                                    Velocidad de viento [m/s] Fuente: <a
+                                        href='https://globalwindatlas.info/es/download/gis-files'
+                                        target='_blank'>globalwindatlas.info</a>
+                                </div>
+                                <div class="color-gradient-bar viento-gradient"></div>
+                                <div class="color-labels values">
+                                    <span>&lt;3</span>
+                                    <span>6</span>
+                                    <span>9</span>
+                                    <span>12</span>
+                                    <span>15&lt;</span>
+                                </div>
+                                <div class="color-ramp-description">
+                                    La velocidad del viento se incrementa conforme aumenta la altura, hay más densidad y
+                                    potencial aprovechable.
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+                <!-- Nueva sección para Capas y KML -->
+                <div class="azel-section-heading">
+                    <div>
+                        <span class="azel-eyebrow">Herramientas</span>
+                        <h2 id="azel-map-title">Agrega y compara tu proyecto</h2>
+                        <p>Superpone un archivo KML o dibuja un área a partir de coordenadas.</p>
+                    </div>
+                </div>
+                <div class="row g-4" id="capas-kml-section">
+                    <div class="col-12 col-xl-7">
+                        <div class="azel-method-switch" role="group" aria-label="Método para agregar proyecto">
+                            <span class="azel-method-switch__label">Método de entrada</span>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="inputMethod" id="kmlOption" value="kml" checked>
+                                <label class="form-check-label" for="kmlOption"><i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i> Subir KML</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="inputMethod" id="coordOption" value="coords">
+                                <label class="form-check-label" for="coordOption"><i class="bi bi-bounding-box" aria-hidden="true"></i> Ingresar coordenadas</label>
+                            </div>
+                        </div>
+                        <!-- Sección KML -->
+                        <div id="kmlContainer">
+                            <div class="card h-100 azel-tool-card">
+                                <div class="card-header"><i class="bi bi-file-earmark-zip me-2" aria-hidden="true"></i>Cargar archivo KML</div>
+                                <div class="card-body">
+                                    <div class="alert alert-info p-2" style="font-size: 0.95em;">
+                                        <b>Sube tu archivo KML:</b> El archivo se mostrará sobre el mapa y el
+                                        visor se centrará en él.<br>
+                                        <ul class="mb-1">
+                                            <li>Solo se acepta formato <b>.kml</b></li>
+                                            <li>El archivo debe contener geometría válida (puntos, líneas o
+                                                polígonos)</li>
+                                            <li>El KML se mostrará siempre encima de las capas base</li>
+                                        </ul>
+                                    </div>
+                                    <label for="nombreProyectoKML" class="form-label fw-bold">Nombre del proyecto:</label>
+                                    <input type="text" id="nombreProyectoKML" class="form-control mb-2"
+                                        placeholder="Ej: Proyecto Eólico La Venta" maxlength="100" required />
+                                    <input type="file" id="kmlFileInput" accept=".kml" class="form-control mb-2" />
+                                    <button class="btn btn-primary w-100" id="btnCargarKML"><i class="bi bi-cloud-arrow-up me-2" aria-hidden="true"></i>Cargar KML</button>
+                                    <div id="kml-alert-container" class="mt-3"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Sección Coordenadas -->
+                        <div id="coordContainer" style="display: none;">
+                            <div class="card h-100 azel-tool-card">
+                                <div class="card-header"><i class="bi bi-crosshair me-2" aria-hidden="true"></i>Ingresar coordenadas</div>
+                                <div class="card-body">
+                                    <div class="alert alert-info p-2" style="font-size: 0.95em;">
+                                        <b>Define un área rectangular:</b> Ingresa las coordenadas mínimas y máximas. Luego, dibuja el rectángulo y si lo deseas, guarda el KML.<br>
+                                        <ul class="mb-1">
+                                            <li>Formato: grados decimales (Ej: <code>16.753</code>, <code>-93.116</code>)</li>
+                                            <li>Latitudes entre -90 y 90</li>
+                                            <li>Longitudes entre -180 y 180</li>
+                                        </ul>
+                                    </div>
+
+                                    <div class="row">
+                                        <div class="col-md-6 mb-2">
+                                            <label for="latMin" class="form-label">Latitud Mínima:</label>
+                                            <input type="number" step="any" id="latMin" class="form-control" placeholder="Ej: 16.7">
+                                        </div>
+                                        <div class="col-md-6 mb-2">
+                                            <label for="latMax" class="form-label">Latitud Máxima:</label>
+                                            <input type="number" step="any" id="latMax" class="form-control" placeholder="Ej: 17.2">
+                                        </div>
+                                        <div class="col-md-6 mb-2">
+                                            <label for="lonMin" class="form-label">Longitud Mínima:</label>
+                                            <input type="number" step="any" id="lonMin" class="form-control" placeholder="Ej: -93.2">
+                                        </div>
+                                        <div class="col-md-6 mb-2">
+                                            <label for="lonMax" class="form-label">Longitud Máxima:</label>
+                                            <input type="number" step="any" id="lonMax" class="form-control" placeholder="Ej: -92.8">
+                                        </div>
+                                    </div>
+
+                                    <div class="d-grid gap-2 mt-3">
+                                        <button id="drawRectangle" class="btn btn-primary">Dibujar Polígono</button>
+                                        <button id="clearMap" class="btn btn-secondary">Limpiar</button>
+                                        <button id="saveKml" class="btn btn-success" disabled>Guardar KML</button>
+                                    </div>
+
+                                    <div id="coord-alert-container" class="mt-3"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-xl-5">
+                        <div class="card h-100 azel-tool-card azel-layers-card">
+                            <div class="card-header"><i class="bi bi-stack me-2" aria-hidden="true"></i>Capas disponibles</div>
+                            <div class="card-body">
+                                <ul class="list-group list-group-flush" id="layer-list">
+                                    <!-- Las capas se añadirán aquí dinámicamente con JS -->
+                                    <script>
+                                        // Lista de capas raster reales (7 capas, igual que en ponerLinksDescargaDirectos)
+                                        const capasRaster = [
+                                            {
+                                                nombre: '🌞 Potencial Fotovoltaico',
+                                                url: 'https://cdn.sassoapps.com/geopackage/potencial_fotovoltaico.gpkg'
+                                            },
+                                            {
+                                                nombre: '☀️ Radiación Horizontal',
+                                                url: 'https://cdn.sassoapps.com/geopackage/radiacion_horizontal.gpkg'
+                                            },
+                                            {
+                                                nombre: '💨 Velocidad de Viento 10m',
+                                                url: 'https://cdn.sassoapps.com/geopackage/velocidad_viento10m.gpkg'
+                                            },
+                                            {
+                                                nombre: '💨 Velocidad de Viento 50m',
+                                                url: 'https://cdn.sassoapps.com/geopackage/velocidad_viento50m.gpkg'
+                                            },
+                                            {
+                                                nombre: '💨 Velocidad de Viento 100m',
+                                                url: 'https://cdn.sassoapps.com/geopackage/velocidad_viento100m.gpkg'
+                                            },
+                                            {
+                                                nombre: '💨 Velocidad de Viento 150m',
+                                                url: 'https://cdn.sassoapps.com/geopackage/velocidad_viento150m.gpkg'
+                                            },
+                                            {
+                                                nombre: '💨 Velocidad de Viento 200m',
+                                                url: 'https://cdn.sassoapps.com/geopackage/velocidad_viento200m.gpkg'
+                                            },
+                                            {
+                                                nombre: '🛢️ Residuos Industriales',
+                                                url: 'https://cdn.sassoapps.com/geopackage/biomasa_industrial.gpkg'
+                                            },
+                                            {
+                                                nombre: '🐄 Residuos Pecuarios',
+                                                url: 'https://cdn.sassoapps.com/geopackage/biomasa_pecuarios.gpkg'
+                                            },
+                                            {
+                                                nombre: '🗑️ Residuos Urbanos',
+                                                url: 'https://cdn.sassoapps.com/geopackage/biomasa_urbanos.gpkg'
+                                            },
+                                            {
+                                                nombre: '🌲 Residuos Forestales',
+                                                url: 'https://cdn.sassoapps.com/geopackage/biomasa_forestales.gpkg'
+                                            },
+                                            {
+                                                nombre: '🌋 Geotérmica',
+                                                url: 'https://cdn.sassoapps.com/geopackage/geotermia.gpkg'
+                                            },
+                                            {
+                                                nombre: '💧 Disponibilidad Hídrica',
+                                                url: 'https://cdn.sassoapps.com/geopackage/disponibilidad_agua.gpkg'
+                                            }
+                                        ];
+                                        document.addEventListener('DOMContentLoaded', function () {
+                                            const ul = document.getElementById('layer-list');
+                                            if (ul && capasRaster.length > 0) {
+                                                capasRaster.forEach(capa => {
+                                                    const li = document.createElement('li');
+                                                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                                                    const etiqueta = capa.nombre.replace(/^[^\p{L}\p{N}]+/u, '');
+                                                    const icono = capa.nombre.includes('Viento') ? 'bi-wind'
+                                                        : capa.nombre.includes('Fotovoltaico') || capa.nombre.includes('Radiación') ? 'bi-sun'
+                                                        : capa.nombre.includes('Hídrica') ? 'bi-droplet'
+                                                        : capa.nombre.includes('Geotérmica') ? 'bi-thermometer-sun'
+                                                        : capa.nombre.includes('Residuos') ? 'bi-recycle'
+                                                        : 'bi-layers';
+                                                    li.innerHTML = `<span class="azel-layer-name"><i class="bi ${icono}" aria-hidden="true"></i><span>${etiqueta}</span></span><a href="${capa.url}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener">Descargar</a>`;
+                                                    ul.appendChild(li);
+                                                });
+                                            }
+                                        });
+                                    </script>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gráfico full width debajo de leyendas -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="card azel-chart-card">
+                            <div class="card-header"><i class="bi bi-bar-chart-line me-2" aria-hidden="true"></i>Proyectos autorizados por entidad federativa</div>
+                            <div class="card-body"><div id="grafico"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+</div>
+</div>
+</div>
+</section>
+
+</div>
+
+@*Script de Pantalla Completa*@
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const mapElement = document.getElementById('map');
+        const fullscreenButton = document.getElementById('fullscreen-btn');
+        const searchContainer = document.getElementById('search-container');
+        const mainContainer = document.getElementById('main-container');
+        const fullscreenElements = document.createElement('div');
+        fullscreenElements.id = 'fullscreen-elements';
+        fullscreenElements.className = 'azel-fullscreen-surface';
+
+        const originalMapParent = mapElement.parentNode;
+        const originalSearchParent = searchContainer.parentNode;
+        const originalMapNextSibling = mapElement.nextSibling;
+        const originalSearchNextSibling = searchContainer.nextSibling;
+
+        fullscreenButton.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                mainContainer.appendChild(fullscreenElements); // Asegurarnos de que fullscreenElements esté en el DOM
+                fullscreenElements.appendChild(searchContainer);
+                fullscreenElements.appendChild(mapElement);
+                fullscreenElements.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', (event) => {
+            if (document.fullscreenElement) {
+                fullscreenButton.innerHTML = '<i class="bi bi-fullscreen-exit" aria-hidden="true"></i><span>Salir de pantalla completa</span>';
+                mainContainer.classList.add('fullscreen-active');
+                setTimeout(() => mapas[0]?.invalidateSize(), 120);
+            } else {
+                fullscreenButton.innerHTML = '<i class="bi bi-arrows-fullscreen" aria-hidden="true"></i><span>Pantalla completa</span>';
+                if (originalSearchNextSibling) {
+                    originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+                } else {
+                    originalSearchParent.appendChild(searchContainer);
+                }
+                if (originalMapNextSibling) {
+                    originalMapParent.insertBefore(mapElement, originalMapNextSibling);
+                } else {
+                    originalMapParent.appendChild(mapElement);
+                }
+                mainContainer.classList.remove('fullscreen-active');
+                mapElement.style.height = '';
+                setTimeout(() => mapas[0]?.invalidateSize(), 120);
+            }
+        });
+    });
+</script>
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/data/ResiduosindustrialesEscenario3_13.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/ResiduosindustrialesEscenario2_14.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/ResiduosindustrialesEscenario1_15.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/data/ResiduospecuariosEscenario3_10.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/ResiduospecuariosEscenario2_11.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/ResiduospecuariosEscenario1_12.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/data/ResiduosurbanosEscenario3_7.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/ResiduosurbanosEscenario2_8.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/ResiduosurbanosEscenario1_9.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/data/ResiduosforestalesEscenario3_4.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/ResiduosforestalesEscenario2_5.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/ResiduosforestalesEscenario1_6.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/data/GeotermicaEscenario4_0.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/GeotermicaEscenario3_1.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/GeotermicaEscenario2_2.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/GeotermicaEscenario1_3.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/data/Cuencas_Disponibilidad_2023_0.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/data/Parque_Solar_2022_0.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/Parques_Eolicos_Poli_2023_1.js"></script>
+
+@* Capturas *@
+<script>
+    //FOTOVOLTAICA
+    var originalUrl = "@Cdn.Url/Geovisualizador/rasters/potencialfotovoltaico_4326_0.png";
+    var originalImg = "@Cdn.Url/img_snier/vistas/fotovoltaica.png";
+    var proxyUrl = "/Atlas/ProxyImagen?url=" + encodeURIComponent(originalUrl);
+    var proxyImg = "/Atlas/ProxyImagen?url=" + encodeURIComponent(originalImg);
+
+    //RADIACION
+    var radioUrl = "@Cdn.Url/Geovisualizador/rasters/radiacionhorizontal_4326_0.png";
+    var proxyRadioUrl = "/Atlas/ProxyImagen?url=" + encodeURIComponent(radioUrl);
+
+    //VIENTO
+    //logica en javascript
+    var vientoImg = "@Cdn.Url/img_snier/vistas/eolica.png";
+    var proxyVientoImg = "/Atlas/ProxyImagen?url=" + encodeURIComponent(vientoImg);
+
+    //SOLICITUDES
+    var solicitudImg = "@Cdn.Url/img_snier/vistas/Solicitudes.png";
+    var proxySolicitudImg = "/Atlas/ProxyImagen?url=" + encodeURIComponent(solicitudImg);
+</script>
+
+
+@section scripts {
+    <!-- Mapbox GL JS y plugin para Leaflet -->
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+    <script src="https://unpkg.com/mapbox-gl-leaflet/leaflet-mapbox-gl.js"></script>
+    
+    <script type="text/javascript" src="/js/configura_mapa.js"></script>
+    <!-- Leaflet -->
+    @* <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>  *@
+
+    <!-- EasyPrint desde jsDelivr -->
+    <script src="https://cdn.jsdelivr.net/gh/rowanwins/leaflet-easyPrint@latest/dist/bundle.js"></script> 
+    <script type="text/javascript" src="/js/leaflet-kml.js"></script>
+    <script type="text/javascript" src="/js/I_azel_publico.js"></script>
+
+    <script>
+        // --- KML Upload Logic con nombre de proyecto y marcador especial ---
+        let kmlLayer = null;
+        let kmlProjectMarker = null;
+        document.addEventListener('DOMContentLoaded', function () {
+            const btn = document.getElementById('btnCargarKML');
+            const input = document.getElementById('kmlFileInput');
+            const nombreInput = document.getElementById('nombreProyectoKML');
+            const alertContainer = document.getElementById('kml-alert-container');
+
+            const showAlert = (message, type) => {
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = [
+                    `<div class="alert alert-${type} alert-dismissible" role="alert">`,
+                    `   <div>${message}</div>`,
+                    '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
+                    '</div>'
+                ].join('');
+                alertContainer.innerHTML = '';
+                alertContainer.append(wrapper);
+            };
+
+            btn?.addEventListener('click', function () {
+                const nombreProyecto = nombreInput.value.trim();
+                const file = input.files[0];
+
+                if (!nombreProyecto) {
+                    showAlert('Por favor, introduce un nombre para el proyecto.', 'warning');
+                    return;
+                }
+
+                if (!file) {
+                    showAlert('Selecciona un archivo KML primero.', 'warning');
+                    return;
+                }
+
+                if (!file.name.toLowerCase().endsWith('.kml')) {
+                    showAlert('Solo se acepta formato .kml', 'danger');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    try {
+                        if (kmlLayer && typeof mapas !== 'undefined' && mapas[0]) {
+                            mapas[0].removeLayer(kmlLayer);
+                        }
+                        if (kmlProjectMarker && typeof mapas !== 'undefined' && mapas[0]) {
+                            mapas[0].removeLayer(kmlProjectMarker);
+                        }
+                        kmlLayer = new L.KML(e.target.result);
+                        if (typeof mapas !== 'undefined' && mapas[0]) {
+                            mapas[0].addLayer(kmlLayer);
+                            const bounds = kmlLayer.getBounds();
+                            if (bounds.isValid()) {
+                                mapas[0].fitBounds(bounds);
+                            }
+                            let latlng = null;
+                            kmlLayer.eachLayer(function (layer) {
+                                if (!latlng) {
+                                    if (layer.getLatLng) {
+                                        latlng = layer.getLatLng();
+                                    } else if (layer.getBounds) {
+                                        latlng = layer.getBounds().getCenter();
+                                    }
+                                }
+                            });
+                            if (latlng) {
+                                // Icono especial (puedes personalizar la URL)
+                                    const icon = L.icon({
+                                        iconUrl: proxySolicitudImg,
+                                        iconSize: [36, 36],
+                                        iconAnchor: [18, 36],
+                                        popupAnchor: [0, -36]
+                                    });
+                                kmlProjectMarker = L.marker(latlng, { icon: icon }).addTo(mapas[0]);
+                                kmlProjectMarker.bindPopup('<b>' + nombreProyecto + '</b>');
+                            }
+                            showAlert(`El proyecto "${nombreProyecto}" se ha cargado correctamente.`, 'success');
+                            document.getElementById('map').scrollIntoView({ behavior: 'smooth' });
+                        }
+                    } catch (err) {
+                        showAlert('Error al cargar el archivo KML. Asegúrate de que sea un archivo válido.', 'danger');
+                    }
+                };
+                reader.readAsText(file);
+            });
+        });
+    </script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const kmlContainer = document.getElementById('kmlContainer');
+        const coordContainer = document.getElementById('coordContainer');
+        const kmlOption = document.getElementById('kmlOption');
+        const coordOption = document.getElementById('coordOption');
+
+        function toggleInputMethod() {
+            if (kmlOption.checked) {
+                kmlContainer.style.display = 'block';
+                coordContainer.style.display = 'none';
+            } else if (coordOption.checked) {
+                kmlContainer.style.display = 'none';
+                coordContainer.style.display = 'block';
+            }
+        }
+
+        kmlOption.addEventListener('change', toggleInputMethod);
+        coordOption.addEventListener('change', toggleInputMethod);
+    });
+    </script>
+    <script>
+    let currentRectangle = null;
+
+    // Función para activar/desactivar el botón "Guardar KML"
+    function updateKmlButtonState() {
+        const btn = document.getElementById('saveKml');
+        if (!btn) return;
+        btn.disabled = !currentRectangle;
+    }
+
+    // Dibuja el rectángulo en el mapa a partir de los inputs
+    document.getElementById('drawRectangle').addEventListener('click', () => {
+        const latMin = parseFloat(document.getElementById('latMin').value);
+        const latMax = parseFloat(document.getElementById('latMax').value);
+        const lonMin = parseFloat(document.getElementById('lonMin').value);
+        const lonMax = parseFloat(document.getElementById('lonMax').value);
+
+        if ([latMin, latMax, lonMin, lonMax].some(v => isNaN(v))) {
+            alert('Por favor, ingresa todas las coordenadas correctamente.');
+            return;
+        }
+
+        if (latMin >= latMax || lonMin >= lonMax) {
+            alert('Latitud/Longitud mínima debe ser menor que la máxima.');
+            return;
+        }
+
+        // Construir el polígono del rectángulo
+        const rectanglePolygon = turf.polygon([[ 
+            [lonMin, latMin],
+            [lonMax, latMin],
+            [lonMax, latMax],
+            [lonMin, latMax],
+            [lonMin, latMin]
+        ]]);
+
+        // Calcular el área del rectángulo en metros cuadrados
+        const areaEnMetros = turf.area(rectanglePolygon);
+
+        // Convertir a kilómetros cuadrados
+        const areaEnKm2 = areaEnMetros / 1_000_000;
+
+        // Límite máximo permitido (por ejemplo 500 km²)
+        const maxAreaKm2 = 2500;
+
+        if (areaEnKm2 > maxAreaKm2) {
+            alert(`El área trazada es demasiado grande (${areaEnKm2.toFixed(2)} km²). Por favor, reduce el tamaño del rectángulo.`);
+            return;
+        }
+
+        // Obtener los puntos vértices del rectángulo
+        const rectanglePoints = [
+            turf.point([lonMin, latMin]),
+            turf.point([lonMax, latMin]),
+            turf.point([lonMax, latMax]),
+            turf.point([lonMin, latMax])
+        ];
+
+        // Estados con geometrías válidas
+        const estadosValidos = estados.features.filter(e => {
+            const coords = e.geometry?.coordinates;
+            return coords && Array.isArray(coords) && coords.length > 0;
+        });
+        
+        console.log("Estados Validos: ", estadosValidos);
+
+        let estadoEncontrado = null;
+
+        // Evaluar en qué estado cae cada punto
+        for (let estado of estadosValidos) {
+            const geometry = estado.geometry;
+
+            // Validar que todos los puntos estén dentro del mismo estado
+            const todosDentro = rectanglePoints.every(punto => {
+                try {
+                    // Hay geometrías tipo MultiPolygon o Polygon
+                    if (geometry.type === "Polygon") {
+                        return turf.booleanPointInPolygon(punto, turf.polygon(geometry.coordinates));
+                    } else if (geometry.type === "MultiPolygon") {
+                        return geometry.coordinates.some(pol => 
+                            turf.booleanPointInPolygon(punto, turf.polygon(pol))
+                        );
+                    }
+                } catch (err) {
+                    console.warn('Geometría inválida detectada en estado:', estado.properties.NOMGEO);
+                    return false;
+                }
+            });
+
+            if (todosDentro) {
+                estadoEncontrado = estado;
+                break;
+            }
+        }
+
+        console.log("Estado Encontrado: ", estadoEncontrado);
+
+        if (!estadoEncontrado) {
+            alert('El trazo está fuera del territorio nacional o abarca más de un estado.');
+            return;
+        } else {
+            console.log('El trazo está completamente dentro del estado:', estadoEncontrado.properties.NOMGEO);
+        }
+
+        // Borrar rectángulo anterior si existe
+        if (currentRectangle) {
+            mapas[0].removeLayer(currentRectangle);
+        }
+
+        const bounds = [[latMin, lonMin], [latMax, lonMax]];
+        currentRectangle = L.rectangle(bounds, {
+            color: '#E0A12E',
+            weight: 2.5,
+            dashArray: '6 4',
+            fillColor: '#E0A12E',
+            fillOpacity: 0.18
+        }).addTo(mapas[0]);
+
+        mapas[0].fitBounds(bounds);
+        updateKmlButtonState();
+
+        // Desplazarse hacia el mapa suavemente
+        document.getElementById('map').scrollIntoView({ behavior: 'smooth' });
+    });
+
+    // Limpiar el mapa y los inputs
+    document.getElementById('clearMap').addEventListener('click', () => {
+        if (currentRectangle) {
+            mapas[0].removeLayer(currentRectangle);
+            currentRectangle = null;
+        }
+        ['latMin', 'latMax', 'lonMin', 'lonMax'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) input.value = '';
+        });
+        updateKmlButtonState();
+    });
+
+    // Generar y descargar archivo KML
+    document.getElementById('saveKml').addEventListener('click', () => {
+        if (!currentRectangle) return;
+
+        const bounds = currentRectangle.getBounds();
+        const sw = bounds.getSouthWest();
+        const ne = bounds.getNorthEast();
+
+        const coords = [
+            `${sw.lng},${sw.lat},0`,
+            `${ne.lng},${sw.lat},0`,
+            `${ne.lng},${ne.lat},0`,
+            `${sw.lng},${ne.lat},0`,
+            `${sw.lng},${sw.lat},0`
+        ].join(' ');
+
+        const kml = `<?xml version="1.0" encoding="UTF-8"?>
+    <kml xmlns="http://www.opengis.net/kml/2.2">
+    <Document>
+        <name>Área Seleccionada</name>
+        <Style id="style1">
+        <LineStyle><color>ff0000ff</color><width>2</width></LineStyle>
+        <PolyStyle><color>3300a5ff</color></PolyStyle>
+        </Style>
+        <Placemark>
+        <styleUrl>#style1</styleUrl>
+        <Polygon>
+            <outerBoundaryIs>
+            <LinearRing>
+                <coordinates>${coords}</coordinates>
+            </LinearRing>
+            </outerBoundaryIs>
+        </Polygon>
+        </Placemark>
+    </Document>
+    </kml>`;
+
+        const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'area_seleccionada.kml';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+
+        alert('¡Archivo KML descargado con éxito!');
+    });
+    </script>
+}

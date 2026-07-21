@@ -1,0 +1,398 @@
+@model Expendios
+
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+@{
+    ViewData["Title"] = "Detalle del Permisionario";
+}
+
+<div class="watermark-container">
+    @for (int i = 0; i < 50; i++) /* Cambiamos el número 3 por 9 para tener más marcas de agua */
+    {
+        <div class="watermark">
+            SENER-@DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") - @ViewData["NombreUsuario"]
+        </div>
+    }
+</div>
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/mexicoi.png" alt="Icono personalizado" class="iconomenu">
+        @ViewData["Title"]
+    </h4>
+</div>
+
+<div class="container ps-5 pe-5">
+
+
+    <div class="text-center pb-3">
+
+    </div>
+    <div class="row mb-3">
+        <div class="col-lg-8">
+            <h3 class="display-6 subtitulo fw-bold">
+                <img src="@Cdn.Url/img_snier/vistas/mexicoi.png" alt="Icono personalizado" class="iconomenu" />
+                Ubicación
+            </h3>
+            <br>
+            <div id="map" style="width: 100%; height: 500px;"></div>
+        </div>
+        <div class="col-lg-4 mt-3 mt-lg-0 mb-3" id="contact2">
+            <div class="">
+
+                <h3 class="display-6 subtitulo fw-bold">
+                    <img src="@Cdn.Url/img_snier/vistas/evaluar.png" alt="Icono personalizado" class="iconomenu" />
+                    Información
+                </h3>
+                <br>
+
+                <div class="card-body pt-3 alert alert-light" role="alert">
+                    <h5 class=""><i class="bi bi-qr-code"></i> Número de Permiso:</h5>
+                    <div class="alert alert-secondary" role="alert">
+                        <p class="card-text ">@Model.NumeroPermiso</p>
+                    </div>
+
+
+
+                    <h5 class=""><i class=" bi bi-calendar2-event"></i> Fecha de
+                        Otorgamiento:</h5>
+                    <div class="alert alert-secondary" role="alert">
+
+                        <p class="card-text">@Model.FechaOtorgamiento</p>
+
+                    </div>
+
+                    <h5 class=""><i class="bi bi-buildings-fill"></i> Razón Social:</h5>
+                    <div class="alert alert-secondary" role="alert">
+
+                        <p class="card-text">@Model.Razón_social</p>
+                    </div>
+
+
+                    <h5 class=""><i class="fas fa-globe" style="color:#000"></i> Dirección:</h5>
+
+                    <p class="card-text">
+                    <div class="alert alert-secondary" role="alert">
+                        <ul>
+                            <li><strong> Calle:</strong><i> @Model.Calle_num_ES</i></li>
+                            <li><strong> Código Postal:</strong> <i>@Model.Codigo_Postal</i></li>
+                            <li><strong>Colonia:</strong> <i>@Model.Colonia_ES</i></li>
+                            <li><strong> ID Entidad Federativa:</strong> <i>@Model.EF_ID</i></li>
+                            <li><strong>ID Municipio:</strong> <i>@Model.MPO_ID</i></li>
+                        </ul>
+                    </div>
+
+                    <h5 class=""><i class="bi bi-signal"></i> Marca:</h5>
+                    <div class="alert alert-secondary" role="alert">
+
+                        <p class="card-text">@Model.Marca </p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    @* Mostrar la sección del tablero solo si el mercado es Electricidad *@
+    @if (Model.Mercado == "Electricidad" && perfilUsuario.Rol != "0")
+    {
+
+        <partial name="_MigracionProyecto" />
+        <div class="row">
+            <div class="col-12">
+                <h3 class="display-6 subtitulo fw-bold">
+                    <img src="@Cdn.Url/img_snier/vistas/electricidad.png" alt="Tablero de Electricidad" class="iconomenu" />
+                    Información Histórica del Permisionario
+                </h3>
+                <div>
+                    <!-- Información Anual -->
+                    <div id="graficoGeneracionAnual" style="height: 400px;" class=></div>
+                    <div id="graficoFactoresAnual" style="height: 400px;" class=></div>
+                    <div id="graficoEmisionesCO2Anual" style="height: 400px;" class=></div>
+                    <div id="graficoConsumoAguaAnual" style="height: 400px;" class=></div>
+
+                    <!-- Información Trimestral -->
+                    <div id="graficoGeneracionTrimestral" style="height: 400px;" class=></div>
+                    <div id="graficoFactoresTrimestral" style="height: 400px;" class=></div>
+                    <div id="graficoEmisionesCO2Trimestral" style="height: 400px;" class=></div>
+                    <div id="graficoConsumoAguaTrimestral" style="height: 400px;" class=></div>
+
+                </div>
+            </div>
+        </div>
+    }
+
+</div>
+
+<!-- Scripts -->
+@section scripts {
+
+    <script>
+        function initMap() {
+            var latitude = @Model.Latitud_GEO;
+            var longitude = @Model.Longitud_GEO;
+
+            var map = L.map('map').setView([latitude, longitude], 15);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+                maxZoom: 18,
+            }).addTo(map);
+
+            L.marker([latitude, longitude]).addTo(map)
+                .bindPopup(`
+                                                                                <div>
+                                                                                    <p>@Model.Razón_social</p>
+                                                                                    <a class="street-view-link btn btn-cre-verde" href="http://maps.google.com/maps?q=&layer=c&cbll=${latitude},${longitude}&cbp=11,0,0,0,0" target="_blank"><b>Ver vista de calle</b></a>
+                                                                                </div>
+                                                                            `)
+                .openPopup();
+
+            map.on('click', function (e) {
+                let lat = e.latlng.lat.toPrecision(8);
+                let lon = e.latlng.lng.toPrecision(8);
+                const point = L.marker([lat, lon]).addTo(map)
+                    .bindPopup('<a class="street-view-link btn btn-cre-verde" href="http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0" target="blank"><b> Ver vista de calle </b></a>').openPopup();
+            });
+        }
+
+        // Llama a la función para inicializar el mapa
+        initMap();
+
+        $(document).ready(function () {
+            const datosDashboard = @Html.Raw(Json.Serialize(Model.DatosDashboard));
+            console.log("Datos del Dashboard:", datosDashboard);
+
+            // Separar datos anuales y trimestrales
+            const datosAnuales = datosDashboard.filter(d => d.trimestre === null);
+            const datosTrimestrales = datosDashboard.filter(d => d.trimestre !== null);
+
+            console.log("Datos Anuales:", datosAnuales);
+            console.log("Datos Trimestrales:", datosTrimestrales);
+
+            // Función para limitar los datos a dos decimales
+            const formatData = data => data.map(d => parseFloat(d.toFixed(2)));
+
+            // Multiplicar el factor calculado por 100 y limitar a dos decimales
+            const datosFactorCalculadoAnual = formatData(datosAnuales.map(d => d.factorPlantaCalculado * 100));
+            const datosFactorCalculadoTrimestral = formatData(datosTrimestrales.map(d => d.factorPlantaCalculado * 100));
+
+            // --- GRÁFICOS ANUALES ---
+            // Generación
+            Highcharts.chart('graficoGeneracionAnual', {
+                chart: { type: 'line', backgroundColor: '#efefee' },
+                title: { text: 'Generación Bruta y Neta por Año' },
+                xAxis: {
+                    categories: datosAnuales.map(d => d.periodo),
+                    title: { text: 'Año' }
+                },
+                yAxis: {
+                    title: { text: 'Generación (GWh)' },
+                    min: 0,
+                    labels: { formatter: function () { return `${this.value} GWh`; } }
+                },
+                series: [
+                    {
+                        name: 'Generación Bruta',
+                        data: formatData(datosAnuales.map(d => d.generacionBrutaOImportacionGWh)),
+                        color: '#1f77b4'
+                    },
+                    {
+                        name: 'Generación Neta',
+                        data: formatData(datosAnuales.map(d => d.generacionNetaGWh)),
+                        color: '#ff7f0e'
+                    }
+                ]
+            });
+
+            // Factores de Planta
+            Highcharts.chart('graficoFactoresAnual', {
+                chart: { type: 'column', backgroundColor: '#efefee' },
+                title: { text: 'Factores de Planta por Año' },
+                xAxis: {
+                    categories: datosAnuales.map(d => d.periodo),
+                    title: { text: 'Año' }
+                },
+                yAxis: {
+                    title: { text: 'Factor (%)' },
+                    min: 0,
+                    max: 100,
+                    labels: { formatter: function () { return `${this.value} %`; } }
+                },
+                series: [
+                    {
+                        name: 'Factor Reportado',
+                        data: formatData(datosAnuales.map(d => d.factorPlantaReportado)),
+                        color: '#2ca02c'
+                    },
+                    {
+                        name: 'Factor Calculado',
+                        data: datosFactorCalculadoAnual,
+                        color: '#d62728'
+                    }
+                ]
+            });
+
+            // Emisiones de CO₂
+            Highcharts.chart('graficoEmisionesCO2Anual', {
+                chart: { type: 'line', backgroundColor: '#efefee' },
+                title: { text: 'Emisiones de CO₂ por Año' },
+                xAxis: {
+                    categories: datosAnuales.map(d => d.periodo),
+                    title: { text: 'Año' }
+                },
+                yAxis: {
+                    title: { text: 'Emisiones (Toneladas)' },
+                    min: 0,
+                    labels: { formatter: function () { return `${this.value} T`; } }
+                },
+                series: [
+                    {
+                        name: 'Emisiones de CO₂',
+                        data: formatData(datosAnuales.map(d => d.emisionesCO2)),
+                        color: '#9467bd'
+                    }
+                ]
+            });
+
+            // Consumo de Agua
+            Highcharts.chart('graficoConsumoAguaAnual', {
+                chart: { type: 'column', backgroundColor: '#efefee' },
+                title: { text: 'Consumo de Agua por Año' },
+                xAxis: {
+                    categories: datosAnuales.map(d => d.periodo),
+                    title: { text: 'Año' }
+                },
+                yAxis: {
+                    title: { text: 'Consumo de Agua (Mm³)' },
+                    min: 0,
+                    labels: { formatter: function () { return `${this.value} Mm³`; } }
+                },
+                series: [
+                    {
+                        name: 'Consumo de Agua',
+                        data: formatData(datosAnuales.map(d => d.consumoAgua)),
+                        color: '#17becf'
+                    }
+                ]
+            });
+
+            // --- GRÁFICOS TRIMESTRALES ---
+            // Generación
+            Highcharts.chart('graficoGeneracionTrimestral', {
+                chart: { type: 'line', backgroundColor: '#efefee' },
+                title: { text: 'Generación Bruta y Neta por Trimestre' },
+                xAxis: {
+                    categories: datosTrimestrales.map(d => `${d.periodo} T${d.trimestre}`),
+                    title: { text: 'Trimestre' }
+                },
+                yAxis: {
+                    title: { text: 'Generación (GWh)' },
+                    min: 0,
+                    labels: { formatter: function () { return `${this.value} GWh`; } }
+                },
+                series: [
+                    {
+                        name: 'Generación Bruta',
+                        data: formatData(datosTrimestrales.map(d => d.generacionBrutaOImportacionGWh)),
+                        color: '#1f77b4'
+                    },
+                    {
+                        name: 'Generación Neta',
+                        data: formatData(datosTrimestrales.map(d => d.generacionNetaGWh)),
+                        color: '#ff7f0e'
+                    }
+                ]
+            });
+
+            // Factores de Planta
+            Highcharts.chart('graficoFactoresTrimestral', {
+                chart: { type: 'column', backgroundColor: '#efefee' },
+                title: { text: 'Factores de Planta por Trimestre' },
+                xAxis: {
+                    categories: datosTrimestrales.map(d => `${d.periodo} T${d.trimestre}`),
+                    title: { text: 'Trimestre' }
+                },
+                yAxis: {
+                    title: { text: 'Factor (%)' },
+                    min: 0,
+                    max: 100,
+                    labels: { formatter: function () { return `${this.value} %`; } }
+                },
+                series: [
+                    {
+                        name: 'Factor Reportado',
+                        data: formatData(datosTrimestrales.map(d => d.factorPlantaReportado)),
+                        color: '#2ca02c'
+                    },
+                    {
+                        name: 'Factor Calculado',
+                        data: datosFactorCalculadoTrimestral,
+                        color: '#d62728'
+                    }
+                ]
+            });
+
+            // Emisiones de CO₂
+            Highcharts.chart('graficoEmisionesCO2Trimestral', {
+                chart: { type: 'line', backgroundColor: '#efefee' },
+                title: { text: 'Emisiones de CO₂ por Trimestre' },
+                xAxis: {
+                    categories: datosTrimestrales.map(d => `${d.periodo} T${d.trimestre}`),
+                    title: { text: 'Trimestre' }
+                },
+                yAxis: {
+                    title: { text: 'Emisiones (Toneladas)' },
+                    min: 0,
+                    labels: { formatter: function () { return `${this.value} T`; } }
+                },
+                series: [
+                    {
+                        name: 'Emisiones de CO₂',
+                        data: formatData(datosTrimestrales.map(d => d.emisionesCO2)),
+                        color: '#9467bd'
+                    }
+                ]
+            });
+
+            // Consumo de Agua
+            Highcharts.chart('graficoConsumoAguaTrimestral', {
+                chart: { type: 'column', backgroundColor: '#efefee' },
+                title: { text: 'Consumo de Agua por Trimestre' },
+                xAxis: {
+                    categories: datosTrimestrales.map(d => `${d.periodo} T${d.trimestre}`),
+                    title: { text: 'Trimestre' }
+                },
+                yAxis: {
+                    title: { text: 'Consumo de Agua (Mm³)' },
+                    min: 0,
+                    labels: { formatter: function () { return `${this.value} Mm³`; } }
+                },
+                series: [
+                    {
+                        name: 'Consumo de Agua',
+                        data: formatData(datosTrimestrales.map(d => d.consumoAgua)),
+                        color: '#17becf'
+                    }
+                ]
+            });
+        });
+
+    </script>
+
+}

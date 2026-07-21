@@ -1,0 +1,1018 @@
+@model NSIE.Models.RegistroMuestra
+@using NSIE.Models
+@using Newtonsoft.Json
+
+@{
+    ViewData["Title"] = "Registro de Muestra - Formulario 1";
+    var pronosticos = ViewBag.PronosticosPozos as List<PronosticoPozo> ?? new List<PronosticoPozo>();
+    var header = new HeaderViewModel
+    {
+        Title = "SIIL - Registro de Muestra",
+        IconPath = "siil.png",
+        Description = "Formulario 1: Captura operativa de muestras",
+        Section = "SIIL",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Registro",
+            description = "Captura y trazabilidad de muestras",
+            functionality = "Registro operativo de muestras con ID único",
+            stage = "Operación",
+            roles = new[] {
+                new { icon = "flask", text = "Operadores de Campo: Registro de muestras" }
+            }
+        })
+    };
+}
+
+<div class="container-fluid siil-form">
+    @await Html.PartialAsync("_ViewHeader", header)
+
+    <div class="container py-3">
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+
+                <div class="siil-title">
+                    <div class="siil-title__icon">
+                        <i class="bi bi-file-earmark-text"></i>
+                    </div>
+                    <div>
+                        <h2 class="mb-1">Registro de Muestra</h2>
+                        <div class="text-muted small">Formulario 1: Geología</div>
+                    </div>
+                </div>
+
+                <div class="alert siil-alert" role="alert">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Instrucción SNIEr:</strong> Todos los campos son obligatorios para garantizar la integridad
+                    de
+                    la base de datos nacional.
+                </div>
+
+                <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                @using (Html.BeginForm("CrearMuestra", "SIIL", FormMethod.Post, new
+                {
+                    @class = "needs-validation",
+                    id =
+                                                "formMuestra"
+                }))
+                {
+                    @Html.AntiForgeryToken()
+
+                    <!-- SECCIÓN A: DATOS GENERALES Y FUENTE -->
+                    <div class="card siil-card mb-4">
+                        <div class="card-header siil-card__header">
+                            <h5 class="mb-0">1. Definición del Recurso</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">Fuente (Tipo) <span
+                                        class="text-danger">*</span></label>
+                                        <select asp-for="Fuente" class="form-select form-select-lg" id="ddlFuente"
+                                                onchange="actualizarFormulario()" required>
+                                            <option value="">Seleccione...</option>
+                                            <option value="Arcilla">Arcilla (Clays)</option>
+                                            <option value="Salmuera">Salmuera (Brines)</option>
+                                        </select>
+                                        <span asp-validation-for="Fuente" class="text-danger"></span>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">Origen <span class="text-danger">*</span></label>
+                                        <select asp-for="Origen" class="form-select form-select-lg" id="ddlOrigen"
+                                                onchange="actualizarFormulario()" required>
+                                            <option value="">Seleccione...</option>
+                                            <option value="Prospectiva">Prospectiva (Superficie)</option>
+                                            <option value="Barrenación">Barrenación (Testigo)</option>
+                                        </select>
+                                        <span asp-validation-for="Origen" class="text-danger"></span>
+                                    </div>
+                                </div>
+
+                                <!-- SECCIÓN DATOS GENERALES -->
+                                <div class="row g-3 mt-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">ID Proyecto</label>
+                                        <input asp-for="IdProyecto" type="text" class="form-control"
+                                            maxlength="50"
+                                            pattern="^[A-Za-z0-9\-_/]+$"
+                                            placeholder="ej. PROY-LITIO-2026" />
+                                        <span asp-validation-for="IdProyecto" class="text-danger"></span>
+                                        
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Institución</label>
+                                        <input asp-for="Institucion" type="text" class="form-control" readonly />
+                                    </div>
+                                </div>
+
+                                <div class="row g-3 mt-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Responsable del Registro (Nombre)</label>
+                                        <input asp-for="NombreResponsableRegistro" type="text" class="form-control"
+                                               placeholder="Nombre" readonly />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Responsable del Registro (Email)</label>
+                                        <input asp-for="ResponsableRegistro" type="email" class="form-control" readonly />
+                                    </div>
+                                </div>
+
+                                <!-- UBICACIÓN -->
+                                <div class="row g-3 mt-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Estado <span class="text-danger">*</span></label>
+                                        <select asp-for="Estado" class="form-select" id="ddlEstado">
+                                            <option value="">Seleccione un estado...</option>
+                                            @foreach (var estado in ViewBag.Estados)
+                                            {
+                                                <option value="@estado.EF_ID">@estado.EF_Nombre</option>
+                                            }
+                                        </select>
+                                        <span asp-validation-for="Estado" class="text-danger"></span>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label">Municipio <span class="text-danger">*</span></label>
+                                        <select asp-for="Municipio" class="form-select" id="ddlMunicipio" disabled>
+                                            <option value="">Seleccione un municipio...</option>
+                                        </select>
+                                        <span asp-validation-for="Municipio" class="text-danger"></span>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Latitud</label>
+                                        <input asp-for="Latitud" type="number" step="0.000001"
+                                            class="form-control"
+                                            id="inputLatitud"
+                                            disabled
+                                            onblur="validarCoordenada()"
+                                            placeholder="29.0729" />
+                                        <span asp-validation-for="Latitud" class="text-danger"></span>
+                                    </div>
+
+                                    <div class="col-md-2">
+                                        <label class="form-label">Longitud</label>
+                                        <input asp-for="Longitud" type="number" step="0.000001"
+                                            class="form-control"
+                                            id="inputLongitud"
+                                            disabled
+                                            onblur="validarCoordenada()"
+                                            placeholder="-110.9559" />
+                                        <span asp-validation-for="Longitud" class="text-danger"></span>
+                                    </div>
+                                </div>
+
+                                <!-- PREVISUALIZACIÓN DEL ID (Requisito de Trazabilidad) -->
+                                <div class="siil-id-preview text-center">
+                                    <div class="text-muted small mb-1">ID ÚNICO PRELIMINAR</div>
+                                    <div class="siil-id-preview__value" id="lblIdPreview">---</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANEL 1: ARCILLAS (Se muestra si Fuente = Arcilla) -->
+                        <div id="panelArcillas" style="display:none;">
+                            <div class="card siil-card mb-4">
+                                <div class="card-header siil-card__header siil-card__header--warning">
+                                    <h5 class="mb-0">2. Caracterización de Roca (Arcillas)</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Familia de Rocas</label>
+                                            <select asp-for="FamiliaRoca" class="form-select">
+                                                <option value="">Seleccione...</option>
+                                                <option value="Ígneas">Ígneas</option>
+                                                <option value="Sedimentarias">Sedimentarias</option>
+                                                <option value="Metamórficas">Metamórficas</option>
+                                            </select>
+                                            <span asp-validation-for="FamiliaRoca" class="text-danger"></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Sub-Panel: Solo si es Barrenación -->
+                                    <div id="subPanelBarrenacion" style="display:none;" class="siil-subpanel">
+                                        <h6 class="text-primary mb-3">
+                                            <i class="bi bi-rulers me-2"></i>Geometría del Testigo
+                                        </h6>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Barreno Asociado</label>
+                                            <select asp-for="BarrenoID" class="form-select">
+                                                <option value="">Seleccione un barreno...</option>
+
+                                                @if (ViewBag.Barrenos != null)
+                                                {
+                                                    foreach (var b in ViewBag.Barrenos)
+                                                    {
+                                                        <option value="@b">@b</option>
+                                                    }
+                                                }
+                                            </select>
+                                            <span asp-validation-for="BarrenoID" class="text-danger"></span>
+                                        </div>
+                                        <div class="row g-3 mt-2">
+                                            <div class="col-md-3">
+                                                <label class="form-label">Azimut (°)</label>
+                                                <input asp-for="Azimut" type="number" step="0.01" class="form-control"
+                                                       placeholder="0 - 360" />
+                                                <span asp-validation-for="Azimut" class="text-danger"></span>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Inclinación (°)</label>
+                                                <input asp-for="Inclinacion" type="number" step="0.01" class="form-control"
+                                                       placeholder="0 - 90" />
+                                                <span asp-validation-for="Inclinacion" class="text-danger"></span>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Largo (m)</label>
+                                                <input asp-for="Largo" type="number" step="0.01" class="form-control"
+                                                       placeholder="metros" />
+                                                <span asp-validation-for="Largo" class="text-danger"></span>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Diámetro (mm)</label>
+                                                <input asp-for="Diametro" type="number" step="0.1" class="form-control"
+                                                       placeholder="milímetros" />
+                                                <span asp-validation-for="Diametro" class="text-danger"></span>
+                                            </div>
+                                        </div>
+                                        <div class="row g-3 mt-2">
+                                            <div class="col-md-6">
+                                                <label class="form-label">RQD (Calidad de Roca)</label>
+                                                <select asp-for="RQD" class="form-select">
+                                                    <option value="">Seleccione...</option>
+                                                    <option value="0%-25%">0%-25% (Muy mala)</option>
+                                                    <option value="25%-50%">25%-50% (Mala)</option>
+                                                    <option value="50%-75%">50%-75% (Regular)</option>
+                                                    <option value="75%-100%">75%-100% (Buena)</option>
+                                                </select>
+                                                <span asp-validation-for="RQD" class="text-danger"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANEL 2: SALMUERAS (Se muestra si Fuente = Salmuera) -->
+                        <div id="panelSalmueras" style="display:none;">
+                            <div class="card siil-card mb-4">
+                                <div class="card-header siil-card__header siil-card__header--success">
+                                    <h5 class="mb-0">2. Caracterización Hidroquímica (Salmueras)</h5>
+                                </div>
+                                <div class="card-body">
+                                    <!-- VINCULACIÓN CON PRONÓSTICOS -->
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold">
+                                            <i class="bi bi-link-45deg me-2"></i>
+                                            Pozo Pronosticado (Insumo) - Opcional
+                                        </label>
+                                        <select asp-for="IdPozo_Pronostico_FK" class="form-select">
+                                            <option value="">-- Vincular con Pozo Existente (Opcional) --</option>
+                                            @foreach (var pronostico in pronosticos)
+                                            {
+                                                <option value="@pronostico.IdInterno">
+                                                    @pronostico.Pozo (@pronostico.Campo) - Probabilidad:
+                                                    @pronostico.PosibilidadIntervalo
+                                                </option>
+                                            }
+                                        </select>
+                                        <div class="form-text">
+                                            <i class="bi bi-info-circle me-1"></i>
+                                            Listado de pozos cargados desde la Interfaz de Pronóstico. Total: @pronosticos.Count
+                                            pozos disponibles.
+                                        </div>
+                                    </div>
+
+                                    <!-- Campos específicos de Salmuera -->
+                                    <div class="row g-3">
+                                        <div class="col-md-3">
+                                            <label class="form-label">pH</label>
+                                            <input asp-for="PH" type="number" step="0.1" min="0" max="14" class="form-control"
+                                                   placeholder="0 - 14" />
+                                            <small class="text-muted">Rango: 0-14</small>
+                                            <span asp-validation-for="PH" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Temperatura (°C)</label>
+                                            <input asp-for="Temperatura" type="number" step="0.1" class="form-control"
+                                                   placeholder="°C" />
+                                            <span asp-validation-for="Temperatura" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Conductividad (µS/cm)</label>
+                                            <input asp-for="Conductividad" type="number" step="0.01" class="form-control"
+                                                   placeholder="micro-Siemens/cm" />
+                                            <span asp-validation-for="Conductividad" class="text-danger"></span>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Profundidad Pozo (m)</label>
+                                            <input asp-for="ProfundidadPozo" type="number" step="0.1" class="form-control"
+                                                   placeholder="metros" />
+                                            <span asp-validation-for="ProfundidadPozo" class="text-danger"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2 mt-2">
+                            <button type="submit" class="btn btn-siil-primary btn-lg">
+                                <i class="bi bi-save me-2"></i>Guardar y Generar ID
+                            </button>
+                            <a asp-action="Index" class="btn btn-siil-secondary">
+                                <i class="bi bi-x-circle me-2"></i>Cancelar
+                            </a>
+                        </div>
+
+                    }
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+    <script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+    <!-- LÓGICA DE VISUALIZACIÓN (Javascript) -->
+    <script>
+
+        const ddlEstado = document.getElementById("ddlEstado");
+        const ddlMunicipio = document.getElementById("ddlMunicipio");
+        const inputLat = document.getElementById("inputLatitud");
+        const inputLon = document.getElementById("inputLongitud");
+
+        // Ejecutar al cargar la página
+        document.addEventListener('DOMContentLoaded', function () {
+            console.log("Página cargada, inicializando lógica de formulario...");
+            verificarUbicacionSeleccionada();
+            actualizarFormulario();
+
+            var fuenteM = "@Model?.Fuente";
+            var origenM = "@Model?.Origen";
+
+            if (fuenteM === "Arcilla") {
+                document.getElementById("panelArcillas").style.display = "block";
+
+                if (origenM === "Barrenación") {
+                    document.getElementById("subPanelBarrenacion").style.display = "block";
+                }
+            }
+
+            if (fuenteM === "Salmuera") {
+                document.getElementById("panelSalmueras").style.display = "block";
+            }
+
+            const form = document.querySelector("form");
+
+            if (form) {
+                form.addEventListener("submit", function (e) {
+
+                    const esValidoBarrenacion = validarBarrenacion();
+                    const esValidoSalmuera = validarSalmuera();
+
+                    if (!esValidoBarrenacion || !esValidoSalmuera) {
+                        e.preventDefault();
+                        return;
+                    }
+
+                    const btn = form.querySelector("button[type='submit']");
+                    btn.disabled = true;
+                    btn.innerHTML = "Guardando...";
+
+                });
+            }
+
+            const firstError = document.querySelector(".text-danger");
+
+            if (firstError && firstError.innerText.trim() !== "") {
+                firstError.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center"
+                });
+            }
+        });
+
+        function actualizarFormulario() {
+            const ddlFuente = document.getElementById("ddlFuente");
+            const ddlOrigen = document.getElementById("ddlOrigen");
+            const panelArc = document.getElementById("panelArcillas");
+            const panelSal = document.getElementById("panelSalmueras");
+            const subPanelBarr = document.getElementById("subPanelBarrenacion");
+            const lblId = document.getElementById("lblIdPreview");
+
+            if (!ddlFuente || !ddlOrigen || !panelArc || !panelSal || !subPanelBarr || !lblId) {
+                return;
+            }
+
+            const fuente = ddlFuente.value;
+            const origen = ddlOrigen.value;
+
+            // 1. Mostrar/Ocultar Paneles según Diagrama
+            if (fuente === "Arcilla") {
+                panelArc.style.display = "block";
+                panelSal.style.display = "none";
+                // Lógica anidada para Barrenación
+                const esBarrenacion = (origen === "Barrenación");
+                subPanelBarr.style.display = esBarrenacion ? "block" : "none";
+
+                if (!esBarrenacion) {
+                    limpiarCamposBarrenacion();
+                }
+
+                ddlOrigen.disabled = false;
+            }
+            else if (fuente === "Salmuera") {
+                panelArc.style.display = "none";
+                panelSal.style.display = "block";
+                subPanelBarr.style.display = "none";
+
+                // 🔹 Ocultar Origen
+                ddlOrigen.value = "";
+                ddlOrigen.disabled = true;
+            } else {
+                panelArc.style.display = "none";
+                panelSal.style.display = "none";
+            }
+
+            // 2. Generar Previsualización del ID
+            // Formato: TIPO-ORIGEN-FECHA
+            let codigoFuente = (fuente === "Arcilla") ? "ARC" : (fuente === "Salmuera" ? "SLM" : "???");
+            let codigoOrigen = "";
+
+            if (fuente === "Salmuera") {
+                codigoOrigen = "SLM"; // Regla especial de SIIL
+            } else {
+                codigoOrigen = (origen === "Barrenación") ? "BRR" : "PRS";
+            }
+
+            const ahora = new Date();
+            const año = ahora.getFullYear();
+            const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+            const dia = String(ahora.getDate()).padStart(2, '0');
+            const hora = String(ahora.getHours()).padStart(2, '0');
+            const min = String(ahora.getMinutes()).padStart(2, '0');
+
+            const fechaFormato = `${año}/${mes}/${dia} ${hora}:${min}`;
+            lblId.innerText = `${codigoFuente}-${codigoOrigen}-${fechaFormato}`;
+        }
+
+        function validarBarrenacion() {
+
+            const ddlFuente = document.getElementById("ddlFuente").value;
+            const ddlOrigen = document.getElementById("ddlOrigen").value;
+
+            if (ddlFuente !== "Arcilla" || ddlOrigen !== "Barrenación") {
+                return true; // No aplica validación
+            }
+
+            const azimut = parseFloat(document.getElementById("Azimut").value);
+            const inclinacion = parseFloat(document.getElementById("Inclinacion").value);
+            const largo = parseFloat(document.getElementById("Largo").value);
+            const diametro = parseFloat(document.getElementById("Diametro").value);
+            const rqd = document.getElementById("RQD").value;
+
+            let valido = true;
+
+            limpiarValidacionesBarrenacion();
+
+            // AZIMUT
+            if (isNaN(azimut) || azimut < 0 || azimut > 360) {
+                marcarInvalido("Azimut", "El azimut debe estar entre 0 y 360°.");
+                valido = false;
+            }
+
+            // INCLINACIÓN
+            if (isNaN(inclinacion) || inclinacion < 0 || inclinacion > 90) {
+                marcarInvalido("Inclinacion", "La inclinación debe estar entre 0 y 90°.");
+                valido = false;
+            }
+
+            // LARGO
+            if (isNaN(largo) || largo <= 0) {
+                marcarInvalido("Largo", "El largo debe ser mayor a 0.");
+                valido = false;
+            }
+
+            // DIÁMETRO
+            if (isNaN(diametro) || diametro <= 0) {
+                marcarInvalido("Diametro", "El diámetro debe ser mayor a 0.");
+                valido = false;
+            }
+
+            // RQD
+            if (!rqd) {
+                marcarInvalido("RQD", "Debe seleccionar la calidad de roca.");
+                valido = false;
+            }
+
+            return valido;
+        }
+
+        function validarSalmuera() {
+
+            const ddlFuente = document.getElementById("ddlFuente").value;
+
+            if (ddlFuente !== "Salmuera") {
+                return true; // No aplica validación
+            }
+
+            const ph = parseFloat(document.getElementById("PH").value);
+            const temperatura = parseFloat(document.getElementById("Temperatura").value);
+            const conductividad = parseFloat(document.getElementById("Conductividad").value);
+            const profundidad = parseFloat(document.getElementById("ProfundidadPozo").value);
+
+            let valido = true;
+
+            limpiarValidacionesSalmuera();
+
+            // pH
+            if (isNaN(ph) || ph < 0 || ph > 14) {
+                marcarInvalido("PH", "El pH debe estar entre 0 y 14.");
+                valido = false;
+            }
+
+            // Temperatura
+            if (isNaN(temperatura) || temperatura < -10 || temperatura > 200) {
+                marcarInvalido("Temperatura", "Temperatura fuera de rango lógico (-10 a 200 °C).");
+                valido = false;
+            }
+
+            // Conductividad
+            if (isNaN(conductividad) || conductividad <= 0) {
+                marcarInvalido("Conductividad", "La conductividad debe ser mayor a 0.");
+                valido = false;
+            }
+
+            // Profundidad
+            if (isNaN(profundidad) || profundidad <= 0) {
+                marcarInvalido("ProfundidadPozo", "La profundidad debe ser mayor a 0.");
+                valido = false;
+            }
+
+            return valido;
+        }
+
+        function marcarInvalido(id, mensaje) {
+            const input = document.getElementById(id);
+            input.classList.add("is-invalid");
+
+            let error = input.nextElementSibling;
+            if (!error || !error.classList.contains("invalid-feedback")) {
+                error = document.createElement("div");
+                error.className = "invalid-feedback";
+                input.parentElement.appendChild(error);
+            }
+
+            error.innerText = mensaje;
+        }
+
+        function limpiarValidacionesBarrenacion() {
+            ["Azimut", "Inclinacion", "Largo", "Diametro", "RQD"].forEach(id => {
+                const input = document.getElementById(id);
+                if (!input) return;
+
+                input.classList.remove("is-invalid");
+
+                const feedback = input.parentElement.querySelector(".invalid-feedback");
+                if (feedback) feedback.remove();
+            });
+        }
+
+        function limpiarValidacionesSalmuera() {
+            ["PH", "Temperatura", "Conductividad", "ProfundidadPozo"].forEach(id => {
+                const input = document.getElementById(id);
+                if (!input) return;
+
+                input.classList.remove("is-invalid");
+
+                const feedback = input.parentElement.querySelector(".invalid-feedback");
+                if (feedback) feedback.remove();
+            });
+        }
+
+        ["Azimut", "Inclinacion", "Largo", "Diametro", "RQD"].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) {
+                input.addEventListener("input", () => {
+                    input.classList.remove("is-invalid");
+                });
+            }
+        });
+
+        function limpiarCamposBarrenacion() {
+            ["Azimut", "Inclinacion", "Largo", "Diametro", "RQD"].forEach(id => {
+                const input = document.getElementById(id);
+                if (input) {
+                    input.value = "";
+                    input.classList.remove("is-invalid");
+                }
+            });
+        }
+
+        function limpiarPanel(panelId) {
+            const panel = document.getElementById(panelId);
+
+            if (!panel) return;
+
+            // Limpiar inputs y selects
+            const inputs = panel.querySelectorAll("input, select, textarea");
+
+            inputs.forEach(input => {
+
+                // Limpiar valor
+                if (input.tagName === "SELECT") {
+                    input.selectedIndex = 0;
+                } else {
+                    input.value = "";
+                }
+
+                // Quitar clases visuales
+                input.classList.remove("is-valid", "is-invalid");
+            });
+
+            // Limpiar mensajes de validación (asp-validation-for)
+            const validationSpans = panel.querySelectorAll("span.text-danger");
+
+            validationSpans.forEach(span => {
+                span.textContent = "";
+            });
+        }
+
+        const ddlFuenteChange = document.getElementById("ddlFuente");
+        const panelArcillas = document.getElementById("panelArcillas");
+        const panelSalmueras = document.getElementById("panelSalmueras");
+
+        ddlFuenteChange.addEventListener("change", function () {
+
+            if (this.value === "Arcilla") {
+
+                panelArcillas.style.display = "block";
+                panelSalmueras.style.display = "none";
+
+                // 🔥 limpiar salmueras
+                limpiarPanel("panelSalmueras");
+
+            }
+            else if (this.value === "Salmuera") {
+
+                panelSalmueras.style.display = "block";
+                panelArcillas.style.display = "none";
+
+                // 🔥 limpiar arcillas
+                limpiarPanel("panelArcillas");
+            }
+            else {
+
+                panelArcillas.style.display = "none";
+                panelSalmueras.style.display = "none";
+
+                limpiarPanel("panelArcillas");
+                limpiarPanel("panelSalmueras");
+            }
+        });
+    </script>
+    <script>
+        document.getElementById("ddlEstado").addEventListener("change", function () {
+
+            const estadoId = this.value;
+            const municipioSelect = document.getElementById("ddlMunicipio");
+
+            municipioSelect.innerHTML = '<option value="">Cargando...</option>';
+            municipioSelect.disabled = true;
+
+            if (!estadoId) {
+                municipioSelect.innerHTML = '<option value="">Seleccione un municipio...</option>';
+                return;
+            }
+
+            fetch(`/SIIL/ObtenerMunicipiosPorEstado?estadoId=${estadoId}`)
+                .then(response => response.json())
+                .then(data => {
+
+                    municipioSelect.innerHTML = '<option value="">Seleccione un municipio...</option>';
+
+                    data.forEach(m => {
+                        const option = document.createElement("option");
+                        option.value = m.municipioID;
+                        option.text = m.municipio_Nombre;
+                        municipioSelect.appendChild(option);
+                    });
+
+                    municipioSelect.disabled = false;
+                });
+        });
+
+        function verificarUbicacionSeleccionada() {
+
+            const estadoSeleccionado = ddlEstado.value;
+            const municipioSeleccionado = ddlMunicipio.value;
+
+            console.log("Estado seleccionado:", estadoSeleccionado);
+            console.log("Municipio seleccionado:", municipioSeleccionado);
+
+            if (estadoSeleccionado && municipioSeleccionado) {
+                inputLat.disabled = false;
+                inputLon.disabled = false;
+            } else {
+                inputLat.disabled = true;
+                inputLon.disabled = true;
+                inputLat.value = "";
+                inputLon.value = "";
+            }
+        }
+
+        ddlEstado.addEventListener("change", function () {
+
+            limpiarCoordenadas(); // 👈 limpiar siempre al cambiar estado
+            verificarUbicacionSeleccionada();
+        });
+
+        ddlMunicipio.addEventListener("change", function () {
+
+            limpiarCoordenadas(); // 👈 limpiar siempre al cambiar municipio
+            verificarUbicacionSeleccionada();
+        });
+
+        function limpiarCoordenadas() {
+
+            // Limpiar valores
+            inputLat.value = "";
+            inputLon.value = "";
+
+            // Limpiar clases de validación
+            inputLat.classList.remove("is-valid", "is-invalid");
+            inputLon.classList.remove("is-valid", "is-invalid");
+
+            // Limpiar mensaje
+            limpiarErrorCoordenada();
+        }
+
+        function validarCoordenada() {
+
+            const lat = parseFloat(inputLat.value);
+            const lon = parseFloat(inputLon.value);
+            const estadoId = ddlEstado.value;
+            const municipioId = ddlMunicipio.value;
+
+            console.log("Validando coordenada:", { lat, lon, estadoId, municipioId });
+
+            if (isNaN(lat) || isNaN(lon) || !estadoId || !municipioId) return;
+
+            if (lat < 14 || lat > 33 || lon < -118 || lon > -86) {
+                limpiarCoordenadas();
+                mostrarErrorCoordenada("Coordenada fuera del territorio nacional.");
+                inputLat.classList.add("is-invalid");
+                inputLon.classList.add("is-invalid");
+                return;
+            }
+
+            const estadoIdNormalizado = estadoId.toString().padStart(2, '0');
+            const municipioIdNormalizado = municipioId.toString().padStart(3, '0');
+
+            const punto = turf.point([lon, lat]);
+
+            // ==========================
+            // VALIDACIÓN ESTADO
+            // ==========================
+            const estado = estados.features.find(e => 
+                e.properties.CVE_ENT == estadoIdNormalizado
+            );
+
+            console.log("Estado encontrado para validación:", estado);
+
+            if (!estado) return;
+
+            let dentroEstado = false;
+
+            if (estado.geometry.type === "Polygon") {
+                dentroEstado = turf.booleanPointInPolygon(
+                    punto,
+                    turf.polygon(estado.geometry.coordinates)
+                );
+            } else {
+                dentroEstado = estado.geometry.coordinates.some(pol =>
+                    turf.booleanPointInPolygon(
+                        punto,
+                        turf.polygon(pol)
+                    )
+                );
+            }
+
+            if (!dentroEstado) {
+                limpiarCoordenadas();
+                mostrarErrorCoordenada("La coordenada no pertenece al estado seleccionado.");
+                inputLat.classList.add("is-invalid");
+                inputLon.classList.add("is-invalid");
+                return;
+            }
+
+            // ==========================
+            // VALIDACIÓN MUNICIPIO
+            // ==========================
+            const municipio = municipios_mapa.features.find(m =>
+                m.properties.CVE_ENT == estadoIdNormalizado &&
+                m.properties.CVE_MUN == municipioIdNormalizado
+            );
+
+            console.log("Municipio encontrado para validación:", municipio);
+            if (!municipio) return;
+
+            let dentroMunicipio = false;
+
+            if (municipio.geometry.type === "Polygon") {
+                dentroMunicipio = turf.booleanPointInPolygon(
+                    punto,
+                    turf.polygon(municipio.geometry.coordinates)
+                );
+            } else {
+                dentroMunicipio = municipio.geometry.coordinates.some(pol =>
+                    turf.booleanPointInPolygon(
+                        punto,
+                        turf.polygon(pol)
+                    )
+                );
+            }
+
+            if (!dentroMunicipio) {
+                limpiarCoordenadas();
+                mostrarErrorCoordenada("La coordenada no pertenece al municipio seleccionado.");
+                inputLat.classList.add("is-invalid");
+                inputLon.classList.add("is-invalid");
+                return;
+            }
+
+            console.log("Coordenada válida dentro del estado y municipio seleccionados.");
+
+            // ==========================
+            // TODO CORRECTO
+            // ==========================
+            limpiarErrorCoordenada();
+            inputLat.classList.remove("is-invalid");
+            inputLon.classList.remove("is-invalid");
+            inputLat.classList.add("is-valid");
+            inputLon.classList.add("is-valid");
+        }
+
+        function mostrarErrorCoordenada(mensaje) {
+
+            let errorDiv = document.getElementById("errorCoordenada");
+
+            if (!errorDiv) {
+                errorDiv = document.createElement("div");
+                errorDiv.id = "errorCoordenada";
+                errorDiv.className = "text-danger mt-2";
+                inputLon.parentElement.appendChild(errorDiv);
+            }
+
+            errorDiv.innerText = mensaje;
+        }
+
+        function limpiarErrorCoordenada() {
+            const errorDiv = document.getElementById("errorCoordenada");
+            if (errorDiv) errorDiv.remove();
+        }
+
+        function limpiarEstadoValidacion() {
+
+            // Quitar clases visuales
+            inputLat.classList.remove("is-valid", "is-invalid");
+            inputLon.classList.remove("is-valid", "is-invalid");
+
+            // Limpiar mensaje
+            limpiarErrorCoordenada();
+        }
+
+        inputLat.addEventListener("input", limpiarEstadoValidacion);
+        inputLon.addEventListener("input", limpiarEstadoValidacion);
+
+    </script>
+
+    @section Scripts {
+        <partial name="_ValidationScriptsPartial" />
+    }
+
+    <style>
+        .form-label {
+            font-weight: 600;
+            color: #5b6472;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            font-size: 0.75rem;
+        }
+
+        .siil-form .form-control,
+        .siil-form .form-select {
+            border-radius: 14px;
+            border: 1px solid #e6edf6;
+            box-shadow: 0 1px 0 rgba(16, 24, 40, 0.02);
+            padding: 0.7rem 0.9rem;
+        }
+
+        .siil-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .siil-title__icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: #e9f3ff;
+            color: #2f80ed;
+            display: grid;
+            place-items: center;
+            font-size: 1.1rem;
+        }
+
+        .siil-alert {
+            background: #f4f8ff;
+            border: 1px solid #e3ecff;
+            color: #2b3b53;
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+        }
+
+        .siil-card {
+            border-radius: 16px;
+            border: 1px solid #ecf1f6;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
+        }
+
+        .siil-card__header {
+            background: #f7f9fc;
+            border-bottom: 1px solid #edf2f7;
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+            color: #2b3b53;
+            font-weight: 600;
+        }
+
+        .siil-card__header--warning {
+            background: #fff7e6;
+            color: #8a5b00;
+        }
+
+        .siil-card__header--success {
+            background: #ecfdf3;
+            color: #1c7c54;
+        }
+
+        .siil-subpanel {
+            background: #f7f9fc;
+            border: 1px dashed #e0e7ff;
+            border-radius: 14px;
+            padding: 1rem;
+        }
+
+        .siil-id-preview {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            border-radius: 16px;
+            background: #f2fceb;
+            border: 1px solid #dff2c6;
+        }
+
+        .siil-id-preview__value {
+            font-weight: 700;
+            color: #62b400;
+            letter-spacing: 0.04em;
+        }
+
+        .btn-siil-primary {
+            background: #77c308;
+            border-color: #77c308;
+            color: #fff;
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+        }
+
+        .btn-siil-primary:hover {
+            background: #66ad06;
+            border-color: #66ad06;
+            color: #fff;
+        }
+
+        .btn-siil-secondary {
+            border-radius: 14px;
+            border: 1px solid #e6edf6;
+            color: #5b6472;
+            background: #fff;
+            padding: 0.85rem 1rem;
+        }
+
+        .btn-siil-secondary:hover {
+            background: #f7f9fc;
+        }
+
+        .btn-lg {
+            font-size: 1.05rem;
+        }
+
+        .font-monospace {
+            letter-spacing: 0.05em;
+        }
+    </style>

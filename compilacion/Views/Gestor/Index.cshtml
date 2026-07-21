@@ -1,0 +1,737 @@
+@using NSIE.Models
+@using Microsoft.AspNetCore.Antiforgery
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IAntiforgery AntiforgeryService
+@{
+    ViewData["Title"] = "Gestor de Actividades";
+    var header = ViewData["HeaderViewModel"] as HeaderViewModel;
+    var csrfToken = AntiforgeryService.GetAndStoreTokens(Context).RequestToken;
+
+    var perfilJson = Context.Session.GetString("PerfilUsuario");
+    PerfilUsuario perfil = null;
+    if (!string.IsNullOrEmpty(perfilJson))
+    {
+        perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+    }
+    var currentUserId = perfil?.IdUsuario;
+    var esAdmin = currentUserId == "1" || currentUserId == "86";
+    var esJavi = currentUserId == "1";
+}
+
+@section Styles {
+    <meta name="csrf-token" content="@csrfToken">
+    <link rel="stylesheet" href="~/gestor/css/gestor.css" asp-append-version="true">
+}
+
+@Html.AntiForgeryToken()
+
+<div class="gestor-page">
+
+    <div class="gestor-page__view-header">
+        @if (header != null)
+        {
+            @await Html.PartialAsync("_ViewHeader", header)
+        }
+    </div>
+
+    <div id="tracking-preloader" class="tracking-preloader" role="status" aria-live="polite">
+        <div class="tracking-preloader__card">
+            <div class="tracking-preloader__brand">
+                <img src="https://cdn.sassoapps.com/dgmesnie/logo_gob.png" alt="Gobierno de México">
+                <span aria-hidden="true"></span>
+                <img src="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" alt="Secretaría de Energía">
+            </div>
+            <div class="tracking-preloader__spinner" aria-hidden="true"></div>
+            <p class="tracking-preloader__title" id="tracking-preloader-title">Cargando seguimiento de actividades</p>
+            <p class="tracking-preloader__sub" id="tracking-preloader-sub">Conectando con la base de datos…</p>
+        </div>
+    </div>
+
+    <nav class="gestor-nav">
+        <div class="gestor-shell gestor-nav__inner" role="tablist">
+            <button class="gestor-tab active" data-view="dashboard">Inicio</button>
+            <button class="gestor-tab" data-view="temas">Histórico de actividades</button>
+            <button class="gestor-tab" data-view="tabla">Histórico de temas</button>
+            @if (esJavi)
+            {
+                <button class="gestor-tab" data-view="calendario">Calendario</button>
+                <button class="gestor-tab" data-view="gantt">Gantt</button>
+                <button class="gestor-tab" data-view="kanban">Kanban</button>
+                <button class="gestor-tab" data-view="reportes-presentar">Para presentar</button>
+                <button class="gestor-tab" data-view="reportes">Reporte general</button>
+            }
+            @if (esAdmin)
+            {
+                <button class="gestor-tab" data-view="responsables">Responsables</button>
+            }
+            else
+            {
+                <button class="gestor-tab" data-view="responsables">Mi reporte</button>
+            }
+            @if (esJavi)
+            {
+                <button class="gestor-tab" data-view="alertas">Por vencer <span class="badge"
+                                                                                    id="badge-alertas">0</span></button>
+                }
+            </div>
+        </nav>
+
+        <div id="source-label" class="gestor-source" style="display:none">Base de datos NSIE</div>
+
+        <nav aria-label="breadcrumb" class="gestor-breadcrumbs">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+            </ol>
+        </nav>
+
+        <div class="gestor-shell global-filter-bar mb-3">
+            <div class="panel py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2"
+                 style="border-radius: 12px; border: 1px solid rgba(138, 0, 49, 0.08); background: #ffffff;">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-calendar-days text-muted" style="color: var(--guinda) !important;"></i>
+                    <span style="font-size: 0.85rem; font-weight: 700; color: var(--texto);">Filtrar rango de fechas
+                        (Compromiso):</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <label class="mb-0"
+                               style="font-size: 0.78rem; font-weight: 600; color: var(--texto-suave);">Periodo:</label>
+                        <select id="filtro-global-periodo" class="gestor-search"
+                                style="height: 32px; padding: 0.2rem 0.5rem; font-size: 0.8rem; width: 130px; border-radius: 8px; cursor: pointer; border: 1px solid rgba(138, 0, 49, 0.15);">
+                            <option value="personalizado" selected>Personalizado</option>
+                            <option value="hoy">Hoy</option>
+                            <option value="semana">Esta semana</option>
+                            <option value="mes">Este mes</option>
+                            <option value="anio">Este año</option>
+                        </select>
+                        <label class="mb-0"
+                               style="font-size: 0.78rem; font-weight: 600; color: var(--texto-suave);">Desde:</label>
+                        <input type="date" id="filtro-global-desde" class="gestor-search"
+                               style="height: 32px; padding: 0.2rem 0.5rem; font-size: 0.8rem; width: 135px; border-radius: 8px;" />
+                        <label class="mb-0"
+                               style="font-size: 0.78rem; font-weight: 600; color: var(--texto-suave);">Hasta:</label>
+                        <input type="date" id="filtro-global-hasta" class="gestor-search"
+                               style="height: 32px; padding: 0.2rem 0.5rem; font-size: 0.8rem; width: 135px; border-radius: 8px;" />
+                        <button type="button" id="btn-limpiar-fechas" class="internal-button"
+                                style="min-height: 32px; padding: 0.2rem 0.6rem; font-size: 0.78rem; border-radius: 8px;">Limpiar</button>
+                    </div>
+                </div>
+            </div>
+
+            <main class="gestor-shell internal-main">
+
+                <section id="view-dashboard" class="gestor-view active gestor-dashboard">
+                    <div class="dashboard-kpis">
+                        <article class="dashboard-kpi-card" data-dashboard-filter="actividades" role="button" tabindex="0"
+                                 aria-label="Ver actividades activas">
+                            <span>Actividades activas</span>
+                            <strong id="kpi-temas">0</strong>
+                            <small>Ver detalle</small>
+                        </article>
+                        <article class="dashboard-kpi-card" data-dashboard-filter="todos" role="button" tabindex="0"
+                                 aria-label="Ver todos los temas">
+                            <span>Temas registrados</span>
+                            <strong id="kpi-actividades">0</strong>
+                            <small>Ver detalle</small>
+                        </article>
+                        <article class="dashboard-kpi-card dashboard-kpi-card--ok" data-dashboard-filter="concluidas"
+                                 role="button" tabindex="0" aria-label="Ver temas concluidos">
+                            <span>Temas concluidos</span>
+                            <strong id="kpi-concluidas">0</strong>
+                            <small>Ver detalle</small>
+                        </article>
+                        <article class="dashboard-kpi-card dashboard-kpi-card--warning" data-dashboard-filter="por-vencer"
+                                 role="button" tabindex="0" aria-label="Ver temas por vencer">
+                            <span>Temas por vencer</span>
+                            <strong id="kpi-por-vencer">0</strong>
+                            <small>Ver detalle</small>
+                        </article>
+                        <article class="dashboard-kpi-card dashboard-kpi-card--risk" data-dashboard-filter="vencidas"
+                                 role="button" tabindex="0" aria-label="Ver temas vencidos">
+                            <span>Temas vencidos</span>
+                            <strong id="kpi-vencidas">0</strong>
+                            <small>Ver detalle</small>
+                        </article>
+                        <article class="dashboard-kpi-card dashboard-kpi-card--gold" data-dashboard-filter="avance"
+                                 role="button" tabindex="0" aria-label="Ver avance de temas">
+                            <span>Avance global</span>
+                            <strong id="kpi-avance">0%</strong>
+                            <small>Ver detalle</small>
+                        </article>
+                    </div>
+
+                    <section class="panel dashboard-critical-panel dashboard-detail-panel" id="dashboard-detail-panel" hidden>
+                        <header class="dashboard-critical-panel__header">
+                            <div>
+                                <h2 id="dashboard-detail-title">Detalle</h2>
+                                <span id="dashboard-detail-summary">Temas ordenados por fecha de compromiso</span>
+                            </div>
+                            <div class="dashboard-panel__actions">
+                                <button type="button" class="internal-button" id="dashboard-detail-open">Ver en Temas</button>
+                                <button type="button" class="internal-button" id="dashboard-detail-clear">Limpiar</button>
+                            </div>
+                        </header>
+                        <div class="dashboard-critical-table">
+                            <table id="tbl-dashboard-detail">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Actividad</th>
+                                        <th>Tema</th>
+                                        <th>Responsable</th>
+                                        <th>Compromiso</th>
+                                        <th>Estado</th>
+                                        <th>Avance</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <div class="dashboard-charts dashboard-charts--primary charts-grid">
+                        <section class="panel dashboard-panel dashboard-panel--chart">
+                            <header>
+                                <div>
+                                    <h2>Estatus</h2>
+                                    <span>Distribución general de actividades</span>
+                                </div>
+                                <div class="dashboard-panel__actions">
+                                    <button type="button" class="chart-fullscreen-btn"
+                                            data-chart-fullscreen="chart-donut-estatus">Vista completa</button>
+                                </div>
+                            </header>
+                            <div class="chart-box" id="chart-donut-estatus"></div>
+                        </section>
+                        <section class="panel dashboard-panel dashboard-panel--chart">
+                            <header>
+                                <div>
+                                    <h2>Avance global</h2>
+                                    <span>Porcentaje promedio del portafolio</span>
+                                </div>
+                                <div class="dashboard-panel__actions">
+                                    <button type="button" class="chart-fullscreen-btn"
+                                            data-chart-fullscreen="chart-gauge-avance">Vista completa</button>
+                                </div>
+                            </header>
+                            <div class="chart-box" id="chart-gauge-avance"></div>
+                        </section>
+                        <section class="panel dashboard-panel dashboard-panel--chart">
+                            <header>
+                                <div>
+                                    <h2>Prioridad</h2>
+                                    <span>Balance de carga por criticidad</span>
+                                </div>
+                                <div class="dashboard-panel__actions">
+                                    <button type="button" class="chart-fullscreen-btn"
+                                            data-chart-fullscreen="chart-pie-prioridad">Vista completa</button>
+                                </div>
+                            </header>
+                            <div class="chart-box" id="chart-pie-prioridad"></div>
+                        </section>
+                    </div>
+
+                    <div class="dashboard-charts charts-grid charts-grid--2">
+                        <section class="panel dashboard-panel dashboard-panel--chart">
+                            <header>
+                                <div>
+                                    <h2>Carga por responsable</h2>
+                                    <span>Temas activos por persona</span>
+                                </div>
+                                <div class="dashboard-panel__actions">
+                                    <button type="button" class="chart-fullscreen-btn"
+                                            data-chart-fullscreen="chart-barras-responsables">Vista completa</button>
+                                </div>
+                            </header>
+                            <div class="chart-box" id="chart-barras-responsables"></div>
+                        </section>
+                        <section class="panel dashboard-panel dashboard-panel--chart">
+                            <header>
+                                <div>
+                                    <h2>Distribución por actividad</h2>
+                                    <span>Estatus apilado por línea de trabajo</span>
+                                </div>
+                                <div class="dashboard-panel__actions">
+                                    <button type="button" class="chart-fullscreen-btn"
+                                            data-chart-fullscreen="chart-stacked-temas">Vista completa</button>
+                                </div>
+                            </header>
+                            <div class="chart-box" id="chart-stacked-temas"></div>
+                        </section>
+                    </div>
+
+                    <div class="dashboard-charts charts-grid--1">
+                        <section class="panel dashboard-panel dashboard-panel--chart">
+                            <header>
+                                <div>
+                                    <h2>Estructura y avance general (Treemap)</h2>
+                                    <span>Mapa jerárquico de actividades y avance porcentual de temas</span>
+                                </div>
+                                <div class="dashboard-panel__actions">
+                                    <button type="button" class="chart-fullscreen-btn"
+                                            data-chart-fullscreen="chart-treemap-temas">Vista completa</button>
+                                </div>
+                            </header>
+                            <div class="chart-box" id="chart-treemap-temas" style="min-height: 380px;"></div>
+                        </section>
+                    </div>
+
+                    <section class="panel panel--table dashboard-critical-panel">
+                        <header class="dashboard-critical-panel__header">
+                            <div>
+                                <h2>Actividades críticas</h2>
+                                <span>Semáforo institucional de seguimiento</span>
+                            </div>
+                            <p>Prioriza los asuntos con vencimiento comprometido o bajo presión operativa.</p>
+                        </header>
+                        <div class="table-wrap dashboard-critical-table">
+                            <table id="tbl-criticos">
+                                <thead>
+                                    <tr>
+                                        <th>Actividad</th>
+                                        <th>Responsable</th>
+                                        <th>Avance</th>
+                                        <th>Compromiso</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+
+                <section id="view-temas" class="gestor-view">
+                    <div class="internal-title">
+                        <div>
+                            <p>Catálogo</p>
+                            <h1>Actividades</h1>
+                        </div>
+                        <div class="internal-actions">
+                            <input type="search" id="filtro-temas" class="gestor-search"
+                                   placeholder="Buscar actividad, responsable…">
+                            <select id="filtro-temas-responsable" class="gestor-search" aria-label="Filtrar por responsable">
+                                <option value="">Responsable</option>
+                            </select>
+                            @if (esJavi)
+                            {
+                                <button class="internal-button internal-button--primary" id="btn-nuevo-tema">+ Nueva
+                                    actividad</button>
+                                }
+                            </div>
+                        </div>
+                        <div class="cards-grid" id="cards-temas"></div>
+                    </section>
+
+                    <section id="view-tabla" class="gestor-view">
+                        <div class="internal-title">
+                            <div>
+                                <p>Detalle</p>
+                                <h1>Histórico de temas</h1>
+                            </div>
+                            <div class="internal-actions tabla-actions">
+                                <button class="internal-button" id="btn-export-excel">Exportar CSV</button>
+                                <button class="internal-button internal-button--primary" id="btn-nueva-actividad">+ Nuevo
+                                    tema</button>
+                                </div>
+                            </div>
+
+                            <section class="tabla-toolbar" aria-label="Filtros de temas">
+                                <input type="search" id="filtro-tabla" class="gestor-search" placeholder="Buscar tema...">
+                                <select id="filtro-tabla-tema" class="gestor-search" aria-label="Filtrar por actividad">
+                                    <option value="">Actividad</option>
+                                </select>
+                                <select id="filtro-tabla-estatus" class="gestor-search" aria-label="Filtrar por estatus">
+                                    <option value="">Estatus</option>
+                                    <option value="Pendiente">Pendiente</option>
+                                    <option value="En proceso">En proceso</option>
+                                    <option value="Concluida">Concluida</option>
+                                    <option value="Vencida">Vencida</option>
+                                </select>
+                                <select id="filtro-tabla-prioridad" class="gestor-search" aria-label="Filtrar por prioridad">
+                                    <option value="">Prioridad</option>
+                                    <option value="Alta">Alta</option>
+                                    <option value="Media">Media</option>
+                                    <option value="Baja">Baja</option>
+                                </select>
+                                <select id="filtro-tabla-responsable" class="gestor-search" aria-label="Filtrar por responsable">
+                                    <option value="">Responsable</option>
+                                </select>
+                            </section>
+
+                            <section class="tabla-layout">
+                                <div class="panel panel--table tabla-main">
+                                    <div class="table-wrap">
+                                        <table id="tbl-actividades">
+                                            <thead>
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th><button type="button" class="tabla-sort-btn"
+                                                                    data-tabla-sort="actividad">Actividad</button></th>
+                                                        <th><button type="button" class="tabla-sort-btn"
+                                                                        data-tabla-sort="tema">Tema</button></th>
+                                                            <th><button type="button" class="tabla-sort-btn"
+                                                                            data-tabla-sort="responsable">Responsable</button></th>
+                                                                <th><button type="button" class="tabla-sort-btn"
+                                                                                data-tabla-sort="inicio">Inicio</button></th>
+                                                                    <th><button type="button" class="tabla-sort-btn"
+                                                                                    data-tabla-sort="compromiso">Compromiso</button></th>
+                                                                        <th><button type="button" class="tabla-sort-btn"
+                                                                                        data-tabla-sort="estatus">Estatus</button></th>
+                                                                            <th><button type="button" class="tabla-sort-btn is-active"
+                                                                                            data-tabla-sort="urgencia">Tiempo</button></th>
+                                                                                <th><button type="button" class="tabla-sort-btn"
+                                                                                                data-tabla-sort="avance">Avance</button></th>
+                                                                                    <th><button type="button" class="tabla-sort-btn"
+                                                                                                    data-tabla-sort="prioridad">Prioridad</button></th>
+                                                                                        <th>Estado</th>
+                                                                                        <th>Acciones</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody></tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                        <footer class="tabla-pagination" aria-label="Paginación de actividades">
+                                                                            <div class="tabla-pagination__meta">
+                                                                                <small id="tabla-pagination-info">Mostrando 0 a 0 de 0 actividades</small>
+                                                                                <label class="tabla-page-size" for="tabla-page-size">
+                                                                                    <span>Por página</span>
+                                                                                    <select id="tabla-page-size" class="gestor-search" aria-label="Actividades por página">
+                                                                                        <option value="8" selected>8</option>
+                                                                                        <option value="20">20</option>
+                                                                                        <option value="50">50</option>
+                                                                                        <option value="100">100</option>
+                                                                                    </select>
+                                                                                </label>
+                                                                            </div>
+                                                                            <div class="tabla-pagination__actions">
+                                                                                <button type="button" class="internal-button" id="tabla-page-prev">Anterior</button>
+                                                                                <span id="tabla-page-current" class="page-info">1 / 1</span>
+                                                                                <button type="button" class="internal-button" id="tabla-page-next">Siguiente</button>
+                                                                            </div>
+                                                                        </footer>
+                                                                    </div>
+                                                                </section>
+                                                            </section>
+
+                                                            <section id="view-calendario" class="gestor-view">
+                                                                <div class="internal-title">
+                                                                    <div>
+                                                                        <p>Vencimientos</p>
+                                                                        <h1>Calendario</h1>
+                                                                    </div>
+                                                                    <div class="internal-actions cal-nav">
+                                                                        <button class="internal-button" id="cal-prev">‹</button>
+                                                                        <span id="cal-label" class="page-info"></span>
+                                                                        <button class="internal-button" id="cal-next">›</button>
+                                                                    </div>
+                                                                </div>
+                                                                <section class="panel">
+                                                                    <div class="calendar" id="calendar"></div>
+                                                                </section>
+                                                            </section>
+
+                                                            <section id="view-gantt" class="gestor-view">
+                                                                <div class="internal-title">
+                                                                    <div>
+                                                                        <p>Cronograma</p>
+                                                                        <h1>Gantt</h1>
+                                                                    </div>
+                                                                </div>
+                                                                <section class="panel">
+                                                                    <div class="gantt-wrap" id="gantt-wrap"></div>
+                                                                </section>
+                                                            </section>
+
+                                                            <section id="view-kanban" class="gestor-view">
+                                                                <div class="internal-title">
+                                                                    <div>
+                                                                        <p>Flujo</p>
+                                                                        <h1>Kanban de temas</h1>
+                                                                    </div>
+                                                                    <div class="internal-actions">
+                                                                        <select id="filtro-kanban-tema" class="gestor-search">
+                                                                            <option value="">Todas las actividades</option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="kanban-board" id="kanban-board"></div>
+                                                            </section>
+
+                                                            <section id="view-responsables" class="gestor-view">
+                                                                <div class="internal-title">
+                                                                    <div>
+                                                                        <p>Personas</p>
+                                                                        <h1>Vista por responsable</h1>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="responsables-grid" id="responsables-grid"></div>
+                                                            </section>
+
+                                                            <section id="view-responsable-reporte" class="gestor-view">
+                                                                <div class="internal-title">
+                                                                    <div style="display:flex;align-items:flex-start;gap:12px;">
+                                                                        <button type="button" class="internal-button" id="resp-reporte-volver-top"
+                                                                                aria-label="Volver a responsables"
+                                                                                style="min-width:40px;width:40px;height:40px;padding:0;border-radius:50%;font-size:1rem;">
+                                                                            <i class="fa-solid fa-arrow-left"></i>
+                                                                        </button>
+                                                                        <div>
+                                                                            <p>Responsables / Reporte individual</p>
+                                                                            <h1 id="resp-reporte-titulo">Reporte por responsable</h1><span
+                                                                            id="resp-reporte-subtitulo">Detalle de temas y avance</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="internal-actions">
+                                                                        <button type="button" class="internal-button" id="resp-reporte-volver">Volver</button>
+                                                                        <button type="button" class="internal-button" id="resp-reporte-presentar">Presentar</button>
+                                                                        <button type="button" class="internal-button" id="resp-reporte-pdf">PDF</button>
+                                                                        <button type="button" class="internal-button" id="resp-reporte-ppt">PPT</button>
+                                                                        <button type="button" class="internal-button internal-button--primary"
+                                                                                id="resp-reporte-excel">Excel</button>
+                                                                    </div>
+                                                                </div>
+                                                                <section class="filter-panel" aria-label="Filtros del reporte por responsable">
+                                                                    <label><span>Periodo</span>
+                                                                        <select id="resp-reporte-periodo">
+                                                                            <option value="">Todo</option>
+                                                                            <option value="semana_actual">Semana en curso</option>
+                                                                            <option value="mes_actual">Mes en curso</option>
+                                                                            <option value="30">Próximos 30 días</option>
+                                                                            <option value="vencidas">Solo vencidos</option>
+                                                                        </select>
+                                                                    </label>
+                                                                </section>
+                                                                <section class="panel panel--preview">
+                                                                    <header>
+                                                                        <h2>Vista previa</h2><span id="resp-reporte-resumen">—</span>
+                                                                    </header>
+                                                                    <div id="resp-reporte-contenido"></div>
+                                                                </section>
+                                                            </section>
+
+                                                            <section id="view-alertas" class="gestor-view">
+                                                                <div class="internal-title">
+                                                                    <div>
+                                                                        <p>Atención</p>
+                                                                        <h1>Alertas</h1>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div class="panel py-3 px-4 mb-4"
+                                                                     style="border-radius: 12px; border: 1px solid rgba(138, 0, 49, 0.08); background: #ffffff; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);">
+                                                                    <h5 class="mb-3"
+                                                                        style="font-size: 0.9rem; font-weight: 700; color: var(--texto); display: flex; align-items: center; gap: 8px; margin: 0 0 1rem 0;">
+                                                                        <i class="fa-solid fa-circle-info" style="color: var(--guinda);"></i> Criterios del Semáforo de
+                                                                        Seguimiento
+                                                                    </h5>
+                                                                    <div class="d-flex align-items-center flex-wrap gap-4">
+                                                                        <div class="d-flex align-items-center gap-2" style="margin-right: 1.5rem;">
+                                                                            <span class="semaforo rojo"
+                                                                                  style="width: 10px; height: 10px; margin-top: 0 !important; display: inline-block; position: relative;"
+                                                                                  title="Vencido"></span>
+                                                                            <div style="font-size: 0.8rem;">
+                                                                                <strong style="color: #c0222a;">Vencido (Rojo):</strong>
+                                                                                <span style="color: var(--texto-suave);">La fecha compromiso es anterior a hoy.</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="d-flex align-items-center gap-2" style="margin-right: 1.5rem;">
+                                                                            <span class="semaforo amarillo"
+                                                                                  style="width: 10px; height: 10px; margin-top: 0 !important; display: inline-block; position: relative;"
+                                                                                  title="Por vencer"></span>
+                                                                            <div style="font-size: 0.8rem;">
+                                                                                <strong style="color: #d97706;">Por vencer (Amarillo):</strong>
+                                                                                <span style="color: var(--texto-suave);">Faltan 7 días o menos para la fecha
+                                                                                    compromiso.</span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div class="d-flex align-items-center gap-2" style="margin-right: 1.5rem;">
+                                                                                <span class="semaforo verde"
+                                                                                      style="width: 10px; height: 10px; margin-top: 0 !important; display: inline-block; position: relative;"
+                                                                                      title="A tiempo"></span>
+                                                                                <div style="font-size: 0.8rem;">
+                                                                                    <strong style="color: #027a48;">A tiempo / Concluido (Verde):</strong>
+                                                                                    <span style="color: var(--texto-suave);">Tema concluido o faltan más de 7 días para su
+                                                                                        vencimiento.</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="d-flex align-items-center gap-2">
+                                                                                    <span class="semaforo gris"
+                                                                                          style="width: 10px; height: 10px; margin-top: 0 !important; display: inline-block; position: relative;"
+                                                                                          title="Bloqueado / Sin fecha"></span>
+                                                                                    <div style="font-size: 0.8rem;">
+                                                                                        <strong style="color: #667085;">Detenido / Sin fecha (Gris):</strong>
+                                                                                        <span style="color: var(--texto-suave);">Tema bloqueado o sin fecha compromiso
+                                                                                            registrada.</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            <div class="alertas-list" id="alertas-list"></div>
+                                                                        </section>
+
+                                                                        @if (esJavi)
+                                                                        {
+                                                                            <section id="view-reportes-presentar" class="gestor-view">
+                                                                                <div class="internal-title">
+                                                                                    <div>
+                                                                                        <p>Material para reunión</p>
+                                                                                        <h1>Para presentar</h1><span>Láminas con portada, avance y puntos que requieren atención</span>
+                                                                                    </div>
+                                                                                    <div class="internal-actions">
+                                                                                        <button type="button" class="internal-button" id="pres-refresh">Actualizar</button>
+                                                                                        @if (currentUserId == "1" || currentUserId == "86")
+                                                                                        {
+                                                                                            <button type="button" class="internal-button btn-success" id="pres-enviar-semanal"
+                                                                                                    style="background-color:#027a48; border-color:#027a48; color:#fff;">
+                                                                                                <i class="fa-solid fa-envelope me-1"></i> Enviar reporte semanal
+                                                                                            </button>
+                                                                                        }
+                                                                                        <button type="button" class="internal-button" id="pres-presentar">Presentar</button>
+                                                                                        <button type="button" class="internal-button" id="pres-pdf">PDF</button>
+                                                                                        <button type="button" class="internal-button internal-button--primary" id="pres-ppt">PPT</button>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <section class="filter-panel" aria-label="Filtros para la presentación">
+                                                                                    <label><span>Actividad</span><select id="pres-filtro-actividad">
+                                                                                        <option value="">Todas</option>
+                                                                                    </select></label>
+                                                                                    <label><span>Responsable</span><select id="pres-filtro-responsable">
+                                                                                        <option value="">Todos</option>
+                                                                                    </select></label>
+                                                                                    <label><span>Periodo</span>
+                                                                                        <select id="pres-filtro-periodo">
+                                                                                            <option value="">Todo</option>
+                                                                                            <option value="semana_actual">Semana en curso</option>
+                                                                                            <option value="mes_actual">Mes en curso</option>
+                                                                                            <option value="30">Próximos 30 días</option>
+                                                                                            <option value="vencidas">Solo vencidas</option>
+                                                                                        </select>
+                                                                                    </label>
+                                                                                    <label class="filter-panel__search"><span>Búsqueda</span><input id="pres-filtro-busqueda" type="search"
+                                                                                                                                                        placeholder="Actividad, tema, responsable"></label>
+                                                                                    </section>
+                                                                                    <div id="pres-status" class="status-message" hidden></div>
+                                                                                    <section class="panel panel--preview">
+                                                                                        <header>
+                                                                                            <h2>Vista previa</h2><span id="pres-summary">—</span>
+                                                                                        </header>
+                                                                                        <div id="presentation-report-deck" class="internal-report-deck"></div>
+                                                                                    </section>
+                                                                                </section>
+
+                                                                                <section id="view-reportes" class="gestor-view">
+                                                                                    <div class="internal-title">
+                                                                                        <div>
+                                                                                            <p>Salidas institucionales</p>
+                                                                                            <h1>Reporte general</h1><span>Vista completa estilo presentación · descarga PDF / PPT / Excel</span>
+                                                                                        </div>
+                                                                                        <div class="internal-actions">
+                                                                                            <button type="button" class="internal-button" id="rep-refresh">Actualizar</button>
+                                                                                            <button type="button" class="internal-button" id="rep-presentar">Presentar</button>
+                                                                                            <button type="button" class="internal-button" id="rep-pdf">PDF</button>
+                                                                                            <button type="button" class="internal-button internal-button--primary" id="rep-ppt">PPT</button>
+                                                                                            <button type="button" class="internal-button" id="rep-excel">Excel</button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <section class="filter-panel" aria-label="Filtros del reporte">
+                                                                                        <label><span>Actividad</span><select id="rep-filtro-tema">
+                                                                                            <option value="">Todos</option>
+                                                                                        </select></label>
+                                                                                        <label><span>Responsable</span><select id="rep-filtro-resp">
+                                                                                            <option value="">Todos</option>
+                                                                                        </select></label>
+                                                                                        <label><span>Estatus</span>
+                                                                                            <select id="rep-filtro-estatus">
+                                                                                                <option value="">Todos</option>
+                                                                                                <option value="Pendiente">Pendiente</option>
+                                                                                                <option value="En proceso">En proceso</option>
+                                                                                                <option value="Vencida">Vencida</option>
+                                                                                                <option value="Concluida">Concluida</option>
+                                                                                            </select>
+                                                                                        </label>
+                                                                                        <label><span>Prioridad</span>
+                                                                                            <select id="rep-filtro-prioridad">
+                                                                                                <option value="">Todas</option>
+                                                                                                <option>Alta</option>
+                                                                                                <option>Media</option>
+                                                                                                <option>Baja</option>
+                                                                                            </select>
+                                                                                        </label>
+                                                                                        <label><span>Periodo</span>
+                                                                                            <select id="rep-filtro-periodo">
+                                                                                                <option value="">Todo</option>
+                                                                                                <option value="semana_actual">Semana en curso</option>
+                                                                                                <option value="mes_actual">Mes en curso</option>
+                                                                                                <option value="mes_anterior">1 mes atrás</option>
+                                                                                                <option value="dos_meses_atras">2 meses atrás</option>
+                                                                                                <option value="anio_actual">Año en curso</option>
+                                                                                                <option value="7">Próximos 7 días</option>
+                                                                                                <option value="30">Próximos 30 días</option>
+                                                                                                <option value="vencidas">Solo vencidas</option>
+                                                                                            </select>
+                                                                                        </label>
+                                                                                        <label class="filter-panel__search"><span>Búsqueda</span><input id="rep-filtro-busqueda" type="search"
+                                                                                                                                                            placeholder="Actividad, tema, comentario"></label>
+                                                                                        </section>
+                                                                                        <div id="rep-status" class="status-message" hidden></div>
+                                                                                        <section class="panel panel--preview">
+                                                                                            <header>
+                                                                                                <h2>Vista previa del reporte</h2><span id="rep-summary">—</span>
+                                                                                            </header>
+                                                                                            <div id="internal-report-deck" class="internal-report-deck"></div>
+                                                                                        </section>
+                                                                                    </section>
+                                                                                }
+                                                                            </main>
+
+                                                                            <div id="modal-root" class="modal-root" hidden>
+                                                                                <div class="modal-backdrop"></div>
+                                                                                <div class="modal-card" role="dialog" aria-modal="true">
+                                                                                    <header>
+                                                                                        <h3 id="modal-title">Formulario</h3><button class="modal-close" id="modal-close">×</button>
+                                                                                    </header>
+                                                                                    <div id="modal-body"></div>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+                                                                            <div id="presentationControls" class="presentation-controls" style="display: none;">
+                                                                                <button id="btnPrevSlide" type="button" aria-label="Lámina anterior">◀ Anterior</button>
+                                                                                <span id="presentationCounter" class="counter">1/1</span>
+                                                                                <button id="btnNextSlide" type="button" aria-label="Siguiente lámina">Siguiente ▶</button>
+                                                                                <button id="btnExitPresentation" type="button" aria-label="Salir de presentación">Salir</button>
+                                                                            </div>
+
+                                                                            @section Scripts {
+                                                                                <script>
+                                                                                        window.currentUser = {
+                                                                                            id: @(perfil?.IdUsuario != null ? perfil.IdUsuario : "null"),
+                                                                                            nombre: @Html.Raw(perfil?.Nombre != null ? Newtonsoft.Json.JsonConvert.SerializeObject(perfil.Nombre) : "null"),
+                                                                                            esAdmin: @(esAdmin ? "true" : "false")
+                                                                                                };
+                                                                                </script>
+                                                                                <script src="https://d3js.org/d3.v7.min.js"></script>
+                                                                                <script src="https://cdn.jsdelivr.net/npm/html2canvas@@1.4.1/dist/html2canvas.min.js"></script>
+                                                                                <script src="https://cdn.jsdelivr.net/npm/jspdf@@2.5.1/dist/jspdf.umd.min.js"></script>
+                                                                                <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@@v3.12.0/dist/pptxgen.bundle.js"></script>
+                                                                                <script src="https://cdn.jsdelivr.net/npm/exceljs@@4.4.0/dist/exceljs.min.js"></script>
+                                                                                <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+                                                                                <script src="~/gestor/js/gestor-animations.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/data-service.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/utils.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/charts.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/dashboard.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/temas.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/actividades.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/kanban.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/gantt.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/calendario.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/responsables.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/alertas.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/reportes.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/reportes-presentar.js" asp-append-version="true"></script>
+                                                                                <script type="module" src="~/gestor/js/app.js" asp-append-version="true"></script>
+                                                                            }

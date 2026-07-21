@@ -1,0 +1,225 @@
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    ViewData["Title"] = "Geovisualizador de Áreas de Interés";
+    ViewData["NombreUsuario"] = perfilUsuario?.Nombre ?? "Invitado";
+    ViewData["RolUsuario"] = perfilUsuario?.Rol ?? "Público";
+    ViewData["IDUsuario"] = perfilUsuario?.IdUsuario ?? "0";
+
+    var header = new HeaderViewModel
+    {
+        Title = "Geovisualizador de Áreas de Interés",
+        IconPath = "mapam.png",
+        Description = "Herramienta geográfica interactiva para el análisis y consulta espacial de áreas y reservas del sector energético.",
+        Section = "Monitoreo",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Áreas de Interés",
+            description = "Geovisualizador dinámico para consultar capas de información espacial, áreas naturales protegidas y zonas de potencial de desarrollo energético.",
+            functionality = "Explora el mapa y sus capas. Utiliza el botón de pantalla completa para maximizar tu área de análisis geográfico.",
+            stage = "Consulta Espacial",
+            roles = new[] {
+                new { icon = "globe", text = "Consulta General: Acceso completo a capas de información geográfica" }
+            },
+            order = new { step = 1, description = "Análisis territorial de áreas de interés" }
+        })
+    };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/home-dashboard.css" asp-append-version="true" />
+    <style>
+        .dashboard-frame-card {
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 20px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.02);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 2.5rem;
+        }
+
+        .dashboard-frame-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            background: #fafafa;
+        }
+
+        .dashboard-frame-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .dashboard-frame-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: rgba(138, 0, 49, 0.08);
+            color: #8A0031;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+        }
+
+        .dashboard-frame-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #333;
+            margin: 0;
+        }
+
+        .dashboard-frame-container {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 270px);
+            min-height: 600px;
+            background: #f8f9fa;
+        }
+
+        .dashboard-iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+
+        /* Fullscreen container styling override */
+        .dashboard-frame-container:fullscreen {
+            width: 100vw !important;
+            height: 100vh !important;
+            background: #000;
+        }
+
+        .dashboard-frame-container:-webkit-full-screen {
+            width: 100vw !important;
+            height: 100vh !important;
+            background: #000;
+        }
+
+        /* Spinner de carga */
+        .iframe-loader {
+            position: absolute;
+            inset: 0;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            z-index: 5;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .iframe-loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        /* --- Modo oscuro --- */
+        [data-bs-theme="dark"] .dashboard-frame-card {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .dashboard-frame-header {
+            background: var(--shell-surface-2, #241f2e);
+            border-bottom-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .dashboard-frame-container,
+        [data-bs-theme="dark"] .iframe-loader {
+            background: var(--shell-surface, #1d1925);
+        }
+    </style>
+}
+
+<div class="home-dashboard-page">
+    <div class="home-dashboard-page__view-header">
+        @await Html.PartialAsync("_ViewHeader", header)
+    </div>
+
+    <div class="container-fluid px-md-4">
+        <div class="dashboard-frame-card">
+            <!-- Header del Contenedor -->
+            <div class="dashboard-frame-header">
+                <div class="dashboard-frame-title-wrap">
+                    <span class="dashboard-frame-icon"><i class="bi bi-map"></i></span>
+                    <h4 class="dashboard-frame-title">Geovisualizador de Áreas de Interés</h4>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleDashboardFullscreen()" style="border-radius: 8px; font-weight: 600; font-size: 0.8rem; border-color: rgba(0,0,0,0.15); color: #555;">
+                        Pantalla completa <i class="bi bi-arrows-fullscreen ms-1"></i>
+                    </button>
+                    <a href="https://areasdeinteres.pages.dev/" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm" style="border-radius: 8px; font-weight: 600; font-size: 0.8rem; border-color: rgba(0,0,0,0.15); color: #555;">
+                        Abrir en pestaña nueva <i class="bi bi-box-arrow-up-right ms-1"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Contenedor del IFrame -->
+            <div class="dashboard-frame-container" id="dashboardContainer">
+                <div class="iframe-loader" id="iframeLoader">
+                    <div class="spinner-border text-danger" role="status" style="color: #8A0031 !important;">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <span style="font-weight: 600; font-size: 0.9rem; color: #555;">Cargando geovisualizador espacial...</span>
+                </div>
+
+                <iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"  class="dashboard-iframe" 
+                        src="https://areasdeinteres.pages.dev/"
+                        allowfullscreen="allowfullscreen" 
+                        allow="fullscreen"
+                        onload="hideIframeLoader()">
+                </iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function hideIframeLoader() {
+            const loader = document.getElementById('iframeLoader');
+            if (loader) {
+                loader.classList.add('hidden');
+            }
+        }
+
+        function toggleDashboardFullscreen() {
+            const container = document.getElementById('dashboardContainer');
+            if (container) {
+                if (!document.fullscreenElement) {
+                    if (container.requestFullscreen) {
+                        container.requestFullscreen();
+                    } else if (container.webkitRequestFullscreen) {
+                        container.webkitRequestFullscreen();
+                    } else if (container.msRequestFullscreen) {
+                        container.msRequestFullscreen();
+                    }
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                }
+            }
+        }
+    </script>
+}
+

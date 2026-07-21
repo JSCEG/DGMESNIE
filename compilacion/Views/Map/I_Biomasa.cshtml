@@ -1,0 +1,408 @@
+@model Mep
+
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+
+
+@{
+    ViewData["Title"] = "Infraestructura del SEN -  Bioenergía";
+}
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="/img/biomasai.png" alt="Icono personalizado" class="iconomenu" />
+        @ViewData["Title"]
+    </h4>
+</div>
+
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);" aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+        @*  <li class="breadcrumb-item"><a href="@Url.Action("Hidrocarburos", "Home" )">Sector Petróleo y Gas</a></li>*@
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+
+@*Sección que Despliega el Mapa Inicial*@
+<div class="container">
+    <h2 class="fw-bold   subtitulo ">Infraestructura de Bioenergía</h2>
+
+    <section id="despliega_mapa" class="pb-5">
+
+        <br />
+
+        <div class="app-card-header p-3 border-0">
+
+            @*Menu*@
+            <div class="navbarmapag">
+
+
+                <a id="electricidad" class="icono-texto">
+                    <img src="/img/biomasai.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Bioenergía</span>
+
+                    <div id="total_electricidad"></div>
+                </a>
+
+
+            </div>
+
+
+
+            <div id="main-container">
+
+            <div class="row g-4 mb-4">
+                <div class="col">
+                    <div class="app-card app-card-chart h-100 shadow-sm">
+
+                        <div class="search-container p-3" id="search-container">
+                            <label class="form-label">Buscar en el Mapa:</label>
+                            <input type="text" id="busquedaGeneralInput" class="form-control" placeholder="Número de Permiso, Entidad Federativa o Municipio">
+                            <div id="autocomplete-list" class="autocomplete-items"></div>
+                            <!-- El resto de tu código -->
+
+                            <button class="btn btn-cre-rojo-home" onclick="buscarGeneral()" style="width:10% !important"><i class="bi bi-search"></i></button>
+                        </div>
+
+                        @*Menu de Botones*@
+                        <div class="container-fluid">
+                        </div>
+                        <div class="app-card-body p-4">
+                            <div class="chart-container">
+                                <div id="" class="app-card-body p-4">
+                                    <div class="row">
+
+                                        <div class="row">
+                                            <div class="col-lg-12 d-flex align-items-center">
+                                                <button id="fullscreen-btn" class="btn btn-primary">Pantalla Completa</button>
+                                                <div id="alert-message" class="alert alert-info ms-3" role="alert" style="margin-left: 15px; padding: 10px; background-color: #FCFEE7; border-left: 6px solid #DEF321; color: #818F31;">
+                                                    Para el caso del mercado de electricidad, las ubicaciones corresponden a la dirección proporcionada en la documentación del permiso otorgado que puede corresponder a la ubicación física de central eléctrica que representa.
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row mt-3">
+                                            <div class="col-lg-8">
+                                                <div id="map" class="p-3 bg"></div>
+                                            </div>
+                                            <div class="col-lg-4" style="overflow-y: auto; max-height: 500px;">
+                                                @* <div class="chart-container" style="overscroll-behavior-y:auto" > *@
+                                                    <table cellspacing="0" border="0">
+                                                        <colgroup width="129"></colgroup>
+                                                        <colgroup width="107"></colgroup>
+                                                        <tr>
+                                                            <td colspan=2 rowspan=2 height="43" align="center" valign=middle><b><font face="Montserrat" size=4>Simbología</font></b></td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td colspan=2 height="67" align="center" valign=middle><font face="Montserrat">Residuos industriales en toneladas (t)</font></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=2 height="43" align="center" valign=middle sdval="1" sdnum="2058;"><font face="Montserrat">4.2 - 6.1</font></td>
+                                                            <td rowspan=2 align="center" valign=middle>
+                                                                <font face="Montserrat">
+                                                                    <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_e2d7ce28ef52208a.png" width=27 height=31 hspace=40 vspace=6>
+                                                                </font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=2 height="43" align="center" valign=middle sdval="2" sdnum="2058;"><font face="Montserrat">6.1 - 9.3</font></td>
+                                                            <td rowspan=2 align="center" valign=middle>
+                                                                <font face="Montserrat">
+                                                                    <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_a728a75a31cf6f5b.png" width=36 height=37 hspace=35 vspace=3>
+                                                                </font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=3 height="64" align="center" valign=middle sdval="3" sdnum="2058;"><font face="Montserrat">9.3 - 16</font></td>
+                                                            <td rowspan=3 align="center" valign=middle>
+                                                                <font face="Montserrat">
+                                                                    <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_60c42f53b10be4ce.png" width=45 height=48 hspace=31 vspace=9>
+                                                                </font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=4 height="85" align="center" valign=middle sdval="4" sdnum="2058;">16 - 39.2</td>
+                                                            <td rowspan=4 align="center" valign=middle>
+                                                                <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_ff2e48b2e5009a05.png" width=55 height=60 hspace=26 vspace=14>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=4 height="85" align="center" valign=middle sdval="5" sdnum="2058;">39.2 - 2,173.5</td>
+                                                            <td rowspan=4 align="center" valign=middle>
+                                                                <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_4e309c560a1675d.png" width=67 height=71 hspace=20 vspace=8>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td colspan=2 height="58" align="center" valign=middle><font face="Montserrat">Residuos de ganados en toneladas (t)</font></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=2 height="43" align="center" valign=middle sdval="1" sdnum="2058;"><font face="Montserrat">4.2 - 7.9</font></td>
+                                                            <td rowspan=2 align="center" valign=middle>
+                                                                <font face="Montserrat">
+                                                                    <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_92de710a444c9881.png" width=26 height=30 hspace=40 vspace=7>
+                                                                </font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=2 height="43" align="center" valign=middle sdval="2" sdnum="2058;"><font face="Montserrat">7.9 - 11.3</font></td>
+                                                            <td rowspan=2 align="center" valign=middle>
+                                                                <font face="Montserrat">
+                                                                    <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_73eb07f4d8943437.png" width=34 height=36 hspace=36 vspace=4>
+                                                                </font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=3 height="64" align="center" valign=middle sdval="3" sdnum="2058;"><font face="Montserrat">11.3 - 16.3</font></td>
+                                                            <td rowspan=3 align="center" valign=middle>
+                                                                <font face="Montserrat">
+                                                                    <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_99367b08207715b3.png" width=43 height=46 hspace=31 vspace=10>
+                                                                </font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=4 height="85" align="center" valign=middle sdval="4" sdnum="2058;">16.3 - 28.7</td>
+                                                            <td rowspan=4 align="center" valign=middle>
+                                                                <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_7ba4a36dee2749c2.png" width=53 height=58 hspace=27 vspace=15>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td rowspan=4 height="85" align="center" valign=middle sdval="5" sdnum="2058;">28.7 - 428.9</td>
+                                                            <td rowspan=4 align="center" valign=middle>
+                                                                <br><img src="@Cdn.Url/Geovisualizador/info/biomasa_html_98d729d9570ab72d.png" width=65 height=68 hspace=21 vspace=10>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td colspan=2 height="62" align="center" valign=middle><font face="Montserrat">Residuos de bosques en toneladas  (t)</font></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="left"> 5,344 - 6,680</td>
+                                                            <td align="left" bgcolor="#FF0000"><br></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="left"><br>4,008 - 5,344</td>
+                                                            <td align="left" bgcolor="#FF4040"><br></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="left"><br>2,672 - 4,008 </td>
+                                                            <td align="left" bgcolor="#FF8080"><br></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="left"><br>1,336  - 1,672</td>
+                                                            <td align="left" bgcolor="#FFBFBF"><br></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="left"> 0 - 1,336</td>
+                                                            <td align="left" bgcolor="#FFFFFF"><br></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td colspan=2 rowspan=2 height="43" align="center" valign=bottom>
+                                                                <ul>
+                                                                    <li><font face="Montserrat" size=1>Fuente: National Renewable Energy Laboratory (<a href="https://www.nrel.gov/gis/wind-resource-maps.html" target="_blank">https://www.nrel.gov/gis/wind-resource-maps.html</a>) </font></li>
+
+                                                                    <li><font face="Montserrat" size=1>Para mayor información consultar: (<a href="https://energia.conacyt.mx/planeas/biomasa/oferta" target="_blank">https://energia.conacyt.mx/planeas/biomasa/oferta</a>) </font></li>
+
+                                                                </ul>
+                                                            </td>
+                                                        </tr>
+
+                                                    </table>
+                                                @* </div> *@
+                                            </div>
+
+
+
+                                        </div>
+
+                                    </div>
+                                    <div class="leyenda pt-3">
+                                        <p>Mayor Concentración</p>
+                                        <p>Concentración Promedio</p>
+                                        <p>Menor Concentración</p>
+                                        <p> Ductos</p>
+                                    </div>
+                                    <br />
+                                    <div class="" id="grafico"></div>
+                                    @* <div class="" id="grafico2"></div> *@
+                                    <br />
+                                </div>
+                            </div>
+
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            </div>
+        </div>
+    </section>
+
+    <style>
+        #fullscreen-search-container {
+            background-color: white;
+        }
+
+        #fullscreen-elements {
+            display: flex;
+            flex-direction: column;
+            height: auto; /* Valor inicial para cuando no esté en pantalla completa */
+        }
+
+        #fullscreen-last-update,
+        #fullscreen-select,
+        #fullscreen-search-container {
+            flex-shrink: 0;
+        }
+
+        #map {
+            flex-grow: 1;
+        }
+
+        #main-container.fullscreen-active #fullscreen-elements {
+            height: 100vh;
+        }
+
+        #main-container.fullscreen-active #map {
+            height: calc(100vh - 60px);
+        }
+
+        #main-container:not(.fullscreen-active) #map {
+            height: 500px;
+        }
+    </style>
+
+
+</div>
+
+@*Script de Pantalla Completa*@
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const mapElement = document.getElementById('map');
+        const fullscreenButton = document.getElementById('fullscreen-btn');
+        const searchContainer = document.getElementById('search-container');
+        const mainContainer = document.getElementById('main-container');
+        const fullscreenElements = document.createElement('div');
+        fullscreenElements.id = 'fullscreen-elements';
+
+        const originalMapParent = mapElement.parentNode;
+        const originalSearchParent = searchContainer.parentNode;
+        const originalMapNextSibling = mapElement.nextSibling;
+        const originalSearchNextSibling = searchContainer.nextSibling;
+
+        fullscreenButton.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                mainContainer.appendChild(fullscreenElements); // Asegurarnos de que fullscreenElements esté en el DOM
+                fullscreenElements.appendChild(searchContainer);
+                fullscreenElements.appendChild(mapElement);
+                fullscreenElements.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', (event) => {
+            if (document.fullscreenElement) {
+                fullscreenButton.textContent = "Salir de Pantalla Completa";
+                mainContainer.classList.add('fullscreen-active');
+                mapElement.style.height = "calc(100vh - 60px)";
+                searchContainer.style.backgroundColor = "white";
+            } else {
+                fullscreenButton.textContent = "Pantalla Completa";
+                if (originalSearchNextSibling) {
+                    originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+                } else {
+                    originalSearchParent.appendChild(searchContainer);
+                }
+                if (originalMapNextSibling) {
+                    originalMapParent.insertBefore(mapElement, originalMapNextSibling);
+                } else {
+                    originalMapParent.appendChild(mapElement);
+                }
+                mainContainer.classList.remove('fullscreen-active');
+                mapElement.style.height = "500px";
+
+                // Asegurarse de que los estilos se restablezcan
+                fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+            }
+        });
+    });
+</script>
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/data/Residuosindustriales_0.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/Residuosganados_1.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/Residuosdebosques_2.js"></script>
+
+
+@section scripts {
+
+    <script type="text/javascript" src="/js/configura_mapa.js"></script>
+
+
+    <script type="text/javascript" src="/js/I_biomasa.js"></script>
+
+
+}

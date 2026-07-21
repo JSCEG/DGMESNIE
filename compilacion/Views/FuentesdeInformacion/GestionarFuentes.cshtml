@@ -1,0 +1,1373 @@
+@inject IHttpContextAccessor HttpContextAccessor
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+@{
+	var httpContext = HttpContextAccessor.HttpContext;
+	var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+	var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+	ViewData["Title"] = "Gestionar Fuentes - " + ViewBag.Entidad;
+	ViewData["NombreUsuario"] = perfilUsuario?.Nombre;
+	ViewData["RolUsuario"] = perfilUsuario?.Rol;
+	ViewData["IDUsuario"] = perfilUsuario?.IdUsuario;
+
+	var header = new HeaderViewModel
+	{
+		Title = "Gestionar Fuentes de " + ViewBag.Entidad,
+		IconPath = "database.png",
+		Description = "Gestiona las fuentes de información de la entidad " + ViewBag.Entidad,
+		Section = "CRUD de Fuentes",
+		ModuleInfo = JsonConvert.SerializeObject(new
+		{
+			title = "Gestión de Fuentes",
+			description = "CRUD completo de fuentes para la entidad seleccionada.",
+			functionality = "Crear, leer, actualizar y eliminar fuentes.",
+			stage = "Disponible",
+			roles = new[] {
+new { icon = "edit", text = "CRUD de fuentes" },
+new { icon = "list", text = "Listado con filtros" },
+new { icon = "chart", text = "Análisis visual" }
+},
+			order = new { step = 2, description = "Vista de gestión detallada" },
+			manualUrl = "#"
+		})
+	};
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<!-- SweetAlert2 CDN -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- SheetJS para exportar a Excel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<div class="container mb-5">
+	<div class="row">
+		<div class="col-12">
+			<!-- Breadcrumb -->
+			<nav aria-label="breadcrumb" class="mb-3">
+				<ol class="breadcrumb">
+					<li class="breadcrumb-item">
+						<a href="/FuentesdeInformacion/Fuentes">
+							<i class="fas fa-database"></i> Fuentes de Información
+						</a>
+					</li>
+					<li class="breadcrumb-item active" aria-current="page">
+						<i class="fas fa-cogs"></i> @ViewBag.Entidad
+					</li>
+				</ol>
+			</nav>
+
+			<!-- Información de la entidad -->
+			<div class="card mb-3">
+				<div class="card-header bg-primary text-white">
+					<div class="d-flex justify-content-between align-items-center">
+						<h5 class="mb-0">
+							<i class="fas fa-building"></i> Entidad: @ViewBag.Entidad
+						</h5>
+						<div>
+							<span class="badge badge-light" id="totalFuentes">0 fuentes</span>
+							<button class="btn btn-info btn-sm ml-2" onclick="verHistorialEntidad('@ViewBag.Entidad')" title="Ver historial de la entidad">
+								<i class="fas fa-history"></i> Historial
+							</button>
+							<div class="btn-group" role="group">
+								<button class="btn btn-success btn-sm" onclick="agregarNuevaFuente()">
+									<i class="fas fa-plus"></i> Agregar Fuente
+								</button>
+								<button class="btn btn-info btn-sm" onclick="exportarAExcel()"
+									title="Exportar fuentes de esta entidad a Excel">
+									<i class="fas fa-file-excel"></i> Exportar
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="card-body">
+					<div class="row">
+						<div class="col-md-6">
+							<label for="filtroTipo" class="form-label">Filtrar por tipo:</label>
+							<select id="filtroTipo" class="form-control">
+								<option value="">Todos los tipos</option>
+							</select>
+						</div>
+						<div class="col-md-6">
+							<label for="filtroRubro" class="form-label">Filtrar por rubro:</label>
+							<select id="filtroRubro" class="form-control">
+								<option value="">Todos los rubros</option>
+							</select>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Tabla de fuentes -->
+			<div class="card">
+				<div class="card-header">
+					<h6 class="mb-0"><i class="fas fa-list"></i> Fuentes de la Entidad</h6>
+				</div>
+				<div class="card-body">
+					<div class="table-responsive">
+						<table class="table table-bordered table-hover" id="tablaFuentesDetalle">
+							<thead class="table-light">
+								<tr>
+									<th>Tipo</th>
+									<th>Rubro</th>
+									<th>Etiqueta</th>
+									<th>Unidades</th>
+									<th>Periodicidad</th>
+									<th>Enlace</th>
+									<th>Acciones</th>
+								</tr>
+							</thead>
+							<tbody></tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+
+			<!-- Gráficos de análisis -->
+			<div class="row mt-4">
+				<div class="col-md-6">
+					<div class="card">
+						<div class="card-header">
+							<h6 class="mb-0"><i class="fas fa-chart-pie"></i> Distribución por Tipo</h6>
+						</div>
+						<div class="card-body">
+							<div id="chartTiposDetalle" style="width:100%; height:300px;"></div>
+						</div>
+					</div>
+				</div>
+				<div class="col-md-6">
+					<div class="card">
+						<div class="card-header">
+							<h6 class="mb-0"><i class="fas fa-chart-donut"></i> Distribución por Rubro</h6>
+						</div>
+						<div class="card-body">
+							<div id="chartRubrosDetalle" style="width:100%; height:300px;"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Modal para CRUD de fuentes -->
+<div class="modal fade" id="modalFuenteCRUD" tabindex="-1" role="dialog" aria-labelledby="modalFuenteCRUDLabel"
+	aria-hidden="true">
+	<div class="modal-dialog modal-xl" role="document">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="modalFuenteCRUDLabel">Agregar Nueva Fuente</h5>
+				<button type="button" class="close btn-close" data-dismiss="modal" data-bs-dismiss="modal"
+					aria-label="Close">
+					<span aria-hidden="true">&times;</span>
+				</button>
+			</div>
+			<div class="modal-body">
+				<form id="formFuente">
+					<input type="hidden" id="fuenteId" name="id" value="0">
+					<input type="hidden" id="entidadInput" name="entidad" value="@ViewBag.Entidad">
+
+					<div class="row">
+						<div class="col-md-6">
+							<div class="form-group">
+								<label for="tipoInput">Tipo *</label>
+								<input type="text" class="form-control" id="tipoInput" name="tipo" required
+									placeholder="Ej: Estadística, Reporte, Base de datos..." list="tiposExistentes">
+								<datalist id="tiposExistentes">
+									<!-- Se llena dinámicamente -->
+								</datalist>
+								<div class="invalid-feedback">
+									El tipo es requerido
+								</div>
+							</div>
+							<div class="form-group">
+								<label for="rubroInput">Rubro *</label>
+								<input type="text" class="form-control" id="rubroInput" name="rubro" required
+									placeholder="Ej: Energía, Hidrocarburos, Electricidad..." list="rubrosExistentes">
+								<datalist id="rubrosExistentes">
+									<!-- Se llena dinámicamente -->
+								</datalist>
+								<div class="invalid-feedback">
+									El rubro es requerido
+								</div>
+							</div>
+							<div class="form-group">
+								<label for="etiquetaInput">Etiqueta *</label>
+								<input type="text" class="form-control" id="etiquetaInput" name="etiqueta" required
+									placeholder="Nombre descriptivo de la fuente...">
+								<div class="invalid-feedback">
+									La etiqueta es requerida
+								</div>
+							</div>
+							<div class="form-group">
+								<label for="datoInformacionInput">Descripción de la Información</label>
+								<textarea class="form-control" id="datoInformacionInput" name="dato_Informacion"
+									rows="3" placeholder="Describe qué tipo de información contiene esta fuente..."></textarea>
+							</div>
+						</div>
+						<div class="col-md-6">
+							<div class="form-group">
+								<label for="desagregacionInput">Desagregación</label>
+								<input type="text" class="form-control" id="desagregacionInput" name="desagregacion"
+									placeholder="Nivel de detalle de los datos...">
+							</div>
+							<div class="form-group">
+								<label for="subDesagregacionInput">Sub Desagregación</label>
+								<input type="text" class="form-control" id="subDesagregacionInput"
+									name="sub_desagregacion" placeholder="Nivel adicional de detalle...">
+							</div>
+							<div class="form-group">
+								<label for="unidadesInput">Unidades</label>
+								<input type="text" class="form-control" id="unidadesInput" name="unidades"
+									placeholder="Ej: MW, Barriles, Pesos, Porcentaje..." list="unidadesExistentes">
+								<datalist id="unidadesExistentes">
+									<!-- Se llena dinámicamente -->
+								</datalist>
+							</div>
+							<div class="form-group">
+								<label for="periodicidadInput">Periodicidad</label>
+								<select class="form-control" id="periodicidadInput" name="periodicidad_Corte_de_Informacion">
+									<option value="">Seleccionar periodicidad...</option>
+									<option value="Anual">Anual</option>
+									<option value="Semestral">Semestral</option>
+									<option value="Trimestral">Trimestral</option>
+									<option value="Mensual">Mensual</option>
+									<option value="Semanal">Semanal</option>
+									<option value="Diaria">Diaria</option>
+									<option value="Tiempo Real">Tiempo Real</option>
+									<option value="Ocasional">Ocasional</option>
+								</select>
+							</div>
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-12">
+							<div class="form-group">
+								<label for="fuenteLinkInput">Enlace de la Fuente</label>
+								<input type="url" class="form-control" id="fuenteLinkInput" name="fuente_Link"
+									placeholder="https://...">
+								<small class="form-text text-muted">URL donde se puede acceder a la fuente</small>
+							</div>
+							<div class="form-group">
+								<label for="comentarioInput">Comentario</label>
+								<textarea class="form-control" id="comentarioInput" name="comentario"
+									rows="2" placeholder="Observaciones adicionales..."></textarea>
+							</div>
+						</div>
+					</div>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-dismiss="modal" data-bs-dismiss="modal">
+					<i class="fas fa-times"></i> Cancelar
+				</button>
+				<button type="button" class="btn btn-primary" onclick="guardarFuente()">
+					<i class="fas fa-save"></i> Guardar
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Modal para Historial de Fuente -->
+<div class="modal fade" id="modalHistorialFuente" tabindex="-1" role="dialog" aria-labelledby="modalHistorialFuenteLabel"
+	aria-hidden="true">
+	<div class="modal-dialog modal-xl" role="document">
+		<div class="modal-content">
+			<div class="modal-header bg-info text-white">
+				<h5 class="modal-title" id="modalHistorialFuenteLabel">
+					<i class="fas fa-history"></i> Historial de Cambios
+				</h5>
+				<button type="button" class="close btn-close text-white" data-dismiss="modal" data-bs-dismiss="modal"
+					aria-label="Close">
+					<span aria-hidden="true">&times;</span>
+				</button>
+			</div>
+			<div class="modal-body" id="modalHistorialFuenteBody">
+				<!-- Contenido dinámico del historial -->
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-dismiss="modal" data-bs-dismiss="modal">
+					<i class="fas fa-times"></i> Cerrar
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+	let fuentesEntidad = [];
+	let entidadActual = '@ViewBag.Entidad';
+
+	// Función de validación de seguridad contra inyección de código
+	function validarSeguridadInput(valor, nombreCampo) {
+		if (!valor) return { esValido: true, mensaje: '' };
+
+		// Patrones peligrosos que debemos detectar
+		const patronesPeligrosos = [
+			/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+			/<iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads" \b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi,
+			/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi,
+			/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi,
+			/<link\b[^>]*>/gi,
+			/<meta\b[^>]*>/gi,
+			/javascript:/gi,
+			/vbscript:/gi,
+			/onload\s*=/gi,
+			/onclick\s*=/gi,
+			/onerror\s*=/gi,
+			/onmouseover\s*=/gi,
+			/onfocus\s*=/gi,
+			/onblur\s*=/gi,
+			/onchange\s*=/gi,
+			/onsubmit\s*=/gi,
+			/<\s*\/?\s*(script|iframe|object|embed|form|input|select|textarea|button|link|meta|style|base|applet|body|html|head|title)\b[^>]*>/gi,
+			/expression\s*\(/gi,
+			/url\s*\(\s*javascript:/gi,
+			/data\s*:\s*text\/html/gi,
+			/&#x?[0-9a-f]+;?/gi, // Entidades HTML codificadas
+			/%[0-9a-f]{2}/gi, // URL encoding
+			/\\x[0-9a-f]{2}/gi, // Hex encoding
+			/\\u[0-9a-f]{4}/gi, // Unicode encoding
+			/eval\s*\(/gi,
+			/setTimeout\s*\(/gi,
+			/setInterval\s*\(/gi,
+			/Function\s*\(/gi,
+			/alert\s*\(/gi,
+			/confirm\s*\(/gi,
+			/prompt\s*\(/gi,
+			/document\./gi,
+			/window\./gi,
+			/location\./gi,
+			/history\./gi,
+			/navigator\./gi,
+			/console\./gi
+		];
+
+		// Verificar cada patrón
+		for (let patron of patronesPeligrosos) {
+			if (patron.test(valor)) {
+				return {
+					esValido: false,
+					mensaje: `El campo "${nombreCampo}" contiene código potencialmente peligroso. Por seguridad, no se permite este tipo de contenido.`
+				};
+			}
+		}
+
+		// Verificar caracteres sospechosos en secuencia
+		if (valor.includes('<') && valor.includes('>')) {
+			// Permitir solo algunos casos específicos como URLs con parámetros
+			if (!valor.match(/^https?:\/\/[^\s<>"']+$/)) {
+				return {
+					esValido: false,
+					mensaje: `El campo "${nombreCampo}" contiene caracteres que podrían ser código HTML/JavaScript. Por seguridad, revise el contenido.`
+				};
+			}
+		}
+
+		return { esValido: true, mensaje: '' };
+	}
+
+	// Función para limpiar y escapar texto de entrada
+	function limpiarTextoEntrada(texto) {
+		if (!texto) return '';
+		
+		return texto
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#x27;')
+			.replace(/\//g, '&#x2F;')
+			.trim();
+	}
+
+	// Función para mostrar notificaciones con SweetAlert2
+	function mostrarNotificacion(tipo, titulo, mensaje) {
+		const iconos = {
+			'success': 'success',
+			'error': 'error',
+			'warning': 'warning',
+			'info': 'info'
+		};
+
+		Swal.fire({
+			icon: iconos[tipo] || 'info',
+			title: titulo,
+			text: mensaje,
+			toast: true,
+			position: 'top-end',
+			showConfirmButton: false,
+			timer: 4000,
+			timerProgressBar: true,
+			didOpen: (toast) => {
+				toast.addEventListener('mouseenter', Swal.stopTimer);
+				toast.addEventListener('mouseleave', Swal.resumeTimer);
+			}
+		});
+	}
+
+	// Función para confirmaciones con SweetAlert2
+	async function confirmarAccion(titulo, mensaje, textoConfirmar = 'Sí, continuar') {
+		const result = await Swal.fire({
+			title: titulo,
+			text: mensaje,
+			icon: 'warning',
+			showCancelButton: true,
+			confirmButtonColor: '#d33',
+			cancelButtonColor: '#6c757d',
+			confirmButtonText: textoConfirmar,
+			cancelButtonText: 'Cancelar',
+			reverseButtons: true
+		});
+		return result.isConfirmed;
+	}
+
+	function cargarFuentesEntidad() {
+		// Mostrar loading
+		Swal.fire({
+			title: 'Cargando fuentes...',
+			allowOutsideClick: false,
+			didOpen: () => {
+				Swal.showLoading();
+			}
+		});
+
+		// Usar parámetro específico para obtener fuentes por entidad
+		var url = `/FuentesdeInformacion/ObtenerFuentesPorEntidad?entidad=${encodeURIComponent(entidadActual)}`;
+		
+		fetch(url)
+			.then(r => {
+				if (!r.ok) {
+					throw new Error(`HTTP error! status: ${r.status}`);
+				}
+				return r.json();
+			})
+			.then(data => {
+				Swal.close(); // Cerrar loading
+
+				console.log('Fuentes de la entidad:', data);
+				if (Array.isArray(data)) {
+					fuentesEntidad = data;
+					actualizarTablaDetalle();
+					actualizarGraficosDetalle();
+					actualizarContadores();
+					cargarFiltros();
+
+					mostrarNotificacion('success', 'Datos cargados', `Se cargaron ${fuentesEntidad.length} fuentes de ${entidadActual}`);
+				} else if (data && data.error) {
+					mostrarNotificacion('error', 'Error', data.error);
+				} else {
+					mostrarNotificacion('warning', 'Sin datos', 'No se encontraron fuentes para esta entidad');
+				}
+			})
+			.catch(error => {
+				Swal.close(); // Cerrar loading
+				console.error('Error al cargar fuentes:', error);
+				mostrarNotificacion('error', 'Error de conexión', 'Error al cargar fuentes: ' + error.message);
+			});
+	}
+
+	function actualizarTablaDetalle() {
+		if ($.fn.DataTable.isDataTable('#tablaFuentesDetalle')) {
+			$('#tablaFuentesDetalle').DataTable().clear().destroy();
+		}
+
+		var tbody = document.querySelector('#tablaFuentesDetalle tbody');
+		tbody.innerHTML = '';
+
+		fuentesEntidad.forEach(f => {
+			var enlaceHtml = f.fuente_Link && f.fuente_Link.trim() ?
+				`<a href="${f.fuente_Link}" target="_blank" class="btn btn-xs btn-outline-primary" title="Abrir enlace externo"><i class="fas fa-external-link-alt"></i></a>` :
+				'<span class="text-muted"><i class="fas fa-times-circle"></i> Sin enlace</span>';
+
+			tbody.innerHTML += `<tr>
+				<td>${f.tipo || 'N/A'}</td>
+				<td>${f.rubro || 'N/A'}</td>
+				<td>${f.etiqueta || 'N/A'}</td>
+				<td>${f.unidades || 'N/A'}</td>
+				<td>${f.periodicidad_Corte_de_Informacion || 'N/A'}</td>
+				<td>${enlaceHtml}</td>
+				<td>
+					<div class="btn-group" role="group">
+						<button class="btn btn-sm btn-info" onclick="verFuenteCompleta(${f.id})" title="Ver detalles completos">
+							<i class="fas fa-eye"></i>
+						</button>
+						<button class="btn btn-sm btn-warning" onclick="editarFuente(${f.id})" title="Editar fuente">
+							<i class="fas fa-edit"></i>
+						</button>
+						<button class="btn btn-sm btn-danger" onclick="eliminarFuente(${f.id})" title="Eliminar fuente">
+							<i class="fas fa-trash"></i>
+						</button>
+					</div>
+				</td>
+			</tr>`;
+		});
+
+		$('#tablaFuentesDetalle').DataTable({
+			paging: true,
+			searching: true,
+			ordering: true,
+			info: true,
+			pageLength: 15,
+			language: {
+				url: '//cdn.datatables.net/plug-ins/1.10.25/i18n/Spanish.json'
+			}
+		});
+	}
+
+	function actualizarGraficosDetalle() {
+		// Contar por tipo
+		var conteoTipos = {};
+		var conteoRubros = {};
+
+		fuentesEntidad.forEach(f => {
+			var tipo = f.tipo || 'Sin tipo';
+			var rubro = f.rubro || 'Sin rubro';
+
+			conteoTipos[tipo] = (conteoTipos[tipo] || 0) + 1;
+			conteoRubros[rubro] = (conteoRubros[rubro] || 0) + 1;
+		});
+
+		// Gráfico por tipos
+		var seriesTipos = Object.keys(conteoTipos).map(tipo => ({
+			name: tipo,
+			y: conteoTipos[tipo]
+		}));
+
+		Highcharts.chart('chartTiposDetalle', {
+			chart: { type: 'pie' },
+			title: { text: 'Por Tipo' },
+			colors: ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'],
+			series: [{
+				name: 'Fuentes',
+				data: seriesTipos,
+				dataLabels: {
+					enabled: true,
+					format: '<b>{point.name}</b>: {point.y}'
+				}
+			}],
+			plotOptions: {
+				pie: {
+					allowPointSelect: true,
+					cursor: 'pointer'
+				}
+			}
+		});
+
+		// Gráfico por rubros
+		var seriesRubros = Object.keys(conteoRubros).map(rubro => ({
+			name: rubro,
+			y: conteoRubros[rubro]
+		}));
+
+		Highcharts.chart('chartRubrosDetalle', {
+			chart: { type: 'pie' },
+			title: { text: 'Por Rubro' },
+			colors: ['#17a2b8', '#28a745', '#ffc107', '#dc3545', '#6f42c1'],
+			series: [{
+				name: 'Fuentes',
+				data: seriesRubros,
+				dataLabels: {
+					enabled: true,
+					format: '<b>{point.name}</b>: {point.y}'
+				}
+			}],
+			plotOptions: {
+				pie: {
+					allowPointSelect: true,
+					cursor: 'pointer'
+				}
+			}
+		});
+	}
+
+	function actualizarContadores() {
+		document.getElementById('totalFuentes').textContent =
+			fuentesEntidad.length + (fuentesEntidad.length === 1 ? ' fuente' : ' fuentes');
+	}
+
+	function cargarFiltros() {
+		// Cargar tipos únicos
+		var tipos = [...new Set(fuentesEntidad.map(f => f.tipo).filter(t => t))];
+		var selectTipo = document.getElementById('filtroTipo');
+		selectTipo.innerHTML = '<option value="">Todos los tipos</option>';
+		tipos.forEach(tipo => {
+			selectTipo.innerHTML += `<option value="${tipo}">${tipo}</option>`;
+		});
+
+		// Cargar rubros únicos
+		var rubros = [...new Set(fuentesEntidad.map(f => f.rubro).filter(r => r))];
+		var selectRubro = document.getElementById('filtroRubro');
+		selectRubro.innerHTML = '<option value="">Todos los rubros</option>';
+		rubros.forEach(rubro => {
+			selectRubro.innerHTML += `<option value="${rubro}">${rubro}</option>`;
+		});
+	}
+
+	function cargarOpcionesAutocompletado() {
+		if (fuentesEntidad.length === 0) return;
+
+		// Obtener valores únicos de todas las fuentes
+		var tipos = [...new Set(fuentesEntidad.map(f => f.tipo).filter(t => t))];
+		var rubros = [...new Set(fuentesEntidad.map(f => f.rubro).filter(r => r))];
+		var unidades = [...new Set(fuentesEntidad.map(f => f.unidades).filter(u => u))];
+
+		// Llenar datalists
+		document.getElementById('tiposExistentes').innerHTML =
+			tipos.map(t => `<option value="${t}">`).join('');
+
+		document.getElementById('rubrosExistentes').innerHTML =
+			rubros.map(r => `<option value="${r}">`).join('');
+
+		document.getElementById('unidadesExistentes').innerHTML =
+			unidades.map(u => `<option value="${u}">`).join('');
+	}
+
+	function aplicarFiltrosDetalle() {
+		var filtroTipo = document.getElementById('filtroTipo').value;
+		var filtroRubro = document.getElementById('filtroRubro').value;
+
+		var fuentesFiltradas = fuentesEntidad.filter(f => {
+			var coincideTipo = !filtroTipo || f.tipo === filtroTipo;
+			var coincideRubro = !filtroRubro || f.rubro === filtroRubro;
+			return coincideTipo && coincideRubro;
+		});
+
+		// Actualizar tabla con datos filtrados
+		actualizarTablaDetalleFiltrada(fuentesFiltradas);
+		
+		// Actualizar contador
+		document.getElementById('totalFuentes').textContent =
+			fuentesFiltradas.length + (fuentesFiltradas.length === 1 ? ' fuente' : ' fuentes') + 
+			(fuentesFiltradas.length !== fuentesEntidad.length ? ` (de ${fuentesEntidad.length} total)` : '');
+	}
+
+	function actualizarTablaDetalleFiltrada(fuentes) {
+		if ($.fn.DataTable.isDataTable('#tablaFuentesDetalle')) {
+			$('#tablaFuentesDetalle').DataTable().clear().destroy();
+		}
+
+		var tbody = document.querySelector('#tablaFuentesDetalle tbody');
+		tbody.innerHTML = '';
+
+		fuentes.forEach(f => {
+			var enlaceHtml = f.fuente_Link && f.fuente_Link.trim() ?
+				`<a href="${f.fuente_Link}" target="_blank" class="btn btn-xs btn-outline-primary" title="Abrir enlace externo"><i class="fas fa-external-link-alt"></i></a>` :
+				'<span class="text-muted"><i class="fas fa-times-circle"></i> Sin enlace</span>';
+
+			tbody.innerHTML += `<tr>
+				<td>${f.tipo || 'N/A'}</td>
+				<td>${f.rubro || 'N/A'}</td>
+				<td>${f.etiqueta || 'N/A'}</td>
+				<td>${f.unidades || 'N/A'}</td>
+				<td>${f.periodicidad_Corte_de_Informacion || 'N/A'}</td>
+				<td>${enlaceHtml}</td>
+				<td>
+					<div class="btn-group" role="group">
+						<button class="btn btn-sm btn-info" onclick="verFuenteCompleta(${f.id})" title="Ver detalles completos">
+							<i class="fas fa-eye"></i>
+						</button>
+						<button class="btn btn-sm btn-warning" onclick="editarFuente(${f.id})" title="Editar fuente">
+							<i class="fas fa-edit"></i>
+						</button>
+						<button class="btn btn-sm btn-danger" onclick="eliminarFuente(${f.id})" title="Eliminar fuente">
+							<i class="fas fa-trash"></i>
+						</button>
+					</div>
+				</td>
+			</tr>`;
+		});
+
+		$('#tablaFuentesDetalle').DataTable({
+			paging: true,
+			searching: true,
+			ordering: true,
+			info: true,
+			pageLength: 15,
+			language: {
+				url: '//cdn.datatables.net/plug-ins/1.10.25/i18n/Spanish.json'
+			}
+		});
+	}
+
+	function agregarNuevaFuente() {
+		// Limpiar formulario
+		document.getElementById('formFuente').reset();
+		document.getElementById('fuenteId').value = '0';
+		document.getElementById('entidadInput').value = entidadActual;
+
+		// Cargar opciones de autocompletado
+		cargarOpcionesAutocompletado();
+
+		// Limpiar clases de validación
+		document.querySelectorAll('.form-control').forEach(input => {
+			input.classList.remove('is-invalid', 'is-valid');
+		});
+
+		// Cambiar título
+		document.getElementById('modalFuenteCRUDLabel').innerHTML = '<i class="fas fa-plus"></i> Agregar Nueva Fuente';
+
+		// Mostrar modal
+		try {
+			if (typeof bootstrap !== 'undefined') {
+				var modal = new bootstrap.Modal(document.getElementById('modalFuenteCRUD'));
+				modal.show();
+			} else {
+				$('#modalFuenteCRUD').modal('show');
+			}
+		} catch (e) {
+			$('#modalFuenteCRUD').modal('show');
+		}
+	}
+
+	function editarFuente(id) {
+		var fuente = fuentesEntidad.find(f => f.id === id);
+		if (!fuente) {
+			mostrarNotificacion('error', 'Error', 'Fuente no encontrada');
+			return;
+		}
+
+		// Cargar opciones de autocompletado
+		cargarOpcionesAutocompletado();
+
+		// Limpiar clases de validación
+		document.querySelectorAll('.form-control').forEach(input => {
+			input.classList.remove('is-invalid', 'is-valid');
+		});
+
+		// Llenar formulario
+		document.getElementById('fuenteId').value = fuente.id;
+		document.getElementById('entidadInput').value = fuente.entidad;
+		document.getElementById('tipoInput').value = fuente.tipo || '';
+		document.getElementById('rubroInput').value = fuente.rubro || '';
+		document.getElementById('etiquetaInput').value = fuente.etiqueta || '';
+		document.getElementById('datoInformacionInput').value = fuente.dato_Informacion || '';
+		document.getElementById('desagregacionInput').value = fuente.desagregacion || '';
+		document.getElementById('subDesagregacionInput').value = fuente.sub_desagregacion || '';
+		document.getElementById('unidadesInput').value = fuente.unidades || '';
+		document.getElementById('periodicidadInput').value = fuente.periodicidad_Corte_de_Informacion || '';
+		document.getElementById('fuenteLinkInput').value = fuente.fuente_Link || '';
+		document.getElementById('comentarioInput').value = fuente.comentario || '';
+
+		// Cambiar título
+		document.getElementById('modalFuenteCRUDLabel').innerHTML = '<i class="fas fa-edit"></i> Editar Fuente';
+
+		// Mostrar modal
+		try {
+			if (typeof bootstrap !== 'undefined') {
+				var modal = new bootstrap.Modal(document.getElementById('modalFuenteCRUD'));
+				modal.show();
+			} else {
+				$('#modalFuenteCRUD').modal('show');
+			}
+		} catch (e) {
+			$('#modalFuenteCRUD').modal('show');
+		}
+	}
+
+	async function guardarFuente() {
+		// Obtener todos los valores del formulario
+		var tipo = document.getElementById('tipoInput').value.trim();
+		var rubro = document.getElementById('rubroInput').value.trim();
+		var etiqueta = document.getElementById('etiquetaInput').value.trim();
+		var datoInformacion = document.getElementById('datoInformacionInput').value.trim();
+		var desagregacion = document.getElementById('desagregacionInput').value.trim();
+		var subDesagregacion = document.getElementById('subDesagregacionInput').value.trim();
+		var unidades = document.getElementById('unidadesInput').value.trim();
+		var periodicidad = document.getElementById('periodicidadInput').value.trim();
+		var fuenteLink = document.getElementById('fuenteLinkInput').value.trim();
+		var comentario = document.getElementById('comentarioInput').value.trim();
+
+		var esValido = true;
+		var mensajesError = [];
+
+		// Validación de seguridad para todos los campos
+		const camposAValidar = [
+			{ valor: tipo, nombre: 'Tipo', elemento: 'tipoInput' },
+			{ valor: rubro, nombre: 'Rubro', elemento: 'rubroInput' },
+			{ valor: etiqueta, nombre: 'Etiqueta', elemento: 'etiquetaInput' },
+			{ valor: datoInformacion, nombre: 'Dato Información', elemento: 'datoInformacionInput' },
+			{ valor: desagregacion, nombre: 'Desagregación', elemento: 'desagregacionInput' },
+			{ valor: subDesagregacion, nombre: 'Sub Desagregación', elemento: 'subDesagregacionInput' },
+			{ valor: unidades, nombre: 'Unidades', elemento: 'unidadesInput' },
+			{ valor: periodicidad, nombre: 'Periodicidad', elemento: 'periodicidadInput' },
+			{ valor: fuenteLink, nombre: 'Enlace de la Fuente', elemento: 'fuenteLinkInput' },
+			{ valor: comentario, nombre: 'Comentario', elemento: 'comentarioInput' }
+		];
+
+		// Validar seguridad en todos los campos
+		for (let campo of camposAValidar) {
+			const validacion = validarSeguridadInput(campo.valor, campo.nombre);
+			if (!validacion.esValido) {
+				document.getElementById(campo.elemento).classList.add('is-invalid');
+				mensajesError.push(validacion.mensaje);
+				esValido = false;
+			} else {
+				document.getElementById(campo.elemento).classList.remove('is-invalid');
+			}
+		}
+
+		// Si hay errores de seguridad, mostrar alerta y detener
+		if (mensajesError.length > 0) {
+			await Swal.fire({
+				icon: 'error',
+				title: '⚠️ Contenido Peligroso Detectado',
+				html: `
+					<div class="text-left">
+						<p><strong>Se ha detectado contenido potencialmente peligroso en los siguientes campos:</strong></p>
+						<ul>
+							${mensajesError.map(msg => `<li>${msg}</li>`).join('')}
+						</ul>
+						<div class="alert alert-warning mt-3">
+							<i class="fas fa-shield-alt"></i>
+							<strong>Por su seguridad:</strong> No se permite código HTML, JavaScript u otros scripts en los formularios.
+						</div>
+					</div>
+				`,
+				confirmButtonText: 'Entendido',
+				confirmButtonColor: '#dc3545'
+			});
+			return;
+		}
+
+		// Validar tipo
+		if (!tipo) {
+			document.getElementById('tipoInput').classList.add('is-invalid');
+			esValido = false;
+		} else {
+			document.getElementById('tipoInput').classList.remove('is-invalid');
+			document.getElementById('tipoInput').classList.add('is-valid');
+		}
+
+		// Validar rubro
+		if (!rubro) {
+			document.getElementById('rubroInput').classList.add('is-invalid');
+			esValido = false;
+		} else {
+			document.getElementById('rubroInput').classList.remove('is-invalid');
+			document.getElementById('rubroInput').classList.add('is-valid');
+		}
+
+		// Validar etiqueta
+		if (!etiqueta) {
+			document.getElementById('etiquetaInput').classList.add('is-invalid');
+			esValido = false;
+		} else {
+			document.getElementById('etiquetaInput').classList.remove('is-invalid');
+			document.getElementById('etiquetaInput').classList.add('is-valid');
+		}
+
+		if (!esValido) {
+			mostrarNotificacion('warning', 'Validación', 'Por favor complete todos los campos obligatorios');
+			return;
+		}
+
+		// Obtener datos del formulario
+		var formData = new FormData(document.getElementById('formFuente'));
+		var fuenteData = {};
+
+		// Convertir FormData a objeto
+		for (let [key, value] of formData.entries()) {
+			fuenteData[key] = value.trim();
+		}
+
+		var esEdicion = fuenteData.id && fuenteData.id !== '0';
+		var url = esEdicion ? '/FuentesdeInformacion/ActualizarFuente' : '/FuentesdeInformacion/CrearFuente';
+		var tituloAccion = esEdicion ? 'Actualizando fuente...' : 'Creando fuente...';
+
+		// Mostrar loading
+		Swal.fire({
+			title: tituloAccion,
+			allowOutsideClick: false,
+			didOpen: () => {
+				Swal.showLoading();
+			}
+		});
+
+		try {
+			const response = await fetch(url, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(fuenteData)
+			});
+
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+
+			const result = await response.json();
+
+			Swal.close();
+
+			if (result.success) {
+				mostrarNotificacion('success', 'Éxito', result.message || 'Fuente guardada exitosamente');
+				$('#modalFuenteCRUD').modal('hide');
+				cargarFuentesEntidad();
+			} else {
+				mostrarNotificacion('error', 'Error', result.error || 'Error al guardar la fuente');
+			}
+		} catch (error) {
+			Swal.close();
+			console.error('Error al guardar fuente:', error);
+			mostrarNotificacion('error', 'Error de conexión', 'Error al guardar la fuente: ' + error.message);
+		}
+	}
+
+	async function eliminarFuente(id) {
+		var fuente = fuentesEntidad.find(f => f.id === id);
+		if (!fuente) {
+			mostrarNotificacion('error', 'Error', 'Fuente no encontrada');
+			return;
+		}
+
+		const confirmado = await Swal.fire({
+			title: '¿Eliminar fuente?',
+			html: `
+				<p>¿Está seguro de eliminar la fuente <strong>"${fuente.etiqueta}"</strong>?</p>
+				<div class="alert alert-danger mt-3">
+					<i class="fas fa-exclamation-triangle"></i>
+					<strong>¡Atención!</strong> Esta acción NO se puede deshacer.
+				</div>
+			`,
+			icon: 'warning',
+			showCancelButton: true,
+			confirmButtonColor: '#dc3545',
+			cancelButtonColor: '#6c757d',
+			confirmButtonText: 'Sí, eliminar',
+			cancelButtonText: 'Cancelar',
+			reverseButtons: true
+		});
+
+		if (confirmado.isConfirmed) {
+			// Mostrar loading
+			Swal.fire({
+				title: 'Eliminando fuente...',
+				allowOutsideClick: false,
+				didOpen: () => {
+					Swal.showLoading();
+				}
+			});
+
+			try {
+				const response = await fetch('/FuentesdeInformacion/EliminarFuente', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ id: id })
+				});
+
+				if (!response.ok) {
+					throw new Error(`HTTP error! status: ${response.status}`);
+				}
+
+				const result = await response.json();
+
+				Swal.close();
+
+				if (result.success) {
+					mostrarNotificacion('success', 'Éxito', result.message || 'Fuente eliminada exitosamente');
+					cargarFuentesEntidad();
+				} else {
+					mostrarNotificacion('error', 'Error', result.error || 'Error al eliminar la fuente');
+				}
+			} catch (error) {
+				Swal.close();
+				console.error('Error al eliminar fuente:', error);
+				mostrarNotificacion('error', 'Error de conexión', 'Error al eliminar la fuente: ' + error.message);
+			}
+		}
+	}
+
+	async function verFuenteCompleta(id) {
+		// Mostrar loading
+		Swal.fire({
+			title: 'Cargando detalles...',
+			allowOutsideClick: false,
+			showConfirmButton: false,
+			width: 300,
+			didOpen: () => {
+				Swal.showLoading();
+			}
+		});
+
+		try {
+			const response = await fetch(`/FuentesdeInformacion/ObtenerFuentePorId?id=${id}`);
+			const data = await response.json();
+
+			Swal.close(); // Cerrar loading
+
+			if (data) {
+				await Swal.fire({
+					title: 'Detalles de la Fuente',
+					html: `
+						<div class="text-left">
+							<p><strong>Entidad:</strong> ${data.entidad || 'N/A'}</p>
+							<p><strong>Tipo:</strong> ${data.tipo || 'N/A'}</p>
+							<p><strong>Rubro:</strong> ${data.rubro || 'N/A'}</p>
+							<p><strong>Etiqueta:</strong> ${data.etiqueta || 'N/A'}</p>
+							<p><strong>Dato:</strong> ${data.dato_Informacion || 'N/A'}</p>
+							<p><strong>Unidades:</strong> ${data.unidades || 'N/A'}</p>
+							<p><strong>Periodicidad:</strong> ${data.periodicidad_Corte_de_Informacion || 'N/A'}</p>
+							${data.fuente_Link ? `<p><strong>Enlace:</strong> <a href="${data.fuente_Link}" target="_blank">Ver enlace</a></p>` : ''}
+						</div>
+					`,
+					width: 600,
+					confirmButtonText: 'Cerrar'
+				});
+			} else {
+				mostrarNotificacion('error', 'Error', 'No se pudieron cargar los detalles');
+			}
+		} catch (error) {
+			Swal.close(); // Cerrar loading
+			console.error('Error:', error);
+			mostrarNotificacion('error', 'Error de conexión', 'Error al obtener detalles de la fuente');
+		}
+	}
+
+	// Función para validar en tiempo real
+	function configurarValidacionTiempoReal() {
+		const camposFormulario = [
+			'tipoInput', 'rubroInput', 'etiquetaInput', 'datoInformacionInput',
+			'desagregacionInput', 'subDesagregacionInput', 'unidadesInput',
+			'periodicidadInput', 'fuenteLinkInput', 'comentarioInput'
+		];
+
+		camposFormulario.forEach(campoId => {
+			const elemento = document.getElementById(campoId);
+			if (elemento) {
+				elemento.addEventListener('input', function() {
+					const valor = this.value;
+					const nombreCampo = this.previousElementSibling.textContent.replace('*', '').trim();
+					
+					// Validar seguridad
+					const validacion = validarSeguridadInput(valor, nombreCampo);
+					
+					if (!validacion.esValido) {
+						this.classList.add('is-invalid');
+						this.classList.remove('is-valid');
+						
+						// Mostrar tooltip con el error
+						this.title = validacion.mensaje;
+						
+						// Mostrar notificación discreta
+						if (valor.length > 10) { // Solo si hay contenido significativo
+							mostrarNotificacion('warning', 'Contenido Sospechoso', 
+								`El campo "${nombreCampo}" contiene caracteres potencialmente peligrosos`);
+						}
+					} else {
+						this.classList.remove('is-invalid');
+						this.title = '';
+						
+						// Validar campos requeridos
+						if ((campoId === 'tipoInput' || campoId === 'rubroInput' || campoId === 'etiquetaInput') && valor.trim()) {
+							this.classList.add('is-valid');
+						}
+					}
+				});
+
+				// Validar al perder el foco
+				elemento.addEventListener('blur', function() {
+					const valor = this.value.trim();
+					const nombreCampo = this.previousElementSibling.textContent.replace('*', '').trim();
+					
+					if (valor) {
+						const validacion = validarSeguridadInput(valor, nombreCampo);
+						if (!validacion.esValido) {
+							// Mostrar alerta más prominente al perder el foco
+							Swal.fire({
+								icon: 'warning',
+								title: 'Contenido No Permitido',
+								text: validacion.mensaje,
+								toast: true,
+								position: 'top-end',
+								showConfirmButton: false,
+								timer: 5000,
+								timerProgressBar: true
+							});
+						}
+					}
+				});
+			}
+		});
+	}
+
+	// Función para ver historial de una fuente específica
+	function verHistorialFuente(id) {
+		// Mostrar loading
+		Swal.fire({
+			title: 'Cargando historial...',
+			allowOutsideClick: false,
+			showConfirmButton: false,
+			didOpen: () => {
+				Swal.showLoading();
+			}
+		});
+
+		fetch('/FuentesdeInformacion/ObtenerHistorialFuente?id=' + id)
+			.then(r => r.json())
+			.then(data => {
+				Swal.close();
+
+				if (data.success && data.data && data.data.length > 0) {
+					mostrarHistorialEnModal(data.data, `Historial de la Fuente`, 
+						`Mostrando ${data.data.length} registro(s) de actividad para esta fuente`);
+				} else {
+					mostrarSinHistorial(`No se encontraron registros de actividad para esta fuente.`);
+				}
+			})
+			.catch(error => {
+				Swal.close();
+				console.error('Error al cargar historial:', error);
+				mostrarNotificacion('error', 'Error de conexión', 'Error al cargar historial: ' + error.message);
+			});
+	}
+
+	// Función auxiliar para mostrar historial en modal
+	function mostrarHistorialEnModal(historialData, titulo, descripcion) {
+		var tablaHistorial = '';
+		historialData.forEach((item, index) => {
+			var fecha = new Date(item.timestamp).toLocaleString('es-ES');
+			var usuario = item.userName || item.userId || 'Sistema';
+			var accion = item.actionName || 'Acción';
+			var elemento = item.elemento || 'N/A';
+			var valor = item.valor || 'N/A';
+			var adicional = '';
+
+			// Intentar parsear datos adicionales si existen
+			if (item.additionalData) {
+				try {
+					var datosAdicionales = JSON.parse(item.additionalData);
+					if (datosAdicionales.Entidad) {
+						adicional = `Entidad: ${datosAdicionales.Entidad}, Tipo: ${datosAdicionales.Tipo || 'N/A'}, Rubro: ${datosAdicionales.Rubro || 'N/A'}`;
+					}
+				} catch (e) {
+					adicional = item.additionalData;
+				}
+			}
+
+			tablaHistorial += `
+				<tr>
+					<td>${index + 1}</td>
+					<td>${fecha}</td>
+					<td>${usuario}</td>
+					<td><span class="badge badge-${getBadgeColor(accion)}">${accion}</span></td>
+					<td>${elemento}</td>
+					<td>${valor}</td>
+					<td><small class="text-muted">${adicional}</small></td>
+				</tr>
+			`;
+		});
+
+		// Mostrar modal usando SweetAlert2
+		Swal.fire({
+			title: titulo,
+			html: `
+				<div class="text-left">
+					<div class="alert alert-info">
+						<i class="fas fa-info-circle"></i> 
+						<strong>${titulo}</strong><br>
+						${descripcion}
+					</div>
+					
+					<div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+						<table class="table table-sm table-striped">
+							<thead class="thead-dark">
+								<tr>
+									<th>#</th>
+									<th><i class="fas fa-calendar"></i> Fecha/Hora</th>
+									<th><i class="fas fa-user"></i> Usuario</th>
+									<th><i class="fas fa-cogs"></i> Acción</th>
+									<th><i class="fas fa-tag"></i> Elemento</th>
+									<th><i class="fas fa-edit"></i> Valor</th>
+									<th><i class="fas fa-info"></i> Detalles</th>
+								</tr>
+							</thead>
+							<tbody>
+								${tablaHistorial}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			`,
+			width: '90%',
+			confirmButtonText: 'Cerrar',
+			confirmButtonColor: '#6c757d'
+		});
+	}
+
+	// Función auxiliar para mostrar mensaje cuando no hay historial
+	function mostrarSinHistorial(mensaje) {
+		Swal.fire({
+			icon: 'info',
+			title: 'Sin historial disponible',
+			html: `
+				<div class="alert alert-info">
+					<i class="fas fa-info-circle"></i>
+					<strong>Sin historial de auditoría disponible</strong><br>
+					${mensaje}
+					<br><br>
+					<strong>¿Qué significa esto?</strong>
+					<ul class="mb-0 mt-2 text-left">
+						<li>Las fuentes creadas después del ${new Date().toLocaleDateString('es-ES')} tendrán historial completo</li>
+						<li>Todas las acciones futuras se registrarán automáticamente</li>
+						<li>El sistema de auditoría ya está funcionando para nuevas operaciones</li>
+					</ul>
+				</div>
+			`,
+			confirmButtonText: 'Entendido',
+			confirmButtonColor: '#17a2b8'
+		});
+	}
+
+	// Función para obtener color de badge según la acción
+	function getBadgeColor(accion) {
+		switch (accion.toLowerCase()) {
+			case 'crear':
+			case 'create':
+				return 'success';
+			case 'editar':
+			case 'edit':
+			case 'actualizar':
+			case 'update':
+				return 'primary';
+			case 'eliminar':
+			case 'delete':
+				return 'danger';
+			default:
+				return 'secondary';
+		}
+	}
+
+	// Función para ver historial de una entidad específica
+	function verHistorialEntidad(entidad) {
+		console.log('🔍 Cargando historial para entidad:', entidad);
+
+		// Mostrar loading
+		Swal.fire({
+			title: 'Cargando historial de la entidad...',
+			allowOutsideClick: false,
+			showConfirmButton: false,
+			didOpen: () => {
+				Swal.showLoading();
+			}
+		});
+
+		// Obtener todas las fuentes de esta entidad para filtrar por sus IDs
+		var idsElementos = fuentesEntidad.map(f => f.id.toString());
+
+		// Hacer una consulta general por página (Fuentes de Información) y filtrar por usuario si es necesario
+		fetch('/FuentesdeInformacion/ObtenerHistorialFuente?id=0') // ID 0 para obtener todo el historial de la página
+			.then(r => r.json())
+			.then(data => {
+				Swal.close();
+
+				console.log('📊 Respuesta del historial de entidad:', data);
+
+				if (data.success && data.data && data.data.length > 0) {
+					// Filtrar registros relacionados con esta entidad
+					var historialEntidad = data.data.filter(item => {
+						// Filtrar por ID de elemento (fuentes específicas de esta entidad)
+						if (idsElementos.includes(item.idElemento)) {
+							return true;
+						}
+
+						// También filtrar por datos adicionales que contengan la entidad
+						if (item.additionalData) {
+							try {
+								var datosAdicionales = JSON.parse(item.additionalData);
+								if (datosAdicionales.Entidad === entidad) {
+									return true;
+								}
+							} catch (e) {
+								// Si no se puede parsear, buscar la entidad en el texto
+								if (item.additionalData.includes(entidad)) {
+									return true;
+								}
+							}
+						}
+
+						// Filtrar por valor que contenga la entidad
+						if (item.valor && item.valor.includes(entidad)) {
+							return true;
+						}
+
+						return false;
+					});
+
+					if (historialEntidad.length > 0) {
+						mostrarHistorialEnModal(historialEntidad, `Historial de Actividades - ${entidad}`,
+							`Mostrando ${historialEntidad.length} registro(s) de actividad para la entidad "${entidad}"`);
+					} else {
+						mostrarSinHistorial(`No se encontraron actividades registradas para la entidad "${entidad}".`);
+					}
+				} else {
+					mostrarSinHistorial(`No hay historial disponible para la entidad "${entidad}".`);
+				}
+			})
+			.catch(error => {
+				Swal.close();
+				console.error('❌ Error al cargar historial de entidad:', error);
+				mostrarNotificacion('error', 'Error de conexión', 'Error al cargar historial: ' + error.message);
+			});
+	}
+
+	// Inicializar cuando se carga la página
+	document.addEventListener('DOMContentLoaded', function () {
+		cargarFuentesEntidad();
+
+		// Eventos de filtrado
+		document.getElementById('filtroTipo').addEventListener('change', aplicarFiltrosDetalle);
+		document.getElementById('filtroRubro').addEventListener('change', aplicarFiltrosDetalle);
+
+		// Configurar validación en tiempo real
+		configurarValidacionTiempoReal();
+
+		// Configurar validación cuando se abre el modal
+		$('#modalFuenteCRUD').on('shown.bs.modal', function () {
+			configurarValidacionTiempoReal();
+		});
+	});
+
+	// Función para exportar datos a Excel
+	function exportarAExcel() {
+		if (fuentesEntidad.length === 0) {
+			mostrarNotificacion('warning', 'Sin datos', 'No hay datos para exportar');
+			return;
+		}
+
+		// Preparar datos para exportación
+		var datosExport = fuentesEntidad.map(f => ({
+			'Entidad': f.entidad || '',
+			'Tipo': f.tipo || '',
+			'Rubro': f.rubro || '',
+			'Etiqueta': f.etiqueta || '',
+			'Descripción': f.dato_Informacion || '',
+			'Desagregación': f.desagregacion || '',
+			'Sub Desagregación': f.sub_desagregacion || '',
+			'Unidades': f.unidades || '',
+			'Periodicidad': f.periodicidad_Corte_de_Informacion || '',
+			'Enlace': f.fuente_Link || '',
+			'Comentario': f.comentario || ''
+		}));
+
+		// Crear libro de Excel
+		var ws = XLSX.utils.json_to_sheet(datosExport);
+		var wb = XLSX.utils.book_new();
+		XLSX.utils.book_append_sheet(wb, ws, `Fuentes - ${entidadActual}`);
+
+		// Descargar archivo
+		var fecha = new Date().toISOString().split('T')[0];
+		var nombreArchivo = `Fuentes_${entidadActual.replace(/[^a-zA-Z0-9]/g, '_')}_${fecha}.xlsx`;
+		XLSX.writeFile(wb, nombreArchivo);
+
+		mostrarNotificacion('success', 'Exportación exitosa', `Se exportaron ${datosExport.length} registros de ${entidadActual} a Excel`);
+	}
+</script>
+

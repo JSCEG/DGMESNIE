@@ -1,0 +1,356 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+
+
+@{
+    ViewData["Title"] = "Líneas de Transmisión";
+}
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="/img/Electricidad.png" alt="Icono personalizado" class="iconomenu" />
+        @ViewData["Title"]
+    </h4>
+</div>
+
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+        @* <li class="breadcrumb-item"><a href="@Url.Action("Hidrocarburos", "Home" )">Sector Petróleo y Gas</a></li>*@
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+
+@*Sección que Despliega el Mapa Inicial*@
+
+<div class="container">
+
+    @* Líneas de Transmisión *@
+    <div class="row pt-5">
+        <div class="col-md-12">
+            <h3 class="subtitulo">
+                Líneas de Transmisión y Subestaciones
+            </h3>
+
+            @*Menu*@
+            @* <div class="navbarmapag">
+            <a id="electricidad" class="icono-texto">
+            <img src="/img/nodo.png" alt="Icono personalizado" class="iconomenu" />
+            <span>Líneas de Transmisión, Nodos y Subestaciones</span>
+
+            <div id="total_gn"></div>
+            </a>
+            </div> *@
+
+            <div id="main-container">
+
+            <div class="row">
+                <div class="col-md-12">
+
+
+
+
+                    <div class="search-container p-3" id="search-container">
+                        <label class="form-label">Buscar en el Mapa:</label>
+                        <input type="text" id="busquedaGeneralInput" class="form-control"
+                            placeholder="Escriba la Entidad Federativa o Municipio">
+                        <div id="autocomplete-list" class="autocomplete-items"></div>
+                        <!-- El resto de tu código -->
+
+                        <button class="btn btn-cre-rojo-home" onclick="buscarGeneral()" style="width:10% !important"><i
+                                class="bi bi-search"></i></button>
+                    </div>
+
+
+                    <div class="app-card-body p-4">
+                        <div class="chart-container">
+                            <div id="" class="app-card-body p-4">
+                                <div class="row">
+
+
+                                    <div class="col-lg-8">
+                                        <button id="fullscreen-btn" class="btn btn-primary">Pantalla Completa</button>
+                                        <div id="map" class="p-3 bg"></div>
+                                    </div>
+                                    <div class="col-lg-4">
+                                        <table cellspacing="0" border="0">
+                                            <colgroup width="118"></colgroup>
+                                            <colgroup width="165"></colgroup>
+                                            <tr>
+                                                <td colspan=2 rowspan=2 height="34" align="center" valign=middle><b>
+                                                        <font face="Montserrat" size=4>Simbología</font>
+                                                    </b></td>
+                                            </tr>
+                                            <tr>
+                                            </tr>
+                                            <tr>
+                                                <td colspan=2 height="17" align="center" valign=middle>
+                                                    <font face="Montserrat">Líneas de Transmisión Eléctrica</font>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td height="17" align="left">
+                                                    <font face="Montserrat Light">400 kV</font>
+                                                </td>
+                                                <td align="left" bgcolor="#0000FF">
+                                                    <font face="Liberation Serif"><br></font>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td height="17" align="left">
+                                                    <font face="Montserrat Light">230 kV</font>
+                                                </td>
+                                                <td align="left" bgcolor="#FFFF00">
+                                                    <font face="Liberation Serif"><br></font>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td height="17" align="left">
+                                                    <font face="Montserrat Light">161-138 kV</font>
+                                                </td>
+                                                <td align="left" bgcolor="#008000">
+                                                    <font face="Liberation Serif"><br></font>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td height="17" align="left">
+                                                    <font face="Montserrat Light">115-60 kV</font>
+                                                </td>
+                                                <td align="left" bgcolor="#FF00FF">
+                                                    <font face="Liberation Serif"><br></font>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td height="17" align="left">
+                                                    <font face="Montserrat Light">44-13.2 kV</font>
+                                                </td>
+                                                <td align="left" bgcolor="#FFFFFF">
+                                                    <font face="Liberation Serif"><br></font>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td height="17" align="left">
+                                                    <font face="Montserrat Light">&lt;13.2kV</font>
+                                                </td>
+                                                <td align="left" bgcolor="#FFA500">
+                                                    <font face="Liberation Serif"><br></font>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan=2 rowspan=2 height="53" align="center" valign=middle><i>
+                                                        <font face="Montserrat Light" size=1>Fuente: Comisión Federal de
+                                                            Electricidad</font>
+                                                    </i></td>
+                                            </tr>
+                                        </table>
+
+                                    </div>
+                                </div>
+
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+            <style>
+                #fullscreen-search-container {
+                    background-color: white;
+                }
+
+                #fullscreen-elements {
+                    display: flex;
+                    flex-direction: column;
+                    height: auto; /* Valor inicial para cuando no esté en pantalla completa */
+                }
+
+                #fullscreen-last-update,
+                #fullscreen-select,
+                #fullscreen-search-container {
+                    flex-shrink: 0;
+                }
+
+                #map {
+                    flex-grow: 1;
+                }
+
+                #main-container.fullscreen-active #fullscreen-elements {
+                    height: 100vh;
+                }
+
+                #main-container.fullscreen-active #map {
+                    height: calc(100vh - 60px);
+                }
+
+                #main-container:not(.fullscreen-active) #map {
+                    height: 500px;
+                }
+            </style>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+@*Script de Pantalla Completa*@
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const mapElement = document.getElementById('map');
+        const fullscreenButton = document.getElementById('fullscreen-btn');
+        const searchContainer = document.getElementById('search-container');
+        const mainContainer = document.getElementById('main-container');
+        const fullscreenElements = document.createElement('div');
+        fullscreenElements.id = 'fullscreen-elements';
+
+        const originalMapParent = mapElement.parentNode;
+        const originalSearchParent = searchContainer.parentNode;
+        const originalMapNextSibling = mapElement.nextSibling;
+        const originalSearchNextSibling = searchContainer.nextSibling;
+
+        fullscreenButton.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                mainContainer.appendChild(fullscreenElements); // Asegurarnos de que fullscreenElements esté en el DOM
+                fullscreenElements.appendChild(searchContainer);
+                fullscreenElements.appendChild(mapElement);
+                fullscreenElements.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', (event) => {
+            if (document.fullscreenElement) {
+                fullscreenButton.textContent = "Salir de Pantalla Completa";
+                mainContainer.classList.add('fullscreen-active');
+                mapElement.style.height = "calc(100vh - 60px)";
+                searchContainer.style.backgroundColor = "white";
+            } else {
+                fullscreenButton.textContent = "Pantalla Completa";
+                if (originalSearchNextSibling) {
+                    originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+                } else {
+                    originalSearchParent.appendChild(searchContainer);
+                }
+                if (originalMapNextSibling) {
+                    originalMapParent.insertBefore(mapElement, originalMapNextSibling);
+                } else {
+                    originalMapParent.appendChild(mapElement);
+                }
+                mainContainer.classList.remove('fullscreen-active');
+                mapElement.style.height = "500px";
+
+                // Asegurarse de que los estilos se restablezcan
+                fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+            }
+        });
+    });
+</script>
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/lineastrans.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/data/subestaciones_0.js"></script>
+@*Configuraciones del Mapa Inicial*@
+
+
+
+
+
+@section scripts {
+    
+    <script type="text/javascript" src="/js/configura_mapa.js"></script>
+    <script type="text/javascript" src="/js/lineas_TyS.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var availableTerms = [];//Variable global para almacenar los terminos de búqueda Sugerencia de Terminos
+
+            // Asignando a la búsqueda de términos
+            estadosLayer.eachLayer(function (layer) {
+                if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+                    availableTerms.push(layer.feature.properties.NOMGEO);
+                }
+            });
+
+            for (var i = 0; i < municipios_mapa.features.length; i++) {
+                var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+                var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+                // Asegúrate de que ambas propiedades existen antes de concatenar
+                if (municipio && estado) {
+                    var nombreCompleto = municipio + ", " + estado;
+                    availableTerms.push(nombreCompleto);
+                }
+            }
+            // Función para inicializar el autocompletar
+            function autocomplete(inp, arr) {
+                var currentFocus;
+
+                inp.addEventListener("input", function (e) {
+                    var a, b, i, val = this.value;
+                    closeAllLists();
+                    if (!val) { return false; }
+                    currentFocus = -1;
+
+                    a = document.getElementById("autocomplete-list");
+                    a.innerHTML = "";
+
+
+                    for (i = 0; i < arr.length; i++) {
+                        if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                            b = document.createElement("DIV");
+                            b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                            b.innerHTML += arr[i].substr(val.length);
+                            b.addEventListener("click", function (e) {
+                                inp.value = this.innerText;
+                                closeAllLists();
+                                buscarGeneral(); // Llama a tu función de búsqueda aquí
+                            });
+                            a.appendChild(b);
+                        }
+                    }
+                });
+
+                function closeAllLists(elmnt) {
+                    var x = document.getElementById("autocomplete-list");
+                    if (elmnt != x && elmnt != inp) {
+                        x.innerHTML = "";
+                    }
+                }
+
+                document.addEventListener("click", function (e) {
+                    closeAllLists(e.target);
+                });
+            }
+            // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+            var uniqueTerms = [...new Set(availableTerms)];
+
+            console.log("AV", availableTerms);
+
+            // Inicializa el autocompletar
+            autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+        });
+    </script>
+
+}

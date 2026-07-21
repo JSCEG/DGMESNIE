@@ -1,0 +1,220 @@
+﻿@model IEnumerable<NSIE.Models.ProyectoEstrategico>
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+@{
+    ViewData["Title"] = "Proyectos Estratégicos";
+}
+
+<div class="text-center">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/dashboard.png" alt="Icono personalizado" class="iconomenu" />@ViewData["Title"]
+    </h3>
+</div>
+<!-- Miga de Pan -->
+<div class="alert alert-light" role="alert">
+    <nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);" aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+            <li class="breadcrumb-item"><a href="@Url.Action("MenuPE", "ProyEstrategicos" )">Menú de Proyectos Estratégicos</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="container ps-5 pe-5">
+    <div class="text-left pb-3">
+        <h6 class="subtitulo pb-3"> <img src="@Cdn.Url/img_snier/vistas/buscar.png" alt="Icono personalizado" class="iconomenu">Proyectos Estratégicos</h6>
+    </div>
+    <br>
+    <div id="proyectosPieChart" style="width:100%; height:400px;"></div> <!-- Contenedor para el gráfico de pastel -->
+    <div id="proyectosColumnChart" style="width:100%; height:400px;"></div> <!-- Contenedor para el gráfico de columnas de proyectos -->
+    <div class="table-responsive pt-6">
+        <table id="Proyectos" class="table table-hover table-responsive table-bordered">
+            <thead>
+                <tr>
+                    <th>ID Proyecto</th>
+                    <th>Nombre del Proyecto</th>
+                    <th>Mercado</th>
+                    <th>Avance Actual (%)</th>
+                    <th>Ver Detalle</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var proyecto in Model)
+                {
+                    <tr data-id="@proyecto.IDProyecto">
+                        <td>@proyecto.IDProyecto</td>
+                        <td>@proyecto.NombreProyecto</td>
+                        <td>@proyecto.Mercado</td>
+                        <td>
+                            <div class="progress">
+                                <div class="progress-bar" role="progressbar" style="width: @proyecto.CalcularAvance()%" aria-valuenow="@proyecto.CalcularAvance()" aria-valuemin="0" aria-valuemax="100">
+                                    @proyecto.CalcularAvance()%
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <a asp-controller="ProyEstrategicos" asp-action="Detalle" asp-route-id="@proyecto.IDProyecto" asp-route-vistaOrigen="ProyectosEstrategicos" class="btn btn-primary">Ver Detalle</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section scripts {
+    <!-- Cargar Highcharts solo una vez -->
+    @if (!ViewData.ContainsKey("HighchartsLoaded"))
+    {
+        ViewData["HighchartsLoaded"] = true;
+        <script src="https://code.highcharts.com/highcharts.js"></script>
+        <script src="https://code.highcharts.com/modules/exporting.js"></script>
+        <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    }
+    <script>
+        $(document).ready(function () {
+            var table = $('#Proyectos').DataTable({
+                lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                dom: 'Blfrtip',
+                buttons: [
+                    {
+                        extend: 'copyHtml5',
+                        title: 'EnergeoCRE-Proyectos Estratégicos'
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: 'EnergeoCRE-Proyectos Estratégicos'
+                    },
+                    {
+                        extend: 'csvHtml5',
+                        title: 'EnergeoCRE-Proyectos Estratégicos'
+                    },
+                    {
+                        extend: 'pdfHtml5',
+                        title: 'EnergeoCRE-Proyectos Estratégicos',
+                        customize: function (doc) {
+                            doc.styles.tableHeader.color = '#9fa1a4';
+                            doc.defaultStyle.alignment = 'center';
+                            doc.styles.tableHeader.fillColor = '#4c1922';
+                        }
+                    }
+                ],
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
+                }
+            });
+
+            // Datos para el gráfico de columnas
+            var chartData = @Html.Raw(ViewBag.ChartData);
+
+            // Verificar chartData
+            console.log(chartData);
+
+            // Inicializar el gráfico de columnas
+            Highcharts.chart('proyectosColumnChart', {
+                chart: {
+                    type: 'column', 
+                     backgroundColor: '#efefee'
+                },
+                title: {
+                    text: 'Total de Trámites por Proyecto'
+                },
+                xAxis: {
+                    categories: chartData.map(function (d) { return d.NombreProyecto; }),
+                    title: {
+                        text: null
+                    }
+                },
+                yAxis: {
+                    min: 0,
+                    title: {
+                        text: 'Total de Trámites',
+                        align: 'high'
+                    },
+                    labels: {
+                        overflow: 'justify'
+                    }
+                },
+                tooltip: {
+                    pointFormat: '{series.name}: <b>{point.y}</b><br/>Avance: <b>{point.avance}%</b>'
+                },
+                plotOptions: {
+                    column: {
+                        dataLabels: {
+                            enabled: true
+                        }
+                    }
+                },
+                credits: {
+                    enabled: false
+                },
+                series: [{
+                    name: 'Trámites',
+                    data: chartData.map(function (d) {
+                        return {
+                            y: d.TotalTramites,
+                            avance: d.Avance
+                        };
+                    })
+                }]
+            });
+
+            // Datos para el gráfico de pastel
+            var chartDataPie = @Html.Raw(ViewBag.ChartDataPie);
+
+            // Verificar chartDataPie
+            console.log(chartDataPie);
+
+            // Inicializar el gráfico de pastel
+            Highcharts.chart('proyectosPieChart', {
+                chart: {
+                    type: 'pie',
+                     backgroundColor: '#efefee'
+                },
+                title: {
+                    text: 'Total de Proyectos Estratégicos por Mercado'
+                },
+                tooltip: {
+                    pointFormat: '{series.name}: <b>{point.percentage:.1f}%</b> ({point.y})'
+                },
+                plotOptions: {
+                    pie: {
+                        allowPointSelect: true,
+                        cursor: 'pointer',
+                        dataLabels: {
+                            enabled: true,
+                            format: '<b>{point.name}</b>: {point.percentage:.1f} %'
+                        }
+                    }
+                },
+                series: [{
+                    name: 'Proyectos',
+                    colorByPoint: true,
+                    data: chartDataPie.map(function (d) {
+                        return {
+                            name: d.Mercado,
+                            y: d.TotalProyectos
+                        };
+                    })
+                }]
+            });
+        });
+    </script>
+}

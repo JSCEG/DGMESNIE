@@ -1,0 +1,778 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+
+
+
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+
+
+
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+
+
+
+
+
+
+    // Utilizar los datos del usuario para personalizar la vista
+
+
+
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+
+
+
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+
+
+
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+@{
+    ViewData["Title"] = "Detalle de la Solicitud";
+}
+
+<div class="watermark-container">
+    @for (int i = 0; i < 50; i++) /* Cambiamos el número 3 por 9 para tener más marcas de agua */
+
+
+
+    {
+        <div class="watermark">
+            CRE-@DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") - @ViewData["NombreUsuario"]
+        </div>
+    }
+</div>
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/mexicoi.png" alt="Icono personalizado" class="iconomenu">
+        @ViewData["Title"]
+    </h4>
+</div>
+<div class="container">
+    <h3 id="tituloRazonSocial" class="subtitulo display-9 fw-bold pt-3"></h3>
+
+
+    <div class="row mb-3">
+        <div class="col-lg-8">
+            <div id="map" style="width: 100%; height: 500px;"></div>
+            <div class="leyenda">
+                <p style="display:none">Mayor Concentración de Solicitudes</p>
+                <p style="display:none">Concentración Promedio de Solicitudes</p>
+                <p style="display:none">Menor Concentración de Solicitudes</p>
+                <p>Radio de 3 Km</p>
+            </div>
+        </div>
+        <div class="col-lg-4 mt-3 mt-lg-0 mb-3" id="contact2">
+            <div class="">
+                <h1 class="display-4 subtitulo fw-bold">
+                    <img src="@Cdn.Url/img_snier/vistas/evaluar.png" alt="Icono personalizado" class="iconomenu" />
+                    Información
+                </h1>
+
+                <br>
+                <div class="card-body">
+
+                    <p><strong>Turno:</strong> <span id="turno"></span></p>
+                    <p><strong>Razón Social:</strong> <span id="razon_social"></span></p>
+                    <p><strong>Expediente:</strong> <span id="expediente"></span></p>
+                    <p><strong>Marca Solicitada:</strong> <span id="marca_solicitada"></span></p>
+                    <!-- Agrega más campos aquí de la misma manera -->
+                    <p><strong>Análisis de Riesgo:</strong> <span id="analisis_riesgo"></span></p>
+                    <p><strong>Documentos Completos:</strong> <span id="documentos_completos"></span></p>
+                    @* <p><strong>Expediente:</strong> <span id="expediente"></span></p> *@
+                    <p><strong>Entidad Federativa:</strong> <span id="eF_Nombre"></span></p>
+                    <p><strong>Municipio:</strong> <span id="municipio_Nombre"></span></p>
+                    <p><strong>Latitud:</strong> <span id="latitud_GEO"></span></p>
+                    <p><strong>Longitud:</strong> <span id="longitud_GEO"></span></p>
+
+
+                </div>
+            </div>
+        </div>
+
+        @* <div id="streetViewContainer">
+        <iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"  id="streetViewIframe" width="100%" height="500px" frameborder="0" scrolling="no" marginheight="0"
+        marginwidth="0"></iframe>
+        </div>
+        *@
+
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div id="grafico"></div>
+        </div>
+
+    </div>
+    @*Tabla Con los datos de los Permisos en un radio de 3 km*@
+
+    <div id="divTablaPermisos" class="table-responsive"></div>
+
+    @if (perfilUsuario.Mercado_ID == "1" || perfilUsuario.Mercado_ID == "0")
+
+    {
+
+        <h3 class="subtitulo display-9 fw-bold pt-3 pb-3">Información del Parque Vehicular a 3km de la Solicitud</h3>
+        <br>
+        @*Menu*@
+        <div class="navbarmapag" id="totales_en_isocrona" class="pt-3">
+
+
+            <a id="coches" class="active icono-texto">
+                <img src="@Cdn.Url/img_snier/vistas/coche.png" alt="Icono personalizado" class="iconomenu" />
+                <span>Total de Vehículos</span>
+
+                <div id="total_coches" style="font-size: 20px;"></div>
+            </a>
+
+            <a id="glp" class="icono-texto">
+                <img src="@Cdn.Url/img_snier/vistas/moto.png" alt="Icono personalizado" class="iconomenu" />
+                <span>Total de Motocicletas</span>
+
+                <div id="total_motos" style="font-size: 20px;"></div>
+            </a>
+
+            @* <a id="expendios" class="icono-texto">
+                <img src="@Cdn.Url/img_snier/vistas/evaluar.png" alt="Icono personalizado" class="iconomenu" />
+                <span>Total de Expendios Autorizados</span>
+
+                <div id="total_expendios" style="font-size: 20px;"></div>
+            </a> *@
+
+
+        </div>
+    }
+
+
+
+
+</div>
+
+<!-- Scripts -->
+@section scripts {
+    @*Busca la Solicitud*@
+    <script>
+
+
+
+
+
+        // Variable que almacena los permisos
+        var permisosGlobales = [];
+
+        function calcularDistancia(lat1, lon1, lat2, lon2) {
+            var R = 6371;
+            var dLat = (lat2 - lat1) * (Math.PI / 180);
+            var dLon = (lon2 - lon1) * (Math.PI / 180);
+            var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            var distancia = R * c;
+            return distancia;
+        }
+
+
+        function calcularBoundingBox(latitud, longitud, radio) {
+            var R = 6371; // Radio de la Tierra en km
+            var deltaLat = (radio / R) * (180 / Math.PI);
+            var deltaLon = (radio / (R * Math.cos((Math.PI * latitud) / 180))) * (180 / Math.PI);
+
+            var northEast = {
+                lat: latitud + deltaLat,
+                lon: longitud + deltaLon
+            };
+            var southWest = {
+                lat: latitud - deltaLat,
+                lon: longitud - deltaLon
+            };
+
+            return {
+                x1: southWest.lon,
+                y1: southWest.lat,
+                x2: northEast.lon,
+                y2: northEast.lat
+            };
+        }
+
+
+        function obtenerTotalesPorRadio(latitud, longitud, radio, mercadoSelect) {
+            // Calcular el bounding box basado en el radio de 3 km
+            let boundingBoxPoints = calcularBoundingBox(latitud, longitud, radio);
+
+            // Agregar el mercadoSelect al objeto boundingBoxPoints
+            boundingBoxPoints.mercadoSelect = mercadoSelect;
+
+            // Verificar qué se está enviando al servidor
+            console.log('Datos enviados a getIsocrona:', boundingBoxPoints);
+
+            // Enviando datos al backend.
+            $.ajax({
+                url: '/Indicadores/getIsocrona',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(boundingBoxPoints),
+                success: function (response) {
+                    console.log('Success:', response);
+
+                    // Actualizar totales de vehículos
+                    $('#total_coches').text(response.totalAutomoviles ? response.totalAutomoviles.toLocaleString() : '0');
+
+                    // Actualizar totales de motos
+                    $('#total_motos').text(response.totalMotos ? response.totalMotos.toLocaleString() : '0');
+
+                    // Actualizar total de expendios autorizados
+                    $('#total_expendios').text(response.expendiosAutorizadosCP && response.expendiosAutorizadosCP.length > 0 ? response.expendiosAutorizadosCP.length.toLocaleString() : '0');
+
+                    // Actualizar total del parque vehicular
+                    $('#total_parque_vehicular').text(response.totalParqueVehicular ? response.totalParqueVehicular.toLocaleString() : '0');
+                },
+                error: function (error) {
+                    console.error('Error:', error);
+                }
+            });
+        }
+
+        function ObtienePermisos(callback) {
+            $.ajax({
+                url: '/Indicadores/GetExpendiosAutorizados',
+                type: 'GET',
+                contentType: 'application/json',
+                success: function (response) {
+                    console.log("Estos son los Permisos:", response);
+                    permisosGlobales = response;
+                    callback();
+                },
+                error: function (error) {
+                    console.error("Error obteniendo permisos:", error);
+                }
+            });
+        }
+
+        var map;
+
+        var iconoBase = L.Icon.extend({
+            options: {
+                iconSize: [24, 24],
+                iconAnchor: [12, 16],
+                popupAnchor: [-3, -76]
+            }
+        });
+
+        var iconoSolicitudes = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Solicitudes.png' });
+        var iconoSolicitudesUrl = '@Cdn.Url/img_snier/vistas/Solicitudes.png';
+        var iconoExpendio = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Expendio.png' });
+
+        function initMap() {
+            map = L.map('map').setView([20.6736, -103.344], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+                maxZoom: 18,
+            }).addTo(map);
+        }
+
+        initMap();
+
+
+        function handleNull(value) {
+            return value ? value : "S/D-Sin Dato";
+        }
+
+
+        $(document).ready(function () {
+
+            var camposVisiblesGlobal = [];
+
+            $.ajax({
+                url: '/Indicadores/GetCamposVisibles', // Asegúrate de actualizar 'TuControlador' con el nombre de tu controlador
+                type: 'GET',
+                contentType: 'application/json',
+                success: function (camposVisibles) {
+                    // Aquí tienes la lista de campos visibles
+                    console.log(camposVisibles);
+                    camposVisiblesGlobal = camposVisibles;
+
+
+
+                },
+                error: function (error) {
+                    console.error("Error al obtener campos visibles", error);
+                }
+            });
+
+
+
+
+            ObtienePermisos(function () {
+                var solicitudId = @ViewBag.SolicitudId;
+                var permisosCercanos = {};
+                $.ajax({
+                    url: `/Indicadores/GetDetalleSolicitud?Id=${solicitudId}`,
+                    type: 'GET',
+                    success: function (response) {
+                        console.log("Este es el ID de la Solicitud:", response);
+                        // Configura el contenido del h3 con la razón social de la solicitud
+                        $("#tituloRazonSocial").text(response.razon_social);
+                        //Iframe streetView
+                        // Configura la URL de la vista de calle
+                        //  var lat = response.latitud_GEO;
+                        //  var lon = response.longitud_GEO;
+                        //var streetViewURL = 'https://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0';
+
+
+                        //  // Carga la vista de calle en el iframe
+                        //  document.getElementById('streetViewIframe').src = streetViewURL;
+
+
+
+                        // Aquí actualizamos los campos con la información de la solicitud
+                        $("#turno").text(response.turno);
+                        $("#razon_social").text(response.razon_social);
+                        $("#expediente").text(response.expediente);
+                        $("#marca_solicitada").text(response.marca_solicitada);
+                        $("#analisis_riesgo").text(response.analisis_riesgo);
+                        $("#documentos_completos").text(response.documentos_completos);
+                        $("#expediente").text(response.expediente);
+                        $("#eF_Nombre").text(response.eF_Nombre);
+                        $("#municipio_Nombre").text(response.municipio_Nombre);
+                        $("#latitud_GEO").text(response.latitud_GEO);
+                        $("#longitud_GEO").text(response.longitud_GEO);
+
+                        // Agregando el marcador al Mapa
+                        // Ahora, vamos a añadir el marcador en el mapa
+                        var latitud = response.latitud_GEO;
+                        var longitud = response.longitud_GEO;
+
+                        // Añadir el marcador al mapa
+                        var marker = L.marker([latitud, longitud], { icon: iconoSolicitudes });
+
+
+                        //Pop-up
+                        marker.bindPopup(
+
+                            "<style>" +
+                            ".popup-content {" +
+                            "width: 300px;" +
+                            "height: 150px;" +
+                            "overflow-y: auto;" +
+                            "padding: 10px;" +
+                            "}" +
+                            "h2, h3, h4, p, li {" +
+                            "margin: 0 0 10px 0;" +
+                            "}" +
+                            "ul {" +
+                            "padding-left: 20px;" +
+                            "}" +
+                            "img {" +
+                            "vertical-align: middle;" +
+                            "margin-right: 10px;" +
+                            "}" +
+                            "</style>" +
+                            "<div class='popup-content'>" +
+
+                            "<h2 class='subtitulo'><img src='" + iconoSolicitudesUrl + "' style='height: 24px; width: 24px;'/><strong>" + response.razon_social + "</strong></h2>" +
+                            "<br>" +
+                            "<h6><i class='bi bi-fuel-pump''></i> Marca Solicitada: " + response.marca_solicitada + "</h6>" +
+                            "<h6><i class='bi bi-qr-code'></i> Turno de Kmis: " + response.turno + "</h6>" +
+                            "<h6><i class='bi bi-fingerprint'></i> ID Solicitud: " + response.id + "</h6>" +
+                            "<p><i class='bi bi-geo-alt-fill'></i> Entidad Federativa: " + response.eF_Nombre + "</p>" +
+                            "<ul>" +
+                            "<li><strong>Municipio:</strong> " + response.municipio_Nombre + "</li>" +
+                            "<li><strong>¿Documentos Completos?:</strong> " + (response.documentos_completos) + "</li>" +
+                            "<li><strong>¿Tiene Análisis de Riesgo?:</strong> " + (response.analisis_riesgo) + "</li>" +
+                            "</ul>" +
+                            "<a class='street-view-link btn btn-cre-verde' href='#'>Ver vista de calle</a> <hr />" +
+                            "<a class='btn btn-cre-rojo' target='_blank' href='https://titan.cre.gob.mx/Consulta/Turno/" + turno + "'>Ver Expediente en Titán</a>" +
+                            "</div>"
+                        );
+
+                        //Manda la Vista de Calle
+                        marker.on('popupopen', function (e) {
+                            var popup = e.popup;
+                            var streetViewLink = popup.getElement().querySelector('.street-view-link');
+                            streetViewLink.addEventListener('click', function () {
+                                var lat = e.target.getLatLng().lat.toPrecision(8);
+                                var lon = e.target.getLatLng().lng.toPrecision(8);
+                                var streetViewURL = 'http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0';
+                                window.open(streetViewURL, '_blank');
+                            });
+                        });
+
+                        //Circulo de Radio de 3km
+
+                        var circle = L.circle([latitud, longitud], {
+                            color: '#1e3143', // Color del círculo
+                            fillColor: '#1e3143', // Color de relleno del círculo
+                            fillOpacity: 0.2, // Opacidad del relleno del círculo
+                            radius: 3000       // Radio en metros
+                        }).addTo(map);
+                        //Añade el Marcador
+                        marker.addTo(map);
+
+                        // Centrar el mapa en el marcador
+                        map.setView([latitud, longitud], 13);
+
+
+                        // Obtener totales por radio
+                        //obtenerTotalesPorRadio(latitud, longitud, 3);
+                        // Llamada a la función con latitud, longitud, radio de 3km, y el mercado select
+
+
+                        // Suponiendo que ya tienes las variables latitud, longitud, radio, y mercado definidas:
+
+                        var radio = 3;  // El radio en km
+                        var mercado = 'petroliferos';  // Asigna el valor del mercado, por ejemplo 'petroliferos'
+
+                        // Llama a la función pasando las variables
+                        obtenerTotalesPorRadio(latitud, longitud, radio, mercado);
+
+
+
+                        //Filtrando los permisos en un radio de 3 km
+                        var permisosDentroDelRadio = []; // Array para almacenar permisos dentro del radio
+                        permisosGlobales.forEach(function (permiso) {
+                            var permLat = permiso.latitudGeo;
+                            var permLon = permiso.longitudGeo;
+                            var distancia = calcularDistancia(response.latitud_GEO, response.longitud_GEO, permLat, permLon);
+                            if (distancia <= 3) {
+                                permisosDentroDelRadio.push(permiso);
+                                // Crear un marcador para este permiso y añadirlo al mapa
+                                var markerPermiso = L.marker([permLat, permLon], { icon: iconoExpendio }).addTo(map);
+                                console.log("Distancia al permiso", permiso.numeroPermiso, ":", distancia);
+
+
+                                // Pop-UP de los Permisos
+                                function generarContenidoPopup(coordenada) {
+                                    var contenido = "<style>" +
+                                        ".popup-content {" +
+                                        "    width: 280px;" +
+                                        "    max-height: 180px;" +
+                                        "    overflow-y: auto;" +
+                                        "    padding: 10px;" +
+                                        "}" +
+                                        "h2, h3, h4, p, li {" +
+                                        "    margin: 0 0 10px 0;" +
+                                        "}" +
+                                        "ul {" +
+                                        "    padding-left: 20px;" +
+                                        "}" +
+                                        "img {" +
+                                        "    vertical-align: middle;" +
+                                        "    margin-right: 10px;" +
+                                        "}" +
+                                        "</style>";
+
+                                    contenido += "<div class='popup-content'>";
+
+                                    if (camposVisiblesGlobal.includes("RazonSocial")) {
+                                        contenido += "<h2 class='subtitulo'><img src='@Cdn.Url/img_snier/vistas/gasolinera.png' style='height: 24px; width: 24px;'/><strong>" + handleNull(coordenada.razonSocial) + "</strong></h2><br>";
+                                    }
+
+                                    contenido += "<ul>";
+
+                                    if (camposVisiblesGlobal.includes("EfId")) {//NO TENEMOS EL NOMBRE DE LA EF EN CAMPOS VISIBLES SOLO EL ID LO CRUZO EN LA CONSULTA DEL REPOSITORIO
+                                        contenido += "<li><strong>Entidad Federativa:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                                        contenido += "<li><strong>NúmeroPermiso:</strong> " + handleNull(coordenada.numeroPermiso) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("EfId")) {
+                                        contenido += "<li><strong>EF ID:</strong> " + handleNull(coordenada.efId) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("EfNombre")) {
+                                        contenido += "<li><strong>EFNombre:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("MpoId")) {
+                                        contenido += "<li><strong>Mpo ID:</strong> " + handleNull(coordenada.mpoId) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("NumeroDeExpediente")) {
+                                        contenido += "<li><strong>Número de Expediente:</strong> " + handleNull(coordenada.numeroDeExpediente) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("RazonSocial")) {
+                                        contenido += "<li><strong>RazonSocial:</strong> " + handleNull(coordenada.razonSocial) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("FechaOtorgamiento")) {
+                                        contenido += "<li><strong>FechaOtorgamiento:</strong> " + handleNull(coordenada.fechaOtorgamiento) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("LatitudGeo")) {
+                                        contenido += "<li><strong> la titudGeo:</strong> " + handleNull(coordenada.latitudGeo) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("LongitudGeo")) {
+                                        contenido += "<li><strong>LongitudGeo:</strong> " + handleNull(coordenada.longitudGeo) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("CalleNumEs")) {
+                                        contenido += "<li><strong>CalleNumEs:</strong> " + handleNull(coordenada.calleNumEs) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("ColoniaEs")) {
+                                        contenido += "<li><strong>ColoniaEs:</strong> " + handleNull(coordenada.coloniaEs) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("CodigoPostal")) {
+                                        contenido += "<li><strong>CodigoPostal:</strong> " + handleNull(coordenada.codigoPostal) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("Estatus")) {
+                                        contenido += "<li><strong>Estatus:</strong> " + handleNull(coordenada.estatus) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("Rfc")) {
+                                        contenido += "<li><strong>Rfc:</strong> " + handleNull(coordenada.rfc) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("FechaRecepcion")) {
+                                        contenido += "<li><strong>FechaRecepcion:</strong> " + handleNull(coordenada.fechaRecepcion) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("EstatusInstalacion")) {
+                                        contenido += "<li><strong>EstatusInstalacion:</strong> " + handleNull(coordenada.estatusInstalacion) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("CausaSuspension")) {
+                                        contenido += "<li><strong>CausaSuspension:</strong> " + handleNull(coordenada.causaSuspension) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("Marca")) {
+                                        contenido += "<li><strong>Marca:</strong> " + handleNull(coordenada.marca) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("TipoPermiso")) {
+                                        contenido += "<li><strong>TipoPermiso:</strong> " + handleNull(coordenada.tipoPermiso) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("InicioVigencia")) {
+                                        contenido += "<li><strong>InicioVigencia:</strong> " + handleNull(coordenada.inicioVigencia) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("TerminoVigencia")) {
+                                        contenido += "<li><strong>TerminoVigencia:</strong> " + handleNull(coordenada.terminoVigencia) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("InicioOperaciones")) {
+                                        contenido += "<li><strong>InicioOperaciones:</strong> " + handleNull(coordenada.inicioOperaciones) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("CapacidadAutorizadaBarriles")) {
+                                        contenido += "<li><strong>CapacidadAutorizadaBarriles:</strong> " + handleNull(coordenada.capacidadAutorizadaBarriles) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("InversionEstimada")) {
+                                        contenido += "<li><strong>InversionEstimada:</strong> " + handleNull(coordenada.inversionEstimada) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("Productos")) {
+                                        contenido += "<li><strong>Productos:</strong> " + handleNull(coordenada.productos) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("Comentarios")) {
+                                        contenido += "<li><strong>Comentarios:</strong> " + handleNull(coordenada.comentarios) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("TipoPersona")) {
+                                        contenido += "<li><strong>TipoPersona:</strong> " + handleNull(coordenada.tipoPersona) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("NumeroDeEstacionesDeServicio")) {
+                                        contenido += "<li><strong>Número de Estaciones de Servicio:</strong> " + handleNull(coordenada.numeroDeEstacionesDeServicio) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("TipoDeEstacion")) {
+                                        contenido += "<li><strong>Tipo de Estacion:</strong> " + handleNull(coordenada.tipoDeEstacion) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("FechaDeAcuse")) {
+                                        contenido += "<li><strong>Fecha de Acuse:</strong> " + handleNull(coordenada.fechaDeAcuse) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("FechaEntregaEstadosFinancieros")) {
+                                        contenido += "<li><strong>FechaEntregaEstadosFinancieros:</strong> " + handleNull(coordenada.fechaEntregaEstadosFinancieros) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("Propietario")) {
+                                        contenido += "<li><strong>Propietario:</strong> " + handleNull(coordenada.propietario) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("CapacidadMaximaDeLaBomba")) {
+                                        contenido += "<li><strong>CapacidadMaxima de  la Bomba:</strong> " + handleNull(coordenada.capacidadMaximaDeLaBomba) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("CapacidadOperativaReal")) {
+                                        contenido += "<li><strong>CapacidadOperativaReal:</strong> " + handleNull(coordenada.capacidadOperativaReal) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("ServicioDeRegadera")) {
+                                        contenido += "<li><strong>Servicio de Regadera:</strong> " + handleNull(coordenada.servicioDeRegadera) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("ServicioDeRestaurante")) {
+                                        contenido += "<li><strong>Servicio de Restaurante:</strong> " + handleNull(coordenada.servicioDeRestaurante) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("ServicioDeSanitario")) {
+                                        contenido += "<li><strong>Servicio de Sanitario:</strong> " + handleNull(coordenada.servicioDeSanitario) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("OtrosServicios")) {
+                                        contenido += "<li><strong>OtrosServicios:</strong> " + handleNull(coordenada.otrosServicios) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("TiendaDeConveniencia")) {
+                                        contenido += "<li><strong>Tienda de Conveniencia:</strong> " + handleNull(coordenada.tiendaDeConveniencia) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("NumeroDeModulosDespachadores")) {
+                                        contenido += "<li><strong>Número de Modulos de spachadores:</strong> " + handleNull(coordenada.numeroDeModulosDespachadores) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("TipoDeEstacionId")) {
+                                        contenido += "<li><strong>Tipo de Estacion ID:</strong> " + handleNull(coordenada.tipoDeEstacionId) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("TipoDePersona")) {
+                                        contenido += "<li><strong>Tipo de Persona:</strong> " + handleNull(coordenada.tipoDePersona) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("TipoDePermiso")) {
+                                        contenido += "<li><strong>Tipo de Permiso:</strong> " + handleNull(coordenada.tipoDePermiso) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("EstadoDePermiso")) {
+                                        contenido += "<li><strong>Estado de Permiso:</strong> " + handleNull(coordenada.estadoDePermiso) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("EstatusDeLaInstalacion")) {
+                                        contenido += "<li><strong>Estatus de  la Instalacion:</strong> " + handleNull(coordenada.estatusDeLaInstalacion) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("ImagenCorporativa")) {
+                                        contenido += "<li><strong>ImagenCorporativa:</strong> " + handleNull(coordenada.imagenCorporativa) + "</li>";
+                                    }
+                                    if (camposVisiblesGlobal.includes("CausaSuspencionInstalacionId")) {
+                                        contenido += "<li><strong>CausaSuspencionInstalacion ID:</strong> " + handleNull(coordenada.causaSuspencionInstalacionId) + "</li>";
+                                    }
+
+                                    contenido += "</ul>";
+
+                                    if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                                        contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
+                                    }
+
+                                    contenido += "<a class='street-view-link btn btn-cre-verde' href='http://maps.google.com/maps?q=&layer=c&cbll=" + coordenada.latitudGeo + "," + coordenada.longitudGeo + "&cbp=11,0,0,0,0' target='_blank'><b> Ver vista de calle </b></a>";
+
+                                    contenido += "</div>";
+
+                                    return contenido;
+                                }
+                                // Vincular un pop-up al marcador del permiso
+                                markerPermiso.bindPopup(generarContenidoPopup(permiso));
+
+                                /////
+                            }
+                        });
+
+                        // Guardamos los permisos cercanos en una variable global
+                        permisosCercanos[response.id] = permisosDentroDelRadio;
+                        console.log("Permisos en 3km:", permisosDentroDelRadio);
+
+
+                        //Grafico
+
+                        // Preparar los datos para el gráfico
+                        var marcasCount = {};
+
+                        permisosDentroDelRadio.forEach(function (permiso) {
+                            if (marcasCount[permiso.marca]) {
+                                marcasCount[permiso.marca]++;
+                            } else {
+                                marcasCount[permiso.marca] = 1;
+                            }
+                        });
+
+                        var marcas = Object.keys(marcasCount);
+                        var counts = Object.values(marcasCount);
+
+                        // Generar colores aleatorios
+                        var colores = marcas.map(function () {
+                            return '#' + (Math.random().toString(16) + '0000000').slice(2, 8);
+                        });
+
+                        // Inicializar Highcharts
+                        Highcharts.chart('grafico', {
+                            chart: {
+                                type: 'column',  // <-- Aquí es donde definimos el tipo de gráfico como columna
+                                backgroundColor: '#efefee'
+                            },
+                            title: {
+                                text: 'Número de permisos por marca'
+                            },
+                            xAxis: {
+                                categories: marcas,
+                                title: {
+                                    text: 'Marcas'
+                                }
+                            },
+                            yAxis: {
+                                min: 0,
+                                title: {
+                                    text: 'Número de permisos'
+                                }
+                            },
+                            series: [{
+                                name: 'Marcas',
+                                data: counts,
+                                colorByPoint: true,
+                                colors: colores
+                            }]
+                        });
+
+
+
+                        //Tabla con los Permisos
+                        var tablaHtml = '<table id="tablaPermisos" class="table table-hover table-responsive table-bordered">';
+                        tablaHtml += '<thead><tr><th>Número de Permiso</th><th>Razón Social</th><th>Marca Solicitada</th><th>Expediente</th><th>RFC</th><th>Distancia a la  Solicitud(km)</th></tr></thead>';
+
+                        tablaHtml += '<tbody>';
+                        permisosDentroDelRadio.forEach(function (permiso) {
+                            var distancia = calcularDistancia(response.latitud_GEO, response.longitud_GEO, permiso.latitudGeo, permiso.longitudGeo);
+                            tablaHtml += '<tr>';
+                            tablaHtml += '<td>' + permiso.numeroPermiso + '</td>';
+                            tablaHtml += '<td>' + permiso.razonSocial + '</td>';
+                            tablaHtml += '<td>' + permiso.marca + '</td>';
+                            tablaHtml += '<td>' + permiso.numeroDeExpediente + '</td>';
+                            tablaHtml += '<td>' + permiso.rfc + '</td>';
+                            tablaHtml += '<td>' + distancia.toFixed(2) + '</td>';  // Aquí agregamos la distancia y redondeamos a 2 decimales
+                            tablaHtml += '</tr>';
+                        });
+                        tablaHtml += '</tbody></table>';
+
+                        // Pasando los datos ala tabla en la vista
+                        $('#divTablaPermisos').html(tablaHtml);
+
+
+                        // Suponiendo que tu tabla tiene el ID "tablaPermisos"
+                        var table = $('#tablaPermisos').DataTable({
+                            lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                            dom: 'Blfrtip',
+                            buttons: [
+                                {
+                                    extend: 'copyHtml5',
+                                    title: 'Energeo-Calificación Final'
+                                },
+                                {
+                                    extend: 'excelHtml5',
+                                    title: 'Energeo-Calificación Final'
+                                },
+                                {
+                                    extend: 'csvHtml5',
+                                    title: 'Energeo-Calificación Final'
+                                },
+                                {
+                                    extend: 'pdfHtml5',
+                                    title: 'Energeo-Calificación Final',
+                                    customize: function (doc) {
+                                        doc.styles.tableHeader.color = '#9fa1a4';
+                                        doc.defaultStyle.alignment = 'center';
+                                        doc.styles.tableHeader.fillColor = '#4c1922';
+                                    }
+                                }
+                            ]
+                        });
+
+
+
+
+
+
+                    },
+                    error: function (error) {
+                        console.error("Error obteniendo detalles de la solicitud:", error);
+                    }
+                });
+            });
+        });
+
+
+
+
+
+
+
+    </script>
+
+
+
+
+}

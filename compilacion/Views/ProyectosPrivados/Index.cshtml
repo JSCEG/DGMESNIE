@@ -1,0 +1,434 @@
+@using NSIE.Models.ProyectosPrivados
+@using Newtonsoft.Json
+@{
+    ViewData["Title"] = "Proyectos Privados Firmes";
+    var header = ViewData["HeaderViewModel"] as NSIE.Models.HeaderViewModel;
+}
+
+@section Styles {
+    <style>
+        .pp-dashboard-kpi {
+            background: #fff;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .pp-dashboard-kpi:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        }
+        .pp-dashboard-kpi h3 {
+            font-size: 14px;
+            color: #707070;
+            margin: 0 0 10px 0;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        .pp-dashboard-kpi .value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--color-gobmx-guinda, #9B2247);
+            margin: 0;
+        }
+        .pp-dashboard-kpi .subtext {
+            font-size: 12px;
+            color: #98989A;
+            margin: 5px 0 0 0;
+        }
+        .filter-panel {
+            background: #FAFAFA;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+        .filter-control {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .filter-control label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #555;
+            text-transform: uppercase;
+        }
+        .filter-control input, .filter-control select {
+            padding: 8px 12px;
+            font-size: 13px;
+            border: 1px solid #DADCE0;
+            border-radius: 6px;
+            background-color: #FFF;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .filter-control input:focus, .filter-control select:focus {
+            border-color: var(--color-gobmx-guinda, #9B2247);
+        }
+        .badge-status-pp {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            display: inline-block;
+            text-align: center;
+        }
+        .badge-renovable {
+            background-color: #E6F4EA;
+            color: #137333;
+            border: 1px solid #A3E2AB;
+        }
+        .badge-no-renovable {
+            background-color: #FCE8E6;
+            color: #C5221F;
+            border: 1px solid #FAD2CF;
+        }
+        .badge-semaforo {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 6px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .table-container-pp {
+            background: #fff;
+            padding: 24px;
+            border-radius: 8px;
+            border: 1px solid #E0E0E0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        .btn-action-pp {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 12px;
+            text-decoration: none !important;
+            transition: all 0.2s;
+        }
+        .btn-action-pp-detail {
+            color: var(--color-gobmx-guinda, #9B2247);
+            border: 1px solid var(--color-gobmx-guinda, #9B2247);
+            background: transparent;
+        }
+        .btn-action-pp-detail:hover {
+            background: var(--color-gobmx-guinda, #9B2247);
+            color: #fff;
+        }
+        .btn-action-pp-edit {
+            color: var(--color-gobmx-verde, #1E5B4F);
+            border: 1px solid var(--color-gobmx-verde, #1E5B4F);
+            background: transparent;
+            margin-left: 6px;
+        }
+        .btn-action-pp-edit:hover {
+            background: var(--color-gobmx-verde, #1E5B4F);
+            color: #fff;
+        }
+    </style>
+}
+
+@if (header != null)
+{
+    @await Html.PartialAsync("_ViewHeader", header)
+}
+
+<div class="container ps-5 pe-5 mb-5">
+    <!-- Breadcrumbs -->
+    <div class="alert alert-light mb-3" role="alert" style="padding-left: 15px;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb lp-5 mb-0">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Proyectos Privados Firmes</li>
+            </ol>
+        </nav>
+    </div>
+
+    <!-- KPIs Row -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="pp-dashboard-kpi">
+                <h3>Total Proyectos</h3>
+                <p class="value" id="kpi-total">0</p>
+                <p class="subtext">En la cartera de privados</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="pp-dashboard-kpi">
+                <h3>Renovables</h3>
+                <p class="value" id="kpi-renovables">0</p>
+                <p class="subtext">Proyectos de fuentes limpias</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="pp-dashboard-kpi">
+                <h3>Capacidad Total</h3>
+                <p class="value" id="kpi-capacidad">0.00 MW</p>
+                <p class="subtext">Suma de potencia de generación</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="pp-dashboard-kpi">
+                <h3>Acciones Pendientes</h3>
+                <p class="value" id="kpi-acciones">0</p>
+                <p class="subtext">Compromisos por atender</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toolbar Actions -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="h4 mb-0" style="color: #333; font-weight: 700;">Cartera de Proyectos</h2>
+            <p class="text-muted mb-0" style="font-size: 13px;">Use los filtros para buscar proyectos específicos.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="@Url.Action("Importar", "ProyectosPrivados")" class="btn btn-primary" style="background-color: var(--color-gobmx-dorado, #A57F2C); border: none; font-weight: 600;">
+                <i class="fas fa-file-import"></i> Importar Excel
+            </a>
+            <a href="@Url.Action("Minuta", "ProyectosPrivados")" class="btn btn-secondary" style="background-color: var(--color-gobmx-verde, #1E5B4F); border: none; font-weight: 600;">
+                <i class="fas fa-file-signature"></i> Cargar Minuta
+            </a>
+            <a href="@Url.Action("Seguimiento", "ProyectosPrivados")" class="btn btn-secondary" style="background-color: var(--color-gobmx-gris, #98989A); border: none; font-weight: 600;">
+                <i class="fas fa-tasks"></i> Kanban Compromisos
+            </a>
+            <a href="@Url.Action("Crear", "ProyectosPrivados")" class="btn btn-primary" style="background-color: var(--color-gobmx-guinda, #9B2247); border: none; font-weight: 600;">
+                <i class="fas fa-plus"></i> Registrar Proyecto
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters Panel -->
+    <div class="filter-panel">
+        <div class="filter-grid">
+            <div class="filter-control">
+                <label for="filter-search">Búsqueda rápida</label>
+                <input type="text" id="filter-search" placeholder="Nombre, promovente, municipio, etc...">
+            </div>
+            <div class="filter-control">
+                <label for="filter-tecnologia">Tecnología</label>
+                <select id="filter-tecnologia">
+                    <option value="">Todas</option>
+                    @if (ViewBag.Tecnologias != null)
+                    {
+                        foreach (var item in ViewBag.Tecnologias)
+                        {
+                            <option value="@item.Nombre">@item.Nombre</option>
+                        }
+                    }
+                </select>
+            </div>
+            <div class="filter-control">
+                <label for="filter-clasificacion">Clasificación</label>
+                <select id="filter-clasificacion">
+                    <option value="">Todas</option>
+                    @if (ViewBag.Clasificaciones != null)
+                    {
+                        foreach (var item in ViewBag.Clasificaciones)
+                        {
+                            <option value="@item.Id">@item.Nombre</option>
+                        }
+                    }
+                </select>
+            </div>
+            <div class="filter-control">
+                <label for="filter-prioridad">Prioridad</label>
+                <select id="filter-prioridad">
+                    <option value="">Todas</option>
+                    @if (ViewBag.Prioridades != null)
+                    {
+                        foreach (var item in ViewBag.Prioridades)
+                        {
+                            <option value="@item.Id">@item.Nombre</option>
+                        }
+                    }
+                </select>
+            </div>
+            <div class="filter-control">
+                <label for="filter-semaforo">Semáforo</label>
+                <select id="filter-semaforo">
+                    <option value="">Todos</option>
+                    @if (ViewBag.Semaforos != null)
+                    {
+                        foreach (var item in ViewBag.Semaforos)
+                        {
+                            <option value="@item.Id">@item.Nombre</option>
+                        }
+                    }
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table Container -->
+    <div class="table-container-pp">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover table-bordered w-100" id="tbl-proyectos">
+                <thead>
+                    <tr style="background-color: var(--color-gobmx-guinda, #9B2247); color: white;">
+                        <th>Semáforo</th>
+                        <th>Nombre del Proyecto</th>
+                        <th>Promovente / Grupo</th>
+                        <th>Tipo/Tech</th>
+                        <th>Capacidad (MW)</th>
+                        <th>Renovable</th>
+                        <th>Estatus Operativo</th>
+                        <th>Entidad / Municipio</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-proyectos">
+                    <tr>
+                        <td colspan="9" class="text-center py-4">
+                            <i class="fas fa-spinner fa-spin fa-2x text-muted"></i>
+                            <p class="mb-0 mt-2 text-muted">Cargando cartera de proyectos...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            // Load initial data
+            cargarDatos();
+
+            // Setup filters change events
+            $('#filter-search').on('input', debounce(cargarDatos, 400));
+            $('#filter-tecnologia, #filter-clasificacion, #filter-prioridad, #filter-semaforo').on('change', cargarDatos);
+
+            function cargarDatos() {
+                var search = $('#filter-search').val();
+                var tech = $('#filter-tecnologia').val();
+                var clasif = $('#filter-clasificacion').val();
+                var prior = $('#filter-prioridad').val();
+                var sem = $('#filter-semaforo').val();
+
+                var url = '@Url.Content("~/ProyectosPrivados/Api/Proyectos")' + 
+                    '?buscar=' + encodeURIComponent(search) + 
+                    '&tecnologia=' + encodeURIComponent(tech) + 
+                    '&clasificacionId=' + (clasif || '') + 
+                    '&prioridadId=' + (prior || '') + 
+                    '&semaforoId=' + (sem || '');
+
+                $.ajax({
+                    type: 'GET',
+                    url: url,
+                    dataType: 'json',
+                    success: function (data) {
+                        renderTabla(data);
+                        actualizarKPIs(data);
+                    },
+                    error: function (xhr, err) {
+                        console.error("Error cargando proyectos: ", xhr.responseText);
+                        $('#tbody-proyectos').html('<tr><td colspan="9" class="text-center text-danger"><i class="fas fa-exclamation-triangle"></i> Error al cargar proyectos.</td></tr>');
+                    }
+                });
+
+                // Load actions KPI
+                $.ajax({
+                    type: 'GET',
+                    url: '@Url.Content("~/ProyectosPrivados/Api/Acciones")?estatus=Pendiente',
+                    dataType: 'json',
+                    success: function (actions) {
+                        $('#kpi-acciones').text(actions.length);
+                    }
+                });
+            }
+
+            function esRenovable(p) {
+                if (p.Renovable === true) return true;
+                if (p.Tipo) {
+                    var t = p.Tipo.toUpperCase().trim();
+                    if (t === 'FV' || t === 'EO' || t === 'HIDRO' || t === 'HID') return true;
+                }
+                if (p.Nombre) {
+                    var n = p.Nombre.toUpperCase();
+                    if (n.startsWith('FV ') || n.startsWith('PFV ') || n.startsWith('EO ') ||
+                        n.includes('SOLAR') || n.includes('EÓLICO') || n.includes('EOLICO') ||
+                        n.includes('EÓLICA') || n.includes('EOLICA') || n.includes('FOTOVOLTAIC') ||
+                        n.includes('HIDROELÉCTRIC') || n.includes('HIDROELECTRIC') || n.includes('VIENTOS')) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            function renderTabla(proyectos) {
+                var tbody = $('#tbody-proyectos');
+                tbody.empty();
+
+                if (!proyectos || proyectos.length === 0) {
+                    tbody.html('<tr><td colspan="9" class="text-center py-4 text-muted">No se encontraron proyectos con los filtros seleccionados.</td></tr>');
+                    return;
+                }
+
+                proyectos.forEach(function (p) {
+                    var semColor = p.SemaforoColorHex || '#808080';
+                    var semNombre = p.SemaforoNombre || 'Gris';
+
+                    var semHtml = '<span class="badge-semaforo" style="background-color: ' + semColor + '" title="Semáforo: ' + semNombre + '"></span>' + semNombre;
+                    var renovHtml = esRenovable(p) ? '<span class="badge-status-pp badge-renovable"><i class="fas fa-leaf"></i> Sí</span>' : '<span class="badge-status-pp badge-no-renovable"><i class="fas fa-industry"></i> No</span>';
+                    
+                    var empresaStr = p.GrupoEconomico || p.Promovente || '-';
+                    var ubicacionStr = (p.EntidadFederativa || '') + (p.Municipio ? ' / ' + p.Municipio : '');
+
+                    var row = '<tr>' +
+                        '<td class="text-nowrap">' + semHtml + '</td>' +
+                        '<td><strong>' + (p.Nombre || '-') + '</strong></td>' +
+                        '<td>' + empresaStr + '</td>' +
+                        '<td>' + (p.Tipo || '-') + '</td>' +
+                        '<td class="text-end">' + (p.CapacidadMW ? parseFloat(p.CapacidadMW).toFixed(2) + ' MW' : '-') + '</td>' +
+                        '<td class="text-center">' + renovHtml + '</td>' +
+                        '<td>' + (p.Status || '-') + '</td>' +
+                        '<td>' + ubicacionStr + '</td>' +
+                        '<td class="text-nowrap">' +
+                            '<a href="@Url.Content("~/ProyectosPrivados/Detalle/")' + p.ProyectoId + '" class="btn-action-pp btn-action-pp-detail"><i class="fas fa-eye"></i> Detalle</a>' +
+                            '<a href="@Url.Content("~/ProyectosPrivados/Editar/")' + p.ProyectoId + '" class="btn-action-pp btn-action-pp-edit"><i class="fas fa-edit"></i> Editar</a>' +
+                        '</td>' +
+                        '</tr>';
+                    
+                    tbody.append(row);
+                });
+            }
+
+            function actualizarKPIs(proyectos) {
+                $('#kpi-total').text(proyectos.length);
+                
+                var renovables = proyectos.filter(esRenovable).length;
+                $('#kpi-renovables').text(renovables);
+
+                var capTotal = proyectos.reduce((sum, p) => sum + (p.CapacidadMW || 0), 0);
+                $('#kpi-capacidad').text(capTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' MW');
+            }
+
+            // Debouncer helper
+            function debounce(func, wait) {
+                var timeout;
+                return function () {
+                    var context = this, args = arguments;
+                    clearTimeout(timeout);
+                    timeout = setTimeout(function () {
+                        func.apply(context, args);
+                    }, wait);
+                };
+            }
+        });
+    </script>
+}

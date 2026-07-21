@@ -1,0 +1,492 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+}
+
+
+@{
+    ViewData["Title"] = "Cuencas Hidrológicas";
+}
+<div class="text-center">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/aguai.png" alt="Icono personalizado" class="iconomenu" />@ViewData["Title"]
+    </h3>
+</div>
+<!-- Miga de Pan -->
+<div class="alert alert-light" role="alert">
+    <nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);" aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="container">
+<div id="main-container">
+  <h3 class="subtitulo mb-3">Cuencas Hidrológicas</h3>
+
+ <p class="text-justify pt-3">
+    Mide la relación entre el agua renovable anual y el volumen concesionado en el mismo periodo (m3/año) por Entidad Federativa
+ </p>
+    <div class="container pb-3">
+        <div class="row d-flex justify-content-center">
+            <div class="col">
+                @*<button class="btn btn-cre-rojo" data-bs-toggle="offcanvas" data-bs-target="#ejemploOffcanvas">
+                    <i class="bi bi-info-circle-fill"></i> - Ver Información Acerca de este Mapa
+                </button>*@
+                <button class="btn btn-cre-rojo" id="last-update-btn">
+                    <i class="bi bi-info-circle-fill"></i> Última Actualización: 24/05/2023
+                </button>
+            </div>
+            <div class="col">
+                <select id="estado" class="form-select">
+                    <option value="ags">Aguascalientes</option>
+                    <option value="bc">Baja California</option>
+                    <option value="bcs">Baja California Sur</option>
+                    <option value="camp">Campeche</option>
+                    <option value="coah">Coahuila</option>
+                    <option value="col">Colima</option>
+                    <option value="chis">Chiapas</option>
+                    <option value="chih">Chihuahua</option>
+                    <option value="cdmx">Ciudad de México</option>
+                    <option value="dgo">Durango</option>
+                    <option value="gto">Guanajuato</option>
+                    <option value="gro">Guerrero</option>
+                    <option value="hgo">Hidalgo</option>
+                    <option value="jal">Jalisco</option>
+                    <option value="mex">México</option>
+                    <option value="mich">Michoacán</option>
+                    <option value="mor">Morelos</option>
+                    <option value="nay">Nayarit</option>
+                    <option value="nl">Nuevo León</option>
+                    <option value="oax">Oaxaca</option>
+                    <option value="pue">Puebla</option>
+                    <option value="qro">Querétaro</option>
+                    <option value="qroo">Quintana Roo</option>
+                    <option value="slp">San Luis Potosí</option>
+                    <option value="sin">Sinaloa</option>
+                    <option value="son">Sonora</option>
+                    <option value="tab">Tabasco</option>
+                    <option value="tamps">Tamaulipas</option>
+                    <option value="tlax">Tlaxcala</option>
+                    <option value="ver">Veracruz</option>
+                    <option value="yuc">Yucatán</option>
+                    <option value="zac">Zacatecas</option>
+                </select>
+            </div>
+
+            @if (perfilUsuario.Rol != "0")
+            {
+                <partial name="_Infomapas_PRPEP" />
+            }
+
+            @if (perfilUsuario.Rol == "0")
+            {
+                <partial name="_Infomapa_publico_SEM" />
+
+            }
+        </div>
+    </div>
+
+    @*Mapa*@
+    <div class="d-flex h-100 pb-3" style="overflow: auto;">
+        <div class="row m-0 w-100">
+            <div class="col-lg-9">
+                <div class="app-card app-card-chart h-100 shadow-sm">
+                    <div class="app-card-body p-4">
+                        <div class="chart-container">
+                            <div id="map-container-map1" class="app-card-body p-4">
+                                <div class="d-flex justify-content-end">
+                                    <button id="fullscreen-btn-map1" class="btn btn-primary">Pantalla Completa</button>
+                                </div>
+                                <div id="menu-map-container-map1">
+                                    <div id="fullscreen-elements-map1">
+                                        <div id="fullscreen-last-update-map1"></div>
+                                        <div id="fullscreen-select-map1"></div>
+                                        <div id="map" style="height: 500px;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-12 ">
+                <div class="app-card app-card-chart h-100 shadow-sm">
+
+                    <div class="app-card-body p-4">
+                        <div class="chart-container">
+<table cellspacing="0" border="0">
+	           <colgroup width="131"></colgroup>
+                                                    <colgroup width="264"></colgroup>
+	<tr>
+		<td colspan=2 rowspan=2 height="43" align="center" valign=middle data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;Simbología&quot;}"><b><font face="Montserrat" size=4>Simbología</font></b></td>
+		</tr>
+	<tr>
+		</tr>
+	<tr>
+		<td colspan=2 height="21" align="center" valign=middle data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;Disponibilidad de agua&quot;}"><font face="Montserrat">Disponibilidad de agua</font></td>
+		</tr>
+	<tr>
+		<td colspan=2 height="21" align="center" valign=middle data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;en Hectómetros cúbicos&quot;}"><font face="Montserrat" size=1>en Hectómetros cúbicos</font></td>
+		</tr>
+	<tr>
+		<td height="21" align="center" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;'-2,500 a -200 &quot;}"><font face="Montserrat">Déficit de más de 100hm³/año </font></td>
+		<td align="left" bgcolor="#7f1a1c" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;&quot;}"><font face="Liberation Serif"><br></font></td>
+	</tr>
+	<tr>
+		<td height="21" align="center" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;-200 a -20&quot;}"><font face="Montserrat">Déficit de entre 10 y 100hm³/año</font></td>
+		<td align="left" bgcolor="#e31a1c" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;&quot;}"><font face="Liberation Serif"><br></font></td>
+	</tr>
+	<tr>
+		<td height="21" align="center" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;-20 a -.01&quot;}"><font face="Montserrat">Déficit de de entre 1 y 10hm³/año</font></td>
+		<td align="left" bgcolor="#ff9a00" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;&quot;}"><font face="Liberation Serif"><br></font></td>
+	</tr>
+	<tr>
+		<td height="21" align="center" sdval="0" sdnum="2058;"><font face="Montserrat">Neutro (entre -1hm³/año y 1hm³/año)</font></td>
+		<td align="left" bgcolor="#f7de6d" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;&quot;}"><font face="Liberation Serif"><br></font></td>
+	</tr>
+	<tr>
+		<td height="21" align="center" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;.01 a 200&quot;}"><font face="Montserrat">Disponibilidad entre 1 y 10hm³/año</font></td>
+		<td align="left" bgcolor="#a6cee3" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;&quot;}"><font face="Liberation Serif"><br></font></td>
+	</tr>
+	<tr>
+		<td height="21" align="center" valign=middle data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;200 a 2,000&quot;}"><font face="Montserrat">Disponibilidad entre 10 y 100hm³/año</font></td>
+		<td align="left" bgcolor="#4085b4" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;&quot;}"><br></td>
+	</tr>
+	<tr>
+		<td height="27" align="center" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;2,000 a 12,300&quot;}"><font face="Montserrat">Disponibilidad de más de 100hm³/año</font></td>
+		<td align="left" bgcolor="#0d4a9b" data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;&quot;}"><br></td>
+	</tr>
+	<tr>
+		<td colspan=2 rowspan=2 height="43" align="center" valign=bottom data-sheets-value="{ &quot;1&quot;: 2, &quot;2&quot;: &quot;Fuente: Sistema Nacional de Información del Agua (https:\/\/sinav30.conagua.gob.mx:8080\/SINA\/?opcion=aguasr)&quot;}"><i><font face="Montserrat" size=1>Fuente: Sistema Nacional de Información del Agua (<a href="https://sinav30.conagua.gob.mx:8080/SINA/?opcion=aguasr">https://sinav30.conagua.gob.mx:8080/SINA/?opcion=aguasr</a>)</font></i></td>
+		</tr>
+</table>
+
+                        </div>
+                    </div><!--//app-card-body-->
+                </div><!--//app-card-->
+
+
+
+            </div>
+        </div>
+    </div>
+
+<br>
+<br>
+@* Presión de Agua *@
+   <h3 class="subtitulo mb-3">GRADO DE PRESIÓN DE AGUA</h3>
+   <br>
+    <p class="text-justify">
+        Mide la relación entre el agua renovable anual y el volumen concesionado en el mismo periodo (m3/año) por Entidad Federativa
+    </p>
+    <div class="d-flex h-100 pb-3" style="overflow: auto;">
+        <div class="row m-0 w-100">
+            <div class="col-lg-9">
+                <div class="app-card app-card-chart h-100 shadow-sm">
+                    <div class="app-card-body p-4">
+                        <div class="chart-container">
+                            <div id="map-container-map2" class="app-card-body p-4">
+                                <div class="pb-3">
+                                    <label for="campo-selector">Seleccione un Año:</label>
+                                    <select id="campo-selector" class="form-select"></select>
+                                </div>
+                                <div class="d-flex justify-content-end">
+                                    <button id="fullscreen-btn-map2" class="btn btn-primary">Pantalla Completa</button>
+                                </div>
+                                <div id="menu-map-container-map2">
+                                    <div id="fullscreen-elements-map2">
+                                        <div id="fullscreen-last-update-map2"></div>
+                                        <div id="fullscreen-select-map2"></div>
+                                        <div id="map_presionagua" style="height: 500px;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-12 ">
+                <div class="app-card app-card-chart h-100 shadow-sm">
+
+                    <div class="app-card-body p-4">
+                        <div class="chart-container">
+<table cellspacing="0" border="0">
+    <colgroup width="176"></colgroup>
+    <colgroup width="85"></colgroup>
+    
+    <tr>
+        <td colspan="2" rowspan="2" height="34" align="center" valign="middle">
+            <b><font face="Montserrat" size="4">Simbología de Presión de Agua</font></b>
+        </td>
+    </tr>
+    <tr></tr> <!-- Fila vacía debido al rowspan -->
+
+    <tr>
+        <td height="17" align="center"><font face="Montserrat">Sin presión del recurso</font></td>
+        <td align="left" bgcolor="#008000"><br></td>
+    </tr>
+    <tr>
+        <td height="17" align="center"><font face="Montserrat">Con presión del recurso</font></td>
+        <td align="left" bgcolor="#FF0000"><br></td>
+    </tr>
+    <tr>
+        <td colspan="2" align="center" valign="middle"><i><font face="Montserrat" size="1">Elaboración propia</font></i></td>
+    </tr>
+    <tr>
+        <td colspan="2" align="center" valign="middle"><i><font face="Montserrat" size="1">Fuente de Datos: Comisión Nacional del Agua (CONAGUA). </font></i></td>
+    </tr>
+</table>
+
+
+                        </div>
+                    </div><!--//app-card-body-->
+                </div><!--//app-card-->
+
+
+
+            </div>
+        </div>
+    </div>
+
+<br>
+<br>
+@* Estres de Hidrico *@
+   <h3 class="subtitulo mb-3">ÍNDICE DE ESCASEZ HÍDRICA O DE PFISTER (WSI acrónimo en Inglés) </h3>
+   <br>
+ <p class="text-justify">
+    Mide la relación entre las extracciones anuales totales (concesiones) de agua dulce y la disponibilidad hidrológica. </p>
+    <br> 
+    <p class="text-justify">
+    Un WSI con valores menores a 0.09 indica un estrés hídrico bajo; un WSI de 0.09 a 0.5 indica un estrés hídrico medio; un WSI de 0.5 a 0.91 un estrés alto y un WSI de 0.91 a 1 representa un estrés hídrico muy alto
+</p>
+
+    <div class="d-flex h-100 pb-3" style="overflow: auto;">
+        <div class="row m-0 w-100">
+            <div class="col-lg-9">
+                <div class="app-card app-card-chart h-100 shadow-sm">
+                    <div class="app-card-body p-4">
+                        <div class="chart-container">
+                            <div id="map-container-map3" class="app-card-body p-4">
+                                <div class="pb-3">
+                                    <label for="campo-selectorwsi">Seleccione un Año:</label>
+                                    <select id="campo-selectorwsi" class="form-select"></select>
+                                </div>
+                                <div class="d-flex justify-content-end">
+                                <button id="fullscreen-btn-map3" class="btn btn-primary">Pantalla Completa</button>
+                                </div>
+                                <div id="menu-map-container-map3">
+                                <div id="fullscreen-elements-map3">
+                                    <div id="fullscreen-last-update-map3"></div>
+                                    <div id="fullscreen-select-map3"></div>
+                                    <div id="mapa_estres_h" style="height: 500px;"></div>
+                                </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-12 ">
+                <div class="app-card app-card-chart h-100 shadow-sm">
+
+                    <div class="app-card-body p-4">
+<table cellspacing="0" border="0">
+	<colgroup width="131"></colgroup>
+	<colgroup width="85"></colgroup>
+	<tr>
+		<td colspan=2 height="17" align="center" valign=middle><b><font face="Montserrat" size =4>Simbología de Estrés Hídrico</font></b></td>
+		</tr>
+	<tr>
+		<td height="17" align="center"><font face="Montserrat">Bajo</font></td>
+		<td align="left" bgcolor="#008000"><br></td>
+	</tr>
+	<tr>
+		<td height="17" align="center"><font face="Montserrat">Medio</font></td>
+		<td align="left" bgcolor="#FFFF00"><br></td>
+	</tr>
+	<tr>
+		<td height="17" align="center"><font face="Montserrat">Alto</font></td>
+		<td align="left" bgcolor="#FFA500"><br></td>
+	</tr>
+	<tr>
+		<td height="17" align="center"><font face="Montserrat">Muy alto</font></td>
+		<td align="left" bgcolor="#FF0000"><br></td>
+	</tr>
+	<tr>
+		<td colspan=2 height="17" align="center" valign=middle><i><font face="Montserrat" size=1>Elaboración propia </font></i></td>
+		</tr>
+	<tr>
+		<td colspan=2 rowspan=2 height="34" align="center" valign=middle><i><font face="Montserrat" size=1>Fuente de datos: Comisión  Nacional del Agua (CONAGUA)</font></i></td>
+		</tr>
+	<tr>
+		</tr>
+	<tr>
+		<td colspan=2 rowspan=6 height="102" align="center" valign=middle><i><font face="Montserrat" size=1>Referencia: Ridoutta B.G. &amp; Pfister S., 2014. Water footprinting using a water stress index (WSI) that integrates stress on humans and ecosystems. 4th International Conference on Green and Sustainable Innovation (ICGSI) 2014 3rd LCA AgriFood Asia 2014</font></i></td>
+		</tr>
+</table>
+                    </div><!--//app-card-body-->
+                </div><!--//app-card-->
+
+
+
+            </div>
+        </div>
+    </div>
+
+
+
+
+</div>
+    <style>
+        #fullscreen-elements-map1,
+        #fullscreen-elements-map2,
+        #fullscreen-elements-map3 {
+            display: flex;
+            flex-direction: column;
+            height: auto; /* Valor inicial para cuando no esté en pantalla completa */
+        }
+
+        #fullscreen-last-update-map1,
+        #fullscreen-last-update-map2,
+        #fullscreen-last-update-map3,
+        #fullscreen-select-map1,
+        #fullscreen-select-map2,
+        #fullscreen-select-map3 {
+            flex-shrink: 0;
+        }
+
+        #map,
+        #map_presionagua,
+        #mapa_estres_h {
+            flex-grow: 1;
+        }
+
+        #main-container.fullscreen-active #fullscreen-elements-map1,
+        #main-container.fullscreen-active #fullscreen-elements-map2,
+        #main-container.fullscreen-active #fullscreen-elements-map3 {
+            height: 100vh;
+        }
+
+        #main-container.fullscreen-active #map,
+        #main-container.fullscreen-active #map_presionagua,
+        #main-container.fullscreen-active #mapa_estres_h {
+            height: calc(100vh - 60px);
+        }
+
+        #main-container:not(.fullscreen-active) #map,
+        #main-container:not(.fullscreen-active) #map_presionagua,
+        #main-container:not(.fullscreen-active) #mapa_estres_h {
+            height: 500px;
+        }
+    </style>
+</div>
+
+@*Script de Pantalla Completa*@
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const maps = [
+            {
+                fullscreenButton: document.getElementById('fullscreen-btn-map1'),
+                menuMapContainer: document.getElementById('menu-map-container-map1'),
+                fullscreenElements: document.getElementById('fullscreen-elements-map1'),
+                mainContainer: document.getElementById('main-container'),
+                lastUpdateBtn: document.getElementById('last-update-btn'),
+                selectElement: document.getElementById('estado'),
+                mapElement: document.getElementById('map'),
+                originalContainer: document.querySelector('#main-container .container.pb-3 .row.d-flex.justify-content-center')
+            },
+            {
+                fullscreenButton: document.getElementById('fullscreen-btn-map2'),
+                menuMapContainer: document.getElementById('menu-map-container-map2'),
+                fullscreenElements: document.getElementById('fullscreen-elements-map2'),
+                mainContainer: document.getElementById('main-container'),
+                lastUpdateBtn: document.getElementById('last-update-btn'),
+                selectElement: document.getElementById('estado'),
+                mapElement: document.getElementById('map_presionagua'),
+                yearSelector: document.getElementById('campo-selector'),
+                originalYearContainer: document.querySelector('#map-container-map2 .pb-3'),
+                originalContainer: document.querySelector('#main-container .container.pb-3 .row.d-flex.justify-content-center')
+            },
+            {
+                fullscreenButton: document.getElementById('fullscreen-btn-map3'),
+                menuMapContainer: document.getElementById('menu-map-container-map3'),
+                fullscreenElements: document.getElementById('fullscreen-elements-map3'),
+                mainContainer: document.getElementById('main-container'),
+                lastUpdateBtn: document.getElementById('last-update-btn'),
+                selectElement: document.getElementById('estado'),
+                mapElement: document.getElementById('mapa_estres_h'),
+                yearSelector: document.getElementById('campo-selectorwsi'),
+                originalYearContainer: document.querySelector('#map-container-map3 .pb-3'),
+                originalContainer: document.querySelector('#main-container .container.pb-3 .row.d-flex.justify-content-center')
+            }
+        ];
+
+        maps.forEach(({fullscreenButton, menuMapContainer, fullscreenElements, mainContainer, lastUpdateBtn, selectElement, mapElement, yearSelector, originalContainer, originalYearContainer}) => {
+            fullscreenButton.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    menuMapContainer.requestFullscreen().catch(err => {
+                        alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            });
+
+            document.addEventListener('fullscreenchange', (event) => {
+                if (document.fullscreenElement && document.fullscreenElement.contains(menuMapContainer)) {
+                    fullscreenButton.textContent = "Salir de Pantalla Completa";
+                    fullscreenElements.appendChild(lastUpdateBtn);
+                    fullscreenElements.appendChild(selectElement);
+                    if (yearSelector) {
+                        fullscreenElements.appendChild(yearSelector);
+                    }
+                    fullscreenElements.appendChild(mapElement);
+                    mainContainer.classList.add('fullscreen-active');
+                    mapElement.style.height = "calc(100vh - 60px)";
+                } else if (!document.fullscreenElement && mainContainer.classList.contains('fullscreen-active')) {
+                    fullscreenButton.textContent = "Pantalla Completa";
+                    originalContainer.querySelector('.col:nth-child(1)').appendChild(lastUpdateBtn);
+                    originalContainer.querySelector('.col:nth-child(2)').appendChild(selectElement);
+                    if (yearSelector) {
+                        originalYearContainer.appendChild(yearSelector);
+                    }
+                    document.getElementById('map-container-' + mapElement.id).appendChild(mapElement);
+                    mainContainer.classList.remove('fullscreen-active');
+                    mapElement.style.height = "500px";
+                    fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+                }
+            });
+        });
+    });
+</script>
+
+
+@*Scripts de los Datos*@
+
+@* <script src="@Cdn.Url/Geovisualizador/data/agua_cuencas_hidrologicas_21_nal_a_0.js"></script> *@
+<script src="@Cdn.Url/Geovisualizador/shapes/Cuencas_Disponibilidad_2023copiar_0.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/data/estados_presion.js"></script>
+<script src="@Cdn.Url/Geovisualizador/data/estados_WSI.js"></script>
+
+
+
+
+@*Template del Mapa*@
+<script type="text/javascript" src="/js/configura_mapa.js"></script>
+<script type="text/javascript" src="/js/reserva_de_agua.js"></script>
+
+

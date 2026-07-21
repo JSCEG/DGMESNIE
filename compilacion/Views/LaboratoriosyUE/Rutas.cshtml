@@ -1,0 +1,175 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+
+@{
+    ViewData["Title"] = "Rutas Óptimas de Inspección";
+}
+
+
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/visitasv.png" alt="Icono personalizado" class="iconomenu" />
+        @ViewData["Title"]
+    </h4>
+</div>
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+@*Sección que Despliega el Mapap Inicial*@
+<div class="container">
+    <div id="map"></div>
+
+</div>
+
+
+
+@section scripts {
+
+
+    @*Funcionalidades del Mapa Inicial*@
+    <script>
+
+        var map = L.map('map', {
+            zoomControl: true, maxZoom: 28, minZoom: 5
+        }).fitBounds([[16.515297504744552, -116.01198143543994], [31.280203931152798, -90.79533052556764]]);
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+
+        map.createPane('pane_GoogleSatellite_0');
+        map.getPane('pane_GoogleSatellite_0').style.zIndex = 0;
+        var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            pane: 'pane_GoogleSatellite_0',
+            opacity: 1.0,
+            attribution: '<a href="https://www.google.at/permissions/geoguidelines/attr-guide.html">Map data ©2015 Google</a>',
+            minZoom: 1,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 20
+        });
+
+        //Configura los Base Layers
+        var baseLayers = {
+            "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }),
+            "Vista Satélite": layer_GoogleSatellite_0
+        };
+
+        // Control de capas para seleccionar la vista del mapa
+        L.control.layers(baseLayers).addTo(map);
+
+        // Activa una capa de mosaicos como vista inicial
+        baseLayers["OpenStreetMap"].addTo(map);
+
+        // Redibujar la capa cuando se seleccione
+        map.on('baselayerchange', function (eventLayer) {
+            if (eventLayer.name === "Vista Satélite") {
+                layer_GoogleSatellite_0.redraw();
+            }
+        });
+
+        L.control.scale().addTo(map); // Agregar la escala gráfica al mapa
+        //ZOOM
+        var resetZoomControl = L.control({ position: 'topleft' });
+
+        resetZoomControl.onAdd = function (map) {
+            var div = L.DomUtil.create('div', 'reset-zoom-control');
+            div.innerHTML = '<button class="btn btn-cre-rojo-home" onclick="resetZoom()"><i class="bi bi-house-door"></i></button>';
+            return div;
+        };
+
+        resetZoomControl.addTo(map);
+
+        function resetZoom() {
+            map.setView([24.572503, -101.768257], 5);
+        }
+        /////////////DISTANCIAS/////////////////////
+        // Configura las opciones de dibujo
+        var drawControl = new L.Control.Draw({
+            draw: {
+                polygon: false,
+                polyline: true,
+                rectangle: false,
+                circle: false,
+                marker: false,
+                circlemarker: false
+            },
+            edit: false
+        });
+
+        map.addControl(drawControl);
+
+        // Cuando se dibuja una línea, calcula la distancia
+        map.on('draw:created', function (e) {
+            var type = e.layerType,
+                layer = e.layer;
+
+            if (type === 'polyline') {
+                var latlngs = layer.getLatLngs();
+                var distance = 0;
+                for (var i = 1; i < latlngs.length; i++) {
+                    distance += latlngs[i - 1].distanceTo(latlngs[i]);
+                }
+                // Convertir la distancia a km y redondear a 2 decimales
+                distance = Math.round((distance / 1000) * 100) / 100;
+                // Crear un popup con la distancia
+                layer.bindPopup('Distancia: ' + distance + ' km').openPopup();
+                // Añadir la línea al mapa
+                layer.addTo(map);
+            }
+        });
+
+        var control = L.Routing.control(L.extend(window.lrmConfig, {
+            waypoints: [
+                L.latLng(57.74, 11.94),
+                L.latLng(57.6792, 11.949)
+            ],
+            geocoder: L.Control.Geocoder.nominatim(),
+            routeWhileDragging: true,
+            reverseWaypoints: true,
+            showAlternatives: true,
+            altLineOptions: {
+                styles: [
+                    { color: 'black', opacity: 0.15, weight: 9 },
+                    { color: 'white', opacity: 0.8, weight: 6 },
+                    { color: 'blue', opacity: 0.5, weight: 2 }
+                ]
+            }
+        })).addTo(map);
+
+        L.Routing.errorControl(control).addTo(map);
+
+        window.lrmConfig = {
+            //    serviceUrl: 'https://api.mapbox.com/directions/v5',
+            //    profile: 'mapbox/driving',
+        };
+
+    </script>
+
+
+
+}

@@ -1,0 +1,652 @@
+@model NSIE.Models.ProyectosPrivados.ProyectoDetailVM
+@{
+    ViewData["Title"] = "Detalle del Proyecto";
+    var header = ViewData["HeaderViewModel"] as NSIE.Models.HeaderViewModel;
+    var p = Model.Proyecto;
+}
+
+@section Styles {
+    <style>
+        .pp-detail-card {
+            background: #fff;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .pp-nav-tabs {
+            border-bottom: 2px solid #E0E0E0;
+            margin-bottom: 24px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            list-style: none;
+            padding: 0;
+        }
+        .pp-nav-tabs .nav-item {
+            margin-bottom: -2px;
+        }
+        .pp-nav-tabs .nav-link {
+            border: none;
+            border-bottom: 2px solid transparent;
+            background: none;
+            color: #555;
+            padding: 12px 20px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .pp-nav-tabs .nav-link:hover {
+            color: var(--color-gobmx-guinda, #9B2247);
+        }
+        .pp-nav-tabs .nav-link.active {
+            color: var(--color-gobmx-guinda, #9B2247);
+            border-bottom-color: var(--color-gobmx-guinda, #9B2247);
+        }
+        .pp-tab-content {
+            display: none;
+        }
+        .pp-tab-content.active {
+            display: block;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .info-item {
+            border-bottom: 1px solid #F0F0F0;
+            padding-bottom: 12px;
+        }
+        .info-item label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: #98989A;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+            letter-spacing: 0.05em;
+        }
+        .info-item .val {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+            word-break: break-word;
+        }
+        .timeline-pp {
+            position: relative;
+            padding-left: 30px;
+            margin-left: 10px;
+            border-left: 2px solid #E0E0E0;
+        }
+        .timeline-pp-item {
+            position: relative;
+            margin-bottom: 24px;
+        }
+        .timeline-pp-item::before {
+            content: '';
+            position: absolute;
+            left: -37px;
+            top: 4px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: var(--color-gobmx-guinda, #9B2247);
+            border: 3px solid #fff;
+            box-shadow: 0 0 0 2px var(--color-gobmx-guinda, #9B2247);
+        }
+        .timeline-pp-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .timeline-pp-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+            margin: 0;
+        }
+        .timeline-pp-date {
+            font-size: 12px;
+            color: #98989A;
+        }
+        .timeline-pp-body {
+            background-color: #FAFAFA;
+            border: 1px solid #E0E0E0;
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .badge-semaforo-pp {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+    </style>
+}
+
+@if (header != null)
+{
+    @await Html.PartialAsync("_ViewHeader", header)
+}
+
+<div class="container ps-5 pe-5 mb-5">
+    <!-- Breadcrumbs -->
+    <div class="alert alert-light mb-3" role="alert" style="padding-left: 15px;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb lp-5 mb-0">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "ProyectosPrivados")">Proyectos Privados</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Detalle</li>
+            </ol>
+        </nav>
+    </div>
+
+    <!-- Quick Info Card -->
+    <div class="pp-detail-card mb-4" style="border-left: 6px solid @(p.SemaforoColorHex ?? "#808080");">
+        <div class="d-flex justify-content-between align-items-start flex-wrap">
+            <div>
+                <span class="badge bg-secondary mb-2 text-white" style="background-color: var(--color-gobmx-guinda, #9B2247) !important; color: white !important;">
+                    @p.Tipo
+                </span>
+                <h1 class="h3 mb-2" style="font-weight: 700; color: #333;">@p.Nombre</h1>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-map-marker-alt"></i> @p.EntidadFederativa @(!string.IsNullOrEmpty(p.Municipio) ? $" / {p.Municipio}" : "")
+                </p>
+            </div>
+            <div class="text-end">
+                <p class="mb-1" style="font-size: 13px; font-weight: 600; color: #707070;">CAPACIDAD</p>
+                <p class="h3 text-primary mb-2" style="font-weight: 700; color: var(--color-gobmx-guinda, #9B2247) !important;">
+                    @(p.CapacidadMW.HasValue ? p.CapacidadMW.Value.ToString("N2") + " MW" : "-")
+                </p>
+                <div class="d-flex gap-2 justify-content-end">
+                    <a href="@Url.Action("Editar", "ProyectosPrivados", new { id = p.ProyectoId })" class="btn btn-sm btn-outline-primary" style="color: var(--color-gobmx-verde, #1E5B4F); border-color: var(--color-gobmx-verde, #1E5B4F); font-weight: 600;">
+                        <i class="fas fa-edit"></i> Editar Ficha
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <ul class="pp-nav-tabs" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" data-tab="tab-general">Ficha Técnica</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-tab="tab-tramites">Trámites Ambiental/Regulatorio</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-tab="tab-bitacora">Bitácora de Reuniones</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-tab="tab-acciones">Compromisos de Seguimiento</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-tab="tab-documentos">Documentos SharePoint</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-tab="tab-historial">Trazabilidad de Cambios</button>
+        </li>
+    </ul>
+
+    <!-- Tab Contents -->
+    <!-- 1. GENERAL -->
+    <div id="tab-general" class="pp-tab-content active pp-detail-card">
+        <h3 class="h5 mb-4" style="font-weight: 700; border-bottom: 2px solid #F0F0F0; padding-bottom: 8px;">Datos Generales e Identificación</h3>
+        <div class="info-grid mb-4">
+            <div class="info-item"><label>Estatus</label><p class="val">@p.Status</p></div>
+            <div class="info-item"><label>Promovente</label><p class="val">@p.Promovente</p></div>
+            <div class="info-item"><label>Grupo Económico</label><p class="val">@p.GrupoEconomico</p></div>
+            <div class="info-item"><label>Origen</label><p class="val">@p.Origen</p></div>
+            <div class="info-item"><label>Año</label><p class="val">@p.Anio</p></div>
+            <div class="info-item"><label>Clasificación</label><p class="val">@p.ClasificacionNombre</p></div>
+            <div class="info-item"><label>Prioridad</label><p class="val">@p.PrioridadNombre</p></div>
+            <div class="info-item"><label>Semáforo Ejecutivo</label><p class="val"><span class="badge-semaforo-pp" style="background-color: @(p.SemaforoColorHex ?? "#808080");"></span> @(p.SemaforoNombre ?? "Gris")</p></div>
+        </div>
+
+        <h3 class="h5 mb-4" style="font-weight: 700; border-bottom: 2px solid #F0F0F0; padding-bottom: 8px;">Ubicación y Georreferenciación</h3>
+        <div class="info-grid mb-4">
+            <div class="info-item"><label>Entidad Federativa</label><p class="val">@p.EntidadFederativa</p></div>
+            <div class="info-item"><label>Municipio</label><p class="val">@p.Municipio</p></div>
+            <div class="info-item"><label>Longitud</label><p class="val">@p.Longitud</p></div>
+            <div class="info-item"><label>Latitud</label><p class="val">@p.Latitud</p></div>
+            <div class="info-item"><label>Gerencia de Control</label><p class="val">@p.GerenciaControl</p></div>
+            <div class="info-item"><label>Región de Transmisión</label><p class="val">@p.RegionTransmision</p></div>
+        </div>
+
+        <h3 class="h5 mb-4" style="font-weight: 700; border-bottom: 2px solid #F0F0F0; padding-bottom: 8px;">Detalle Técnico y de Obra</h3>
+        <div class="info-grid mb-4">
+            <div class="info-item"><label>Capacidad (MW)</label><p class="val">@p.CapacidadMW</p></div>
+            <div class="info-item"><label>Renovable</label><p class="val">@(p.Renovable == true ? "Sí" : "No")</p></div>
+            <div class="info-item"><label>Adiciones o Sustituciones</label><p class="val">@p.AdicionesSustituciones</p></div>
+            <div class="info-item"><label>Contrato o Unidad</label><p class="val">@p.ContratoUnidad</p></div>
+            <div class="info-item"><label>Firme</label><p class="val">@p.Firmes</p></div>
+            <div class="info-item"><label>% Construcción</label><p class="val">@(p.PorcentajeConstruccion.HasValue ? p.PorcentajeConstruccion.Value + "%" : "-")</p></div>
+            <div class="info-item"><label>Inicio de Obras</label><p class="val">@(p.FechaInicioObras.HasValue ? p.FechaInicioObras.Value.ToString("dd/MM/yyyy") : "-")</p></div>
+            <div class="info-item"><label>Terminación de Obras</label><p class="val">@(p.FechaTerminacionObras.HasValue ? p.FechaTerminacionObras.Value.ToString("dd/MM/yyyy") : "-")</p></div>
+            <div class="info-item"><label>Entrada en Operación</label><p class="val">@(p.FechaEntradaOperacion.HasValue ? p.FechaEntradaOperacion.Value.ToString("dd/MM/yyyy") : "-")</p></div>
+            <div class="info-item"><label>Estado actual del Programa de Obras</label><p class="val">@p.EstadoProgramaObras</p></div>
+        </div>
+
+        <h3 class="h5 mb-4" style="font-weight: 700; border-bottom: 2px solid #F0F0F0; padding-bottom: 8px;">Seguimiento Regulatorio y Social</h3>
+        <div class="info-grid mb-4">
+            <div class="info-item"><label>Número de Permiso</label><p class="val">@p.NumeroPermiso</p></div>
+            <div class="info-item"><label>Folio EvIS/MISSE</label><p class="val">@p.FolioEvIS_MISSE</p></div>
+            <div class="info-item"><label>Status EvIS/MISSE</label><p class="val">@p.StatusEvIS_MISSE</p></div>
+            <div class="info-item"><label>Status CPLI</label><p class="val">@p.StatusCPLI</p></div>
+            <div class="info-item"><label>Conflictos Sociales Detectados</label><p class="val">@p.ConflictosSociales</p></div>
+            <div class="info-item"><label>Trámite en proceso con CNE</label><p class="val">@p.TramiteCNE</p></div>
+            <div class="info-item"><label>Observaciones CNE</label><p class="val">@p.ObservacionesCNE</p></div>
+            <div class="info-item"><label>Observaciones UEVISPI</label><p class="val">@p.ObservacionesUEVISPI</p></div>
+            <div class="info-item"><label>Trámites SEMARNAT</label><p class="val">@p.TramitesSemarnat</p></div>
+            <div class="info-item"><label>Estatus SEMARNAT</label><p class="val">@p.EstatusSemarnat</p></div>
+            <div class="info-item"><label>Observaciones SEMARNAT</label><p class="val">@p.ObservacionesSemarnat</p></div>
+            <div class="info-item"><label>Requiere Almacenamiento</label><p class="val">@p.RequiereAlmacenamiento</p></div>
+            <div class="info-item"><label>Interesada en Continuar</label><p class="val">@(p.InteresadaEnContinuar == true ? "Sí" : "No")</p></div>
+        </div>
+
+        <h3 class="h5 mb-4" style="font-weight: 700; border-bottom: 2px solid #F0F0F0; padding-bottom: 8px;">Análisis y Propuesta</h3>
+        <div class="info-grid">
+            <div class="info-item" style="grid-column: 1 / -1;"><label>Resumen del Caso</label><p class="val">@p.ResumenCaso</p></div>
+            <div class="info-item" style="grid-column: 1 / -1;"><label>Propuesta de Atención</label><p class="val">@p.PropuestaAtencion</p></div>
+            <div class="info-item" style="grid-column: 1 / -1;"><label>Siguientes Pasos</label><p class="val">@p.SiguientesPasos</p></div>
+            <div class="info-item" style="grid-column: 1 / -1;"><label>Razones (Breves)</label><p class="val">@p.RazonesBreves</p></div>
+            <div class="info-item"><label>Fuente</label><p class="val">@p.Fuente</p></div>
+            <div class="info-item"><label>Semáforo PPT</label><p class="val">@p.SemaforoPPT</p></div>
+            <div class="info-item"><label>Última actualización</label><p class="val">@(p.FechaUltimaActualizacion.HasValue ? p.FechaUltimaActualizacion.Value.ToString("dd/MM/yyyy") : "-")</p></div>
+            <div class="info-item"><label>Fuente última actualización</label><p class="val">@p.FuenteUltimaActualizacion</p></div>
+        </div>
+    </div>
+
+    <!-- 2. TRÁMITES -->
+    <div id="tab-tramites" class="pp-tab-content pp-detail-card">
+        <h3 class="h5 mb-4" style="font-weight: 700;">Expediente de Trámites Ambientales / Regulatorios</h3>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover table-bordered">
+                <thead>
+                    <tr style="background-color: var(--color-gobmx-guinda, #9B2247); color: white;">
+                        <th>Folio</th>
+                        <th>Tipo de Trámite</th>
+                        <th>Estatus Oficial</th>
+                        <th>Fecha Ingreso</th>
+                        <th>Fecha Resolución</th>
+                        <th>Vencimiento</th>
+                        <th>Autoridad</th>
+                        <th>Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Tramites == null || Model.Tramites.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="8" class="text-center text-muted">No hay trámites registrados para este proyecto.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var t in Model.Tramites)
+                        {
+                            <tr>
+                                <td><strong>@t.Folio</strong></td>
+                                <td>@t.TipoTramite</td>
+                                <td><span class="badge bg-info text-dark">@t.EstatusTramiteNombre</span> @t.EstatusTexto</td>
+                                <td>@(t.FechaIngreso.HasValue ? t.FechaIngreso.Value.ToString("dd/MM/yyyy") : "-")</td>
+                                <td>@(t.FechaResolucion.HasValue ? t.FechaResolucion.Value.ToString("dd/MM/yyyy") : "-")</td>
+                                <td>@(t.FechaVencimiento.HasValue ? t.FechaVencimiento.Value.ToString("dd/MM/yyyy") : "-")</td>
+                                <td>@t.Autoridad</td>
+                                <td>@t.Observaciones</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 3. BITÁCORA -->
+    <div id="tab-bitacora" class="pp-tab-content pp-detail-card">
+        <h3 class="h5 mb-4" style="font-weight: 700;">Bitácora Histórica de Acuerdos y Reuniones</h3>
+        <div class="timeline-pp">
+            @if (Model.Bitacoras == null || Model.Bitacoras.Count == 0)
+            {
+                <p class="text-muted text-center py-3">No hay bitácoras ni reuniones registradas para este proyecto.</p>
+            }
+            else
+            {
+                foreach (var b in Model.Bitacoras)
+                {
+                    <div class="timeline-pp-item">
+                        <div class="timeline-pp-header">
+                            <h4 class="timeline-pp-title">
+                                @(b.ReunionTitulo ?? "Actualización Manual") 
+                                <span class="badge bg-secondary ms-2 text-white" style="background-color: var(--color-gobmx-guinda, #9B2247) !important; color: white !important;">
+                                    @b.ValoracionTexto
+                                </span>
+                            </h4>
+                            <span class="timeline-pp-date">
+                                <i class="far fa-calendar-alt"></i> @(b.FechaEvento.ToString("dd/MM/yyyy"))
+                            </span>
+                        </div>
+                        <div class="timeline-pp-body">
+                            <p class="mb-2"><strong>Acuerdos:</strong> @(string.IsNullOrWhiteSpace(b.ResumenAcuerdos) ? "Sin acuerdos registrados." : b.ResumenAcuerdos)</p>
+                            @if (!string.IsNullOrWhiteSpace(b.CompromisosSiguientesPasos))
+                            {
+                                <p class="mb-2"><strong>Compromisos:</strong> @b.CompromisosSiguientesPasos</p>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(b.RiesgosObservaciones))
+                            {
+                                <p class="mb-2 text-danger"><strong>Riesgos / Observaciones:</strong> @b.RiesgosObservaciones</p>
+                            }
+                            <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                                <span class="text-muted" style="font-size: 12px;">Registrado por: @b.ProcesadoPor</span>
+                                @if (!string.IsNullOrWhiteSpace(b.SnapshotProyectoJSON))
+                                {
+                                    <button class="btn btn-sm btn-link text-decoration-none btn-view-snapshot" data-snapshot='@b.SnapshotProyectoJSON' data-fecha="@b.FechaEvento.ToString("dd/MM/yyyy")">
+                                        <i class="fas fa-camera"></i> Ver Foto de Estado (Snapshot)
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <!-- 4. ACCIONES -->
+    <div id="tab-acciones" class="pp-tab-content pp-detail-card">
+        <h3 class="h5 mb-4" style="font-weight: 700;">Compromisos y Tareas de Seguimiento</h3>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover table-bordered">
+                <thead>
+                    <tr style="background-color: var(--color-gobmx-guinda, #9B2247); color: white;">
+                        <th>Compromiso</th>
+                        <th>Descripción</th>
+                        <th>Responsable</th>
+                        <th>Fecha Compromiso</th>
+                        <th>Semáforo</th>
+                        <th>Estatus</th>
+                        <th>Fecha Cierre</th>
+                        <th>Comentarios</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Acciones == null || Model.Acciones.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="8" class="text-center text-muted">No hay compromisos u o acciones pendientes para este proyecto.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var a in Model.Acciones)
+                        {
+                            <tr>
+                                <td><strong>@a.Titulo</strong></td>
+                                <td>@a.Descripcion</td>
+                                <td>@a.ResponsableNombre</td>
+                                <td>@(a.FechaCompromiso.HasValue ? a.FechaCompromiso.Value.ToString("dd/MM/yyyy") : "-")</td>
+                                <td>
+                                    <span class="badge-semaforo-pp" style="background-color: @(a.SemaforoColorHex ?? "#808080");"></span>
+                                    @a.SemaforoNombre
+                                </td>
+                                <td>
+                                    <span class="badge @(a.Estatus == "Cerrada" ? "bg-success" : a.Estatus == "Bloqueada" ? "bg-danger" : "bg-warning text-dark")">
+                                        @a.Estatus
+                                    </span>
+                                </td>
+                                <td>@(a.FechaCierre.HasValue ? a.FechaCierre.Value.ToString("dd/MM/yyyy") : "-")</td>
+                                <td>@a.Comentarios</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 5. DOCUMENTOS -->
+    <div id="tab-documentos" class="pp-tab-content pp-detail-card">
+        <h3 class="h5 mb-4" style="font-weight: 700;">Expediente de Documentos en SharePoint</h3>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover table-bordered">
+                <thead>
+                    <tr style="background-color: var(--color-gobmx-guinda, #9B2247); color: white;">
+                        <th>Nombre del Archivo</th>
+                        <th>Tipo</th>
+                        <th>Descripción</th>
+                        <th>Fecha Documento</th>
+                        <th>Subido Por</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Documentos == null || Model.Documentos.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="6" class="text-center text-muted">No hay archivos ni minutas de SharePoint ligados a este proyecto.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var d in Model.Documentos)
+                        {
+                            <tr>
+                                <td><strong>@d.NombreArchivo</strong></td>
+                                <td>@d.TipoDocumentoNombre</td>
+                                <td>@d.Descripcion</td>
+                                <td>@(d.FechaDocumento.HasValue ? d.FechaDocumento.Value.ToString("dd/MM/yyyy") : "-")</td>
+                                <td>@d.SubidoPor</td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(d.SharePointUrl))
+                                    {
+                                        <a href="@d.SharePointUrl" target="_blank" class="btn btn-sm btn-outline-primary" style="color: var(--color-gobmx-guinda, #9B2247); border-color: var(--color-gobmx-guinda, #9B2247);">
+                                            <i class="fas fa-external-link-alt"></i> Abrir SharePoint
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Sin url cargada</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 6. HISTORIAL (TRAZABILIDAD) -->
+    <div id="tab-historial" class="pp-tab-content pp-detail-card">
+        <h3 class="h5 mb-4" style="font-weight: 700;">Línea de Tiempo de Trazabilidad de Modificaciones</h3>
+        <div class="timeline-pp">
+            @if (Model.Historial == null || Model.Historial.Count == 0)
+            {
+                <p class="text-muted text-center py-3">No hay registro de modificaciones para este proyecto.</p>
+            }
+            else
+            {
+                foreach (var h in Model.Historial)
+                {
+                    <div class="timeline-pp-item">
+                        <div class="timeline-pp-header">
+                            <h4 class="timeline-pp-title">
+                                Campo modificado: <strong>@h.Campo</strong>
+                            </h4>
+                            <span class="timeline-pp-date">
+                                <i class="far fa-clock"></i> @h.CambiadoEn.ToString("dd/MM/yyyy HH:mm")
+                            </span>
+                        </div>
+                        <div class="timeline-pp-body">
+                            <div class="row">
+                                <div class="col-md-6 border-end">
+                                    <span class="text-muted" style="font-size: 11px; text-transform: uppercase;">Valor Anterior:</span>
+                                    <p class="val text-danger">@(string.IsNullOrWhiteSpace(h.ValorAnterior) ? "[Vacío]" : h.ValorAnterior)</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <span class="text-muted" style="font-size: 11px; text-transform: uppercase;">Valor Nuevo:</span>
+                                    <p class="val text-success">@(string.IsNullOrWhiteSpace(h.ValorNuevo) ? "[Vacío]" : h.ValorNuevo)</p>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(h.MotivoCambio))
+                            {
+                                <p class="mt-2 mb-0" style="font-size: 13px;"><strong>Motivo / Evento:</strong> @h.MotivoCambio</p>
+                            }
+                            <p class="mt-2 mb-0 text-muted" style="font-size: 12px;">Modificado por: <strong>@h.CambiadoPor</strong></p>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Modal para ver Snapshot del Proyecto -->
+<div class="modal fade" id="dlgSnapshot" tabindex="-1" aria-labelledby="snapshotModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background-color: var(--color-gobmx-guinda, #9B2247); color: white; border-bottom: 3px solid var(--color-gobmx-dorado, #A57F2C);">
+                <h5 class="modal-title" id="snapshotModalLabel"><i class="fas fa-camera"></i> Foto Histórica de Estado (<span id="span-snapshot-fecha"></span>)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="max-height: 500px; overflow-y: auto;">
+                <div class="alert alert-info py-2" style="font-size: 13px;">
+                    Esta es la foto completa de los campos del proyecto tal y como estaban guardados en esta fecha.
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-bordered w-100" id="tbl-snapshot-detail">
+                        <thead>
+                            <tr style="background-color: var(--color-gobmx-verde, #1E5B4F); color: white;">
+                                <th style="width: 40%;">Atributo / Campo</th>
+                                <th style="width: 60%;">Valor Histórico</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-snapshot-detail">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="background-color: var(--color-gobmx-gris, #98989A); border: none;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            // Tab switching logic
+            $('.pp-nav-tabs .nav-link').on('click', function () {
+                var tabId = $(this).attr('data-tab');
+
+                $('.pp-nav-tabs .nav-link').removeClass('active');
+                $(this).addClass('active');
+
+                $('.pp-tab-content').removeClass('active');
+                $('#' + tabId).addClass('active');
+            });
+
+            // View Snapshot modal logic
+            $('.btn-view-snapshot').on('click', function () {
+                var rawJson = $(this).attr('data-snapshot');
+                var fecha = $(this).attr('data-fecha');
+                $('#span-snapshot-fecha').text(fecha);
+
+                try {
+                    var obj = JSON.parse(rawJson);
+                    var tbody = $('#tbody-snapshot-detail');
+                    tbody.empty();
+
+                    // Map keys to readable Spanish headers
+                    var labelMap = {
+                        "ProyectoId": "ID Proyecto",
+                        "Status": "Status",
+                        "Nombre": "Nombre del Proyecto (Real)",
+                        "Promovente": "Promovente",
+                        "GrupoEconomico": "Grupo Económico",
+                        "Origen": "Origen",
+                        "Anio": "Año",
+                        "AdicionesSustituciones": "Adiciones o sustituciones",
+                        "ContratoUnidad": "Contrato o unidad",
+                        "Tipo": "Tipo / Tecnología",
+                        "Renovable": "Es Renovable",
+                        "CapacidadMW": "Capacidad (MW)",
+                        "Mes": "Mes",
+                        "GerenciaControl": "Gerencia de Control",
+                        "RegionTransmision": "Región de Transmisión",
+                        "EntidadFederativa": "Entidad Federativa",
+                        "Municipio": "Municipio",
+                        "Longitud": "Longitud",
+                        "Latitud": "Latitud",
+                        "Firmes": "Firme",
+                        "PorcentajeConstruccion": "% Construcción",
+                        "FolioEvIS_MISSE": "Folio EvIS/MISSE",
+                        "StatusEvIS_MISSE": "Status EvIS/MISSE",
+                        "StatusCPLI": "Status CPLI",
+                        "ConflictosSociales": "Conflictos Sociales",
+                        "NumeroPermiso": "Número de Permiso",
+                        "FechaInicioObras": "Fecha Inicio Obras",
+                        "FechaTerminacionObras": "Fecha Terminación Obras",
+                        "FechaEntradaOperacion": "Fecha Entrada Operación",
+                        "EstadoProgramaObras": "Estado Programa Obras",
+                        "TramiteCNE": "Trámite en CNE",
+                        "ObservacionesCNE": "Observaciones CNE",
+                        "Categoria": "Categoría",
+                        "InteresadaEnContinuar": "Interesada en Continuar",
+                        "ObservacionesUEVISPI": "Observaciones UEVISPI",
+                        "ResumenCaso": "Resumen del Caso",
+                        "PropuestaAtencion": "Propuesta de Atención",
+                        "RequiereAlmacenamiento": "Requiere Almacenamiento",
+                        "SiguientesPasos": "Siguientes Pasos",
+                        "RazonesBreves": "Razones (Breves)",
+                        "TramitesSemarnat": "Trámites SEMARNAT",
+                        "EstatusSemarnat": "Estatus SEMARNAT",
+                        "ObservacionesSemarnat": "Observaciones SEMARNAT",
+                        "Fuente": "Fuente",
+                        "SemaforoPPT": "Semáforo PPT",
+                        "FechaUltimaActualizacion": "Fecha Última Actualización",
+                        "FuenteUltimaActualizacion": "Fuente Última Actualización"
+                    };
+
+                    Object.keys(obj).forEach(function (key) {
+                        // Skip system fields and IDs we mapped
+                        if (key === "Activo" || key === "CreadoEn" || key === "CreadoPor" || key === "ActualizadoEn" || key === "ActualizadoPor" || key === "NombreNormalizado" || key === "ClasificacionId" || key === "PrioridadId" || key === "SemaforoId" || key === "EmpresaId") return;
+
+                        var label = labelMap[key] || key;
+                        var val = obj[key];
+
+                        if (val === true) val = "SÍ";
+                        else if (val === false) val = "NO";
+                        else if (val === null || val === undefined) val = "-";
+                        
+                        // If it's a date string, format it
+                        if (key.startsWith("Fecha") && val !== "-") {
+                            try {
+                                var d = new Date(val);
+                                if (!isNaN(d.getTime())) {
+                                    val = d.toLocaleDateString('es-MX');
+                                }
+                            } catch (e) {}
+                        }
+
+                        tbody.append('<tr><td><strong>' + label + '</strong></td><td>' + val + '</td></tr>');
+                    });
+
+                    $('#dlgSnapshot').appendTo('body').modal('show');
+                } catch (e) {
+                    console.error("Error rendering snapshot JSON:", e);
+                    alert("No se pudo cargar la foto histórica.");
+                }
+            });
+        });
+    </script>
+}

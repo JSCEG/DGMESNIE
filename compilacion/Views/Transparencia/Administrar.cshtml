@@ -1,0 +1,334 @@
+@model List<NSIE.Controllers.TransparenciaAsunto>
+@using Newtonsoft.Json
+@using NSIE.Models
+
+@{
+    ViewData["Title"] = "Administrar Repositorio de Transparencia";
+    var header = new HeaderViewModel
+    {
+        Title = "Administración del Repositorio",
+        IconPath = "mexico.png",
+        Description = "CRUD para administrar ligas de infografía, presentación, audio y timeline de hitos en la vista pública.",
+        Section = "🌐 Portal Público y Transparencia",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Administración de Transparencia",
+            description = "Panel para crear, editar y eliminar asuntos de transparencia e hitos asociados.",
+            functionality = "Carga de links de SharePoint, Google Slides, resumen de audio y timeline de eventos.",
+            stage = "Control Interno",
+            roles = new[] {
+                new { icon = "user-shield", text = "Administrador del Sistema: Carga y actualización de datos" }
+            },
+            order = new { step = 5, description = "Carga de datos de transparencia" }
+        })
+    };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/transparencia.css" asp-append-version="true" />
+    <style>
+        .admin-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+        }
+        .admin-title-group h5 {
+            color: var(--color-gobmx-guinda);
+            margin: 0;
+            font-weight: 700;
+        }
+        .admin-actions-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .btn-institutional-primary {
+            background-color: var(--color-gobmx-guinda);
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+        .btn-institutional-primary:hover {
+            background-color: #6b0024;
+            color: #fff;
+            transform: translateY(-1px);
+        }
+        .btn-institutional-secondary {
+            background-color: #fff;
+            color: #333;
+            border: 1px solid #ddd;
+            padding: 0.5rem 1.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+        .btn-institutional-secondary:hover {
+            background-color: #f5f5f5;
+            color: #333;
+            transform: translateY(-1px);
+        }
+        .badge-status {
+            padding: 0.35em 0.65em;
+            font-size: 0.75em;
+            font-weight: 700;
+            border-radius: 50rem;
+        }
+        .badge-status-concluido {
+            background-color: #d1e7dd;
+            color: #0f5132;
+        }
+        .badge-status-proceso {
+            background-color: #cff4fc;
+            color: #055160;
+        }
+        .badge-status-revision {
+            background-color: #fff3cd;
+            color: #664d03;
+        }
+        .badge-status-pendiente {
+            background-color: #f8d7da;
+            color: #842029;
+        }
+        .table-admin-container {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+            padding: 1.5rem;
+        }
+        .admin-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+            color: #475569;
+        }
+        .action-btns {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .btn-action-edit {
+            color: #0284c7;
+            background: #e0f2fe;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn-action-edit:hover {
+            background: #0284c7;
+            color: #fff;
+        }
+        .btn-action-delete {
+            color: #ef4444;
+            background: #fee2e2;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .btn-action-delete:hover {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        /* --- Modo oscuro --- */
+        [data-bs-theme="dark"] .admin-header-bar {
+            background: var(--shell-glass-strong, rgba(29, 25, 37, 0.8));
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .btn-institutional-secondary {
+            background-color: var(--shell-surface-2, #241f2e);
+            color: var(--shell-ink, #ece7e2);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .btn-institutional-secondary:hover {
+            background-color: var(--shell-hover, rgba(212, 83, 126, 0.10));
+            color: var(--shell-ink, #ece7e2);
+        }
+
+        [data-bs-theme="dark"] .badge-status-concluido {
+            background-color: rgba(76, 207, 174, 0.16);
+            color: var(--shell-accent-3, #4ccfae);
+        }
+
+        [data-bs-theme="dark"] .badge-status-proceso {
+            background-color: rgba(96, 165, 250, 0.16);
+            color: #93c5fd;
+        }
+
+        [data-bs-theme="dark"] .badge-status-revision {
+            background-color: rgba(212, 171, 82, 0.16);
+            color: var(--shell-accent-2, #d4ab52);
+        }
+
+        [data-bs-theme="dark"] .badge-status-pendiente {
+            background-color: rgba(239, 68, 68, 0.16);
+            color: #f19999;
+        }
+
+        [data-bs-theme="dark"] .table-admin-container {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .admin-table th {
+            background-color: var(--shell-surface-2, #241f2e);
+            color: var(--shell-muted, #a39aa8);
+        }
+
+        [data-bs-theme="dark"] .btn-action-edit {
+            background: rgba(96, 165, 250, 0.16);
+            color: #93c5fd;
+        }
+
+        [data-bs-theme="dark"] .btn-action-delete {
+            background: rgba(239, 68, 68, 0.16);
+        }
+    </style>
+}
+
+<div class="gestor-page__view-header">
+    @await Html.PartialAsync("_ViewHeader", header)
+</div>
+
+<div class="transparencia-container">
+    <!-- Breadcrumbs -->
+    <div class="gestor-breadcrumbs">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Transparencia")">Transparencia</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Administración</li>
+            </ol>
+        </nav>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="admin-toolbar">
+        <div class="admin-title-group">
+            <h5>Control de Expedientes y Acuerdos</h5>
+            <p class="mb-0 text-muted small">Crea, actualiza o elimina asuntos e hitos de la línea del tiempo.</p>
+        </div>
+        <div class="admin-actions-group">
+            <a href="@Url.Action("Crear", "Transparencia")" class="btn-institutional-primary">
+                <i class="bi bi-plus-lg"></i> Nuevo Asunto
+            </a>
+            <a href="@Url.Action("Index", "Transparencia")" class="btn-institutional-secondary">
+                <i class="bi bi-eye"></i> Vista Pública
+            </a>
+        </div>
+    </div>
+
+    <!-- Table List -->
+    <div class="table-admin-container">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle admin-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">ID</th>
+                        <th>Título</th>
+                        <th style="width: 150px;">Folio de Solicitud</th>
+                        <th style="width: 150px;">Expediente</th>
+                        <th style="width: 120px;">Fecha</th>
+                        <th style="width: 120px;">Estatus</th>
+                        <th style="width: 100px;">Activo</th>
+                        <th style="width: 120px; text-align: center;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model != null && Model.Any())
+                    {
+                        foreach (var asunto in Model)
+                        {
+                            var statusBadgeClass = asunto.Estatus?.ToLower() switch
+                            {
+                                "concluido" => "badge-status-concluido",
+                                "en proceso" => "badge-status-proceso",
+                                "en revisión" => "badge-status-revision",
+                                _ => "badge-status-pendiente"
+                            };
+
+                            <tr>
+                                <td class="fw-bold text-muted">#@asunto.Id</td>
+                                <td class="fw-semibold" style="color: #1e293b;">@asunto.Titulo</td>
+                                <td class="text-muted small">@asunto.FolioSolicitud</td>
+                                <td class="text-dark small fw-bold">@asunto.NumeroExpediente</td>
+                                <td>@asunto.Fecha</td>
+                                <td>
+                                    <span class="badge-status @statusBadgeClass">@asunto.Estatus</span>
+                                </td>
+                                <td>
+                                    @if (asunto.Activo)
+                                    {
+                                        <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i> Sí</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-danger"><i class="bi bi-x-circle-fill me-1"></i> No</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="action-btns justify-content-center">
+                                        <a href="@Url.Action("Editar", "Transparencia", new { id = asunto.Id })" class="btn-action-edit" title="Editar asunto">
+                                            <i class="bi bi-pencil-fill"></i>
+                                        </a>
+                                        @if (asunto.Activo)
+                                        {
+                                            <form asp-action="Eliminar" asp-route-id="@asunto.Id" method="post" onsubmit="return confirm('¿Estás seguro de que deseas desactivar este asunto? El cambio se reflejará inmediatamente en la vista pública.');" style="display:inline;">
+                                                <button type="submit" class="btn-action-delete" title="Desactivar asunto">
+                                                    <i class="bi bi-trash-fill"></i>
+                                                </button>
+                                            </form>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="6" class="text-center py-5 text-muted">
+                                <i class="bi bi-inbox-fill display-6 d-block mb-3" style="color: #cbd5e1;"></i>
+                                No hay asuntos registrados en la base de datos.
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

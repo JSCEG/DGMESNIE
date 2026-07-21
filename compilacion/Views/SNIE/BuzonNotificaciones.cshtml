@@ -1,0 +1,555 @@
+@model dynamic
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Buzón y Gestión de Oficios";
+}
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Buzón y Gestión de Oficios",
+        IconPath = "crm_buzon.png",
+        Description = "Emite, recibe y da seguimiento a oficios institucionales.",
+        Section = "🧾 Carga de Información, Validación y Oficios",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Buzón y Gestión de Oficios",
+            description = "Sistema centralizado de comunicación oficial entre dependencias.",
+            functionality = "Gestiona oficios con trazabilidad y acuses de recibo.",
+            stage = "Comunicación Interna",
+            roles = new[] {
+                new { icon = "building", text = "SENER: Coordinación general" },
+                new { icon = "shield-alt", text = "Unidad SNIEr: Control documental" },
+                new { icon = "industry", text = "PEMEX: Gestión petrolera" },
+                new { icon = "bolt", text = "CFE: Sector eléctrico" },
+                new { icon = "lightbulb", text = "CONUEE: Eficiencia energética" },
+                new { icon = "chart-line", text = "SHCP: Control financiero" },
+                new { icon = "leaf", text = "SEMARNAT: Gestión ambiental" },
+                new { icon = "users", text = "Enlaces Institucionales: Coordinación" }
+            },
+            order = new { step = 3, description = "Coordina actividades entre entidades (Art. 76)" }
+        }),
+        LegalDescription = "Sistema de comunicación oficial conforme al Art. 76 del Reglamento para garantizar la trazabilidad documental.",
+        Fundamentos = new List<FundamentoLegal> {
+            new() { Reference = "Art. 76 Reglamento", Description = "Establece los mecanismos de comunicación institucional" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+    <style>
+        /* Estilos mejorados */
+        .notification-item {
+            transition: background-color 0.2s ease;
+        }
+        
+        .notification-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .stat-card {
+            transition: transform 0.3s ease;
+            border-radius: 12px;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .bg-gradient-primary {
+            background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        }
+
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-icon i {
+            font-size: 1.5rem;
+        }
+
+        .nav-tabs .nav-link {
+            border: none;
+            padding: 1rem;
+            color: #6c757d;
+            position: relative;
+        }
+
+        .nav-tabs .nav-link.active {
+            color: #0d6efd;
+            background: none;
+            border-bottom: 2px solid #0d6efd;
+        }
+
+        .nav-tabs .nav-link:hover {
+            border-color: transparent;
+            background-color: #f8f9fa;
+        }
+
+        .progress {
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .breadcrumb-item + .breadcrumb-item::before {
+            content: "›";
+            font-size: 1.2em;
+        }
+    </style>
+
+
+<div class="container py-4">
+    <!-- Estadísticas -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card bg-gradient-primary border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="card-icon bg-white bg-opacity-25">
+                            <i class="bi bi-envelope-fill"></i>
+                        </div>
+                        <span class="badge rounded-pill bg-white bg-opacity-25">Total</span>
+                    </div>
+                    <h3 class="card-title h6 text-white-50 mt-3">Oficios Recibidos</h3>
+                    <div class="d-flex align-items-baseline">
+                        <h2 class="mb-0 text-white">18</h2>
+                        <small class="ms-2 text-white-50">este mes</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- ...otros cards de estadísticas... -->
+    </div>
+
+    <!-- Contenido principal -->
+    <div class="row">
+        <div class="col-md-8">
+            <!-- Tabs y notificaciones -->
+            <div class="border rounded-3 bg-white">
+                <ul class="nav nav-tabs nav-fill border-bottom" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#pendientes">
+                            <i class="bi bi-clock-history text-warning"></i> Pendientes
+                            <span class="badge bg-warning text-dark ms-2">3</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#enviados">
+                            <i class="bi bi-send text-primary"></i> Enviados
+                            <span class="badge bg-primary ms-2">5</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#firmados">
+                            <i class="bi bi-check-circle text-success"></i> Firmados
+                            <span class="badge bg-success ms-2">8</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#incumplimientos">
+                            <i class="bi bi-exclamation-triangle text-danger"></i> Incumplimientos
+                            <span class="badge bg-danger ms-2">2</span>
+                        </button>
+                    </li>
+                </ul>
+                <div class="tab-content p-3">
+                    <div class="tab-pane fade show active" id="pendientes">
+                        <!-- Oficio Demo 1 -->
+                        <div class="notification-item mb-3 border-bottom pb-3">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-warning text-dark me-2">Urgente</span>
+                                        <h6 class="mb-0">SNIE/2024/0123</h6>
+                                    </div>
+                                    <h5>Actualización Series Energéticas Q1</h5>
+                                    <p class="text-muted">Actualización primer trimestre 2024</p>
+                                    <div class="d-flex align-items-center text-muted small">
+                                        <i class="bi bi-calendar-event me-1"></i> 30/04/2024
+                                        <span class="mx-2">|</span>
+                                        <i class="bi bi-building me-1"></i> SENER
+                                    </div>
+                                </div>
+                                <div class="btn-group align-self-start">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="verDetalles('0123')">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-success" onclick="firmarOficio('0123')">
+                                        <i class="bi bi-pen"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Oficio Demo 2 -->
+                        <div class="notification-item mb-3 border-bottom pb-3">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-warning text-dark me-2">Pendiente</span>
+                                        <h6 class="mb-0">SNIE/2024/0124</h6>
+                                    </div>
+                                    <h5>Validación Balance Energético</h5>
+                                    <p class="text-muted">Revisión de cifras preliminares</p>
+                                    <div class="d-flex align-items-center text-muted small">
+                                        <i class="bi bi-calendar-event me-1"></i> 15/05/2024
+                                        <span class="mx-2">|</span>
+                                        <i class="bi bi-building me-1"></i> CFE
+                                    </div>
+                                </div>
+                                <div class="btn-group align-self-start">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="verDetalles('0124')">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-success" onclick="firmarOficio('0124')">
+                                        <i class="bi bi-pen"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Enviados -->
+                    <div class="tab-pane fade" id="enviados">
+                        <!-- Oficio Enviado Demo -->
+                        <div class="notification-item mb-3 border-bottom pb-3">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-primary me-2">Enviado</span>
+                                        <h6 class="mb-0">SNIE/2024/0120</h6>
+                                    </div>
+                                    <h5>Solicitud Actualización Datos</h5>
+                                    <p class="text-muted">Requerimiento información mensual</p>
+                                    <div class="d-flex align-items-center text-muted small">
+                                        <i class="bi bi-calendar-event me-1"></i> 10/04/2024
+                                        <span class="mx-2">|</span>
+                                        <i class="bi bi-building me-1"></i> PEMEX
+                                    </div>
+                                </div>
+                                <div class="btn-group align-self-start">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="verDetalles('0120')">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Firmados -->
+                    <div class="tab-pane fade" id="firmados">
+                        <div class="notification-item mb-3 border-bottom pb-3">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-success me-2">Firmado</span>
+                                        <h6 class="mb-0">SNIE/2024/0118</h6>
+                                    </div>
+                                    <h5>Confirmación de Recepción</h5>
+                                    <p class="text-muted">Acuse de datos recibidos Q4 2023</p>
+                                    <div class="d-flex align-items-center text-muted small">
+                                        <i class="bi bi-calendar-event me-1"></i> 05/04/2024
+                                        <span class="mx-2">|</span>
+                                        <i class="bi bi-building me-1"></i> SENER
+                                    </div>
+                                </div>
+                                <div class="btn-group align-self-start">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="verDetalles('0118')">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <a href="/documents/demo_acuse.pdf" target="_blank" class="btn btn-sm btn-outline-success">
+                                        <i class="bi bi-file-pdf"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Incumplimientos -->
+                    <div class="tab-pane fade" id="incumplimientos">
+                        <div class="notification-item mb-3 border-bottom pb-3">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-danger me-2">Vencido</span>
+                                        <h6 class="mb-0">SNIE/2024/0115</h6>
+                                    </div>
+                                    <h5>Requerimiento Datos Faltantes</h5>
+                                    <p class="text-muted">Información pendiente de entregar</p>
+                                    <div class="d-flex align-items-center text-muted small">
+                                        <i class="bi bi-calendar-event me-1"></i> 01/04/2024
+                                        <span class="mx-2">|</span>
+                                        <i class="bi bi-building me-1"></i> CFE
+                                    </div>
+                                </div>
+                                <div class="btn-group align-self-start">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="verDetalles('0115')">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <!-- Panel lateral sin card -->
+            <div class="border rounded-3 bg-white p-3">
+                <h6 class="border-bottom pb-2">Resumen de Oficios</h6>
+                <div class="d-flex justify-content-between align-items-center my-3">
+                    <span>Pendientes</span>
+                    <span class="badge bg-warning text-dark">3</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center my-3">
+                    <span>Por vencer</span>
+                    <span class="badge bg-danger">2</span>
+                </div>
+                <div class="progress" style="height: 8px;">
+                    <div class="progress-bar bg-success" style="width: 60%"></div>
+                    <div class="progress-bar bg-warning" style="width: 25%"></div>
+                    <div class="progress-bar bg-danger" style="width: 15%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Modal: Nueva Notificación -->
+<div class="modal fade" id="modalNuevaNotificacion" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Nueva Notificación</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formNuevaNotificacion" class="needs-validation" novalidate>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Número de Oficio</label>
+                            <input type="text" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Dependencia</label>
+                            <select class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                <option>SENER</option>
+                                <option>CFE</option>
+                                <option>PEMEX</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Asunto</label>
+                            <input type="text" class="form-control" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Descripción</label>
+                            <textarea class="form-control" rows="3" required></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fecha Límite</label>
+                            <input type="date" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Prioridad</label>
+                            <select class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                <option>Alta</option>
+                                <option>Media</option>
+                                <option>Baja</option>
+                            </select>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="enviarNotificacion()">Enviar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Firma Digital -->
+<div class="modal fade" id="modalFirma" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Firma Digital</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formFirma" class="needs-validation" novalidate>
+                    <div class="mb-3">
+                        <label class="form-label">Archivo .cer</label>
+                        <input type="file" class="form-control" accept=".cer" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Archivo .key</label>
+                        <input type="file" class="form-control" accept=".key" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña</label>
+                        <input type="password" class="form-control" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" onclick="procesarFirma()">Firmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function verDetalles(numeroOficio) {
+            const detalles = obtenerDetallesOficio(numeroOficio);
+            
+            Swal.fire({
+                title: `Oficio ${numeroOficio}`,
+                html: `
+                    <div class="card border-0">
+                        <div class="card-body">
+                            <h6 class="border-bottom pb-2 mb-3">${detalles.titulo}</h6>
+                            <div class="row mb-3">
+                                <div class="col-4 text-muted">Dependencia:</div>
+                                <div class="col-8">${detalles.dependencia}</div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-4 text-muted">Fecha:</div>
+                                <div class="col-8">${detalles.fecha}</div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-4 text-muted">Estado:</div>
+                                <div class="col-8">
+                                    <span class="badge bg-${detalles.estadoColor}">
+                                        ${detalles.estado}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-12">
+                                    <p class="text-muted mb-2">Descripción:</p>
+                                    <p>${detalles.descripcion}</p>
+                                </div>
+                            </div>
+                            ${detalles.acuse ? `
+                                <div class="text-end">
+                                    <a href="${detalles.acuse}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-file-pdf"></i> Ver Acuse
+                                    </a>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `,
+                width: '600px',
+                showConfirmButton: false,
+                showCloseButton: true
+            });
+        }
+
+        function obtenerDetallesOficio(numeroOficio) {
+            // Simulación de datos
+            const oficios = {
+                '0123': {
+                    titulo: 'Actualización Series Energéticas Q1',
+                    dependencia: 'SENER',
+                    fecha: '30/04/2024',
+                    estado: 'Pendiente',
+                    estadoColor: 'warning',
+                    descripcion: 'Se requiere la actualización de las series de tiempo correspondientes al primer trimestre del 2024. Los datos deben cumplir con los lineamientos establecidos en el manual de procedimientos.',
+                    acuse: null
+                },
+                '0124': {
+                    titulo: 'Validación Balance Energético',
+                    dependencia: 'CFE',
+                    fecha: '15/05/2024',
+                    estado: 'Pendiente',
+                    estadoColor: 'warning',
+                    descripcion: 'Revisión y validación de las cifras preliminares del Balance Nacional de Energía correspondiente al periodo indicado.',
+                    acuse: null
+                },
+                '0120': {
+                    titulo: 'Solicitud Actualización Datos',
+                    dependencia: 'PEMEX',
+                    fecha: '10/04/2024',
+                    estado: 'Enviado',
+                    estadoColor: 'primary',
+                    descripcion: 'Requerimiento de información mensual sobre producción y consumo de hidrocarburos.',
+                    acuse: '/documents/demo_acuse.pdf'
+                },
+                // Más casos demo...
+            };
+
+            return oficios[numeroOficio] || {
+                titulo: 'Oficio no encontrado',
+                dependencia: '-',
+                fecha: '-',
+                estado: 'No disponible',
+                estadoColor: 'secondary',
+                descripcion: 'No se encontraron detalles para este oficio.',
+                acuse: null
+            };
+        }
+
+        function firmarOficio(numeroOficio) {
+            $('#modalFirma').modal('show');
+        }
+
+        function procesarFirma() {
+            Swal.fire({
+                title: 'Procesando firma...',
+                html: '<div class="progress"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div></div>',
+                showConfirmButton: false,
+                allowOutsideClick: false,
+                didOpen: () => {
+                    const bar = Swal.getHtmlContainer().querySelector('.progress-bar');
+                    let progress = 0;
+                    const timer = setInterval(() => {
+                        progress += 10;
+                        bar.style.width = progress + '%';
+                        if (progress >= 100) {
+                            clearInterval(timer);
+                            Swal.fire({
+                                icon: 'success',
+                                title: '¡Firmado exitosamente!',
+                                text: 'Se ha generado el acuse correspondiente',
+                                confirmButtonText: 'Ver Acuse'
+                            }).then((result) => {
+                                if (result.isConfirmed) {
+                                    window.open('/documents/demo_acuse.pdf', '_blank');
+                                }
+                            });
+                        }
+                    }, 200);
+                }
+            });
+        }
+
+        function enviarNotificacion() {
+            // Implementar envío
+        }
+    </script>
+}
+

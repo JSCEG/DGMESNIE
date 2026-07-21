@@ -1,0 +1,1294 @@
+@model NSIE.Models.PamLoteAnalisisViewModel
+
+@{
+    ViewData["Title"] = $"Análisis del lote {Model.Lote.LoteId}";
+    var ejecucion = Model.EjecucionActual;
+    var progreso = Math.Clamp(ejecucion?.ProgresoPorcentaje ?? 0m, 0m, 100m);
+    var decisionSuccessMessage = TempData["PamDecisionSuccess"] as string;
+    var decisionErrorMessage = TempData["PamDecisionError"] as string;
+    var successMessage = decisionSuccessMessage
+        ?? TempData["PamAnalisisSuccess"] as string
+        ?? TempData["PamActualizacionSuccess"] as string;
+    var errorMessage = decisionErrorMessage ?? TempData["PamAnalisisError"] as string;
+
+    string ClaseEstado(string estado)
+    {
+        var valor = (estado ?? string.Empty).ToLowerInvariant();
+        if (valor.Contains("error") || valor.Contains("rechaz")) return "is-error";
+        if (valor.Contains("observ")) return "is-observed";
+        if (valor.Contains("complet") || valor.Contains("extraído")) return "is-success";
+        if (valor.Contains("convers")) return "is-warning";
+        if (valor.Contains("ejecut") || valor.Contains("proces") || valor.Contains("extray")) return "is-running";
+        return "is-pending";
+    }
+
+    string FormatearTamano(long bytes)
+    {
+        if (bytes >= 1024L * 1024L * 1024L) return $"{bytes / (1024d * 1024d * 1024d):N1} GB";
+        if (bytes >= 1024L * 1024L) return $"{bytes / (1024d * 1024d):N1} MB";
+        return $"{Math.Max(0, bytes) / 1024d:N0} KB";
+    }
+
+    string FormatearConfianza(decimal? confianza)
+    {
+        if (!confianza.HasValue) return "Sin calificar";
+        var porcentaje = confianza.Value <= 1m ? confianza.Value * 100m : confianza.Value;
+        return $"{Math.Clamp(porcentaje, 0m, 100m):N0}%";
+    }
+
+    List<string> SepararClaves(string valor)
+    {
+        if (string.IsNullOrWhiteSpace(valor)) return new List<string> { "Sin clave" };
+        var claves = valor
+            .Split(new[] { '\r', '\n', ';', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return claves.Count == 0 ? new List<string> { "Sin clave" } : claves;
+    }
+
+    string ResumirClaves(string valor)
+    {
+        var claves = SepararClaves(valor);
+        if (claves.Count <= 2) return string.Join(" · ", claves);
+        return $"{claves[0]} · {claves[1]} +{claves.Count - 2} más";
+    }
+
+    string EtiquetaCampo(string campo) => campo switch
+    {
+        "NombreProyecto" => "Nombre del proyecto",
+        "GRT" => "Región de transmisión",
+        "EtapaProyecto" => "Etapa del proyecto",
+        "FechaNecesaria" => "Fecha necesaria",
+        "FeoFactible" => "Fecha de entrada en operación",
+        "MontoProyectoMdp" => "Inversión (MDP)",
+        "EstadoRealProyecto" => "Estado reportado",
+        "EstadoVigenciaCartera" => "Vigencia en cartera",
+        "AnioInstruccion" => "Año de instrucción",
+        null or "" => "Registro completo",
+        _ => campo
+    };
+
+    string ClaseProyecto(PamProyectoCambiosVista proyecto)
+    {
+        if (proyecto.EsAlta || proyecto.TieneBaja || proyecto.TieneReactivacion) return "is-priority";
+        if (proyecto.TotalPrioritarios > 0) return "is-priority";
+        if (proyecto.TotalPorCompletar > 0) return "is-complete";
+        if (proyecto.TotalInformativos > 0 && proyecto.TotalOtros == 0) return "is-informative";
+        if (proyecto.TotalEquivalentes > 0 && proyecto.TotalOtros == 0) return "is-equivalent";
+        return "is-other";
+    }
+
+    string EtiquetaProyecto(PamProyectoCambiosVista proyecto)
+    {
+        if (proyecto.EsAlta) return "Alta potencial";
+        if (proyecto.TieneBaja) return "Baja propuesta";
+        if (proyecto.TieneReactivacion) return "Reactivación";
+        if (proyecto.TotalPrioritarios > 0) return "Revisión prioritaria";
+        if (proyecto.TotalPorCompletar > 0) return "Datos por completar";
+        if (proyecto.TotalInformativos > 0 && proyecto.TotalOtros == 0) return "Revisión informativa";
+        if (proyecto.TotalEquivalentes > 0 && proyecto.TotalOtros == 0) return "Equivalencia detectada";
+        return "Otros cambios";
+    }
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 pam-analysis-page">
+    <div class="pam-analysis-nav">
+        <a asp-action="NuevaActualizacion" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Volver a actualizaciones
+        </a>
+        <div class="pam-analysis-nav__actions">
+            <a asp-action="PrepararAplicacion" asp-route-loteId="@Model.Lote.LoteId" class="btn btn-primary">
+                <i class="fas fa-list-check me-2"></i>Preparar aplicación
+            </a>
+            <a asp-action="Index" class="btn btn-link pam-dashboard-link">
+                <i class="fas fa-table-columns me-2"></i>Dashboard de proyectos
+            </a>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert pam-analysis-alert is-success" role="status">
+            <i class="fas fa-circle-check"></i><span>@successMessage</span>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert pam-analysis-alert is-error" role="alert">
+            <i class="fas fa-triangle-exclamation"></i><span>@errorMessage</span>
+        </div>
+    }
+
+    <section class="pam-analysis-hero">
+        <div class="pam-analysis-hero__main">
+            <div class="pam-analysis-eyebrow">Lote documental #@Model.Lote.LoteId</div>
+            <h2>@Model.Lote.Nombre</h2>
+            <p>@(string.IsNullOrWhiteSpace(Model.Lote.Notas) ? "Sin notas adicionales para este corte." : Model.Lote.Notas)</p>
+            <div class="pam-analysis-meta">
+                <span><i class="fas fa-calendar-day"></i>Corte @Model.Lote.FechaCorte.ToString("dd MMM yyyy")</span>
+                <span><i class="fas fa-file-lines"></i>@Model.Lote.TotalArchivos archivo(s)</span>
+                <span><i class="fas fa-user"></i>@(Model.Lote.UsuarioNombre ?? "Usuario no identificado")</span>
+                <span><i class="fas fa-clock"></i>@Model.Lote.FechaRegistroUtc.ToString("dd MMM yyyy HH:mm") UTC</span>
+            </div>
+        </div>
+        <div class="pam-analysis-hero__status">
+            <span class="pam-status @ClaseEstado(Model.Lote.Estado)">@Model.Lote.Estado</span>
+            <small>UID @Model.Lote.LoteUid.ToString("N")[..8]</small>
+            @if (!Model.AnalisisActivo && Model.Fuentes.Count > 0
+                && (Model.EjecucionActual == null || string.Equals(Model.EjecucionActual.Estado, "Error", StringComparison.OrdinalIgnoreCase)))
+            {
+                <form asp-action="SolicitarAnalisis" asp-route-loteId="@Model.Lote.LoteId" method="post" class="pam-analysis-request-form">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-magnifying-glass-chart me-2"></i>Analizar archivos
+                    </button>
+                </form>
+            }
+            else if (Model.AnalisisActivo)
+            {
+                <span class="pam-analysis-lock"><i class="fas fa-spinner fa-spin"></i>Análisis en curso</span>
+            }
+        </div>
+    </section>
+
+    <section class="card border-0 shadow-sm pam-analysis-card">
+        <div class="pam-section-heading">
+            <div>
+                <span class="pam-analysis-eyebrow">Fuentes preservadas</span>
+                <h3>Archivos del lote</h3>
+            </div>
+            <span class="pam-section-count">@Model.Fuentes.Count archivo(s)</span>
+        </div>
+
+        @if (Model.Fuentes.Count == 0)
+        {
+            <div class="pam-analysis-empty">
+                <i class="fas fa-file-circle-xmark"></i>
+                <strong>Este lote no tiene archivos asociados.</strong>
+                <span>No es posible iniciar el análisis hasta registrar una fuente.</span>
+            </div>
+        }
+        else
+        {
+            <div class="pam-source-list">
+                @foreach (var fuente in Model.Fuentes)
+                {
+                    <article>
+                        <div class="pam-source-kind">@((fuente.Extension ?? "archivo").TrimStart('.').ToUpperInvariant())</div>
+                        <div class="pam-source-name">
+                            <strong title="@fuente.NombreOriginal">@fuente.NombreOriginal</strong>
+                            <small>@FormatearTamano(fuente.TamanoBytes) · Firma @(fuente.FirmaValidada ? "validada" : "pendiente")</small>
+                        </div>
+                        <div class="pam-source-state">
+                            <span class="pam-status @ClaseEstado(fuente.EstadoExtraccion)">@fuente.EstadoExtraccion</span>
+                            @if (!string.IsNullOrWhiteSpace(fuente.MensajeExtraccion))
+                            {
+                                <small>@fuente.MensajeExtraccion</small>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    @if (ejecucion != null)
+    {
+        <section class="card border-0 shadow-sm pam-analysis-card pam-progress-card" id="pam-analysis-execution" aria-live="polite">
+            <div class="pam-section-heading">
+                <div>
+                    <span class="pam-analysis-eyebrow">Ejecución #@ejecucion.AnalisisId</span>
+                    <h3 id="pam-analysis-state">@ejecucion.Estado</h3>
+                </div>
+                <span class="pam-status @ClaseEstado(ejecucion.Estado)" id="pam-analysis-badge">@ejecucion.Estado</span>
+            </div>
+            <div class="pam-progress-meta">
+                <span id="pam-analysis-count">@ejecucion.FuentesProcesadas de @ejecucion.TotalFuentes fuentes</span>
+                <strong id="pam-analysis-percent">@progreso.ToString("N0")%</strong>
+            </div>
+            <div class="progress pam-analysis-progress" role="progressbar" aria-label="Progreso del análisis"
+                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="@progreso" id="pam-analysis-progress">
+                <div class="progress-bar" style="width:@progreso.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></div>
+            </div>
+            <p id="pam-analysis-message">@(ejecucion.Mensaje ?? "La ejecución no registró un mensaje adicional.")</p>
+            <div class="pam-execution-dates">
+                <span>Solicitado @ejecucion.FechaSolicitudUtc.ToString("dd MMM HH:mm") UTC</span>
+                @if (ejecucion.FechaInicioUtc.HasValue) { <span>Iniciado @ejecucion.FechaInicioUtc.Value.ToString("dd MMM HH:mm") UTC</span> }
+                @if (ejecucion.FechaFinUtc.HasValue) { <span>Finalizado @ejecucion.FechaFinUtc.Value.ToString("dd MMM HH:mm") UTC</span> }
+            </div>
+        </section>
+    }
+    else
+    {
+        <section class="pam-ready-note">
+            <i class="fas fa-shield-halved"></i>
+            <div>
+                <strong>El análisis todavía no se ha solicitado.</strong>
+                <span>Al iniciarlo se extraerá información y se propondrán diferencias; ningún proyecto se modifica en esta fase.</span>
+            </div>
+        </section>
+    }
+
+    <section class="pam-analysis-kpis" aria-label="Resumen del análisis">
+        <article><span>Referencias detectadas</span><strong>@Model.Resumen.RegistrosDetectados.ToString("N0")</strong><i class="fas fa-list-check"></i></article>
+        <article><span>Coincidencias con SQL</span><strong>@Model.Resumen.CoincidenciasExactas.ToString("N0")</strong><i class="fas fa-link"></i></article>
+        <article><span>Diferencias de campo</span><strong>@Model.Resumen.CambiosPropuestos.ToString("N0")</strong><i class="fas fa-code-compare"></i></article>
+        <article><span>Altas potenciales</span><strong>@Model.Resumen.AltasPropuestas.ToString("N0")</strong><i class="fas fa-circle-plus"></i></article>
+        <article><span>Observados</span><strong>@Model.Resumen.Observados.ToString("N0")</strong><i class="fas fa-eye"></i></article>
+        <article><span>Sin coincidencia</span><strong>@Model.Resumen.ClavesNoEncontradas.ToString("N0")</strong><i class="fas fa-circle-question"></i></article>
+    </section>
+
+    <section class="card border-0 shadow-sm pam-analysis-card pam-changes-card">
+        <div class="pam-section-heading pam-review-heading">
+            <div>
+                <span class="pam-analysis-eyebrow">Comparación contra SQL</span>
+                <h3>Revisión agrupada por proyecto</h3>
+                <p>
+                    <strong>@Model.TotalProyectos.ToString("N0") proyecto(s)</strong>
+                    · @Model.TotalCambios.ToString("N0") diferencia(s) contenidas en esos proyectos
+                </p>
+                <small>Al guardar una clasificación, la tarjeta sale de Pendientes y queda disponible en Revisadas. Este cierre no modifica todavía la cartera maestra.</small>
+            </div>
+            <form asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId" method="get" class="pam-project-search" role="search">
+                <label for="pam-project-search">Buscar proyecto</label>
+                <div>
+                    <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                    <input id="pam-project-search" name="busqueda" type="search" class="form-control"
+                           value="@Model.Filtro.Busqueda" placeholder="Clave o nombre" maxlength="200" />
+                    <button type="submit" class="btn btn-primary">Buscar</button>
+                </div>
+                <input type="hidden" name="categoria" value="@Model.Filtro.Categoria" />
+                @if (!string.IsNullOrWhiteSpace(Model.Filtro.Tipo))
+                {
+                    <input type="hidden" name="tipo" value="@Model.Filtro.Tipo" />
+                }
+                <input type="hidden" name="estadoRevision" value="@Model.Filtro.EstadoRevision" />
+                <input type="hidden" name="pagina" value="1" />
+            </form>
+        </div>
+
+        <details class="pam-pem-guide" open>
+            <summary>
+                <span><i class="fas fa-compass" aria-hidden="true"></i><strong>Guía rápida para clasificar claves PEM</strong></span>
+                <small>@Model.Resumen.RelacionesJerarquiaValidadas relación(es) padre-hijo validada(s) en la cartera</small>
+            </summary>
+            <div class="pam-pem-guide__body">
+                <section aria-labelledby="pam-key-guide-title">
+                    <h4 id="pam-key-guide-title">Cómo leer la clave</h4>
+                    <div class="pam-key-anatomy" aria-label="Ejemplo P 15 BS 1: familia, año, región y consecutivo">
+                        <span><strong>P</strong><small>Familia</small></span>
+                        <span><strong>15</strong><small>Año</small></span>
+                        <span><strong>BS</strong><small>Región</small></span>
+                        <span><strong>1</strong><small>Consecutivo</small></span>
+                    </div>
+                    <p><strong>PEM</strong> significa Proyecto Elemental Mínimo: puede agrupar varias obras que funcionan como una solución.</p>
+                    <div class="pam-key-codes">
+                        <span><code>P</code> Ampliación RNT</span>
+                        <span><code>M</code> Modernización RNT</span>
+                        <span><code>D</code> Ampliación RGD</span>
+                        <span><code>I</code> Solución integrada; confirmar alcance en la fuente</span>
+                        <span><code>CFE</code> Clave de seguimiento; no define jerarquía</span>
+                    </div>
+                    <p class="pam-key-regions"><strong>Regiones:</strong> BC Baja California · BS Baja California Sur · CE Central · NE Noreste · NO Noroeste · NT Norte · OC Occidental · OR Oriental · PE Peninsular.</p>
+                </section>
+                <section aria-labelledby="pam-classification-guide-title">
+                    <h4 id="pam-classification-guide-title">Qué clasificación usar</h4>
+                    <ul class="pam-classification-guide">
+                        <li><span class="is-link">Vincular existente</span><p>Mismo proyecto oficial, aunque tenga otra clave, nombre o varios PEM en una sola fila.</p></li>
+                        <li><span class="is-family">Padre-hijo</span><p>Sólo si son dos proyectos distintos y la fuente declara que uno es componente del otro.</p></li>
+                        <li><span class="is-new">Alta real</span><p>No existe coincidencia después de cotejar clave, nombre, región y fuente.</p></li>
+                        <li><span class="is-discard">Descartar</span><p>No es un proyecto incorporable o el hallazgo proviene de ruido de extracción.</p></li>
+                    </ul>
+                    <div class="pam-pem-warning"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i><strong>Varias claves PEM en la misma fila del PAM no son hijos:</strong> pertenecen al mismo proyecto y se vinculan al registro existente.</div>
+                </section>
+            </div>
+        </details>
+
+        <nav class="pam-review-state-filters" aria-label="Filtrar proyectos por estado de revisión">
+            <span>Estado de revisión</span>
+            <a class="@(Model.Filtro.EstadoRevision == "Pendiente" ? "is-active" : null)"
+               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+               asp-route-categoria="@Model.Filtro.Categoria" asp-route-tipo="@Model.Filtro.Tipo"
+               asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-estadoRevision="Pendiente" asp-route-pagina="1"
+               aria-current="@(Model.Filtro.EstadoRevision == "Pendiente" ? "page" : null)">
+                <i class="fas fa-hourglass-half" aria-hidden="true"></i><span>Pendientes</span>
+                <strong>@Model.Resumen.ProyectosRevisionPendiente.ToString("N0")</strong>
+            </a>
+            <a class="@(Model.Filtro.EstadoRevision == "Revisada" ? "is-active" : null)"
+               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+               asp-route-categoria="@Model.Filtro.Categoria" asp-route-tipo="@Model.Filtro.Tipo"
+               asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-estadoRevision="Revisada" asp-route-pagina="1"
+               aria-current="@(Model.Filtro.EstadoRevision == "Revisada" ? "page" : null)">
+                <i class="fas fa-circle-check" aria-hidden="true"></i><span>Revisadas</span>
+                <strong>@Model.Resumen.ProyectosRevisionCerrada.ToString("N0")</strong>
+            </a>
+        </nav>
+
+        <nav class="pam-review-filters" aria-label="Filtrar proyectos por tipo de revisión">
+            <a class="@(Model.Filtro.Categoria == "Todos" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "is-active" : null)"
+               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+               asp-route-categoria="Todos" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-estadoRevision="@Model.Filtro.EstadoRevision" asp-route-pagina="1"
+               aria-current="@(Model.Filtro.Categoria == "Todos" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "page" : null)">
+                <i class="fas fa-layer-group" aria-hidden="true"></i><span>Todos</span>
+                <span class="pam-filter-count">@Model.ConteoFiltroActual("Todos").ToString("N0")</span>
+            </a>
+            <a class="@(Model.Filtro.Categoria == "Prioritario" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "is-active" : null)"
+               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+               asp-route-categoria="Prioritario" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-estadoRevision="@Model.Filtro.EstadoRevision" asp-route-pagina="1"
+               aria-current="@(Model.Filtro.Categoria == "Prioritario" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "page" : null)">
+                <i class="fas fa-triangle-exclamation" aria-hidden="true"></i><span>Prioritarios</span>
+                <span class="pam-filter-count">@Model.ConteoFiltroActual("Prioritario").ToString("N0")</span>
+            </a>
+            <a class="@(Model.Filtro.Categoria == "Informativo" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "is-active" : null)"
+               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+               asp-route-categoria="Informativo" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-estadoRevision="@Model.Filtro.EstadoRevision" asp-route-pagina="1"
+               aria-current="@(Model.Filtro.Categoria == "Informativo" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "page" : null)">
+                 <i class="fas fa-circle-info" aria-hidden="true"></i><span>Informativos</span>
+                 <span class="pam-filter-count">@Model.ConteoFiltroActual("Informativo").ToString("N0")</span>
+            </a>
+            <a class="@(Model.Filtro.Categoria == "Completar" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "is-active" : null)"
+               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+               asp-route-categoria="Completar" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-estadoRevision="@Model.Filtro.EstadoRevision" asp-route-pagina="1"
+               aria-current="@(Model.Filtro.Categoria == "Completar" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "page" : null)">
+                 <i class="fas fa-file-circle-plus" aria-hidden="true"></i><span>Completar datos</span>
+                 <span class="pam-filter-count">@Model.ConteoFiltroActual("Completar").ToString("N0")</span>
+            </a>
+            <a class="@(Model.Filtro.Categoria == "Equivalente" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "is-active" : null)"
+               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+               asp-route-categoria="Equivalente" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-estadoRevision="@Model.Filtro.EstadoRevision" asp-route-pagina="1"
+               aria-current="@(Model.Filtro.Categoria == "Equivalente" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "page" : null)">
+                 <i class="fas fa-equals" aria-hidden="true"></i><span>Equivalentes</span>
+                 <span class="pam-filter-count">@Model.ConteoFiltroActual("Equivalente").ToString("N0")</span>
+            </a>
+            <a class="@(Model.Filtro.Categoria == "Otros" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "is-active" : null)"
+               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+               asp-route-categoria="Otros" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-estadoRevision="@Model.Filtro.EstadoRevision" asp-route-pagina="1"
+               aria-current="@(Model.Filtro.Categoria == "Otros" && string.IsNullOrWhiteSpace(Model.Filtro.Tipo) ? "page" : null)">
+                <i class="fas fa-ellipsis" aria-hidden="true"></i><span>Otros</span>
+                <span class="pam-filter-count">@Model.ConteoFiltroActual("Otros").ToString("N0")</span>
+            </a>
+            <a class="@(Model.Filtro.Tipo == "Alta" ? "is-active" : null)"
+               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+               asp-route-tipo="Alta" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-estadoRevision="@Model.Filtro.EstadoRevision" asp-route-pagina="1"
+                aria-current="@(Model.Filtro.Tipo == "Alta" ? "page" : null)">
+                <i class="fas fa-circle-plus" aria-hidden="true"></i><span>Altas</span>
+                <span class="pam-filter-count">@Model.ConteoFiltroActual("Alta").ToString("N0")</span>
+            </a>
+        </nav>
+
+        @if (!string.IsNullOrWhiteSpace(Model.Filtro.Busqueda))
+        {
+            <div class="pam-active-search" role="status">
+                <span>Resultados para <strong>“@Model.Filtro.Busqueda”</strong></span>
+                <a asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+                   asp-route-categoria="@Model.Filtro.Categoria" asp-route-tipo="@Model.Filtro.Tipo" asp-route-estadoRevision="@Model.Filtro.EstadoRevision" asp-route-pagina="1">
+                    Limpiar búsqueda
+                </a>
+            </div>
+        }
+
+        @if (Model.Proyectos.Count == 0)
+        {
+            <div class="pam-analysis-empty">
+                <i class="fas fa-folder-open" aria-hidden="true"></i>
+                <strong>@(Model.Filtro.EstadoRevision == "Revisada" ? "No hay revisiones cerradas para mostrar." : "No quedan revisiones pendientes con este filtro.")</strong>
+                <span>Pruebe otro filtro o cambie entre Pendientes y Revisadas. El análisis original permanece sin cambios.</span>
+            </div>
+        }
+        else
+        {
+            var gruposVisuales = new List<List<int>>();
+            for (var indice = 0; indice < Model.Proyectos.Count; indice++)
+            {
+                var actual = Model.Proyectos[indice];
+                var claveFamiliaActual = actual.AltaDatos?.ClaveFamiliaProbable;
+                var seIntegraAlAnterior = gruposVisuales.Count > 0
+                    && actual.EsAlta
+                    && !string.IsNullOrWhiteSpace(claveFamiliaActual)
+                    && Model.Proyectos[gruposVisuales[^1][^1]].EsAlta
+                    && string.Equals(
+                        Model.Proyectos[gruposVisuales[^1][^1]].AltaDatos?.ClaveFamiliaProbable,
+                        claveFamiliaActual,
+                        StringComparison.Ordinal);
+
+                if (seIntegraAlAnterior)
+                    gruposVisuales[^1].Add(indice);
+                else
+                    gruposVisuales.Add(new List<int> { indice });
+            }
+
+            <div class="pam-project-list">
+                @for (var indiceGrupo = 0; indiceGrupo < gruposVisuales.Count; indiceGrupo++)
+                {
+                    var indicesGrupo = gruposVisuales[indiceGrupo];
+                    var proyectoCabecera = Model.Proyectos[indicesGrupo[0]];
+                    var altaFamilia = proyectoCabecera.AltaDatos;
+                    var esFamiliaProbable = proyectoCabecera.EsAlta && altaFamilia?.EsFamiliaProbable == true;
+                    var familiaTitleId = $"pam-family-title-{Model.Filtro.Pagina}-{indiceGrupo}";
+                    var familiaHelpId = $"pam-family-help-{Model.Filtro.Pagina}-{indiceGrupo}";
+
+                    <section class="pam-family-group @(esFamiliaProbable ? "is-family" : null)"
+                             role="@(esFamiliaProbable ? "group" : null)"
+                             aria-labelledby="@(esFamiliaProbable ? familiaTitleId : null)"
+                             aria-describedby="@(esFamiliaProbable ? familiaHelpId : null)">
+                        @if (esFamiliaProbable)
+                        {
+                            var clavesVisibles = altaFamilia.ClavesMismoNombre.Take(12).ToList();
+                            <header class="pam-family-header">
+                                <div class="pam-family-heading">
+                                    <span class="pam-analysis-eyebrow"><i class="fas fa-code-branch" aria-hidden="true"></i>Familia / proyecto macro probable</span>
+                                    <h4 id="@familiaTitleId">@(altaFamilia.NombreProyecto ?? proyectoCabecera.NombreProyecto ?? "Proyecto por identificar")</h4>
+                                    <p id="@familiaHelpId">
+                                        El análisis separó <strong>@altaFamilia.TotalClavesMismoNombre claves distintas</strong> que la fuente reporta bajo este mismo nombre
+                                        y @indicesGrupo.Count se muestran en esta página. Es una agrupación de revisión, no una relación padre-hijo confirmada;
+                                        cada clave se clasifica por separado.
+                                    </p>
+                                    <div class="pam-family-keys" aria-label="Claves detectadas en esta familia probable">
+                                        @foreach (var claveFamilia in clavesVisibles)
+                                        {
+                                            <code>@claveFamilia</code>
+                                        }
+                                        @if (altaFamilia.ClavesMismoNombre.Count > clavesVisibles.Count)
+                                        {
+                                            <span>+@(altaFamilia.ClavesMismoNombre.Count - clavesVisibles.Count) más</span>
+                                        }
+                                    </div>
+                                </div>
+                                <span class="pam-family-count"><strong>@altaFamilia.TotalClavesMismoNombre</strong> claves relacionadas por nombre</span>
+                            </header>
+                        }
+
+                        @foreach (var indiceProyecto in indicesGrupo)
+                        {
+                            var proyecto = Model.Proyectos[indiceProyecto];
+                    var decisionPreliminar = proyecto.Decision;
+                    var bloques = new[]
+                    {
+                        new { Titulo = "Cambios prioritarios", Clase = "is-priority", Icono = "fa-triangle-exclamation", Cambios = proyecto.Prioritarios },
+                        new { Titulo = "Datos nuevos para completar", Clase = "is-complete", Icono = "fa-file-circle-plus", Cambios = proyecto.PorCompletar },
+                        new { Titulo = "Cambios informativos", Clase = "is-informative", Icono = "fa-circle-info", Cambios = proyecto.Informativos },
+                        new { Titulo = "Equivalencias o precisión menor", Clase = "is-equivalent", Icono = "fa-equals", Cambios = proyecto.Equivalentes },
+                        new { Titulo = "Otros cambios detectados", Clase = "is-other", Icono = "fa-ellipsis", Cambios = proyecto.Otros }
+                    };
+                    var confianzaMinima = proyecto.Cambios.Where(cambio => cambio.Confianza.HasValue)
+                        .Select(cambio => cambio.Confianza.Value)
+                        .DefaultIfEmpty()
+                        .Min();
+                    var tieneConfianza = proyecto.Cambios.Any(cambio => cambio.Confianza.HasValue);
+                    var cambioAltaId = proyecto.AltaDatos?.CambioPropuestoId;
+                    var esObjetivoRetorno = cambioAltaId.HasValue && Model.Filtro.Cambio == cambioAltaId.Value;
+                    var abrirProyecto = esObjetivoRetorno
+                        || (!Model.Filtro.Cambio.HasValue && indiceProyecto == 0 && proyecto.TotalPrioritarios > 0);
+
+                    <details id="@(cambioAltaId.HasValue ? $"pam-project-{cambioAltaId.Value}" : null)"
+                             class="pam-project-review @ClaseProyecto(proyecto) @(esFamiliaProbable ? "is-family-member" : null)" open="@(abrirProyecto ? "open" : null)">
+                        <summary class="pam-project-summary">
+                            <span class="pam-project-identity">
+                                <span class="pam-project-classification">@EtiquetaProyecto(proyecto)</span>
+                                <code>@(proyecto.ClaveProyecto ?? "Sin clave")</code>
+                                <strong>@(esFamiliaProbable ? "Clave individual para revisión" : proyecto.NombreProyecto ?? "Proyecto por identificar")</strong>
+                            </span>
+                            <span class="pam-project-metrics" aria-label="Resumen de diferencias">
+                                @if (proyecto.EsAlta)
+                                {
+                                    <span><strong>1</strong> registro recibido</span>
+                                    @if (proyecto.AltaDatos?.EsFamiliaProbable == true)
+                                    {
+                                        <span class="is-family"><strong>@proyecto.AltaDatos.TotalClavesMismoNombre</strong> en familia probable</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span><strong>@proyecto.TotalCambios</strong> campo(s)</span>
+                                    @if (proyecto.RevisionCamposCompleta)
+                                    {
+                                        <span class="is-decision"><i class="fas fa-circle-check" aria-hidden="true"></i>Campos revisados</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="is-priority"><strong>@proyecto.CamposPendientes</strong> por decidir</span>
+                                    }
+                                }
+                                @if (proyecto.TotalPrioritarios > 0) { <span class="is-priority">@proyecto.TotalPrioritarios prioritario(s)</span> }
+                                @if (proyecto.TotalPorCompletar > 0) { <span class="is-complete">@proyecto.TotalPorCompletar por completar</span> }
+                                @if (proyecto.TotalInformativos > 0) { <span class="is-informative">@proyecto.TotalInformativos informativo(s)</span> }
+                                @if (proyecto.TotalEquivalentes > 0) { <span class="is-equivalent">@proyecto.TotalEquivalentes equivalente(s)</span> }
+                                @if (proyecto.TotalOtros > 0) { <span>@proyecto.TotalOtros otro(s)</span> }
+                                @if (!string.IsNullOrWhiteSpace(decisionPreliminar?.Clasificacion))
+                                {
+                                    <span class="is-decision"><i class="fas fa-circle-check" aria-hidden="true"></i>Clasificada: <strong>@decisionPreliminar.Clasificacion</strong></span>
+                                }
+                                @if (tieneConfianza) { <span>@FormatearConfianza(confianzaMinima) confianza mínima</span> }
+                            </span>
+                            <i class="fas fa-chevron-down pam-project-chevron" aria-hidden="true"></i>
+                         </summary>
+                        @if (string.Equals(decisionPreliminar?.Estado, "Revisada", StringComparison.OrdinalIgnoreCase)
+                            && !string.IsNullOrWhiteSpace(decisionPreliminar.VersionDecision))
+                        {
+                            <div class="pam-summary-review-action">
+                                <span><i class="fas fa-circle-check" aria-hidden="true"></i>Revisión cerrada: @decisionPreliminar.Clasificacion</span>
+                                <form asp-action="ReabrirDecisionPreliminar" asp-route-loteId="@Model.Lote.LoteId" method="post" data-reopen-form>
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="CambioPropuestoId" value="@(cambioAltaId ?? 0)" />
+                                    <input type="hidden" name="RevisionId" value="@decisionPreliminar.RevisionId" />
+                                    <input type="hidden" name="VersionDecision" value="@decisionPreliminar.VersionDecision" />
+                                    <input type="hidden" name="PaginaRetorno" value="@Model.Filtro.Pagina" />
+                                    <input type="hidden" name="CategoriaRetorno" value="@Model.Filtro.Categoria" />
+                                    <input type="hidden" name="BusquedaRetorno" value="@Model.Filtro.Busqueda" />
+                                    <input type="hidden" name="TipoRetorno" value="@Model.Filtro.Tipo" />
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="fas fa-rotate-left me-1" aria-hidden="true"></i>Reabrir para corregir</button>
+                                </form>
+                            </div>
+                        }
+                        <div class="pam-project-body">
+                            @if (proyecto.EsAlta && proyecto.AltaDatos != null)
+                            {
+                                var alta = proyecto.AltaDatos;
+                                var decision = decisionPreliminar;
+                                var revisionCerrada = string.Equals(decision?.Estado, "Revisada", StringComparison.OrdinalIgnoreCase);
+                                var puedeClasificar = decision != null && !revisionCerrada && !string.IsNullOrWhiteSpace(decision.VersionDecision);
+                                var relacionadosIds = proyecto.Candidatos.Select(candidato => candidato.ProyectoId).ToHashSet();
+                                var candidatoVinculo = proyecto.Candidatos
+                                    .FirstOrDefault(candidato => candidato.ClasificacionSugerida == "Vincular existente");
+
+                                <div class="pam-project-guidance is-alta">
+                                    <i class="fas fa-shield-halved" aria-hidden="true"></i>
+                                    <span><strong>Revisión preliminar.</strong> La ficha proviene del archivo recibido. Guardar una clasificación sólo deja traza en el área de revisión; no crea, vincula ni modifica proyectos de la cartera.</span>
+                                </div>
+
+                                <section class="pam-alta-section" aria-labelledby="pam-alta-data-@alta.CambioPropuestoId">
+                                    <div class="pam-alta-heading">
+                                        <div>
+                                            <span class="pam-analysis-eyebrow">Información recibida</span>
+                                            <h4 id="pam-alta-data-@alta.CambioPropuestoId">Ficha del posible proyecto</h4>
+                                        </div>
+                                        <span class="pam-confidence">@FormatearConfianza(alta.Confianza) de extracción</span>
+                                    </div>
+                                    <dl class="pam-alta-data">
+                                        <div><dt>Clave recibida</dt><dd>@(alta.ClaveProyecto ?? "Sin clave")</dd></div>
+                                        <div class="is-wide"><dt>Proyecto</dt><dd>@(alta.NombreProyecto ?? "Nombre no extraído")</dd></div>
+                                        <div><dt>Región</dt><dd>@(alta.GRT ?? "Sin dato")</dd></div>
+                                        <div><dt>Etapa</dt><dd>@(alta.EtapaProyecto ?? "Sin dato")</dd></div>
+                                        <div><dt>Fecha necesaria</dt><dd>@(alta.FechaNecesaria ?? "Sin dato")</dd></div>
+                                        <div><dt>Entrada en operación</dt><dd>@(alta.FeoFactible ?? "Sin dato")</dd></div>
+                                        <div><dt>Inversión</dt><dd>@(alta.MontoProyectoMdp.HasValue ? $"{alta.MontoProyectoMdp.Value:N3} MDP" : "Sin dato")</dd></div>
+                                        <div><dt>Año de instrucción</dt><dd>@(alta.AnioInstruccion?.ToString() ?? "Sin dato")</dd></div>
+                                        <div class="is-wide"><dt>Estado reportado</dt><dd>@(alta.EstadoRealProyecto ?? "Sin dato")</dd></div>
+                                    </dl>
+                                    <div class="pam-alta-source">
+                                        <span><i class="fas fa-file-lines" aria-hidden="true"></i>@(alta.FuenteDocumento ?? "Fuente no indicada")</span>
+                                        <span><i class="fas fa-location-dot" aria-hidden="true"></i>@(alta.UbicacionFuente ?? "Sin ubicación interna")</span>
+                                    </div>
+                                    @if (alta.CamposAdicionales.Count > 0)
+                                    {
+                                        <details class="pam-alta-more">
+                                            <summary>Ver @alta.CamposAdicionales.Count dato(s) adicional(es) del archivo</summary>
+                                            <dl>
+                                                @foreach (var campo in alta.CamposAdicionales)
+                                                {
+                                                    <div><dt>@campo.Etiqueta</dt><dd>@campo.Valor</dd></div>
+                                                }
+                                            </dl>
+                                        </details>
+                                    }
+                                </section>
+
+                                <section class="pam-alta-section" aria-labelledby="pam-alta-candidates-@alta.CambioPropuestoId">
+                                    <div class="pam-alta-heading">
+                                        <div>
+                                            <span class="pam-analysis-eyebrow">Apoyo para cotejo</span>
+                                            <h4 id="pam-alta-candidates-@alta.CambioPropuestoId">Posibles coincidencias en la cartera</h4>
+                                            <p>Son sugerencias automáticas; confirme nombre, clave y región antes de relacionar.</p>
+                                        </div>
+                                        <span class="pam-section-count">@proyecto.Candidatos.Count sugerencia(s)</span>
+                                    </div>
+                                    @if (proyecto.Candidatos.Count == 0)
+                                    {
+                                        <div class="pam-alta-empty"><i class="fas fa-magnifying-glass"></i>No se encontró una coincidencia suficientemente cercana.</div>
+                                    }
+                                    else
+                                    {
+                                        <ol class="pam-candidate-list">
+                                            @foreach (var candidato in proyecto.Candidatos)
+                                            {
+                                                var clavesCandidato = SepararClaves(candidato.ClaveProyecto);
+                                                <li>
+                                                    <div class="pam-candidate-score"><strong>@candidato.Score.ToString("N0")%</strong><span>similitud</span></div>
+                                                    <div class="pam-candidate-main">
+                                                        <div class="pam-candidate-keys" aria-label="Claves de cartera sugeridas: @string.Join(", ", clavesCandidato)">
+                                                            <span>Cartera</span>
+                                                            @foreach (var claveCandidato in clavesCandidato)
+                                                            {
+                                                                <code>@claveCandidato</code>
+                                                            }
+                                                        </div>
+                                                        <strong>@(candidato.NombreProyecto ?? "Sin nombre")</strong>
+                                                        <small>@(candidato.GRT ?? "Sin región") · @(candidato.EtapaProyecto ?? "Sin etapa")</small>
+                                                        <span>@candidato.Motivo</span>
+                                                        @if (!string.IsNullOrWhiteSpace(candidato.ClasificacionSugerida))
+                                                        {
+                                                            <span class="pam-candidate-recommendation"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i>Sugerencia: @candidato.ClasificacionSugerida</span>
+                                                        }
+                                                    </div>
+                                                    <a asp-action="Detalle" asp-route-proyectoId="@candidato.ProyectoId" target="_blank" rel="noopener" aria-label="Abrir detalle de @string.Join(", ", clavesCandidato) en otra pestaña">
+                                                        Ver detalle <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                                                    </a>
+                                                </li>
+                                            }
+                                        </ol>
+                                    }
+                                </section>
+
+                                <section class="pam-alta-section pam-decision-section" aria-labelledby="pam-alta-decision-@alta.CambioPropuestoId">
+                                    <div class="pam-alta-heading">
+                                        <div>
+                                            <span class="pam-analysis-eyebrow">Criterio humano trazable</span>
+                                            <h4 id="pam-alta-decision-@alta.CambioPropuestoId">Clasificación preliminar</h4>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(decision?.Clasificacion))
+                                        {
+                                            <span class="pam-decision-current"><i class="fas fa-circle-check" aria-hidden="true"></i>@(revisionCerrada ? "Revisión cerrada" : "Guardada") · @decision.Clasificacion</span>
+                                        }
+                                    </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(decision?.Clasificacion))
+                                    {
+                                        <div class="pam-decision-history">
+                                            <div>
+                                                <strong>Última decisión registrada</strong>
+                                                @if (decision.ProyectoRelacionadoId.HasValue)
+                                                {
+                                                    <span>Relacionado con <code>@ResumirClaves(decision.ProyectoRelacionadoClave ?? decision.ProyectoRelacionadoId.ToString())</code> @(decision.ProyectoRelacionadoNombre)</span>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(decision.Nota))
+                                                {
+                                                    <span>Nota: @decision.Nota</span>
+                                                }
+                                            </div>
+                                            <small>@(decision.UsuarioNombre ?? "Usuario no identificado") · @(decision.FechaDecisionUtc?.ToString("dd MMM yyyy HH:mm 'UTC'") ?? "Fecha no disponible")</small>
+                                        </div>
+                                    }
+
+                                    @if (puedeClasificar)
+                                    {
+                                        @if (candidatoVinculo != null)
+                                        {
+                                            <div class="pam-decision-recommendation">
+                                                <i class="fas fa-link" aria-hidden="true"></i>
+                                                <span><strong>El cotejo recomienda Vincular existente.</strong> La clave o el nombre ya corresponde a <code>@ResumirClaves(candidatoVinculo.ClaveProyecto)</code>. Confirme la fuente antes de guardar.</span>
+                                            </div>
+                                        }
+                                        <form asp-action="GuardarDecisionPreliminar" asp-route-loteId="@Model.Lote.LoteId" method="post" class="pam-decision-form" data-decision-form>
+                                                 @Html.AntiForgeryToken()
+                                                 <input type="hidden" name="CambioPropuestoId" value="@alta.CambioPropuestoId" />
+                                                 <input type="hidden" name="RevisionId" value="@decision.RevisionId" />
+                                            <input type="hidden" name="VersionDecision" value="@decision.VersionDecision" />
+                                            <input type="hidden" name="PaginaRetorno" value="@Model.Filtro.Pagina" />
+                                            <input type="hidden" name="CategoriaRetorno" value="@Model.Filtro.Categoria" />
+                                            <input type="hidden" name="BusquedaRetorno" value="@Model.Filtro.Busqueda" />
+                                            <input type="hidden" name="TipoRetorno" value="@Model.Filtro.Tipo" />
+
+                                            <fieldset>
+                                                <legend>¿Cómo debe tratarse este registro?</legend>
+                                                <div class="pam-decision-options">
+                                                    <label><input type="radio" name="Clasificacion" value="Alta real" checked="@(decision.Clasificacion == "Alta real" ? "checked" : null)" required data-related-toggle aria-controls="pam-related-field-@alta.CambioPropuestoId" aria-expanded="false" /><span><strong>Alta real</strong><small>No corresponde a un proyecto vigente.</small></span></label>
+                                                    <label><input type="radio" name="Clasificacion" value="Vincular existente" checked="@(decision.Clasificacion == "Vincular existente" ? "checked" : null)" data-related-toggle aria-controls="pam-related-field-@alta.CambioPropuestoId" aria-expanded="false" /><span><strong>Vincular existente</strong><small>Es el mismo proyecto con otra clave o nombre.</small></span></label>
+                                                    <label><input type="radio" name="Clasificacion" value="Padre-hijo" checked="@(decision.Clasificacion == "Padre-hijo" ? "checked" : null)" data-related-toggle aria-controls="pam-related-field-@alta.CambioPropuestoId" aria-expanded="false" /><span><strong>Posible hijo de existente</strong><small>El registro recibido formaría parte del proyecto macro seleccionado.</small></span></label>
+                                                    <label><input type="radio" name="Clasificacion" value="Descartar" checked="@(decision.Clasificacion == "Descartar" ? "checked" : null)" data-related-toggle aria-controls="pam-related-field-@alta.CambioPropuestoId" aria-expanded="false" /><span><strong>Descartar</strong><small>No debe incorporarse como proyecto.</small></span></label>
+                                                </div>
+                                            </fieldset>
+
+                                            <div id="pam-related-field-@alta.CambioPropuestoId" class="pam-related-field" data-related-field>
+                                                <label for="pam-related-@alta.CambioPropuestoId">Proyecto vigente relacionado</label>
+                                                <select id="pam-related-@alta.CambioPropuestoId" name="ProyectoRelacionadoId" class="form-select"
+                                                        aria-describedby="pam-related-help-@alta.CambioPropuestoId" data-related-select>
+                                                    <option value="">Seleccione una coincidencia</option>
+                                                    @if (decision.ProyectoRelacionadoId.HasValue && !relacionadosIds.Contains(decision.ProyectoRelacionadoId.Value))
+                                                    {
+                                                        <option value="@decision.ProyectoRelacionadoId" selected>@ResumirClaves(decision.ProyectoRelacionadoClave ?? decision.ProyectoRelacionadoId.ToString()) — @(decision.ProyectoRelacionadoNombre ?? "Proyecto relacionado")</option>
+                                                    }
+                                                    @foreach (var candidato in proyecto.Candidatos)
+                                                    {
+                                                        <option value="@candidato.ProyectoId" selected="@(decision.ProyectoRelacionadoId == candidato.ProyectoId ? "selected" : null)">@ResumirClaves(candidato.ClaveProyecto) — @candidato.NombreProyecto (@candidato.Score.ToString("N0")%)</option>
+                                                    }
+                                                </select>
+                                                <small id="pam-related-help-@alta.CambioPropuestoId" data-related-help>Se exige al vincular o marcar el registro recibido como posible hijo. La lista contiene las sugerencias automáticas más cercanas.</small>
+                                            </div>
+
+                                            <div class="pam-note-field">
+                                                <label for="pam-note-@alta.CambioPropuestoId">Nota de revisión <span>opcional</span></label>
+                                                <textarea id="pam-note-@alta.CambioPropuestoId" name="Nota" class="form-control" rows="3" maxlength="1000" placeholder="Explique brevemente el criterio usado">@decision.Nota</textarea>
+                                            </div>
+
+                                            <div class="pam-decision-actions">
+                                                <p><i class="fas fa-clock-rotate-left" aria-hidden="true"></i>Cada guardado conserva usuario, fecha y versión anterior en el historial.</p>
+                                                <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk me-2" aria-hidden="true"></i>@(string.IsNullOrWhiteSpace(decision.Clasificacion) ? "Guardar clasificación preliminar" : "Actualizar clasificación preliminar")</button>
+                                            </div>
+                                        </form>
+                                    }
+                                    else if (revisionCerrada)
+                                    {
+                                        <div class="pam-closed-review">
+                                            <div class="pam-alta-empty is-success"><i class="fas fa-circle-check"></i>Esta revisión está cerrada y permanece disponible en Revisadas. La clasificación todavía no se ha aplicado a la cartera maestra.</div>
+                                            <form asp-action="ReabrirDecisionPreliminar" asp-route-loteId="@Model.Lote.LoteId" method="post" class="pam-reopen-form" data-reopen-form>
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="CambioPropuestoId" value="@alta.CambioPropuestoId" />
+                                                <input type="hidden" name="VersionDecision" value="@decision.VersionDecision" />
+                                                <input type="hidden" name="PaginaRetorno" value="@Model.Filtro.Pagina" />
+                                                <input type="hidden" name="CategoriaRetorno" value="@Model.Filtro.Categoria" />
+                                                <input type="hidden" name="BusquedaRetorno" value="@Model.Filtro.Busqueda" />
+                                                <input type="hidden" name="TipoRetorno" value="@Model.Filtro.Tipo" />
+                                                <button type="submit" class="btn btn-outline-secondary"><i class="fas fa-rotate-left me-2" aria-hidden="true"></i>Reabrir para corregir</button>
+                                            </form>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="pam-alta-empty is-warning"><i class="fas fa-triangle-exclamation"></i>La propuesta no tiene una revisión pendiente disponible. Recargue la página o vuelva a ejecutar el análisis.</div>
+                                    }
+                                </section>
+                            }
+                            else
+                            {
+                                var indiceDecisionCampo = 0;
+                                var notaProyectoCampos = proyecto.Cambios
+                                    .Select(cambio => cambio.NotaDecisionCampo)
+                                    .FirstOrDefault(nota => !string.IsNullOrWhiteSpace(nota));
+
+                                <form asp-action="GuardarDecisionesCampo" asp-route-loteId="@Model.Lote.LoteId" method="post" class="pam-field-decision-form" data-field-decision-form>
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="ProyectoVersionBaseId" value="@proyecto.ProyectoVersionBaseId" />
+                                    <input type="hidden" name="PaginaRetorno" value="@Model.Filtro.Pagina" />
+                                    <input type="hidden" name="CategoriaRetorno" value="@Model.Filtro.Categoria" />
+                                    <input type="hidden" name="BusquedaRetorno" value="@Model.Filtro.Busqueda" />
+                                    <input type="hidden" name="TipoRetorno" value="@Model.Filtro.Tipo" />
+                                    <input type="hidden" name="EstadoRevisionRetorno" value="@Model.Filtro.EstadoRevision" />
+
+                                    <div class="pam-project-guidance @(proyecto.RevisionCamposCompleta ? "is-reviewed" : null)">
+                                        <i class="fas @(proyecto.RevisionCamposCompleta ? "fa-circle-check" : "fa-shield-halved")" aria-hidden="true"></i>
+                                        <span>@(proyecto.RevisionCamposCompleta
+                                            ? "La revisión de campos está cerrada. Puede corregirla; cada nuevo guardado conserva la decisión anterior."
+                                            : "Compare cada valor y registre una decisión. Guardar esta revisión no modifica todavía la cartera maestra.")</span>
+                                    </div>
+
+                                    <div class="pam-field-review-toolbar">
+                                        <div>
+                                            <strong>Resolver todos los campos</strong>
+                                            <small>Use un criterio común y después ajuste cualquier excepción.</small>
+                                        </div>
+                                        <div class="pam-field-bulk-actions" role="group" aria-label="Asignar una decisión a todos los campos del proyecto">
+                                            <button type="button" class="btn btn-sm btn-outline-success" data-bulk-field-decision="Aplicar"><i class="fas fa-check me-1" aria-hidden="true"></i>Aplicar propuestas</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" data-bulk-field-decision="Mantener SQL"><i class="fas fa-database me-1" aria-hidden="true"></i>Mantener SQL</button>
+                                            <button type="button" class="btn btn-sm btn-outline-warning" data-bulk-field-decision="Omitir"><i class="fas fa-forward me-1" aria-hidden="true"></i>Omitir</button>
+                                        </div>
+                                    </div>
+
+                                    @foreach (var bloque in bloques.Where(bloque => bloque.Cambios.Count > 0))
+                                    {
+                                        <section class="pam-change-block @bloque.Clase" aria-label="@bloque.Titulo">
+                                            <div class="pam-change-block__heading">
+                                                <h4><i class="fas @bloque.Icono" aria-hidden="true"></i>@bloque.Titulo</h4>
+                                                <span>@bloque.Cambios.Count campo(s)</span>
+                                            </div>
+                                            <div class="pam-field-list">
+                                                @foreach (var cambio in bloque.Cambios)
+                                                {
+                                                    var indiceActual = indiceDecisionCampo++;
+                                                    <article class="pam-field-change @(string.IsNullOrWhiteSpace(cambio.DecisionCampo) ? "is-pending-decision" : "is-reviewed-decision")">
+                                                        <input type="hidden" name="Cambios[@indiceActual].CambioPropuestoId" value="@cambio.CambioPropuestoId" />
+                                                        <input type="hidden" name="Cambios[@indiceActual].UltimaDecisionId" value="@cambio.CambioDecisionId" />
+                                                        <div class="pam-field-heading">
+                                                            <div>
+                                                                <span class="pam-change-type">@(cambio.TipoCambio ?? "Cambio")</span>
+                                                                <h5>@EtiquetaCampo(cambio.Campo)</h5>
+                                                            </div>
+                                                            <span class="pam-confidence">@FormatearConfianza(cambio.Confianza)</span>
+                                                        </div>
+                                                        <div class="pam-values">
+                                                            <span><small>Actual en SQL</small>@(string.IsNullOrWhiteSpace(cambio.ValorActual) ? "Sin valor" : cambio.ValorActual)</span>
+                                                            <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                                                            <span><small>Propuesto por la fuente</small>@(string.IsNullOrWhiteSpace(cambio.ValorPropuesto) ? "Sin valor" : cambio.ValorPropuesto)</span>
+                                                        </div>
+                                                        <div class="pam-field-meta">
+                                                            <span><i class="fas fa-file-lines" aria-hidden="true"></i>@(cambio.FuenteDocumento ?? "Fuente no indicada")</span>
+                                                            <span><i class="fas fa-location-dot" aria-hidden="true"></i>@(cambio.UbicacionFuente ?? "Sin ubicación interna")</span>
+                                                            <span><i class="fas @(string.IsNullOrWhiteSpace(cambio.DecisionCampo) ? "fa-hourglass-half" : "fa-circle-check")" aria-hidden="true"></i>@(cambio.DecisionCampo ?? "Pendiente de decisión")</span>
+                                                        </div>
+                                                        <fieldset class="pam-field-decision" data-field-decision>
+                                                            <legend>Decisión para @EtiquetaCampo(cambio.Campo)</legend>
+                                                            <label class="is-apply"><input type="radio" name="Cambios[@indiceActual].Decision" value="Aplicar" checked="@(cambio.DecisionCampo == "Aplicar" ? "checked" : null)" required /><span><i class="fas fa-check" aria-hidden="true"></i>Aplicar propuesta</span></label>
+                                                            <label class="is-keep"><input type="radio" name="Cambios[@indiceActual].Decision" value="Mantener SQL" checked="@(cambio.DecisionCampo == "Mantener SQL" ? "checked" : null)" /><span><i class="fas fa-database" aria-hidden="true"></i>Mantener SQL</span></label>
+                                                            <label class="is-skip"><input type="radio" name="Cambios[@indiceActual].Decision" value="Omitir" checked="@(cambio.DecisionCampo == "Omitir" ? "checked" : null)" /><span><i class="fas fa-forward" aria-hidden="true"></i>Omitir</span></label>
+                                                        </fieldset>
+                                                    </article>
+                                                }
+                                            </div>
+                                        </section>
+                                    }
+
+                                    <div class="pam-field-project-note">
+                                        <label>Nota del proyecto <span>opcional</span></label>
+                                        <textarea name="NotaProyecto" class="form-control" rows="2" maxlength="1000" placeholder="Explique el criterio general o alguna excepción">@notaProyectoCampos</textarea>
+                                    </div>
+                                    <div class="pam-decision-actions">
+                                        <p><i class="fas fa-clock-rotate-left" aria-hidden="true"></i>Se guardarán @proyecto.TotalCambios decisiones con usuario, fecha e historial.</p>
+                                        <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk me-2" aria-hidden="true"></i>@(proyecto.RevisionCamposCompleta ? "Actualizar revisión de campos" : "Guardar y cerrar proyecto")</button>
+                                    </div>
+                                </form>
+                            }
+                        </div>
+                    </details>
+                        }
+                    </section>
+                }
+            </div>
+
+            @if (Model.TotalPaginas > 1)
+            {
+                var paginaInicial = Math.Max(1, Model.Filtro.Pagina - 2);
+                var paginaFinal = Math.Min(Model.TotalPaginas, Model.Filtro.Pagina + 2);
+                <nav class="pam-pagination" aria-label="Páginas de proyectos con diferencias">
+                    @if (Model.Filtro.Pagina > 1)
+                    {
+                        <a asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+                           asp-route-pagina="@(Model.Filtro.Pagina - 1)" asp-route-tamanoPagina="10"
+                           asp-route-categoria="@Model.Filtro.Categoria" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-tipo="@Model.Filtro.Tipo" asp-route-estadoRevision="@Model.Filtro.EstadoRevision">
+                            <i class="fas fa-chevron-left" aria-hidden="true"></i><span>Anterior</span>
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="is-disabled" aria-disabled="true"><i class="fas fa-chevron-left" aria-hidden="true"></i><span>Anterior</span></span>
+                    }
+                    <div>
+                        @for (var pagina = paginaInicial; pagina <= paginaFinal; pagina++)
+                        {
+                            <a class="@(pagina == Model.Filtro.Pagina ? "is-current" : null)"
+                               asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+                               asp-route-pagina="@pagina" asp-route-tamanoPagina="10"
+                               asp-route-categoria="@Model.Filtro.Categoria" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-tipo="@Model.Filtro.Tipo" asp-route-estadoRevision="@Model.Filtro.EstadoRevision"
+                               aria-current="@(pagina == Model.Filtro.Pagina ? "page" : null)">@pagina</a>
+                        }
+                    </div>
+                    @if (Model.Filtro.Pagina < Model.TotalPaginas)
+                    {
+                        <a asp-action="ActualizacionDetalle" asp-route-loteId="@Model.Lote.LoteId"
+                           asp-route-pagina="@(Model.Filtro.Pagina + 1)" asp-route-tamanoPagina="10"
+                           asp-route-categoria="@Model.Filtro.Categoria" asp-route-busqueda="@Model.Filtro.Busqueda" asp-route-tipo="@Model.Filtro.Tipo" asp-route-estadoRevision="@Model.Filtro.EstadoRevision">
+                            <span>Siguiente</span><i class="fas fa-chevron-right" aria-hidden="true"></i>
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="is-disabled" aria-disabled="true"><span>Siguiente</span><i class="fas fa-chevron-right" aria-hidden="true"></i></span>
+                    }
+                </nav>
+                <p class="pam-pagination-summary">Proyectos @Model.RegistroDesde–@Model.RegistroHasta de @Model.TotalProyectos</p>
+            }
+        }
+    </section>
+
+    @{
+        var cancelacionesPendientes = Model.NoEncontrados
+            .Where(hallazgo => hallazgo.EsCancelacion && !hallazgo.EstaRevisado)
+            .ToList();
+        var cancelacionesAtendidas = Model.NoEncontrados
+            .Where(hallazgo => hallazgo.EsCancelacion && hallazgo.EstaRevisado)
+            .ToList();
+        var altasGestionadasEnRevision = Model.NoEncontrados.Count(hallazgo => !hallazgo.EsCancelacion);
+    }
+    <section class="card border-0 shadow-sm pam-analysis-card" id="pam-claves-no-encontradas">
+        <div class="pam-section-heading">
+            <div>
+                <span class="pam-analysis-eyebrow">Revisión necesaria</span>
+                <h3>Claves sin coincidencia en la cartera</h3>
+                <p>Las altas se atienden en la revisión agrupada; aquí sólo se resuelven las cancelaciones que no encontraron proyecto.</p>
+            </div>
+            <span class="pam-section-count @(cancelacionesPendientes.Count > 0 ? "is-warning" : "is-success")">@cancelacionesPendientes.Count pendiente(s)</span>
+        </div>
+
+        <div class="pam-finding-summary">
+            <span><strong>@Model.Resumen.ClavesNoEncontradas</strong> hallazgos totales</span>
+            <span><strong>@altasGestionadasEnRevision</strong> altas gestionadas arriba</span>
+            <span><strong>@cancelacionesAtendidas.Count</strong> cancelaciones atendidas</span>
+            <span class="@(cancelacionesPendientes.Count > 0 ? "is-warning" : "is-success")"><strong>@cancelacionesPendientes.Count</strong> por decidir</span>
+        </div>
+
+        @if (cancelacionesPendientes.Count == 0)
+        {
+            <div class="pam-analysis-empty is-compact">
+                <i class="fas fa-circle-check"></i>
+                <strong>No hay cancelaciones pendientes de clasificación.</strong>
+            </div>
+        }
+        else
+        {
+            <div class="pam-cancellation-list">
+                @foreach (var hallazgo in cancelacionesPendientes)
+                {
+                    <details id="pam-hallazgo-@hallazgo.HallazgoId" class="pam-cancellation-review">
+                        <summary>
+                            <span class="pam-project-identity">
+                                <span class="pam-project-classification">Cancelación reportada</span>
+                                <code>@(hallazgo.ClaveRecibida ?? "Sin clave")</code>
+                                <strong>@(hallazgo.NombreRecibido ?? "Nombre no extraído")</strong>
+                            </span>
+                            <span class="pam-cancellation-state"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i>Pendiente de decisión</span>
+                            <i class="fas fa-chevron-down pam-project-chevron" aria-hidden="true"></i>
+                        </summary>
+                        <div class="pam-cancellation-body">
+                            <div class="pam-project-guidance is-alta">
+                                <i class="fas fa-circle-info" aria-hidden="true"></i>
+                                <span>La clave no existe en la cartera vigente. Elija si debe conservarse como antecedente cancelado, vincularse a un proyecto existente o descartarse.</span>
+                            </div>
+                            <div class="pam-alta-source">
+                                <span><i class="fas fa-file-lines" aria-hidden="true"></i>@(hallazgo.FuenteDocumento ?? "Fuente no indicada")</span>
+                                <span><i class="fas fa-location-dot" aria-hidden="true"></i>@(hallazgo.UbicacionFuente ?? "sin ubicación")</span>
+                            </div>
+                            <form asp-action="GuardarDecisionHallazgo" asp-route-loteId="@Model.Lote.LoteId" method="post" class="pam-decision-form" data-decision-form>
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="HallazgoId" value="@hallazgo.HallazgoId" />
+                                <input type="hidden" name="RevisionId" value="@hallazgo.RevisionId" />
+                                <input type="hidden" name="VersionDecision" value="@hallazgo.VersionDecision" />
+                                <input type="hidden" name="PaginaRetorno" value="@Model.Filtro.Pagina" />
+                                <input type="hidden" name="CategoriaRetorno" value="@Model.Filtro.Categoria" />
+                                <input type="hidden" name="BusquedaRetorno" value="@Model.Filtro.Busqueda" />
+                                <input type="hidden" name="TipoRetorno" value="@Model.Filtro.Tipo" />
+                                <input type="hidden" name="EstadoRevisionRetorno" value="@Model.Filtro.EstadoRevision" />
+
+                                <fieldset class="pam-decision-options">
+                                    <legend>¿Cómo debe tratarse esta cancelación?</legend>
+                                    <label><input type="radio" name="Clasificacion" value="Alta real" required data-related-toggle /><span><strong>Registrar antecedente cancelado</strong><small>Crea la ficha histórica como cancelada; no será un proyecto vigente.</small></span></label>
+                                    <label><input type="radio" name="Clasificacion" value="Vincular existente" data-related-toggle /><span><strong>Cancelar proyecto existente</strong><small>Vincula esta clave con un proyecto vigente y prepara su cancelación.</small></span></label>
+                                    <label><input type="radio" name="Clasificacion" value="Descartar" data-related-toggle /><span><strong>Descartar reporte</strong><small>Conserva la traza, pero no prepara ningún cambio a la cartera.</small></span></label>
+                                </fieldset>
+
+                                <div class="pam-related-field" data-related-field hidden>
+                                    <label for="pam-cancel-related-@hallazgo.HallazgoId">Proyecto vigente que se cancelará</label>
+                                    <select id="pam-cancel-related-@hallazgo.HallazgoId" name="ProyectoRelacionadoId" class="form-select" data-related-select disabled>
+                                        <option value="">Seleccione un proyecto…</option>
+                                        @foreach (var opcion in Model.ProyectosVigentes)
+                                        {
+                                            <option value="@opcion.ProyectoId">@(ResumirClaves(opcion.ClaveProyecto)) — @opcion.NombreProyecto</option>
+                                        }
+                                    </select>
+                                    <small>Revise clave y nombre antes de confirmar. Si no existe, use “Registrar antecedente cancelado”.</small>
+                                </div>
+
+                                <div class="pam-decision-note">
+                                    <label for="pam-cancel-note-@hallazgo.HallazgoId">Nota de revisión <span>opcional</span></label>
+                                    <textarea id="pam-cancel-note-@hallazgo.HallazgoId" name="Nota" class="form-control" rows="2" maxlength="1000" placeholder="Explique brevemente el criterio usado"></textarea>
+                                </div>
+
+                                <div class="pam-decision-actions">
+                                    <p><i class="fas fa-lock" aria-hidden="true"></i>Esta decisión sólo prepara la aplicación; todavía no modifica la cartera.</p>
+                                    <button type="submit" class="btn btn-primary"><i class="fas fa-floppy-disk me-2" aria-hidden="true"></i>Guardar decisión</button>
+                                </div>
+                            </form>
+                        </div>
+                    </details>
+                }
+            </div>
+        }
+
+        @if (cancelacionesAtendidas.Count > 0)
+        {
+            <details class="pam-reviewed-findings">
+                <summary><i class="fas fa-circle-check" aria-hidden="true"></i>Ver cancelaciones atendidas (@cancelacionesAtendidas.Count)</summary>
+                <div class="pam-finding-list">
+                    @foreach (var hallazgo in cancelacionesAtendidas)
+                    {
+                        <article class="is-reviewed">
+                            <div>
+                                <span class="pam-finding-classification">Revisada · @hallazgo.ClasificacionPreliminar</span>
+                                <code>@(hallazgo.ClaveRecibida ?? "Sin clave")</code>
+                                <strong>@(hallazgo.NombreRecibido ?? "Nombre no extraído")</strong>
+                            </div>
+                            <div>
+                                <span>@(hallazgo.ProyectoRelacionadoId.HasValue ? $"Vinculada con {ResumirClaves(hallazgo.ProyectoRelacionadoClave)} — {hallazgo.ProyectoRelacionadoNombre}" : hallazgo.ClasificacionPreliminar == "Alta real" ? "Preparada como antecedente cancelado." : "No se aplicará a la cartera.")</span>
+                                <small>@(hallazgo.FuenteDocumento ?? "Fuente no indicada") · @(hallazgo.UbicacionFuente ?? "sin ubicación")</small>
+                            </div>
+                            <form asp-action="ReabrirDecisionPreliminar" asp-route-loteId="@Model.Lote.LoteId" method="post" data-reopen-form>
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="RevisionId" value="@hallazgo.RevisionId" />
+                                <input type="hidden" name="VersionDecision" value="@hallazgo.VersionDecision" />
+                                <input type="hidden" name="PaginaRetorno" value="@Model.Filtro.Pagina" />
+                                <input type="hidden" name="CategoriaRetorno" value="@Model.Filtro.Categoria" />
+                                <input type="hidden" name="BusquedaRetorno" value="@Model.Filtro.Busqueda" />
+                                <input type="hidden" name="TipoRetorno" value="@Model.Filtro.Tipo" />
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="fas fa-rotate-left me-1" aria-hidden="true"></i>Reabrir</button>
+                            </form>
+                        </article>
+                    }
+                </div>
+            </details>
+        }
+    </section>
+
+    <div class="pam-no-apply-note">
+        <i class="fas fa-lock"></i>
+        <span><strong>Vista de análisis.</strong> Los resultados son propuestas y todavía no modifican la cartera PAM/PAMRNT.</span>
+    </div>
+</div>
+
+<style>
+    .pam-analysis-page{--pa-guinda:var(--shell-accent,#9b2247);--pa-guinda-dark:#721633;--pa-gold:var(--shell-accent-2,#b38e5d);--pa-ink:var(--shell-ink,#302b28);--pa-muted:var(--shell-muted,#746d68);--pa-surface:var(--shell-surface,#fff);--pa-surface-2:var(--shell-surface-2,#f7f4f1);--pa-line:var(--shell-line,#eadfe3);display:grid;gap:1rem;color:var(--pa-ink)}
+    .pam-analysis-nav{display:flex;align-items:center;justify-content:space-between;gap:1rem}.pam-analysis-nav__actions{display:flex;align-items:center;justify-content:flex-end;gap:.5rem;flex-wrap:wrap}.pam-dashboard-link{color:var(--pa-guinda);font-weight:700;text-decoration:none}
+    .pam-analysis-alert{display:flex;align-items:center;gap:.7rem;margin:0;border:0;border-left:4px solid;border-radius:.7rem}.pam-analysis-alert.is-success{border-color:#318251;background:#e9f5ed;color:#24623e}.pam-analysis-alert.is-error{border-color:#a34135;background:#f8eae8;color:#7d3028}
+    .pam-analysis-hero{display:flex;align-items:stretch;justify-content:space-between;gap:1.5rem;padding:1.6rem;border:1px solid var(--pa-line);border-left:4px solid var(--pa-gold);border-radius:14px;background:var(--pa-surface)}
+    .pam-analysis-hero__main{min-width:0}.pam-analysis-eyebrow{color:var(--pa-guinda);font-size:.72rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.pam-analysis-hero h2{margin:.25rem 0 .45rem;font-size:clamp(1.45rem,2vw,2rem)}.pam-analysis-hero p{max-width:75ch;margin:0;color:var(--pa-muted)}
+    .pam-analysis-meta{display:flex;flex-wrap:wrap;gap:.65rem 1.15rem;margin-top:1rem;color:#665f5a;font-size:.82rem}.pam-analysis-meta span{display:flex;align-items:center;gap:.4rem}.pam-analysis-meta i{color:var(--pa-gold)}
+    .pam-analysis-hero__status{display:flex;min-width:205px;align-items:flex-end;justify-content:center;flex-direction:column;gap:.65rem;padding:1rem;border-left:1px solid #e3d4d9}.pam-analysis-hero__status small{color:var(--pa-muted)}.pam-analysis-request-form{margin-top:.25rem}.pam-analysis-lock{display:flex;align-items:center;gap:.45rem;color:var(--pa-guinda);font-size:.82rem;font-weight:750}
+    .pam-status{display:inline-flex;width:max-content;align-items:center;padding:.28rem .62rem;border-radius:999px;background:#eeeae7;color:#625b57;font-size:.7rem;font-weight:850;line-height:1.2}.pam-status.is-success{background:#e4f3e8;color:#287146}.pam-status.is-error{background:#f4e6e3;color:#923c31}.pam-status.is-warning,.pam-status.is-observed{background:#fbf0d8;color:#806019}.pam-status.is-running{background:#e6edf8;color:#315b92}.pam-status.is-pending{background:#eeeae7;color:#625b57}
+    .pam-analysis-card{padding:1.25rem;border:1px solid var(--pa-line)!important;border-radius:14px;box-shadow:none!important;background:var(--pa-surface)}.pam-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}.pam-section-heading h3{margin:.15rem 0 0;font-size:1.18rem}.pam-section-heading p{margin:.25rem 0 0;color:var(--pa-muted);font-size:.82rem}.pam-section-count{padding:.3rem .6rem;border-radius:999px;background:#f1edeb;color:#655e59;font-size:.72rem;font-weight:800}.pam-section-count.is-warning{background:#fbf0d8;color:#806019}.pam-section-count.is-success{background:#e4f3e8;color:#287146}
+    .pam-source-list{display:grid;gap:.55rem}.pam-source-list article{display:grid;grid-template-columns:60px minmax(0,1fr) minmax(200px,.8fr);align-items:center;gap:.85rem;padding:.8rem;border:1px solid #ece5e1;border-radius:.75rem;background:#fff}.pam-source-kind{display:grid;height:42px;place-items:center;border-radius:.65rem;background:#f2e1e7;color:var(--pa-guinda);font-size:.68rem;font-weight:900}.pam-source-name,.pam-source-state{min-width:0}.pam-source-name strong,.pam-source-name small,.pam-source-state small{display:block}.pam-source-name strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pam-source-name small,.pam-source-state small{margin-top:.22rem;color:var(--pa-muted);font-size:.72rem}.pam-source-state{justify-self:end;text-align:right}.pam-source-state .pam-status{margin-left:auto}
+    .pam-progress-card{border-top:4px solid var(--pa-gold)!important}.pam-progress-meta{display:flex;justify-content:space-between;margin-bottom:.4rem;color:var(--pa-muted);font-size:.82rem}.pam-progress-meta strong{color:var(--pa-guinda)}.pam-analysis-progress{height:.65rem;border-radius:999px;background:var(--pa-surface-2)}.pam-analysis-progress .progress-bar{border-radius:999px;background:var(--pa-guinda);transition:width .35s ease}.pam-progress-card>p{margin:.8rem 0 .4rem;color:#5f5854}.pam-execution-dates{display:flex;flex-wrap:wrap;gap:.45rem 1rem;color:var(--pa-muted);font-size:.72rem}
+    .pam-ready-note{display:flex;align-items:center;gap:.85rem;padding:1rem 1.2rem;border:1px solid #e5ddd7;border-radius:.85rem;background:#faf8f6}.pam-ready-note i{color:var(--pa-gold);font-size:1.3rem}.pam-ready-note strong,.pam-ready-note span{display:block}.pam-ready-note span{margin-top:.15rem;color:var(--pa-muted);font-size:.8rem}
+    .pam-analysis-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.75rem}.pam-analysis-kpis article{position:relative;min-width:0;padding:1rem;border:1px solid #ebe4df;border-radius:.85rem;background:#fff;overflow:hidden}.pam-analysis-kpis span,.pam-analysis-kpis strong{display:block}.pam-analysis-kpis span{min-height:2.2em;color:var(--pa-muted);font-size:.72rem}.pam-analysis-kpis strong{margin-top:.2rem;color:var(--pa-guinda);font-size:1.55rem}.pam-analysis-kpis i{position:absolute;right:.7rem;bottom:.7rem;color:#e6d5db;font-size:1.35rem}
+    .pam-review-heading{align-items:end}.pam-review-heading>div:first-child{min-width:0}.pam-review-heading small{display:block;color:var(--pa-muted);font-size:.75rem}.pam-project-search{width:min(410px,100%)}.pam-project-search>label{display:block;margin-bottom:.35rem;color:var(--pa-muted);font-size:.72rem;font-weight:800}.pam-project-search>div{display:grid;grid-template-columns:auto minmax(150px,1fr) auto;align-items:center;border:1px solid #ded7d2;border-radius:.7rem;background:#fff;overflow:hidden}.pam-project-search i{padding-left:.75rem;color:#918983}.pam-project-search .form-control{min-width:0;border:0;border-radius:0;box-shadow:none}.pam-project-search .btn{align-self:stretch;border-radius:0;padding:.65rem 1rem}
+    .pam-review-state-filters{display:flex;align-items:center;gap:.45rem;margin:-.1rem 0 .7rem}.pam-review-state-filters>span{margin-right:.2rem;color:var(--pa-muted);font-size:.68rem;font-weight:850;text-transform:uppercase}.pam-review-state-filters a{display:inline-flex;align-items:center;gap:.38rem;min-height:36px;padding:.45rem .68rem;border:1px solid #ded7d2;border-radius:999px;background:#fff;color:#655d58;font-size:.7rem;font-weight:800;text-decoration:none}.pam-review-state-filters a strong{display:grid;min-width:21px;height:21px;place-items:center;padding:0 .3rem;border-radius:999px;background:#f1edeb;color:#655d58;font-size:.62rem}.pam-review-state-filters a.is-active{border-color:#2f7b61;background:#e8f4ef;color:#256149}.pam-review-state-filters a.is-active strong{background:#2f7b61;color:#fff}.pam-review-state-filters a:focus-visible{outline:3px solid rgba(47,123,97,.22);outline-offset:2px}
+    .pam-pem-guide{margin:0 0 1rem;border:1px solid #e4d4bd;border-radius:.8rem;background:#fcf9f3}.pam-pem-guide>summary{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.8rem 1rem;cursor:pointer;list-style:none;color:#51463c}.pam-pem-guide>summary::-webkit-details-marker{display:none}.pam-pem-guide>summary>span{display:flex;align-items:center;gap:.5rem}.pam-pem-guide>summary i{color:#a87722}.pam-pem-guide>summary strong{font-size:.78rem}.pam-pem-guide>summary small{padding:.25rem .5rem;border-radius:999px;background:#f3e7cf;color:#76591f;font-size:.62rem;font-weight:800}.pam-pem-guide__body{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:1rem;padding:0 1rem 1rem}.pam-pem-guide__body section{min-width:0;padding:.8rem;border-radius:.65rem;background:#fff}.pam-pem-guide__body h4{margin:0 0 .6rem;font-family:inherit;font-size:.75rem}.pam-pem-guide__body p{margin:.55rem 0 0;color:#675e57;font-size:.65rem;line-height:1.45}.pam-key-anatomy{display:flex;align-items:stretch;gap:.3rem}.pam-key-anatomy span{display:grid;min-width:54px;padding:.4rem .55rem;border:1px solid #e5dcd5;border-radius:.5rem;background:#faf8f6;text-align:center}.pam-key-anatomy strong{color:var(--pa-guinda);font-size:.86rem}.pam-key-anatomy small{color:var(--pa-muted);font-size:.52rem;font-weight:750;text-transform:uppercase}.pam-key-codes{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.65rem}.pam-key-codes span{padding:.25rem .42rem;border-radius:.4rem;background:#f6f2ef;color:#5f5751;font-size:.59rem}.pam-key-codes code{color:var(--pa-guinda);font-weight:900}.pam-key-regions{padding-top:.5rem;border-top:1px solid #eee6e0}.pam-classification-guide{display:grid;gap:.38rem;margin:0;padding:0;list-style:none}.pam-classification-guide li{display:grid;grid-template-columns:minmax(112px,.45fr) minmax(0,1fr);align-items:start;gap:.55rem}.pam-classification-guide li>span{padding:.22rem .4rem;border-radius:.38rem;font-size:.6rem;font-weight:850}.pam-classification-guide li>p{margin:0}.pam-classification-guide .is-link{background:#e8f4ef;color:#256149}.pam-classification-guide .is-family{background:#f7edd9;color:#76591f}.pam-classification-guide .is-new{background:#edf3f8;color:#315f8d}.pam-classification-guide .is-discard{background:#f1edeb;color:#655d58}.pam-pem-warning{display:flex;align-items:flex-start;gap:.45rem;margin-top:.65rem;padding:.55rem;border-left:3px solid var(--pa-guinda);border-radius:.45rem;background:#faf1f4;color:#6d3447;font-size:.63rem;line-height:1.4}.pam-pem-warning i{margin-top:.1rem;color:var(--pa-guinda)}
+    .pam-review-filters{display:flex;gap:.45rem;margin:-.1rem 0 1rem;padding:.2rem;overflow-x:auto;scrollbar-width:thin}.pam-review-filters a{display:inline-flex;flex:0 0 auto;align-items:center;gap:.4rem;min-height:40px;padding:.55rem .8rem;border:1px solid #e2dad5;border-radius:.65rem;background:#fff;color:#655d58;text-decoration:none;font-size:.76rem;font-weight:800}.pam-review-filters a:hover{border-color:#c8aeba;background:#fbf6f8;color:var(--pa-guinda)}.pam-review-filters a.is-active{border-color:var(--pa-guinda);background:var(--pa-guinda);color:#fff;box-shadow:0 3px 9px rgba(155,34,71,.16)}.pam-review-filters a:focus-visible,.pam-project-review summary:focus-visible{outline:3px solid rgba(155,34,71,.24);outline-offset:2px}.pam-filter-count{display:grid;min-width:21px;height:21px;place-items:center;padding:0 .3rem;border-radius:999px;background:#f2e1e7;color:var(--pa-guinda);font-size:.65rem}.pam-review-filters .is-active .pam-filter-count{background:rgba(255,255,255,.2);color:#fff}
+    .pam-active-search{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem;padding:.7rem .85rem;border-left:3px solid var(--pa-gold);border-radius:.55rem;background:#faf7f2;color:#5f5752;font-size:.78rem}.pam-active-search a{color:var(--pa-guinda);font-weight:800;text-decoration:none}
+    .pam-project-list{display:grid;gap:.75rem}.pam-family-group{display:grid;gap:.75rem;min-width:0}.pam-family-group.is-family{padding:.85rem;border:1px solid #e2d4ba;border-left:4px solid var(--pa-gold);border-radius:.9rem;background:#fcf9f3}.pam-family-header{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:.2rem .15rem .1rem}.pam-family-heading{display:grid;min-width:0;gap:.25rem}.pam-family-heading .pam-analysis-eyebrow{display:flex;align-items:center;gap:.35rem;color:#7a5c23}.pam-family-heading h4{margin:0;color:#493f39;font-family:inherit;font-size:.93rem;line-height:1.35}.pam-family-heading p{max-width:850px;margin:0;color:var(--pa-muted);font-size:.7rem;line-height:1.45}.pam-family-keys{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.2rem}.pam-family-keys code,.pam-family-keys span{padding:.2rem .42rem;border:1px solid #e6d8bd;border-radius:999px;background:#fff;color:#795a21;font-size:.61rem;font-weight:850}.pam-family-count{display:grid;flex:0 0 auto;min-width:126px;justify-items:center;padding:.55rem .7rem;border-radius:.65rem;background:#f4ead7;color:#76571d;font-size:.61rem;text-align:center}.pam-family-count strong{font-size:1.05rem}.pam-family-group.is-family .pam-project-review.is-family-member{border-left-width:3px}.pam-project-review{border:1px solid #e7dfda;border-left:4px solid #aaa29d;border-radius:.8rem;background:#fff;overflow:hidden}.pam-project-review.is-priority{border-left-color:var(--pa-guinda)}.pam-project-review.is-complete{border-left-color:#2f7b61}.pam-project-review.is-informative{border-left-color:#4c739d}.pam-project-review.is-equivalent{border-left-color:#8d8580}.pam-project-review.is-other{border-left-color:var(--pa-gold)}.pam-project-review[open]{box-shadow:0 6px 18px rgba(60,45,39,.07)}.pam-project-summary{display:grid;grid-template-columns:minmax(230px,1.3fr) minmax(330px,1fr) auto;align-items:center;gap:1rem;min-height:88px;padding:1rem;cursor:pointer;list-style:none;transition:background .2s ease}.pam-project-summary::-webkit-details-marker{display:none}.pam-project-summary:hover{background:#fbf9f8}.pam-project-review[open]>.pam-project-summary{border-bottom:1px solid #eee7e3;background:#fbf8f7}.pam-project-identity{display:grid;min-width:0;gap:.2rem}.pam-project-identity code{width:max-content;color:var(--pa-guinda);font-size:.75rem;font-weight:900}.pam-project-identity>strong{overflow-wrap:anywhere;font-size:.91rem;line-height:1.35}.pam-project-classification{width:max-content;padding:.18rem .45rem;border-radius:999px;background:#f2e1e7;color:var(--pa-guinda);font-size:.61rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase}.is-complete .pam-project-classification{background:#e8f4ef;color:#256149}.is-informative .pam-project-classification{background:#e7eff7;color:#315f8d}.is-equivalent .pam-project-classification{background:#efedeb;color:#625b57}.is-other .pam-project-classification{background:#f7eddc;color:#7a5c23}.pam-project-metrics{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.35rem}.pam-project-metrics>span{padding:.28rem .5rem;border-radius:999px;background:#f2efed;color:#655e59;font-size:.65rem;font-weight:750;white-space:nowrap}.pam-project-metrics>span.is-priority{background:#f6e7eb;color:#8b1d40}.pam-project-metrics>span.is-complete,.pam-project-metrics>span.is-decision{background:#e8f4ef;color:#256149}.pam-project-metrics>span.is-informative{background:#eaf1f8;color:#315f8d}.pam-project-metrics>span.is-equivalent{background:#efedeb;color:#625b57}.pam-project-metrics>span.is-family{background:#f4ead7;color:#76571d}.pam-project-metrics>span.is-decision{display:inline-flex;align-items:center;gap:.3rem}.pam-project-chevron{color:var(--pa-guinda);transition:transform .2s ease}.pam-project-review[open] .pam-project-chevron{transform:rotate(180deg)}
+    .pam-summary-review-action{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.55rem 1rem;border-bottom:1px solid #e1eee7;background:#f1f8f4;color:#286348;font-size:.7rem;font-weight:750}.pam-summary-review-action>span{display:flex;align-items:center;gap:.4rem}.pam-project-body{display:grid;gap:1rem;padding:1rem;background:#fdfcfb}.pam-project-guidance{display:flex;align-items:flex-start;gap:.55rem;padding:.7rem .8rem;border-radius:.6rem;background:#f4f0ed;color:#655d58;font-size:.74rem}.pam-project-guidance i{margin-top:.1rem;color:var(--pa-gold)}.pam-change-block{display:grid;gap:.65rem}.pam-change-block__heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-bottom:.45rem;border-bottom:1px solid #ebe4e0}.pam-change-block__heading h4{display:flex;align-items:center;gap:.45rem;margin:0;font-family:inherit;font-size:.78rem}.pam-change-block__heading span{color:var(--pa-muted);font-size:.68rem;font-weight:750}.pam-change-block.is-priority h4 i{color:var(--pa-guinda)}.pam-change-block.is-complete h4 i{color:#2f7b61}.pam-change-block.is-informative h4 i{color:#416e99}.pam-change-block.is-equivalent h4 i{color:#77706b}.pam-change-block.is-other h4 i{color:var(--pa-gold)}
+    .pam-field-decision-form{display:grid;gap:1rem}.pam-project-guidance.is-reviewed{border:1px solid #cfe5d7;background:#eaf6ee;color:#286348}.pam-project-guidance.is-reviewed i{color:#2f7b61}.pam-field-review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.8rem;border:1px solid #e5ddd7;border-radius:.7rem;background:#faf8f6}.pam-field-review-toolbar strong,.pam-field-review-toolbar small{display:block}.pam-field-review-toolbar strong{font-size:.76rem}.pam-field-review-toolbar small{margin-top:.18rem;color:var(--pa-muted);font-size:.64rem}.pam-field-bulk-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.4rem}.pam-field-bulk-actions .btn{font-size:.66rem;font-weight:800}.pam-field-list{display:grid;gap:.55rem}.pam-field-change{display:grid;grid-template-columns:minmax(170px,.55fr) minmax(360px,1.45fr) minmax(190px,.7fr);align-items:center;gap:.8rem;padding:.75rem;border:1px solid #ece5e1;border-radius:.68rem;background:#fff}.pam-field-change.is-pending-decision{border-left:4px solid var(--pa-gold)}.pam-field-change.is-reviewed-decision{border-left:4px solid #2f7b61}.pam-field-heading{display:flex;min-width:0;align-items:flex-start;justify-content:space-between;gap:.5rem}.pam-field-heading h5{margin:.28rem 0 0;font-family:inherit;font-size:.76rem;overflow-wrap:anywhere}.pam-change-type{display:inline-flex;padding:.15rem .42rem;border-radius:999px;background:#f2e1e7;color:var(--pa-guinda);font-size:.6rem;font-weight:850}.pam-values{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:.5rem;min-width:0}.pam-values span{min-width:0;padding:.55rem;border-radius:.55rem;background:#f8f6f4;overflow-wrap:anywhere;font-size:.72rem;white-space:pre-wrap}.pam-values span:last-child{background:#edf6f0;color:#255f3b}.pam-values small{display:block;margin-bottom:.15rem;color:var(--pa-muted);font-size:.58rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase}.pam-values i{color:var(--pa-gold)}.pam-field-meta{display:grid;gap:.25rem;color:var(--pa-muted);font-size:.64rem}.pam-field-meta span{display:flex;align-items:flex-start;gap:.35rem;min-width:0;overflow-wrap:anywhere}.pam-field-meta i{width:.8rem;margin-top:.12rem;color:#a88c68}.pam-confidence{display:inline-flex;flex:0 0 auto;padding:.22rem .5rem;border-radius:999px;background:#e8eef7;color:#355d8d;font-size:.65rem;font-weight:850}.pam-field-decision{display:grid;grid-column:1/-1;grid-template-columns:repeat(3,minmax(0,1fr));gap:.45rem;min-width:0;margin:0;padding:.65rem;border:0;border-top:1px solid #eee7e3}.pam-field-decision legend{grid-column:1/-1;margin:0;color:#655d58;font-size:.64rem;font-weight:850}.pam-field-decision label{position:relative;margin:0;cursor:pointer}.pam-field-decision input{position:absolute;width:1px;height:1px;opacity:0}.pam-field-decision label>span{display:flex;min-height:38px;align-items:center;justify-content:center;gap:.38rem;padding:.45rem .55rem;border:1px solid #dfd7d2;border-radius:.55rem;background:#fff;color:#655d58;font-size:.65rem;font-weight:800;text-align:center}.pam-field-decision input:checked+span{border-color:var(--pa-guinda);box-shadow:inset 0 0 0 1px var(--pa-guinda);background:#fff8fa;color:var(--pa-guinda)}.pam-field-decision label.is-apply input:checked+span{border-color:#2f7b61;background:#edf7f1;color:#256149;box-shadow:inset 0 0 0 1px #2f7b61}.pam-field-decision label.is-skip input:checked+span{border-color:#b38e5d;background:#fbf4e8;color:#76591f;box-shadow:inset 0 0 0 1px #b38e5d}.pam-field-decision input:focus-visible+span{outline:3px solid rgba(155,34,71,.22);outline-offset:2px}.pam-field-project-note{display:grid;gap:.35rem}.pam-field-project-note label{color:#4f4743;font-size:.7rem;font-weight:850}.pam-field-project-note label span{color:var(--pa-muted);font-weight:600}.pam-field-project-note .form-control{border-color:#ded5d0;font-size:.72rem}
+    .pam-project-guidance.is-alta{border:1px solid #ead9c1;background:#faf6ef}.pam-alta-section{display:grid;gap:.8rem;padding:1rem;border:1px solid #e8e0db;border-radius:.75rem;background:#fff}.pam-alta-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.pam-alta-heading h4{margin:.1rem 0 0;font-family:inherit;font-size:.9rem}.pam-alta-heading p{margin:.25rem 0 0;color:var(--pa-muted);font-size:.7rem}.pam-alta-data{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem;margin:0}.pam-alta-data>div,.pam-alta-more dl>div{min-width:0;padding:.65rem;border-radius:.58rem;background:#f8f6f4}.pam-alta-data>div.is-wide{grid-column:span 2}.pam-alta-data dt,.pam-alta-more dt{margin-bottom:.18rem;color:var(--pa-muted);font-size:.59rem;font-weight:850;letter-spacing:.03em;text-transform:uppercase}.pam-alta-data dd,.pam-alta-more dd{margin:0;color:#37312e;font-size:.74rem;font-weight:700;overflow-wrap:anywhere;white-space:pre-wrap}.pam-alta-source{display:flex;flex-wrap:wrap;gap:.35rem 1.2rem;padding-top:.2rem;color:var(--pa-muted);font-size:.66rem}.pam-alta-source span{display:flex;align-items:flex-start;gap:.35rem}.pam-alta-source i{margin-top:.1rem;color:#a88c68}.pam-alta-more{border-top:1px solid #eee7e3;padding-top:.65rem}.pam-alta-more>summary{width:max-content;max-width:100%;cursor:pointer;color:var(--pa-guinda);font-size:.7rem;font-weight:800}.pam-alta-more dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.45rem;margin:.65rem 0 0}.pam-alta-empty{display:flex;align-items:center;gap:.5rem;padding:.8rem;border-radius:.6rem;background:#f7f4f2;color:#6d655f;font-size:.72rem}.pam-alta-empty i{color:var(--pa-gold)}.pam-alta-empty.is-warning{background:#fbf3e5;color:#76591f}.pam-alta-empty.is-success{background:#e8f4ef;color:#256149}.pam-alta-empty.is-success i{color:#2f7b61}
+    .pam-candidate-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;margin:0;padding:0;list-style:none}.pam-candidate-list li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.65rem;padding:.75rem;border:1px solid #e8e0db;border-radius:.65rem;background:#fdfcfa}.pam-candidate-score{display:grid;align-content:start;justify-items:center;min-width:48px;padding:.35rem;border-radius:.5rem;background:#edf3f8;color:#315f8d}.pam-candidate-score strong,.pam-candidate-score span{display:block}.pam-candidate-score strong{font-size:.9rem}.pam-candidate-score span{font-size:.55rem}.pam-candidate-main{display:grid;min-width:0;gap:.22rem}.pam-candidate-keys{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem;min-width:0}.pam-candidate-keys>span{margin-right:.05rem;color:var(--pa-muted);font-size:.55rem;font-weight:850;letter-spacing:.035em;text-transform:uppercase}.pam-candidate-keys code{max-width:100%;padding:.18rem .4rem;border:1px solid #ead7de;border-radius:999px;background:#faf1f4;color:var(--pa-guinda);font-size:.64rem;font-weight:900;overflow-wrap:anywhere;white-space:normal}.pam-candidate-main strong{font-size:.73rem;line-height:1.3;overflow-wrap:anywhere}.pam-candidate-main small{color:var(--pa-muted);font-size:.61rem}.pam-candidate-main>span{margin-top:.15rem;color:#3d6b51;font-size:.62rem;font-weight:750}.pam-candidate-list li>a{grid-column:1/-1;justify-self:end;color:var(--pa-guinda);font-size:.67rem;font-weight:850;text-decoration:none}.pam-candidate-list li>a:hover{text-decoration:underline}.pam-candidate-list li>a:focus-visible,.pam-decision-form input:focus-visible,.pam-decision-form select:focus-visible,.pam-decision-form textarea:focus-visible,.pam-decision-form button:focus-visible{outline:3px solid rgba(155,34,71,.24);outline-offset:2px}
+    .pam-candidate-main>.pam-candidate-recommendation{display:flex;align-items:center;gap:.3rem;width:max-content;max-width:100%;padding:.24rem .42rem;border-radius:999px;background:#e8f4ef;color:#256149}.pam-decision-recommendation{display:flex;align-items:flex-start;gap:.55rem;padding:.7rem;border-left:3px solid #2f7b61;border-radius:.55rem;background:#edf7f1;color:#315c45;font-size:.67rem;line-height:1.45}.pam-decision-recommendation i{margin-top:.12rem;color:#2f7b61}.pam-decision-recommendation code{color:var(--pa-guinda);font-weight:850}.pam-closed-review{display:flex;align-items:center;justify-content:space-between;gap:.75rem}.pam-closed-review .pam-alta-empty{flex:1}.pam-reopen-form{flex:0 0 auto}.pam-reopen-form .btn{min-height:40px;font-size:.68rem;font-weight:800;white-space:nowrap}
+    .pam-decision-section{border-color:#dcc7cf;background:#fdfafb}.pam-decision-current{display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .55rem;border-radius:999px;background:#e8f4ef;color:#256149;font-size:.68rem;font-weight:850}.pam-decision-history{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:.75rem;border-left:3px solid #2f7b61;border-radius:.55rem;background:#f0f7f3;color:#4e5f56}.pam-decision-history>div{display:grid;gap:.15rem}.pam-decision-history strong,.pam-decision-history span,.pam-decision-history small{font-size:.68rem}.pam-decision-history code{color:var(--pa-guinda);font-weight:850}.pam-decision-history small{color:#6c756f;text-align:right}.pam-decision-form{display:grid;gap:1rem}.pam-decision-form fieldset{min-width:0;margin:0;padding:0;border:0}.pam-decision-form legend,.pam-related-field>label,.pam-note-field>label{display:block;margin-bottom:.45rem;color:#4f4743;font-size:.72rem;font-weight:850}.pam-decision-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem}.pam-decision-options label{display:flex;align-items:flex-start;gap:.5rem;min-height:76px;padding:.65rem;border:1px solid #e1d9d4;border-radius:.6rem;background:#fff;cursor:pointer}.pam-decision-options label:hover{border-color:#c9aeba;background:#fffafb}.pam-decision-options label:has(input:checked){border-color:var(--pa-guinda);box-shadow:inset 0 0 0 1px var(--pa-guinda);background:#fff9fb}.pam-decision-options input{flex:0 0 auto;width:17px;height:17px;margin-top:.1rem;accent-color:var(--pa-guinda)}.pam-decision-options span{display:grid;gap:.15rem}.pam-decision-options strong{font-size:.69rem}.pam-decision-options small{color:var(--pa-muted);font-size:.61rem;line-height:1.35}.pam-related-field,.pam-note-field{display:grid}.pam-related-field[hidden]{display:none}.pam-related-field .form-select,.pam-note-field .form-control{border-color:#ded5d0;font-size:.74rem}.pam-related-field .form-select{min-height:44px}.pam-related-field>small{margin-top:.3rem;color:var(--pa-muted);font-size:.62rem}.pam-note-field label span{color:var(--pa-muted);font-weight:600}.pam-decision-actions{display:flex;align-items:center;justify-content:space-between;gap:1rem}.pam-decision-actions p{display:flex;align-items:flex-start;gap:.4rem;margin:0;color:var(--pa-muted);font-size:.64rem}.pam-decision-actions p i{margin-top:.1rem;color:var(--pa-gold)}.pam-decision-actions .btn{min-height:44px;font-size:.73rem;font-weight:850}
+    .pam-pagination{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-top:1rem}.pam-pagination a,.pam-pagination>span{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-width:36px;height:36px;padding:0 .65rem;border:1px solid #ded7d2;border-radius:.55rem;color:#5f5753;text-decoration:none;font-size:.78rem;font-weight:750}.pam-pagination>div{display:flex;gap:.35rem}.pam-pagination a.is-current{border-color:var(--pa-guinda);background:var(--pa-guinda);color:#fff}.pam-pagination .is-disabled{opacity:.4}.pam-pagination-summary{margin:.45rem 0 0;text-align:center;color:var(--pa-muted);font-size:.68rem}
+    .pam-finding-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem;margin-bottom:1rem}.pam-finding-summary>span{padding:.65rem .75rem;border-radius:.6rem;background:#f7f4f2;color:#655d58;font-size:.7rem}.pam-finding-summary strong{display:block;color:var(--pa-guinda);font-size:1rem}.pam-finding-summary .is-warning{background:#fbf3e5;color:#76591f}.pam-finding-summary .is-success{background:#e8f4ef;color:#256149}.pam-cancellation-list{display:grid;gap:.7rem}.pam-cancellation-review{border:1px solid #eadfd7;border-left:4px solid var(--pa-guinda);border-radius:.75rem;background:#fff;overflow:hidden}.pam-cancellation-review>summary{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:1rem;padding:1rem;cursor:pointer;list-style:none}.pam-cancellation-review>summary::-webkit-details-marker{display:none}.pam-cancellation-review[open]>summary{border-bottom:1px solid #eee5df;background:#fcf9f7}.pam-cancellation-state{display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .55rem;border-radius:999px;background:#fbf0d8;color:#806019;font-size:.66rem;font-weight:800}.pam-cancellation-body{display:grid;gap:.8rem;padding:1rem;background:#fdfcfb}.pam-reviewed-findings{margin-top:1rem;border-top:1px solid #ece4df;padding-top:.8rem}.pam-reviewed-findings>summary{width:max-content;cursor:pointer;color:#286348;font-size:.74rem;font-weight:800}.pam-reviewed-findings>summary i{margin-right:.4rem}.pam-finding-list{display:grid;gap:.55rem;margin-top:.7rem}.pam-finding-list article{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(0,1.5fr) auto;align-items:center;gap:1rem;padding:.85rem;border:1px solid #eee5dc;border-left:4px solid #d1a34f;border-radius:.7rem}.pam-finding-list article.is-potential{border-left-color:var(--pa-guinda)}.pam-finding-list article.is-cancelled{border-left-color:#8b6e3e}.pam-finding-list article.is-reviewed{border-left-color:#2f7b61}.pam-finding-list code,.pam-finding-list strong,.pam-finding-list span,.pam-finding-list small{display:block}.pam-finding-list code{margin:.2rem 0;color:var(--pa-guinda);font-weight:850}.pam-finding-list span{color:#554e4a}.pam-finding-list small{margin-top:.25rem;color:var(--pa-muted);font-size:.72rem}.pam-finding-classification{width:max-content;padding:.16rem .42rem;border-radius:999px;background:#f4ede9;color:#685d56;font-size:.6rem!important;font-weight:850;text-transform:uppercase}.is-potential .pam-finding-classification{background:#f2e1e7;color:var(--pa-guinda)}.is-cancelled .pam-finding-classification{background:#f8eedc;color:#775a24}.is-reviewed .pam-finding-classification{background:#e8f4ef;color:#256149}
+    .pam-analysis-empty{display:grid;place-items:center;padding:2.2rem;text-align:center;border-radius:.8rem;background:#faf8f6;color:var(--pa-muted)}.pam-analysis-empty.is-compact{padding:1.4rem}.pam-analysis-empty i{margin-bottom:.45rem;color:var(--pa-gold);font-size:1.65rem}.pam-analysis-empty strong,.pam-analysis-empty span{display:block}.pam-analysis-empty span{margin-top:.2rem;font-size:.78rem}
+    .pam-no-apply-note{display:flex;align-items:center;justify-content:center;gap:.6rem;padding:.85rem;color:#685f5a;font-size:.8rem}.pam-no-apply-note i{color:var(--pa-guinda)}
+    @@media(max-width:1200px){.pam-analysis-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.pam-project-summary{grid-template-columns:minmax(220px,1fr) minmax(280px,.9fr) auto}.pam-field-change{grid-template-columns:minmax(155px,.55fr) minmax(300px,1.45fr)}.pam-field-meta{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.35rem 1rem}.pam-alta-data{grid-template-columns:repeat(3,minmax(0,1fr))}.pam-candidate-list{grid-template-columns:1fr}.pam-decision-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @@media(max-width:850px){.pam-analysis-nav{align-items:stretch;flex-direction:column}.pam-analysis-nav__actions{justify-content:flex-start}.pam-analysis-hero{flex-direction:column}.pam-analysis-hero__status{min-width:0;align-items:flex-start;border-top:1px solid #e3d4d9;border-left:0;padding:1rem 0 0}.pam-source-list article{grid-template-columns:52px minmax(0,1fr)}.pam-source-state{grid-column:1/-1;justify-self:stretch;text-align:left}.pam-source-state .pam-status{margin-left:0}.pam-review-heading{align-items:stretch;flex-direction:column}.pam-project-search{width:100%}.pam-pem-guide__body{grid-template-columns:1fr}.pam-project-summary{grid-template-columns:minmax(0,1fr) auto}.pam-project-metrics{grid-column:1/-1;justify-content:flex-start}.pam-project-chevron{grid-column:2;grid-row:1}.pam-summary-review-action,.pam-field-review-toolbar{align-items:stretch;flex-direction:column}.pam-field-bulk-actions{justify-content:flex-start}.pam-field-change{grid-template-columns:1fr}.pam-field-meta{grid-column:auto;display:grid}.pam-finding-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.pam-cancellation-review>summary{grid-template-columns:minmax(0,1fr) auto}.pam-cancellation-state{grid-column:1/-1;width:max-content}.pam-finding-list article{grid-template-columns:1fr}.pam-finding-list .pam-confidence{width:max-content}.pam-alta-data{grid-template-columns:repeat(2,minmax(0,1fr))}.pam-alta-more dl{grid-template-columns:repeat(2,minmax(0,1fr))}.pam-decision-actions,.pam-decision-history,.pam-closed-review{align-items:stretch;flex-direction:column}.pam-decision-history small{text-align:left}.pam-reopen-form .btn{width:100%}}
+    @@media(max-width:650px){.pam-analysis-nav,.pam-section-heading{align-items:stretch;flex-direction:column}.pam-analysis-nav .btn{width:100%}.pam-analysis-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.pam-project-search>div{grid-template-columns:auto minmax(0,1fr)}.pam-project-search .btn{grid-column:1/-1;border-top:1px solid #e5ddd8}.pam-review-state-filters{align-items:stretch;flex-wrap:wrap}.pam-review-state-filters>span{flex-basis:100%}.pam-review-state-filters a{flex:1 1 auto;justify-content:center}.pam-active-search{align-items:flex-start;flex-direction:column}.pam-family-group.is-family{padding:.65rem}.pam-family-header{align-items:flex-start;flex-direction:column}.pam-family-count{min-width:0;justify-items:start}.pam-project-summary{padding:.85rem}.pam-project-metrics>span{white-space:normal}.pam-project-body{padding:.75rem}.pam-values{grid-template-columns:1fr}.pam-values i{transform:rotate(90deg);justify-self:center}.pam-pagination>a span,.pam-pagination>span span{display:none}.pam-pagination a,.pam-pagination>span{min-width:36px;padding:0 .5rem}.pam-change-block__heading,.pam-alta-heading{align-items:flex-start;flex-direction:column}.pam-field-heading{align-items:center}.pam-field-decision{grid-template-columns:1fr}.pam-field-bulk-actions .btn{width:100%}.pam-alta-section{padding:.75rem}.pam-alta-data,.pam-alta-more dl,.pam-decision-options{grid-template-columns:1fr}.pam-alta-data>div.is-wide{grid-column:auto}.pam-decision-options label{min-height:0}.pam-decision-actions .btn{width:100%}}
+    @@media(prefers-reduced-motion:reduce){.pam-project-summary,.pam-project-chevron{transition:none}}
+</style>
+
+@if (Model.AnalisisActivo)
+{
+    <script>
+        (() => {
+            const pollUrl = '@Url.Action("EstadoAnalisis", "PamrntProyectos", new { loteId = Model.Lote.LoteId })';
+            const stateElement = document.getElementById('pam-analysis-state');
+            const badgeElement = document.getElementById('pam-analysis-badge');
+            const countElement = document.getElementById('pam-analysis-count');
+            const percentElement = document.getElementById('pam-analysis-percent');
+            const messageElement = document.getElementById('pam-analysis-message');
+            const progressElement = document.getElementById('pam-analysis-progress');
+            const progressBar = progressElement?.querySelector('.progress-bar');
+            const read = (value, camel, pascal) => value?.[camel] ?? value?.[pascal];
+            const isActive = state => ['pendiente', 'ejecutando', 'procesando'].includes((state || '').toLocaleLowerCase('es-MX'));
+
+            const schedule = () => window.setTimeout(poll, 2500);
+            const poll = async () => {
+                if (document.hidden) { schedule(); return; }
+                try {
+                    const response = await fetch(pollUrl, { cache: 'no-store', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    if (response.redirected || [401, 403].includes(response.status)) {
+                        window.location.assign(response.url || '@Url.Action("SesionExpirada", "Acceso")');
+                        return;
+                    }
+                    if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    const data = await response.json();
+                    const estado = read(data, 'estado', 'Estado') || 'Pendiente';
+                    const total = Number(read(data, 'totalFuentes', 'TotalFuentes') || 0);
+                    const procesadas = Number(read(data, 'fuentesProcesadas', 'FuentesProcesadas') || 0);
+                    const progreso = Math.min(100, Math.max(0, Number(read(data, 'progresoPorcentaje', 'ProgresoPorcentaje') || 0)));
+                    const mensaje = read(data, 'mensaje', 'Mensaje');
+
+                    if (stateElement) stateElement.textContent = estado;
+                    if (badgeElement) badgeElement.textContent = estado;
+                    if (countElement) countElement.textContent = `${procesadas} de ${total} fuentes`;
+                    if (percentElement) percentElement.textContent = `${Math.round(progreso)}%`;
+                    if (messageElement && mensaje) messageElement.textContent = mensaje;
+                    if (progressElement) progressElement.setAttribute('aria-valuenow', progreso.toString());
+                    if (progressBar) progressBar.style.width = `${progreso}%`;
+
+                    if (isActive(estado)) schedule();
+                    else window.location.reload();
+                } catch {
+                    if (messageElement) messageElement.textContent = 'No se pudo actualizar el progreso en este momento. Se intentará nuevamente.';
+                    schedule();
+                }
+            };
+
+            schedule();
+        })();
+    </script>
+}
+
+<script>
+    document.querySelectorAll('.pam-analysis-request-form').forEach(form => {
+        form.addEventListener('submit', () => {
+            const button = form.querySelector('button[type="submit"]');
+            if (!button) return;
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Solicitando análisis…';
+        });
+    });
+
+    document.querySelectorAll('[data-decision-form]').forEach(form => {
+        const options = [...form.querySelectorAll('input[name="Clasificacion"]')];
+        const relatedField = form.querySelector('[data-related-field]');
+        const relatedSelect = form.querySelector('[data-related-select]');
+        const submitButton = form.querySelector('button[type="submit"]');
+        const requiresProject = value => ['Vincular existente', 'Padre-hijo'].includes(value || '');
+        if (submitButton) submitButton.dataset.originalLabel = submitButton.innerHTML;
+
+        const refreshRelated = () => {
+            const selected = options.find(option => option.checked)?.value;
+            const required = requiresProject(selected);
+            if (relatedField) relatedField.hidden = !required;
+            options.forEach(option => option.setAttribute('aria-expanded', String(required)));
+            if (relatedSelect) {
+                relatedSelect.disabled = !required;
+                relatedSelect.required = required;
+            }
+        };
+
+        options.forEach(option => option.addEventListener('change', refreshRelated));
+        refreshRelated();
+
+        form.addEventListener('submit', event => {
+            if (form.dataset.submitting === 'true') {
+                event.preventDefault();
+                return;
+            }
+            refreshRelated();
+            if (!form.checkValidity()) {
+                event.preventDefault();
+                form.reportValidity();
+                return;
+            }
+            form.dataset.submitting = 'true';
+            if (!submitButton) return;
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando traza…';
+        });
+    });
+
+    document.querySelectorAll('[data-field-decision-form]').forEach(form => {
+        const submitButton = form.querySelector('button[type="submit"]');
+        const fieldsets = [...form.querySelectorAll('[data-field-decision]')];
+        if (submitButton) submitButton.dataset.originalLabel = submitButton.innerHTML;
+
+        const refreshField = fieldset => {
+            const article = fieldset.closest('.pam-field-change');
+            const selected = fieldset.querySelector('input[type="radio"]:checked');
+            if (!article) return;
+            article.classList.toggle('is-pending-decision', !selected);
+            article.classList.toggle('is-reviewed-decision', Boolean(selected));
+        };
+
+        form.querySelectorAll('[data-bulk-field-decision]').forEach(button => {
+            button.addEventListener('click', () => {
+                const decision = button.dataset.bulkFieldDecision;
+                fieldsets.forEach(fieldset => {
+                    const option = [...fieldset.querySelectorAll('input[type="radio"]')]
+                        .find(input => input.value === decision);
+                    if (option) option.checked = true;
+                    refreshField(fieldset);
+                });
+                fieldsets[0]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+        });
+
+        fieldsets.forEach(fieldset => {
+            fieldset.addEventListener('change', () => refreshField(fieldset));
+            refreshField(fieldset);
+        });
+
+        form.addEventListener('submit', event => {
+            if (form.dataset.submitting === 'true') {
+                event.preventDefault();
+                return;
+            }
+            if (!form.checkValidity()) {
+                event.preventDefault();
+                form.reportValidity();
+                return;
+            }
+            form.dataset.submitting = 'true';
+            if (!submitButton) return;
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Guardando decisiones…';
+        });
+    });
+
+    document.querySelectorAll('[data-reopen-form]').forEach(form => {
+        form.addEventListener('submit', async event => {
+            if (form.dataset.confirmed === 'true') return;
+            event.preventDefault();
+            let confirmed = false;
+            if (typeof Swal !== 'undefined') {
+                const result = await Swal.fire({
+                    icon: 'question',
+                    title: '¿Reabrir esta revisión?',
+                    text: 'La decisión anterior se conservará en el historial y la tarjeta volverá a Pendientes para que pueda corregirla.',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, reabrir',
+                    cancelButtonText: 'Cancelar',
+                    confirmButtonColor: '#9B2247'
+                });
+                confirmed = result.isConfirmed;
+            } else {
+                confirmed = window.confirm('La decisión anterior se conservará. ¿Desea reabrir esta revisión?');
+            }
+            if (!confirmed) return;
+            form.dataset.confirmed = 'true';
+            form.requestSubmit();
+        });
+    });
+
+    window.addEventListener('pageshow', () => {
+        document.querySelectorAll('[data-decision-form], [data-field-decision-form]').forEach(form => {
+            form.dataset.submitting = 'false';
+            const button = form.querySelector('button[type="submit"]');
+            if (!button) return;
+            button.disabled = false;
+            if (button.dataset.originalLabel) button.innerHTML = button.dataset.originalLabel;
+        });
+    });
+</script>
+
+@if (!string.IsNullOrWhiteSpace(decisionSuccessMessage) || !string.IsNullOrWhiteSpace(decisionErrorMessage))
+{
+    var modalExitoso = !string.IsNullOrWhiteSpace(decisionSuccessMessage);
+    var modalMensaje = modalExitoso ? decisionSuccessMessage : decisionErrorMessage;
+    var modalTitulo = modalExitoso ? "Clasificación guardada" : "No se pudo guardar";
+    var modalIcono = modalExitoso ? "success" : "error";
+    <script>
+        window.addEventListener('load', () => {
+            const modal = {
+                icon: @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(modalIcono)),
+                title: @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(modalTitulo)),
+                text: @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(modalMensaje)),
+                confirmButtonText: 'Entendido',
+                confirmButtonColor: '#9B2247',
+                allowOutsideClick: false
+            };
+            if (typeof Swal !== 'undefined') Swal.fire(modal);
+            else window.alert(`${modal.title}\n\n${modal.text}`);
+        }, { once: true });
+    </script>
+}
+
+@if (Model.Filtro.Cambio.HasValue)
+{
+    <script>
+        window.requestAnimationFrame(() => {
+            const target = document.getElementById('pam-project-@Model.Filtro.Cambio.Value');
+            if (!target) return;
+            target.scrollIntoView({ behavior: 'auto', block: 'center' });
+            target.querySelector('summary')?.focus({ preventScroll: true });
+        });
+    </script>
+}

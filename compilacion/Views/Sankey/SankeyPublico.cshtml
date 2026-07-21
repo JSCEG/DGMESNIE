@@ -1,0 +1,227 @@
+@model dynamic
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Balance Nacional de Energía y Diagramas Sankey";
+
+    var perfilJson = HttpContextAccessor.HttpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = perfilJson != null ? JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson) : null;
+
+    var header = new HeaderViewModel
+    {
+        Title = ViewData["Title"].ToString(),
+        IconPath = "sankey.png", // Asumiendo un icono para Sankey
+        Description = "Explora los flujos energéticos de México a través de diagramas Sankey interactivos y el Balance Nacional de Energía.",
+        Section = "Visualizaciones > Balance Energético",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Balance Nacional de Energía (BNE)",
+            description = "Herramienta fundamental para comprender el origen, transformación y destino de la energía en México.",
+            functionality = "Visualización de flujos energéticos mediante diagramas Sankey, desglose detallado del Balance Nacional de Energía por año y tipo de energético.",
+            stage = "Operación",
+            roles = new[] {
+                new { icon = "globe", text = "Usuarios Públicos: Acceso a datos y visualizaciones interactivas." },
+                new { icon = "chart-line", text = "Analistas Energéticos: Herramienta para el estudio y la toma de decisiones." }
+            },
+            order = new { step = 1, description = "Análisis integral del sistema energético nacional." },
+            manualUrl = "/Documentos/ManualBNE.pdf" // Placeholder para manual específico
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container-fluid sankey-container">
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-6">
+            <h2 class="sankey-main-title">Diagrama de Flujos Energéticos</h2>
+        </div>
+        <div class="col-md-6 text-md-end">
+            <div class="d-inline-flex align-items-center">
+                <label for="sankeyYear" class="form-label mb-0 me-2">Año:</label>
+                <select id="sankeyYear" class="form-select w-auto me-2">
+                    <option value="2023">2023</option>
+                    <option value="2022">2022</option>
+                    <option value="2021">2021</option>
+                    <option value="2020" selected>2020</option>
+                </select>
+                <button id="fullscreenBtn" class="btn btn-outline-primary">
+                    <i class="bi bi-arrows-fullscreen"></i> Pantalla Completa
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="sankey-diagram-wrapper">
+        <div id="sankeyDiagram" class="sankey-placeholder">
+            <!-- El diagrama Sankey se cargará aquí -->
+            <p class="text-muted text-center">Cargando diagrama Sankey para el año seleccionado...</p>
+        </div>
+    </div>
+
+    <div class="accordion mt-5" id="sankeyAccordion">
+
+        <!-- Acordeón: ¿Qué es el Balance Nacional de Energía (BNE)? -->
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="headingOne">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                    ¿Qué es el Balance Nacional de Energía (BNE)?
+                </button>
+            </h2>
+            <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#sankeyAccordion">
+                <div class="accordion-body">
+                    <p>La representación correcta del Balance Nacional de Energía se realiza a través de una matriz tabular, que es una tabla de doble entrada. Para tu página web, esto significa que los usuarios deberían poder acceder a una vista similar a una hoja de cálculo o una tabla interactiva:</p>
+                    
+                    <h4>Columnas:</h4>
+                    <ul>
+                        <li><strong>Energéticos primarios:</strong> Estos incluyen carbón, petróleo crudo, condensados, gas natural, nucleoenergía, hidroenergía, geoenergía, energía solar, energía eólica, bagazo de caña, leña y biogás.</li>
+                        <li><strong>Energéticos secundarios:</strong> Comprende coque de carbón, coque de petróleo, gas licuado (GLP), gasolinas y naftas, querosenos, diésel, combustóleo, productos no energéticos, gas seco y electricidad.</li>
+                        <li>Además, se deben incluir columnas con las sumas totales de energía primaria, secundaria y la suma total de todos los energéticos.</li>
+                    </ul>
+
+                    <h4>Filas:</h4>
+                    <p>Las filas de la matriz representan los procesos por los que pasan los energéticos, agrupados en cuatro bloques principales:</p>
+                    <ul>
+                        <li><strong>Oferta interna bruta:</strong> Este bloque inicia con la energía disponible en el país. Incluye la producción (como el gas residual de plantas de gas y el gas de formación empleado por Pemex Exploración y Producción), importación, variación de inventarios, la oferta total, exportación, energía no aprovechada y maquila-intercambio neto.</li>
+                        <li><strong>Transformaciones:</strong> Aquí se detallan los procesos donde energéticos primarios o secundarios se convierten en otros energéticos secundarios. Esto abarca procesos en coquizadoras y hornos, refinerías y despuntadoras, plantas de gas y fraccionadoras, y diversas centrales eléctricas (ciclo combinado, termoeléctrica, carboeléctrica, turbogás, combustión interna, nuclear, hidroeléctrica, solar fotovoltaica, eólica, geotérmica, biomasa y generación distribuida). Es importante destacar que en cada transformación se producen pérdidas, lo que reduce la disponibilidad energética para el consumo final.</li>
+                        <li><strong>Consumo propio:</strong> Representa la energía utilizada por el propio sector energético para el funcionamiento de sus instalaciones y procesos. También incluye transferencias interproductos, recirculaciones (como el gas seco para bombeo neumático), una diferencia estadística para conciliar oferta y demanda, y pérdidas en transporte, distribución y almacenamiento.</li>
+                        <li><strong>Consumo final:</strong> Corresponde a la energía primaria y secundaria destinada a satisfacer las necesidades de los distintos sectores económicos. Se subdivide en:
+                            <ul>
+                                <li>Consumo final no energético: Donde los energéticos se usan como materia prima para elaborar bienes no energéticos (ej., plásticos a partir de gas seco o derivados del petróleo). Esto se puede detallar para Pemex Petroquímica y otras ramas económicas.</li>
+                                <li>Consumo final energético: El uso de energía para satisfacer necesidades en los sectores agropecuario, industrial, comercial y de servicios, residencial, público y de transporte.</li>
+                            </ul>
+                        </li>
+                    </ul>
+                    <p>La matriz tabular permite identificar con gran detalle la cantidad de energía consumida o producida en cada proceso, como en un tablero de ajedrez, localizando el proceso en las filas y el energético en las columnas para encontrar el valor de intersección.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Acordeón: Cómo representar los Diagramas Sankey -->
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="headingTwo">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                    Cómo representar los Diagramas Sankey
+                </button>
+            </h2>
+            <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#sankeyAccordion">
+                <div class="accordion-body">
+                    <p>Un diagrama Sankey es una forma práctica y visual de representar los flujos de energía, donde la cantidad de energía es proporcional a la anchura de las flechas. Es una herramienta complementaria y efectiva para comprender de forma intuitiva los flujos energéticos.</p>
+                    <ul>
+                        <li>Cada año (o período) podría tener su propio diagrama Sankey, mostrando el recorrido de los energéticos desde su origen hasta su consumo final.</li>
+                        <li>Las flechas de colores diferenciados pueden visualizar fácilmente las pérdidas en la transformación y la energía útil generada. Por ejemplo, en la generación eléctrica, el Sankey puede mostrar los combustibles a la izquierda, las tecnologías de transformación en el centro, y a la derecha, las pérdidas en naranja y la electricidad generada en verde.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Acordeón: Sugerencia para la estructura de la página web -->
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="headingThree">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
+                    Sugerencia para la estructura de la página web
+                </button>
+            </h2>
+            <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#sankeyAccordion">
+                <div class="accordion-body">
+                    <p>Para tu página web, podrías adoptar el siguiente enfoque:</p>
+                    <ol>
+                        <li>
+                            <h4>Página principal/Resumen anual:</h4>
+                            <ul>
+                                <li>Ofrece un diagrama Sankey interactivo para cada año (por ejemplo, 2020 como se muestra en la fuente [Figura 88, 310]). Este Sankey debe ser el punto de entrada visual, destacando los flujos más grandes y las principales transformaciones.</li>
+                                <li>Proporciona un resumen conciso de los hallazgos clave para ese año, como la producción energética total, la dependencia de combustibles fósiles (ej., petróleo y gas natural constituyeron el 85.45% de la producción total en 2020), los energéticos más consumidos (ej., gasolina, electricidad y diésel fueron dos tercios del consumo final en 2020), y el saldo de comercio exterior (ej., importaciones superaron exportaciones desde 2016).</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <h4>Secciones de detalle (accesibles al hacer clic en el Sankey o mediante un menú):</h4>
+                            <ul>
+                                <li>
+                                    <h5>Conceptos básicos del Balance Nacional de Energía:</h5>
+                                    <ul>
+                                        <li>Explica qué es el BNE: una herramienta que describe el origen y destino de fuentes de energía primarias y secundarias, incluyendo transformaciones, pérdidas, transporte, importación y exportación, y proporciona un contexto histórico. Es crucial para la toma de decisiones informadas para un desarrollo energético sustentable.</li>
+                                        <li>Define productos energéticos primarios (carbón, petróleo, gas natural, nucleoenergía, hidroenergía, geoenergía, solar, eólica, bagazo, leña, biogás) y secundarios (coque de carbón, coque de petróleo, GLP, gasolinas y naftas, querosenos, diésel, combustóleo, productos no energéticos, gas seco, electricidad).</li>
+                                        <li>Menciona la importancia de la primera ley de la termodinámica y las pérdidas en las transformaciones.</li>
+                                    </ul>
+                                </li>
+                                <li>
+                                    <h5>Procesos Energéticos:</h5> Dedica una sección o subsección para cada bloque del BNE:
+                                    <ul>
+                                        <li>Producción y Oferta Interna Bruta: Detalla cada componente (producción, importación, variación de inventarios, etc.) con sus definiciones. Puedes incluir tablas históricas para cada energético, como la evolución de la producción de petróleo crudo o gas natural [Tabla 4, 97; Tabla 5, 98].</li>
+                                        <li>Transformaciones Energéticas: Explica las diferentes plantas y procesos (coquizadoras, refinerías, plantas de gas). Profundiza en la generación eléctrica, detallando las tecnologías (ciclo combinado, termoeléctrica, etc.) y su eficiencia. Puedes usar diagramas como los de la fuente para ilustrar el funcionamiento de las centrales [Figura 2-13, 288-290]. Muestra la evolución de la producción de refinados (ej., combustóleo superó a gasolinas y diésel en 2020).</li>
+                                        <li>Consumo Propio: Describe el consumo de energía por el propio sector energético, incluyendo transferencias interproductos y recirculaciones.</li>
+                                        <li>Consumo Final: Separa claramente el consumo no energético (ej. plásticos) del consumo energético (sectores económicos). Para cada sector (agropecuario, industrial, comercial y servicios, residencial, público, transporte), puedes incluir:
+                                            <ul>
+                                                <li>Un desglose del consumo por energéticos para el año en curso (ej., para 2020, el transporte con 43.95% y el industrial con 31.16% fueron los mayores consumidores).</li>
+                                                <li>Tablas y figuras históricas mostrando la evolución del consumo de cada energético en cada sector [Tablas 34, 35, 167, 168].</li>
+                                                <li>Menciona datos relevantes, como el aumento del consumo eléctrico en el sector residencial o la disminución del diésel y gas seco en el consumo final.</li>
+                                            </ul>
+                                        </li>
+                                    </ul>
+                                </li>
+                                <li><strong>Comercio Exterior de Energía:</strong> Explica la dinámica de importación y exportación, destacando la dependencia de combustibles fósiles y los riesgos geopolíticos. Menciona la influencia de eventos externos como la pandemia de COVID-19 o fenómenos meteorológicos extremos en el sistema energético.</li>
+                                <li><strong>Fuentes de Información y Metodología:</strong> Es crucial ser transparente sobre cómo se recopilan los datos. Explica que se realizó un mapeo de fuentes clave (SENER, SIE, CNH, CRE, CFE, Pemex, INEGI, etc.) y un proceso de homogeneización y evaluación de la consistencia. Señala las inconsistencias encontradas y cómo se manejaron (ej. generación distribuida, producción geotérmica).</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <!-- Acordeón: Diseño y funcionalidad de la página web -->
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="headingFour">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour" aria-expanded="false" aria-controls="collapseFour">
+                    Diseño y funcionalidad de la página web
+                </button>
+            </h2>
+            <div id="collapseFour" class="accordion-collapse collapse" aria-labelledby="headingFour" data-bs-parent="#sankeyAccordion">
+                <div class="accordion-body">
+                    <ul>
+                        <li><strong>Interactividad:</strong> Permite a los usuarios seleccionar el año deseado para ver el Sankey y las tablas de BNE correspondientes.</li>
+                        <li><strong>Capas de información:</strong> El Sankey sirve como una "capa visual" de alto nivel. Al hacer clic en una flecha o nodo del Sankey, el usuario podría acceder a la tabla detallada del BNE correspondiente a ese flujo o proceso.</li>
+                        <li><strong>Visualización de datos:</strong> Utiliza gráficos claros (de barras, líneas, etc.) para mostrar las tendencias históricas de la producción y el consumo de energéticos en diferentes sectores, como se presentan en las figuras de la fuente (ej., Producción de energéticos primarios [Figura 17, 89], Consumo final por sector [Figura 35, 138]).</li>
+                        <li><strong>Glosario y unidades:</strong> Incluye un glosario de términos y una sección de unidades de medida y equivalencias, como se sugiere en la fuente.</li>
+                    </ul>
+                    <p>Al seguir esta estructura, tu página web ofrecerá una comprensión holística y detallada del sistema energético, cumpliendo con el objetivo del Balance Nacional de Energía de apoyar la toma de decisiones informadas para un desarrollo energético sustentable.</p>
+                </div>
+            </div>
+        </div>
+
+    </div> <!-- Fin del Acordeón -->
+</div>
+
+@section Scripts {
+    <script>
+        // Función para manejar el modo de pantalla completa
+        document.getElementById('fullscreenBtn').addEventListener('click', function() {
+            const sankeyWrapper = document.querySelector('.sankey-diagram-wrapper');
+            if (sankeyWrapper.requestFullscreen) {
+                sankeyWrapper.requestFullscreen();
+            } else if (sankeyWrapper.mozRequestFullScreen) { /* Firefox */
+                sankeyWrapper.mozRequestFullScreen();
+            } else if (sankeyWrapper.webkitRequestFullscreen) { /* Chrome, Safari and Opera */
+                sankeyWrapper.webkitRequestFullscreen();
+            } else if (sankeyWrapper.msRequestFullscreen) { /* IE/Edge */
+                sankeyWrapper.msRequestFullscreen();
+            }
+        });
+
+        // Lógica para cargar el Sankey (placeholder)
+        document.getElementById('sankeyYear').addEventListener('change', function() {
+            const selectedYear = this.value;
+            const sankeyDiagramDiv = document.getElementById('sankeyDiagram');
+            sankeyDiagramDiv.innerHTML = `<p class="text-muted text-center">Cargando diagrama Sankey para el año ${selectedYear}...</p>`;
+            // Aquí iría la lógica real para cargar el diagrama Sankey usando D3.js o similar
+            // Por ejemplo: loadSankeyData(selectedYear).then(data => renderSankey(data, sankeyDiagramDiv));
+        });
+
+        // Cargar el Sankey inicial al cargar la página
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('sankeyYear').dispatchEvent(new Event('change'));
+        });
+    </script>
+}

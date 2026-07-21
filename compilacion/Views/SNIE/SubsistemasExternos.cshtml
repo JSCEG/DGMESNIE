@@ -1,0 +1,280 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Subsistemas Externos Integrados";
+}
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Subsistemas Externos Integrados",
+        IconPath = "subsistemas.png",
+        Description = "Visualiza interoperabilidad con subsistemas locales.",
+        Section = "Gobernanza y Seguridad",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Subsistemas Externos Integrados",
+            description = "Sistema de consulta de entidades federativas y privadas integradas al SNIE.",
+            functionality = "Permite visualizar el estado de conexión e integración de subsistemas externos, incluyendo el monitoreo de APIs, ETLs, cargas recientes y comportamiento dinámico de sincronización de datos.",
+            stage = "Inicialización",
+            roles = new[] {
+                new { icon = "industry", text = "PEMEX: Integración de datos petroleros" },
+                new { icon = "bolt", text = "CFE: Sistemas eléctricos" },
+                new { icon = "chart-line", text = "CENACE: Control energético" },
+                new { icon = "lightbulb", text = "CONUEE: Eficiencia energética" },
+                new { icon = "map-marked-alt", text = "Entidades Federativas: Datos locales" },
+                new { icon = "city", text = "Municipios: Información municipal" },
+                new { icon = "building", text = "Privados: Datos del sector" },
+                new { icon = "certificate", text = "CELs: Certificados energéticos" }
+            },
+            order = new { step = 3, description = "Integración de actores externos (Art. 69)" }
+        }),
+        LegalDescription = "Gestión de la interoperabilidad con sistemas externos conforme al Art. 69 del Reglamento.",
+        Fundamentos = new List<FundamentoLegal> {
+            new() { Reference = "Art. 69 Reglamento", Description = "Establece los lineamientos para la integración de subsistemas externos" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<!-- CONTENIDO PRINCIPAL -->
+<div class="container ps-5 pe-5">
+    <div class="row">
+        <div class="col-md-8" data-aos="fade-up">
+            <div class="border rounded p-4 shadow-sm bg-white h-100 d-flex align-items-center justify-content-center">
+                <div class="text-center">
+                    <img src="https://cdn-icons-png.flaticon.com/512/7473/7473024.png" class="mb-4" style="max-width: 160px;" alt="Integración tecnológica">
+                    <h5 class="fw-bold mb-3">Sincronización Activa</h5>
+                    <p class="text-muted">Monitoreo en tiempo real de subsistemas federales y privados.<br>Todos los datos están siendo validados y almacenados en el SNIE.</p>
+                    <button class="btn btn-outline-primary mt-3">Ver estado completo de conexión</button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4" data-aos="fade-left">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Estado de Subsistemas</h5>
+                </div>
+                <div class="card-body">
+                    <select class="form-select mb-3" id="selectorSubsistema">
+                        <option selected disabled>Selecciona Subsistema</option>
+                        <option value="PEMEX">PEMEX</option>
+                        <option value="CFE">CFE</option>
+                        <option value="CENACE">CENACE</option>
+                        <option value="CONUEE">CONUEE</option>
+                    </select>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">PEMEX <span class="badge bg-success">Integrado</span></li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">CFE <span class="badge bg-success">Integrado</span></li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">CENACE <span class="badge bg-warning">Parcial</span></li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">CONUEE <span class="badge bg-danger">Inactivo</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-5" data-aos="fade-up">
+        <div class="col-12">
+            <h4 class="mb-4">Resumen Gráfico</h4>
+            <div id="graficoSubsistemas" style="height: 400px;"></div>
+        </div>
+    </div>
+
+    <div class="row mt-5" data-aos="fade-up">
+        <div class="col-12">
+            <h4 class="mb-4">Estado de APIs y ETLs</h4>
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Subsistema</th>
+                        <th>API</th>
+                        <th>ETL</th>
+                        <th>Última Carga</th>
+                        <th>Detalles</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>PEMEX</td>
+                        <td><span class="badge bg-success">Disponible</span></td>
+                        <td><span class="badge bg-success">Correcta</span></td>
+                        <td>2025-06-06 02:15</td>
+                        <td><a href="#" class="btn btn-sm btn-outline-primary">Ver log</a></td>
+                    </tr>
+                    <tr>
+                        <td>CFE</td>
+                        <td><span class="badge bg-success">Disponible</span></td>
+                        <td><span class="badge bg-warning">Con advertencias</span></td>
+                        <td>2025-06-06 03:10</td>
+                        <td><a href="#" class="btn btn-sm btn-outline-warning">Ver detalles</a></td>
+                    </tr>
+                    <tr>
+                        <td>CONUEE</td>
+                        <td><span class="badge bg-danger">Fuera de línea</span></td>
+                        <td><span class="badge bg-secondary">N/A</span></td>
+                        <td>2025-05-30 20:00</td>
+                        <td><a href="#" class="btn btn-sm btn-outline-danger">Reporte técnico</a></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="row mt-5" data-aos="fade-up">
+        <div class="col-12">
+            <div class="alert alert-info shadow-sm">
+                <strong>¿Sabías que?</strong> Este módulo permite identificar rápidamente qué instituciones están compartiendo datos de forma efectiva al SNIE, promoviendo la transparencia y eficiencia energética.
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts {
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script>
+        AOS.init();
+
+        let seriesData = {
+            PEMEX: [1, 1, 1, 1],
+            CFE: [0.8, 0.9, 0.95, 1],
+            CENACE: [0.3, 0.4, 0.5, 0.5],
+            CONUEE: [0.2, 0.1, 0.05, 0]
+        };
+
+        let chart;
+        document.addEventListener('DOMContentLoaded', function () {
+            // Configuración de animaciones globales de Highcharts
+            Highcharts.setOptions({
+                chart: {
+                    animation: {
+                        duration: 1500,
+                        easing: 'easeOutBounce'
+                    }
+                },
+                plotOptions: {
+                    series: {
+                        animation: {
+                            duration: 1500
+                        }
+                    }
+                }
+            });
+
+            chart = Highcharts.chart('graficoSubsistemas', {
+                chart: { 
+                    type: 'line',
+                    events: {
+                        load: function() {
+                            // Animación inicial
+                            const series = this.series[0];
+                            const points = series.points;
+                            points.forEach((point, i) => {
+                                setTimeout(() => {
+                                    point.update(seriesData.PEMEX[i], true, {
+                                        duration: 1000,
+                                        easing: 'easeOutBounce'
+                                    });
+                                }, i * 300);
+                            });
+                        }
+                    }
+                },
+                title: { 
+                    text: 'Conectividad Dinámica por Subsistema',
+                    style: {
+                        fontWeight: 'bold'
+                    }
+                },
+                xAxis: { 
+                    categories: ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4'],
+                    labels: {
+                        style: {
+                            fontWeight: '500'
+                        }
+                    }
+                },
+                yAxis: { 
+                    title: { 
+                        text: 'Nivel de Conectividad',
+                        style: {
+                            fontWeight: '500'
+                        }
+                    }, 
+                    min: 0, 
+                    max: 1,
+                    plotLines: [{
+                        value: 0.7,
+                        color: '#FF0000',
+                        dashStyle: 'shortdash',
+                        width: 2,
+                        label: {
+                            text: 'Nivel Mínimo Requerido'
+                        }
+                    }]
+                },
+                series: [{
+                    name: 'PEMEX',
+                    data: [0, 0, 0, 0], // Iniciamos en cero para la animación
+                    color: '#198754',
+                    marker: {
+                        enabled: true,
+                        radius: 6
+                    }
+                }],
+                tooltip: {
+                    formatter: function() {
+                        return `<b>${this.series.name}</b><br/>
+                                ${this.x}: ${(this.y * 100).toFixed(1)}% conectividad`;
+                    }
+                }
+            });
+        });
+
+        // Mejorar la transición entre subsistemas
+        document.getElementById('selectorSubsistema').addEventListener('change', function () {
+            const selected = this.value;
+            if (chart) {
+                const newData = seriesData[selected];
+                
+                // Animación secuencial para cada punto
+                newData.forEach((value, index) => {
+                    setTimeout(() => {
+                        chart.series[0].points[index].update({
+                            y: value
+                        }, true, {
+                            duration: 800,
+                            easing: 'easeOutBounce'
+                        });
+                    }, index * 200);
+                });
+
+                // Actualizar nombre de la serie
+                chart.series[0].update({
+                    name: selected
+                }, false);
+
+                // Actualizar color según el subsistema
+                const colors = {
+                    'PEMEX': '#198754',
+                    'CFE': '#0d6efd',
+                    'CENACE': '#ffc107',
+                    'CONUEE': '#dc3545'
+                };
+                
+                chart.series[0].update({
+                    color: colors[selected]
+                }, true);
+            }
+        });
+    </script>
+}

@@ -1,0 +1,598 @@
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = string.IsNullOrWhiteSpace(perfilUsuarioJson)
+        ? null
+        : JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    ViewData["Title"] = "Manuales y Guías Metodológicas";
+    ViewData["NombreUsuario"] = perfilUsuario?.Nombre ?? "Invitado";
+    ViewData["RolUsuario"] = perfilUsuario?.Rol ?? "Público";
+    ViewData["IDUsuario"] = perfilUsuario?.IdUsuario ?? "0";
+
+    var header = new HeaderViewModel
+    {
+        Title = "Manuales, Guías y Material de Consulta",
+        IconPath = "sistema.png",
+        Description = "Centro de consulta técnica, metodológica, estadística y normativa de la Dirección General.",
+        Section = "Biblioteca Digital",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Biblioteca Digital Institucional",
+            description = "Un espacio abierto para consultar manuales del sistema, infografías, presentaciones oficiales y el marco normativo aplicable.",
+            functionality = "Navega por temas del lado izquierdo y consulta el detalle del material clasificado por tipo de recurso en la derecha.",
+            stage = "Consulta",
+            roles = new[] {
+                new { icon = "book-open", text = "Consulta General: Acceso completo a toda la documentación" },
+                new { icon = "download", text = "Formatos y Leyes: Enlaces directos a recursos externos oficiales" }
+            },
+            order = new { step = 1, description = "Repositorio institucional de conocimientos" },
+            manualUrl = "/Documentos/ManualSNIEr.pdf"
+        })
+    };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/home-dashboard.css" asp-append-version="true" />
+    <style>
+        .manuales-grid {
+            display: grid;
+            grid-template-columns: 280px minmax(0, 1fr);
+            gap: 1.5rem;
+        }
+
+        .topic-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            min-width: 0;
+        }
+
+        .topic-item {
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: left;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .topic-info {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .topic-count,
+        .resource-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.6rem;
+            height: 1.6rem;
+            padding: 0 0.42rem;
+            border: 1px solid rgba(138, 0, 49, 0.18);
+            border-radius: 999px;
+            background: rgba(138, 0, 49, 0.06);
+            color: #8A0031;
+            font-size: 0.72rem;
+            font-weight: 800;
+            line-height: 1;
+            flex: 0 0 auto;
+        }
+
+        .topic-item.active .topic-count {
+            border-color: #8A0031;
+            background: #8A0031;
+            color: #ffffff;
+        }
+
+        .topic-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.04);
+            border-color: rgba(138, 0, 49, 0.15);
+        }
+
+        .topic-item.active {
+            border-color: #8A0031;
+            background: rgba(138, 0, 49, 0.02);
+            box-shadow: 0 4px 12px rgba(138, 0, 49, 0.05);
+        }
+
+        .topic-item.active .topic-icon {
+            color: #8A0031;
+            background: rgba(138, 0, 49, 0.08);
+        }
+
+        .topic-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            color: #6c757d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            transition: all 0.2s;
+        }
+
+        .topic-info h4 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin: 0 0 0.15rem 0;
+            color: #333;
+        }
+
+        .topic-info p {
+            font-size: 0.78rem;
+            margin: 0;
+            color: #777;
+        }
+
+        .detail-panel {
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.02);
+            min-height: 500px;
+            min-width: 0;
+        }
+
+        .resource-tabs {
+            border-bottom: 2px solid #f1f3f5;
+            margin-bottom: 1.5rem;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
+        }
+
+        .resource-tab {
+            border: none;
+            background: none;
+            padding: 0.75rem 1.25rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #6c757d;
+            position: relative;
+            transition: color 0.2s;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            flex: 1 1 0;
+            min-width: 145px;
+        }
+
+        .resource-tab:hover {
+            color: #8A0031;
+        }
+
+        .resource-tab.active {
+            color: #8A0031;
+        }
+
+        .resource-tab.active .resource-count {
+            border-color: #8A0031;
+            background: #8A0031;
+            color: #ffffff;
+        }
+
+        .resource-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #8A0031;
+            border-radius: 2px;
+        }
+
+        .resource-card {
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px;
+            padding: 1.2rem;
+            background: #ffffff;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .resource-card:hover {
+            border-color: rgba(138, 0, 49, 0.15);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+        }
+
+        .resource-meta {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .resource-type-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .resource-details h5 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin: 0 0 0.2rem 0;
+            color: #333;
+        }
+
+        .resource-details p {
+            font-size: 0.8rem;
+            margin: 0;
+            color: #777;
+        }
+
+        .resource-btn {
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            padding: 0.4rem 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        @@media (max-width: 991px) {
+            .manuales-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .resource-tabs {
+                justify-content: flex-start;
+            }
+
+            .resource-tab {
+                flex: 0 0 auto;
+            }
+        }
+
+        @@media (max-width: 575px) {
+            .detail-panel {
+                padding: 1rem;
+            }
+
+            .resource-card {
+                align-items: stretch;
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .resource-meta {
+                align-items: flex-start;
+            }
+
+            .resource-btn {
+                justify-content: center;
+                width: 100%;
+            }
+        }
+
+        /* --- Modo oscuro --- */
+        [data-bs-theme="dark"] .topic-item,
+        [data-bs-theme="dark"] .detail-panel,
+        [data-bs-theme="dark"] .resource-card {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .topic-icon {
+            background: var(--shell-surface-2, #241f2e);
+        }
+
+        [data-bs-theme="dark"] .topic-info h4,
+        [data-bs-theme="dark"] .resource-details h5,
+        [data-bs-theme="dark"] #topic-title {
+            color: var(--shell-ink, #ece7e2) !important;
+        }
+
+        [data-bs-theme="dark"] .topic-info p,
+        [data-bs-theme="dark"] .resource-details p {
+            color: var(--shell-muted, #a39aa8);
+        }
+
+        [data-bs-theme="dark"] .topic-count,
+        [data-bs-theme="dark"] .resource-count {
+            border-color: rgba(218, 156, 181, 0.35);
+            background: rgba(218, 156, 181, 0.12);
+            color: #e4a8bf;
+        }
+
+        [data-bs-theme="dark"] .topic-item.active .topic-count,
+        [data-bs-theme="dark"] .resource-tab.active .resource-count {
+            border-color: #d59ab2;
+            background: #d59ab2;
+            color: #24131b;
+        }
+    </style>
+}
+
+<div class="home-dashboard-page">
+    <div class="home-dashboard-page__view-header">
+        @await Html.PartialAsync("_ViewHeader", header)
+    </div>
+
+    <div class="container mb-5">
+        <div class="manuales-grid">
+            <!-- Columna Izquierda: Temas -->
+            <aside class="topic-list" aria-label="Lista de Temas">
+                <button type="button" class="topic-item" onclick="switchTopic(0)" aria-pressed="false" aria-label="Transparencia: 1 recurso">
+                    <span class="topic-icon"><i class="bi bi-shield-check"></i></span>
+                    <div class="topic-info">
+                        <h4>Transparencia</h4>
+                        <p>Leyes, solicitudes e informes</p>
+                    </div>
+                    <span class="topic-count" aria-hidden="true">1</span>
+                </button>
+                <button type="button" class="topic-item active" onclick="switchTopic(1)" aria-pressed="true" aria-label="Metodologías y Estadísticas: 1 recurso">
+                    <span class="topic-icon"><i class="bi bi-file-earmark-bar-graph"></i></span>
+                    <div class="topic-info">
+                        <h4>Metodologías y Estadísticas</h4>
+                        <p>Normas técnicas y balances</p>
+                    </div>
+                    <span class="topic-count" aria-hidden="true">1</span>
+                </button>
+                <button type="button" class="topic-item" onclick="switchTopic(2)" aria-pressed="false" aria-label="Manuales del Sistema: 0 recursos">
+                    <span class="topic-icon"><i class="bi bi-laptop"></i></span>
+                    <div class="topic-info">
+                        <h4>Manuales del Sistema</h4>
+                        <p>Guías de uso del SNIEr</p>
+                    </div>
+                    <span class="topic-count" aria-hidden="true">0</span>
+                </button>
+            </aside>
+
+            <!-- Columna Derecha: Detalle -->
+            <main class="detail-panel">
+                <div id="topic-title-wrap" class="mb-4">
+                    <h2 id="topic-title" style="font-size: 1.5rem; font-weight: 800; color: #333; margin-bottom: 0.25rem;">Metodologías y Estadísticas</h2>
+                    <p id="topic-desc" class="text-muted small mb-0">Normas técnicas para la integración de datos y diagramas de balance energético nacional.</p>
+                </div>
+
+                <!-- Tabs de Recursos -->
+                <nav class="resource-tabs d-flex" aria-label="Tipos de recurso" role="tablist">
+                    <button type="button" class="resource-tab active" data-tab="infografias" role="tab" aria-selected="true" aria-label="Infografías: 0 recursos" onclick="switchTab('infografias')">
+                        <span>Infografías</span><span class="resource-count" aria-hidden="true">0</span>
+                    </button>
+                    <button type="button" class="resource-tab" data-tab="presentaciones" role="tab" aria-selected="false" aria-label="Presentaciones: 1 recurso" onclick="switchTab('presentaciones')">
+                        <span>Presentaciones</span><span class="resource-count" aria-hidden="true">1</span>
+                    </button>
+                    <button type="button" class="resource-tab" data-tab="regulacion" role="tab" aria-selected="false" aria-label="Leyes y Regulación: 0 recursos" onclick="switchTab('regulacion')">
+                        <span>Leyes y Regulación</span><span class="resource-count" aria-hidden="true">0</span>
+                    </button>
+                    <button type="button" class="resource-tab" data-tab="consulta" role="tab" aria-selected="false" aria-label="Material de Consulta: 0 recursos" onclick="switchTab('consulta')">
+                        <span>Material de Consulta</span><span class="resource-count" aria-hidden="true">0</span>
+                    </button>
+                </nav>
+
+                <!-- Contenido de Recursos -->
+                <div id="resources-container" role="tabpanel" aria-live="polite">
+                    <!-- Dinámico -->
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script>
+        // Los conteos se calculan directamente desde este catálogo.
+        // Los recursos publicados en esta vista deben apuntar a /Presentaciones/.
+        const libraryData = [
+            {
+                title: "Transparencia",
+                desc: "Recursos institucionales, leyes generales, infografías informativas y formatos de consulta regulatoria.",
+                infografias: [],
+                presentaciones: [
+                    { title: "Guía para Solicitudes de Transparencia", desc: "Guía interactiva paso a paso para tramitar y gestionar solicitudes ante la Dirección General.", actionText: "Abrir guía", icon: "bi-file-earmark-slides", color: "rgba(138, 0, 49, 0.08)", textCol: "#8A0031", url: "/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html" }
+                ],
+                regulacion: [],
+                consulta: []
+            },
+            {
+                title: "Metodologías y Estadísticas",
+                desc: "Normas técnicas para la integración de datos y diagramas de balance energético nacional.",
+                infografias: [],
+                presentaciones: [
+                    { title: "Atribuciones DGMESNIE", desc: "Presentación institucional de las atribuciones, objetivos y alcance de la Dirección General.", actionText: "Abrir presentación", icon: "bi-file-earmark-slides", color: "rgba(180, 137, 52, 0.08)", textCol: "#b48934", url: "/Presentaciones/Presentacion%20DGMESNIE.html" }
+                ],
+                regulacion: [],
+                consulta: []
+            },
+            {
+                title: "Manuales del Sistema",
+                desc: "Guías detalladas e instructivos técnicos para la operación y uso del portal institucional SNIEr.",
+                infografias: [],
+                presentaciones: [],
+                regulacion: [],
+                consulta: []
+            }
+        ];
+
+        const resourceTabs = ['infografias', 'presentaciones', 'regulacion', 'consulta'];
+        const resourceTabLabels = {
+            infografias: 'Infografías',
+            presentaciones: 'Presentaciones',
+            regulacion: 'Leyes y Regulación',
+            consulta: 'Material de Consulta'
+        };
+
+        let currentTopicIndex = 1;
+        let currentTab = 'infografias';
+
+        function resourceLabel(count) {
+            return `${count} ${count === 1 ? 'recurso' : 'recursos'}`;
+        }
+
+        function updateTopicCounters() {
+            document.querySelectorAll('.topic-item').forEach((button, index) => {
+                const topic = libraryData[index];
+                const total = resourceTabs.reduce((sum, tabName) => sum + (topic[tabName]?.length || 0), 0);
+                const badge = button.querySelector('.topic-count');
+
+                badge.textContent = total;
+                button.setAttribute('aria-label', `${topic.title}: ${resourceLabel(total)}`);
+            });
+        }
+
+        function updateTabCounters(topic) {
+            document.querySelectorAll('.resource-tab[data-tab]').forEach(button => {
+                const tabName = button.dataset.tab;
+                const count = topic[tabName]?.length || 0;
+                const badge = button.querySelector('.resource-count');
+
+                badge.textContent = count;
+                button.setAttribute('aria-label', `${resourceTabLabels[tabName]}: ${resourceLabel(count)}`);
+            });
+        }
+
+        function switchTopic(index) {
+            currentTopicIndex = index;
+            const topic = libraryData[index];
+
+            // Actualizar botones de temas
+            $('.topic-item').removeClass('active');
+            $('.topic-item').eq(index).addClass('active');
+            $('.topic-item').attr('aria-pressed', 'false');
+            $('.topic-item').eq(index).attr('aria-pressed', 'true');
+
+            // Actualizar títulos
+            $('#topic-title').text(topic.title);
+            $('#topic-desc').text(topic.desc);
+            updateTabCounters(topic);
+
+            // Renderizar la pestaña activa
+            renderContent();
+
+            // Animación de entrada
+            anime({
+                targets: '#resources-container .resource-card',
+                opacity: [0, 1],
+                translateY: [10, 0],
+                delay: anime.stagger(50),
+                duration: 500,
+                easing: 'easeOutQuad'
+            });
+        }
+
+        function switchTab(tabName) {
+            currentTab = tabName;
+            $('.resource-tab').removeClass('active');
+            $('.resource-tab').attr('aria-selected', 'false');
+            $(`.resource-tab[data-tab="${tabName}"]`).addClass('active').attr('aria-selected', 'true');
+
+            renderContent();
+
+            // Animación
+            anime({
+                targets: '#resources-container .resource-card',
+                opacity: [0, 1],
+                translateY: [10, 0],
+                delay: anime.stagger(50),
+                duration: 400,
+                easing: 'easeOutQuad'
+            });
+        }
+
+        function renderContent() {
+            const topic = libraryData[currentTopicIndex];
+            const list = topic[currentTab] || [];
+            const container = document.getElementById('resources-container');
+            container.innerHTML = '';
+
+            if (list.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center p-5 text-muted">
+                        <i class="bi bi-folder-x" style="font-size: 2.5rem; color: #ccc;"></i>
+                        <p class="mt-2 mb-0 small">No hay recursos disponibles en esta categoría para este tema.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'resource-card';
+
+                const targetAttr = item.url.startsWith('http') || item.url.endsWith('.pdf') || item.url.endsWith('.html')
+                    ? 'target="_blank" rel="noopener noreferrer"'
+                    : '';
+
+                card.innerHTML = `
+                    <div class="resource-meta">
+                        <div class="resource-type-icon" style="background-color: ${item.color}; color: ${item.textCol};">
+                            <i class="bi ${item.icon}"></i>
+                        </div>
+                        <div class="resource-details">
+                            <h5>${item.title}</h5>
+                            <p>${item.desc}</p>
+                        </div>
+                    </div>
+                    <a href="${item.url}" ${targetAttr} class="btn btn-outline-secondary resource-btn" style="border-color: rgba(0,0,0,0.15); color: #555; border-radius: 8px;">
+                        ${item.actionText} <i class="bi bi-chevron-right small"></i>
+                    </a>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        // Carga inicial
+        $(function () {
+            updateTopicCounters();
+            updateTabCounters(libraryData[currentTopicIndex]);
+            renderContent();
+
+            // Animación de entrada inicial con AnimeJS
+            anime.set([
+                '.topic-item',
+                '.detail-panel'
+            ], {
+                opacity: 0,
+                translateY: 15
+            });
+
+            anime.timeline({
+                easing: 'easeOutExpo',
+                duration: 700
+            })
+            .add({
+                targets: '.topic-item',
+                opacity: [0, 1],
+                translateY: [15, 0],
+                delay: anime.stagger(80)
+            })
+            .add({
+                targets: '.detail-panel',
+                opacity: [0, 1],
+                translateY: [15, 0]
+            }, '-=400');
+        });
+    </script>
+}

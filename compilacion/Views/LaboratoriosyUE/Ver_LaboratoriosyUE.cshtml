@@ -1,0 +1,905 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+
+@{
+    ViewData["Title"] = "Lista de Laboratorios y Unidades de Inspección";
+}
+
+
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/visitasv.png" alt="Icono personalizado" class="iconomenu" />
+        @ViewData["Title"]
+    </h4>
+</div>
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+@*Sección que Despliega el Mapa Inicial*@
+<div class="container">
+    <!-- Imagen del banner -->
+    <div class="text-center">
+        <img src="@Cdn.Url/img_snier/vistas/banner/luv.png" alt="Lista de Laboratorios y Unidades de Inspección"
+            class="img-fluid" style="max-width: 100%; height: auto; margin-bottom: 20px;">
+    </div>
+
+    <div class="alert alert-info mt-4" role="alert">
+        <strong>Instrucciones para buscar:</strong>
+        <ul>
+            <li>Puedes buscar directamente ingresando el nombre en el cuadro de búsqueda.</li>
+            <li>Haciendo clic sobre una entidad federativa o un municipio en el mapa, se mostrará la información
+                asociada.</li>
+            <li>Utiliza el botón de "Vista de Calle" en los marcadores del mapa para explorar su ubicación en Google
+                Maps.</li>
+            <li>Los resultados mostrados incluyen únicamente los datos vigentes según el corte más reciente.</li>
+        </ul>
+    </div>
+
+
+    <section id="despliega_mapa" class="pb-5">
+
+        <div class="row">
+            <!-- Tarjeta con el total de registros -->
+            <div class="col-md-6">
+                <div class="card text-white mb-4" style="background-color: #006769;">
+                    <div class="card-body text-center">
+                        <h4 class="card-title text-white">Total de Laboratorios y Unidades de Inspección</h4>
+                        <p class="card-text display-4" id="totalRegistrosCard">0</p>
+                        <!-- Aquí se actualizará el total -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tarjeta con la última fecha de actualización -->
+            <div class="col-md-6">
+                <div class="card text-white mb-4" style="background-color: #004c56;">
+                    <div class="card-body text-center">
+                        <h4 class="card-title text-white">Última Fecha de Actualización</h4>
+                        <p class="card-text display-4" id="fechaActualizacionCard">N/A</p>
+                        <!-- Aquí se actualizará la fecha -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="row p-3 align-items-center">
+            <div class="col text-center">
+                <div class="search-container p-3">
+                    <label class="form-label">Buscar en el Mapa:</label>
+                    <input type="text" id="busquedaGeneralInput" class="form-control"
+                        placeholder="Escriba el Nombre, Entidad Federativa o Municipio">
+                    <div id="autocomplete-list" class="autocomplete-items"></div>
+                    <!-- El resto de tu código -->
+
+                    <button class="btn btn-cre-rojo-home" onclick="buscarGeneral()" style="width:10% !important"><i
+                            class="bi bi-search"></i></button>
+                </div>
+
+            </div>
+
+        </div>
+
+        <br />
+
+        <div id="map" class="p-3 bg"></div>
+        <div class="leyenda pt-3">
+            <p>Mayor Concentración</p>
+            <p>Concentración Promedio</p>
+            <p>Menor Concentración</p>
+            @* <p> Ductos</p>*@
+        </div>
+
+
+        <!-- Título con alert -->
+        <div class="alert alert-success text-center" role="alert">
+            <h3>Lista Completa de Laboratorios y Unidades de Inspección</h3>
+            <hr>
+            <p>¡Conoce la lista completa de Laboratorios y Unidades de Inspección vigentes! </p>
+        </div>
+
+
+        <div class="table-responsive">
+            <table id="tablaLUV" class="display table table-hover table-responsive table-bordered">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Razón Social</th>
+                        <th>Dirección</th>
+                        <th>Elemento Tipo</th>
+                        <th>Actividad</th>
+                        <th>Entidad Federativa</th>
+                        <th>Municipio</th>
+                        <th>Tipo</th>
+                        <th>Norma</th>
+                        <th>Resolución</th>
+                        <th>Estatus</th>
+                        <!-- Agrega más columnas según sea necesario -->
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Los datos de la tabla se insertarán aquí con JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+
+
+
+        <br />
+        <div class="fondo_grafico_ef" id="grafico" style="fill:#efefee !important"></div>
+        <br />
+
+
+    </section>
+
+
+</div>
+
+
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+@section scripts {
+    @*Campos Visibles del Popup Dependiendo del Rol*@
+    <script>
+        var camposVisiblesGlobal = [];
+        var datosLUV; // Variable global para almacenar los datos de LUV
+        var camposVisiblesCargados = false;
+        var datosLUVCargados = false;
+
+
+        function limpiarMarcadores() {
+            // Limpiar todas las capas de marcadores y círculos
+            map.eachLayer(function (layer) {
+                if (layer instanceof L.Marker || layer instanceof L.MarkerClusterGroup || layer instanceof L.Circle) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            // Eliminar la capa de municipios
+            //if (municipiosLayer) {
+            //    map.removeLayer(municipiosLayer);
+            //    municipiosLayer = null; // Establecer la variable municipiosLayer como nula
+            //}
+        }
+        function handleNull(value) {
+            return value ? value : "S/D-Sin Dato";
+        }
+        Highcharts.setOptions({
+            lang: {
+                decimalPoint: '.',
+                thousandsSep: ','
+            }
+        });
+
+
+        $(document).ready(function () {
+
+            //Tabla
+            // Inicializa DataTables al cargar la página
+            // Inicializa DataTables para tablaLUV
+            var table = $('#tablaLUV').DataTable({
+                lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+                dom: 'Blfrtip',
+                buttons: [
+                    'copyHtml5',
+                    'excelHtml5',
+                    'csvHtml5',
+                    'pdfHtml5'
+                ],
+                columns: [
+                    { data: "id" },
+                    { data: "nombre" },
+                    { data: "dirección" },
+                    { data: "elemento_tipo" },
+                    { data: "actividad" },
+                    { data: "entidad_Federativa" },
+                    { data: "municipio" },
+                    { data: "tipo" },
+                    { data: "norma" },
+                    { data: "resolucion" },
+                    { data: "estatus" }
+                    // Añade más columnas según corresponda
+                ]
+            });
+
+
+
+            // Cargar campos visibles
+            $.ajax({
+                url: '/LaboratoriosyUE/GetCamposVisiblesLUV',
+                type: 'GET',
+                contentType: 'application/json',
+                success: function (camposVisibles) {
+                    console.log("Estos son los Campos Visibles:", camposVisibles); // ver la respuesta en consola
+                    camposVisiblesGlobal = camposVisibles;
+                    camposVisiblesCargados = true;
+                    if (datosLUVCargados) {
+                        inicializarMarcadores();
+                    }
+                },
+                error: function (error) {
+                    console.error("Error al obtener campos visibles", error);
+                }
+            });
+
+            // Cargar datos LUV
+            $.ajax({
+                url: '/LaboratoriosyUE/GetLUV',
+                type: 'GET',
+                contentType: 'application/json',
+                success: function (response) {
+                    console.log("Estos son los LUV:", response); // ver la respuesta en consola
+                    datosLUV = response;
+                    datosLUVCargados = true;
+                    // 1. Calcular el total de registros
+                    var totalRegistros = datosLUV.length;
+
+                    // 2. Obtener la última fecha de actualización
+                    var fechaActualizacion = datosLUV.reduce((max, item) => {
+                        var currentFecha = new Date(item.fecha_actualizacion);
+                        return max > currentFecha ? max : currentFecha;
+                    }, new Date(0));
+
+                    // 3. Actualizar el contenido de las tarjetas
+                    document.getElementById('totalRegistrosCard').innerText = totalRegistros.toLocaleString('en-US');
+                    document.getElementById('fechaActualizacionCard').innerText = fechaActualizacion.toLocaleDateString('es-MX');
+
+
+
+
+
+                    //Guardo los terminos en la  búsqueda
+                    for (var i = 0; i < datosLUV.length; i++) {
+                        availableTerms.push(datosLUV[i].nombre_corto);
+                    }
+                    if (camposVisiblesCargados) {
+                        inicializarMarcadores();
+                    }
+
+                    //Tabla
+                    // Limpia la tabla antes de agregar nuevos datos
+                    table.clear().draw();
+                    response.forEach(function (item) {
+                        table.row.add({
+                            "id": item.id,
+                            "nombre": item.nombre,
+                            "dirección": item.dirección,
+                            "elemento_tipo": item.elemento_tipo,
+                            "actividad": item.actividad,
+                            "entidad_Federativa": item.entidad_Federativa,
+                            "municipio": item.municipio,
+                            "tipo": item.tipo,
+                            "norma": item.norma,
+                            "resolucion": item.resolucion,
+                            "estatus": item.estatus
+                            // Añade más campos según corresponda
+                        }).draw();
+                    });
+
+                    //Grafico de Columnas
+                    // Paso 1: Procesa la respuesta
+                    var counts = {};
+                    response.forEach(function (coordenada) {
+                        if (!counts[coordenada.entidad_Federativa]) {
+                            counts[coordenada.entidad_Federativa] = 0;
+                        }
+                        counts[coordenada.entidad_Federativa]++;
+                    });
+
+                    // Paso 2: Extrae categorías y datos
+                    var categories = [];
+                    var dataPermisos = [];
+                    for (var entidad in counts) {
+                        categories.push(entidad);
+                        dataPermisos.push(counts[entidad]);
+                    }
+
+                    // Paso 3: Configura las opciones del gráfico
+                    var options = {
+                        chart: {
+                            type: 'column',
+                            backgroundColor: '#efefee'  // Color de fondo del gráfico
+                        },
+                        title: {
+                            text: 'Total de Laboratorios y Unidades de Verificación Vigentes por Entidad Federativa'
+                        },
+                        xAxis: {
+                            categories: categories
+                        },
+                        yAxis: {
+                            title: {
+                                text: 'Número de Laboratorios y Unidades de Verificación'
+                            }
+                        },
+                        series: [{
+                            name: 'Laboratorios y Unidades de Verificación',
+                            data: dataPermisos,
+                            color: '#59b25d',
+                            dataLabels: {
+                                enabled: true,   // Habilita las etiquetas de datos
+                                rotation: 0,     // Rota las etiquetas (en este caso, no hay rotación)
+                                color: '#000000', // Color del texto de las etiquetas
+                                align: 'center',  // Alinea las etiquetas al centro
+                                format: '{point.y:,.0f}',  // Formato con separador de miles
+                                y: 10, // Posiciona las etiquetas un poco arriba del tope de la columna
+                                style: {
+                                    fontSize: '13px', // Tamaño de la fuente de las etiquetas
+                                    fontFamily: 'Verdana, sans-serif' // Tipo de letra de las etiquetas
+                                }
+                            }
+                        }],
+                        tooltip: {
+                            formatter: function () {
+                                return '<b>' + this.x + '</b><br/>' +
+                                    this.series.name + ': ' + Highcharts.numberFormat(this.y, 0);  // Usando separador de miles
+
+                            }
+                        }
+                    };
+
+                    // Renderizar el gráfico en el contenedor con el ID 'grafico'
+                    Highcharts.chart('grafico', options);
+
+
+                },
+                error: function (error) {
+                    console.error("Error al obtener datos LUV", error);
+                }
+            });
+        });
+
+        function inicializarMarcadores() {
+            var markers = L.markerClusterGroup();
+            for (var i = 0; i < datosLUV.length; i++) {
+                var coordenada = datosLUV[i];
+                var iconoActual = determinarIcono(coordenada.tipo); // Función para determinar el icono
+                var marker = L.marker([coordenada.latitud, coordenada.longitud], { icon: iconoActual });
+                var contenidoPopup = generarContenidoPopup(coordenada);
+                marker.bindPopup(contenidoPopup);
+                markers.addLayer(marker);
+            }
+            map.addLayer(markers);
+        }
+
+        function determinarIcono(tipo) {
+            var iconoBase = L.Icon.extend({
+                options: {
+                    iconSize: [36, 36],
+                    iconAnchor: [12, 16],
+                    popupAnchor: [-3, -76]
+                }
+            });
+
+            var iconoInspeccion = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/inspeccion.png' });
+            var iconoLaboratorio = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/laboratorio.png' });
+            var iconoTercerosEspecialistas = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/tercerose.png' });
+
+            // Determinar el ícono basado en el tipo
+            switch (tipo) {
+                case "EE (¿Terceros especialistas?)":
+                    return iconoTercerosEspecialistas;
+                case "Laboratorios de Prueba":
+                    return iconoLaboratorio;
+                case "Unidades de Inspección":
+                    return iconoInspeccion;
+                default:
+                    return iconoLaboratorio; // Ícono por defecto si no hay coincidencia
+            }
+        }
+
+
+        function generarContenidoPopup(coordenada) {
+            var contenido = "<style>" +
+                ".popup-content {" +
+                "    width: 280px;" +
+                "    max-height: 180px;" +
+                "    overflow-y: auto;" +
+                "    padding: 10px;" +
+                "}" +
+                "h2, h3, h4, p, li {" +
+                "    margin: 0 0 10px 0;" +
+                "}" +
+                "ul {" +
+                "    padding-left: 20px;" +
+                "}" +
+                "img {" +
+                "    vertical-align: middle;" +
+                "    margin-right: 10px;" +
+                "}" +
+                "</style>";
+
+            contenido += "<div class='popup-content'>";
+
+            if (camposVisiblesGlobal.includes("Nombre")) {
+                var imgSrc; // La URL de la imagen que se mostrará en el pop-up
+                switch (coordenada.tipo) {
+                    case "EE (¿Terceros especialistas?)":
+                        imgSrc = '@Cdn.Url/img_snier/vistas/tercerose.png';
+                        break;
+                    case "Laboratorios de Prueba":
+                        imgSrc = '@Cdn.Url/img_snier/vistas/laboratorio.png';
+                        break;
+                    case "Unidades de Inspección":
+                        imgSrc = '@Cdn.Url/img_snier/vistas/inspeccion.png';
+                        break;
+                    default:
+                        imgSrc = '@Cdn.Url/img_snier/vistas/laboratorio.png'; // Ícono por defecto si no hay coincidencia
+                        break;
+                }
+                contenido += "<h2 class='subtitulo'><img src='" + imgSrc + "' style='height: 24px; width: 24px;'/><strong>" + handleNull(coordenada.nombre) + "</strong></h2><br>";
+            }
+
+            contenido += "<ul>";
+
+            if (camposVisiblesGlobal.includes("Entidad_Federativa")) {//NO TENEMOS EL NOMBRE DE LA EF EN CAMPOS VISIBLES SOLO EL ID LO CRUZO EN LA CONSULTA DEL REPOSITORIO
+                contenido += "<li><strong>Entidad Federativa:</strong> " + handleNull(coordenada.entidad_Federativa) + "</li>";
+            }
+            if (camposVisiblesGlobal.includes("ID")) {
+                contenido += "<li><strong>ID:</strong> " + handleNull(coordenada.id) + "</li>";
+            }
+            if (camposVisiblesGlobal.includes("Nombre")) {
+                contenido += "<li><strong>RazonSocial:</strong> " + handleNull(coordenada.nombre) + "</li>";
+            }
+
+            if (camposVisiblesGlobal.includes("Elemento_tipo")) {
+                contenido += "<li><strong>Elemento Tipo:</strong> " + handleNull(coordenada.elemento_tipo) + "</li>";
+            }
+
+            if (camposVisiblesGlobal.includes("Municipio")) {
+                contenido += "<li><strong>Municipio:</strong> " + handleNull(coordenada.municipio) + "</li>";
+            }
+
+            if (camposVisiblesGlobal.includes("Dirección")) {
+                contenido += "<li><strong>Dirección:</strong> " + handleNull(coordenada.dirección) + "</li>";
+            }
+
+
+            if (camposVisiblesGlobal.includes("Tipo")) {
+                contenido += "<li><strong>Tipo:</strong> " + handleNull(coordenada.tipo) + "</li>";
+            }
+
+            if (camposVisiblesGlobal.includes("Norma")) {
+                contenido += "<li><strong>Norma:</strong> " + handleNull(coordenada.norma) + "</li>";
+            }
+
+            if (camposVisiblesGlobal.includes("Latitud")) {
+                contenido += "<li><strong>Latitud:</strong> " + handleNull(coordenada.latitud) + "</li>";
+            }
+
+            if (camposVisiblesGlobal.includes("Longitud")) {
+                contenido += "<li><strong>Longitud:</strong> " + handleNull(coordenada.longitud) + "</li>";
+            }
+
+            //Nuevos Campos
+            if (camposVisiblesGlobal.includes("Resolución")) {
+                contenido += "<li><strong>Resolución:</strong> " + handleNull(coordenada.resolucion) + "</li>";
+            }
+            if (camposVisiblesGlobal.includes("Estatus")) {
+                contenido += "<li><strong>Estatus:</strong> " + handleNull(coordenada.estatus) + "</li>";
+            }
+            if (camposVisiblesGlobal.includes("Nombre_corto")) {
+                contenido += "<li><strong>Nombre Corto:</strong> " + handleNull(coordenada.nombre_corto) + "</li>";
+            }
+
+            if (camposVisiblesGlobal.includes("Comentarios")) {
+                contenido += "<li><strong>Comentarios:</strong> " + handleNull(coordenada.comentarios) + "</li>";
+            }
+
+            contenido += "</ul>";
+
+            //if (camposVisiblesGlobal.includes("Nombre")) {
+            //    contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.nombre + "'>Ver detalle</a>";
+            //}
+
+            // Agrega el enlace de Vista de Calle
+            if (camposVisiblesGlobal.includes("Latitud") && camposVisiblesGlobal.includes("Longitud")) {
+                var streetViewURL = 'http://maps.google.com/maps?q=&layer=c&cbll=' + coordenada.latitud + ',' + coordenada.longitud + '&cbp=11,0,0,0,0';
+                contenido += "<a class='btn btn-cre-verde' href='" + streetViewURL + "' target='_blank' class='street-view-link'>Vista de Calle</a>";
+            }
+            contenido += "</div>";
+
+            return contenido;
+        }
+
+
+    </script>
+
+    @*Funcionalidades del Mapa Inicial*@
+    <script>
+
+        var availableTerms = [];//Variable global para almacenar los terminos de búqueda Sugerencia de Terminos
+        var datosLUV; // variable global para almacenar todos los expendios
+
+        var map = L.map('map', {
+            zoomControl: true,
+            maxZoom: 28,
+            minZoom: 5
+        }).fitBounds([
+            [16.515297504744552, -116.01198143543994],
+            [31.280203931152798, -90.79533052556764]
+        ]);
+
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+
+
+        var currentMarker = null; // Referencia al marcador actual
+        // var seleccionado = 'estado'; // Estado inicial
+        var municipiosFiltrados = null;
+
+
+
+        //Colores
+        var initialStyle = {
+            color: '#187A8C', // Color de línea
+            fillColor: '#187A8C', // Color de relleno
+            fillOpacity: 0.3, // Opacidad del relleno
+            weight: 3 // Ancho de la línea
+        };
+
+        // Estilo para el hover
+        var highlightStyle = {
+            color: '#FFDB2EC',
+            fillColor: '#FFDB2E', // Color de relleno
+            fillOpacity: 0.3, // Opacidad del relleno
+            weight: 3
+        };
+
+        // Capa de estados
+        var estadosLayer = L.geoJSON(estados, {
+            style: initialStyle, // Aplicar estilo inicial
+            onEachFeature: function (feature, layer) {
+                layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOMGEO + '</div>');
+                layer.on('click', function (e) {
+                    cargarMunicipios(feature.properties.CVE_ENT);
+                    map.fitBounds(layer.getBounds()); // Centra el mapa en el estado
+                });
+                // Efecto de hover
+                layer.on('mouseover', function (e) {
+                    layer.setStyle(highlightStyle);
+                });
+                layer.on('mouseout', function (e) {
+                    estadosLayer.resetStyle(layer);
+                });
+            }
+        }).addTo(map);
+
+        // Capa de municipios (inicialmente vacía)
+        var municipiosLayer = L.geoJSON(null, {
+            style: initialStyle, // Aplicar estilo inicial
+            onEachFeature: onEachMunicipio
+        }).addTo(map);
+
+        function onEachMunicipio(feature, layer) {
+            layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOM_MUN + ', ' + feature.properties.NOMGEO + '</div>');
+            // Efecto de hover
+            layer.on('mouseover', function (e) {
+                layer.setStyle(highlightStyle);
+            });
+            layer.on('mouseout', function (e) {
+                municipiosLayer.resetStyle(layer);
+            });
+
+        }
+
+        // Función para cargar los municipios correspondientes a un estado
+        function cargarMunicipios(cveEnt) {
+            if (municipiosLayer) {
+                map.removeLayer(municipiosLayer);
+            }
+            if (currentMarker) {
+                map.removeLayer(currentMarker);
+                currentMarker = null;
+            }
+            municipiosFiltrados = {
+                type: "FeatureCollection",
+                features: municipios_mapa.features.filter(function (feature) {
+                    return feature.properties.CVE_ENT === cveEnt;
+                })
+            };
+            municipiosLayer = L.geoJSON(municipiosFiltrados, {
+                style: initialStyle,
+                onEachFeature: onEachMunicipio
+            }).addTo(map);
+        }
+
+
+        // Asignando a la búsqueda de términos
+        estadosLayer.eachLayer(function (layer) {
+            if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+                availableTerms.push(layer.feature.properties.NOMGEO);
+            }
+        });
+
+        for (var i = 0; i < municipios_mapa.features.length; i++) {
+            var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+            var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+            // Asegúrate de que ambas propiedades existen antes de concatenar
+            if (municipio && estado) {
+                var nombreCompleto = municipio + ", " + estado;
+                availableTerms.push(nombreCompleto);
+            }
+        }
+
+        //Busquedas
+        var lastSearchedEstadoLayer = null; // para almacenar la última entidad federativa buscada
+        var lastSearchedMunicipioLayer = null; // para almacenar el último municipio buscado
+
+
+        function buscarGeneral() {
+            var terminoBuscado = document.getElementById('busquedaGeneralInput').value.trim();
+
+            if (!terminoBuscado) {
+                alert("Por favor, introduce un término de búsqueda.");
+                return;  // Termina la ejecución de la función si el campo está vacío
+            }
+
+            // Intenta buscar por número de permiso primero
+            var encontrado = false;
+            for (var i = 0; i < datosLUV.length; i++) {
+                var expendio = datosLUV[i];
+                if (expendio.nombre_corto === terminoBuscado) {
+                    var lat = expendio.latitud;
+                    var lon = expendio.longitud;
+                    map.setView([lat, lon], 15);
+                    encontrado = true;
+                    break;
+                }
+            }
+
+            // Si no se encontró por número de permiso, busca por entidad federativa
+            if (!encontrado) {
+                estadosLayer.eachLayer(function (layer) {
+                    if (layer.feature.properties.NOMGEO === terminoBuscado) {
+                        map.fitBounds(layer.getBounds());
+
+                        // Si ya había una entidad federativa buscada anteriormente, restablecemos su estilo
+                        if (lastSearchedEstadoLayer) {
+                            estadosLayer.resetStyle(lastSearchedEstadoLayer);
+                        }
+
+                        // Resalta la entidad federativa encontrada
+                        layer.setStyle({
+                            color: '#FF0000',
+                            fillColor: '#FF0000',
+                            fillOpacity: 0.5
+                        });
+
+                        lastSearchedEstadoLayer = layer;
+
+                        // Reiniciar el estilo de la entidad después de 5 segundos
+                        setTimeout(function () {
+                            estadosLayer.resetStyle(lastSearchedEstadoLayer);
+                            lastSearchedEstadoLayer = null;
+                        }, 5000);
+
+                        encontrado = true;
+                    }
+                });
+            }
+
+            // Si aún no se encontró, busca por municipio en la fuente de datos completa
+            if (!encontrado) {
+                // Divide el término de búsqueda en municipio y estado
+                var terminos = terminoBuscado.split(',');
+                var buscadoMunicipio = terminos[0].trim();
+                var buscadoEstado = terminos.length > 1 ? terminos[1].trim() : '';
+
+
+                for (var i = 0; i < municipios_mapa.features.length; i++) {
+                    var municipio = municipios_mapa.features[i];
+                    var nombreMunicipio = municipio.properties.NOM_MUN;
+                    var nombreEstado = municipio.properties.NOMGEO;
+
+                    // Comprueba si el nombre del municipio y del estado coinciden con el término de búsqueda
+                    if (nombreMunicipio === buscadoMunicipio && (buscadoEstado === '' || nombreEstado === buscadoEstado)) {
+                        var bounds = L.geoJSON(municipio).getBounds();
+                        map.fitBounds(bounds);
+
+                        // Si ya había un municipio buscado anteriormente, lo elimina
+                        if (lastSearchedMunicipioLayer) {
+                            map.removeLayer(lastSearchedMunicipioLayer);
+                        }
+
+                        // Agrega el municipio encontrado al mapa y lo resalta
+                        lastSearchedMunicipioLayer = L.geoJSON(municipio, {
+                            style: {
+                                color: '#FF0000',
+                                fillColor: '#FF0000',
+                                fillOpacity: 0.5
+                            }
+                        }).addTo(map);
+
+                        // Reiniciar el estilo y eliminar el municipio después de 5 segundos
+                        setTimeout(function () {
+                            map.removeLayer(lastSearchedMunicipioLayer);
+                            lastSearchedMunicipioLayer = null;
+                        }, 5000);
+
+                        encontrado = true;
+                        break;
+                    }
+                }
+            }
+
+
+            if (!encontrado) {
+                alert("Término no encontrado.");
+            }
+
+
+
+
+        }
+
+
+
+        //Vista Satelite
+        map.createPane('pane_GoogleSatellite_0');
+        map.getPane('pane_GoogleSatellite_0').style.zIndex = 0;
+        var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            pane: 'pane_GoogleSatellite_0',
+            opacity: 1.0,
+            attribution: '<a href="https://www.google.at/permissions/geoguidelines/attr-guide.html">Map data ©2015 Google</a>',
+            minZoom: 1,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 20
+        });
+
+        //Configura los Base Layers
+        var baseLayers = {
+            "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }),
+            "Vista Satélite": layer_GoogleSatellite_0
+        };
+
+        // Control de capas para seleccionar la vista del mapa
+        L.control.layers(baseLayers).addTo(map);
+
+        // Activa una capa de mosaicos como vista inicial
+        baseLayers["OpenStreetMap"].addTo(map);
+
+        // Redibujar la capa cuando se seleccione
+        map.on('baselayerchange', function (eventLayer) {
+            if (eventLayer.name === "Vista Satélite") {
+                layer_GoogleSatellite_0.redraw();
+            }
+        });
+
+        L.control.scale().addTo(map); // Agregar la escala gráfica al mapa
+        //ZOOM
+        var resetZoomControl = L.control({ position: 'topleft' });
+
+        resetZoomControl.onAdd = function (map) {
+            var div = L.DomUtil.create('div', 'reset-zoom-control');
+            div.innerHTML = '<button class="btn btn-cre-rojo-home" onclick="resetZoom()"><i class="bi bi-house-door"></i></button>';
+            return div;
+        };
+
+        resetZoomControl.addTo(map);
+
+        function resetZoom() {
+            map.setView([24.572503, -101.768257], 5);
+        }
+        /////////////DISTANCIAS/////////////////////
+        // Configura las opciones de dibujo
+        var drawControl = new L.Control.Draw({
+            draw: {
+                polygon: false,
+                polyline: true,
+                rectangle: false,
+                circle: false,
+                marker: false,
+                circlemarker: false
+            },
+            edit: false
+        });
+
+        map.addControl(drawControl);
+
+        // Cuando se dibuja una línea, calcula la distancia
+        map.on('draw:created', function (e) {
+            var type = e.layerType,
+                layer = e.layer;
+
+            if (type === 'polyline') {
+                var latlngs = layer.getLatLngs();
+                var distance = 0;
+                for (var i = 1; i < latlngs.length; i++) {
+                    distance += latlngs[i - 1].distanceTo(latlngs[i]);
+                }
+                // Convertir la distancia a km y redondear a 2 decimales
+                distance = Math.round((distance / 1000) * 100) / 100;
+                // Crear un popup con la distancia
+                layer.bindPopup('Distancia: ' + distance + ' km').openPopup();
+                // Añadir la línea al mapa
+                layer.addTo(map);
+            }
+        });
+
+
+
+    </script>
+
+
+    @* Funcionalidades de Búsqueda *@
+    <script>
+
+        // Función para inicializar el autocompletar
+        function autocomplete(inp, arr) {
+            var currentFocus;
+
+            inp.addEventListener("input", function (e) {
+                var a, b, i, val = this.value;
+                closeAllLists();
+                if (!val) { return false; }
+                currentFocus = -1;
+
+                a = document.getElementById("autocomplete-list");
+                a.innerHTML = "";
+
+                for (i = 0; i < arr.length; i++) {
+                    if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                        b = document.createElement("DIV");
+                        b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                        b.innerHTML += arr[i].substr(val.length);
+                        b.addEventListener("click", function (e) {
+                            inp.value = this.innerText;
+                            closeAllLists();
+                            buscarGeneral(); // Llama a tu función de búsqueda aquí
+                        });
+                        a.appendChild(b);
+                    }
+                }
+            });
+
+            function closeAllLists(elmnt) {
+                var x = document.getElementById("autocomplete-list");
+                if (elmnt != x && elmnt != inp) {
+                    x.innerHTML = "";
+                }
+            }
+
+            document.addEventListener("click", function (e) {
+                closeAllLists(e.target);
+            });
+        }
+        // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+        var uniqueTerms = [...new Set(availableTerms)];
+
+        // Inicializa el autocompletar
+        autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+    </script>
+}

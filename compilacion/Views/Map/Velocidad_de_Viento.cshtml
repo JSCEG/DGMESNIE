@@ -1,0 +1,286 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+}
+
+
+@{
+    ViewData["Title"] = "Velocidad de Viento";
+}
+
+<div class="text-center">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/vientoi.png" alt="Icono personalizado" class="iconomenu" />
+        @ViewData["Title"]
+    </h3>
+</div>
+<!-- Miga de Pan -->
+
+<div class="alert alert-light" role="alert">
+    <nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);" aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div>
+    
+
+
+
+<div class="container">
+
+<div id="main-container">
+    <div class="container pb-3">
+        <div class="row d-flex justify-content-center">
+            <div class="col">
+              @*  <button class="btn btn-cre-rojo" data-bs-toggle="offcanvas" data-bs-target="#ejemploOffcanvas">*@
+                <button class="btn btn-cre-rojo" id="last-update-btn">
+                    <i class="bi bi-info-circle-fill"></i> Última Actualización: 01/09/2017
+                </button>
+            </div>
+            <div class="col">
+                <select id="estado" class="form-select">
+                    <option value="ags">Aguascalientes</option>
+                    <option value="bc">Baja California</option>
+                    <option value="bcs">Baja California Sur</option>
+                    <option value="camp">Campeche</option>
+                    <option value="coah">Coahuila</option>
+                    <option value="col">Colima</option>
+                    <option value="chis">Chiapas</option>
+                    <option value="chih">Chihuahua</option>
+                    <option value="cdmx">Ciudad de México</option>
+                    <option value="dgo">Durango</option>
+                    <option value="gto">Guanajuato</option>
+                    <option value="gro">Guerrero</option>
+                    <option value="hgo">Hidalgo</option>
+                    <option value="jal">Jalisco</option>
+                    <option value="mex">México</option>
+                    <option value="mich">Michoacán</option>
+                    <option value="mor">Morelos</option>
+                    <option value="nay">Nayarit</option>
+                    <option value="nl">Nuevo León</option>
+                    <option value="oax">Oaxaca</option>
+                    <option value="pue">Puebla</option>
+                    <option value="qro">Querétaro</option>
+                    <option value="qroo">Quintana Roo</option>
+                    <option value="slp">San Luis Potosí</option>
+                    <option value="sin">Sinaloa</option>
+                    <option value="son">Sonora</option>
+                    <option value="tab">Tabasco</option>
+                    <option value="tamps">Tamaulipas</option>
+                    <option value="tlax">Tlaxcala</option>
+                    <option value="ver">Veracruz</option>
+                    <option value="yuc">Yucatán</option>
+                    <option value="zac">Zacatecas</option>
+                </select>
+            </div>
+            @if (perfilUsuario.Rol != "0")
+            {
+                <partial name="_Infomapas_PRPEP" />
+            }
+
+            @if (perfilUsuario.Rol == "0")
+            {
+                <partial name="_Infomapa_publico_SEM" />
+
+            }
+        </div>
+    </div>
+
+    @*Mapa*@
+    <div class="d-flex h-100 pb-3" style="overflow: auto;">
+        <div class="row m-0 w-100">
+            <div class="col-lg-9">
+                <div class="app-card app-card-chart h-100 shadow-sm">
+                    <div class="app-card-body p-4">
+                        <div class="chart-container">
+                            <div id="map-container" class="app-card-body p-4">
+                                <div class="d-flex justify-content-end">
+                                    <button id="fullscreen-btn" class="btn btn-primary">Pantalla Completa</button>
+                                </div>
+                                <div id="menu-map-container">
+                                    <!-- Los elementos que se moverán aquí en pantalla completa -->
+                                    <div id="fullscreen-elements">
+                                        <div id="fullscreen-last-update"></div>
+                                        <div id="fullscreen-select"></div>
+                                        <div id="map" style="height: 500px;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-12 ">
+                <div class="app-card app-card-chart h-100 shadow-sm">
+
+                    <div class="app-card-body p-4">
+                        <div class="chart-container">
+                            <div style="overflow-y: auto; max-height: 500px;">
+                                <table cellspacing="0" border="0">
+                                    <colgroup width="140"></colgroup>
+                                    <colgroup width="125"></colgroup>
+                                    <tr>
+                                        <td colspan=2 height="29" align="center" valign=middle><b><font face="Montserrat" size=4>Simbología</font></b></td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan=2 rowspan=2 height="43" align="center" valign=middle><font face="Montserrat" size=1>Velocidad del viento en metros sobre segundo (m/s)</font></td>
+                                    </tr>
+                                    <tr>
+                                    </tr>
+                                    <tr>
+                                        <td height="21" align="center"><font face="Montserrat" size=1>&lt; 3</font></td>
+                                        <td align="center" bgcolor="#FFFFD9"><font face="Liberation Serif"><br></font></td>
+                                    </tr>
+                                    <tr>
+                                        <td height="21" align="center"><font face="Montserrat" size=1>3 - 3.9</font></td>
+                                        <td align="center" bgcolor="#EEF8DA"><font face="Liberation Serif"><br></font></td>
+                                    </tr>
+                                    <tr>
+                                        <td height="21" align="center"><font face="Montserrat" size=1>4 - 4.9</font></td>
+                                        <td align="center" bgcolor="#CDEBBA"><font face="Liberation Serif"><br></font></td>
+                                    </tr>
+                                    <tr>
+                                        <td height="21" align="center"><font face="Montserrat" size=1>5 - 5.9</font></td>
+                                        <td align="center" bgcolor="#94D5B9"><font face="Liberation Serif"><br></font></td>
+                                    </tr>
+                                    <tr>
+                                        <td height="21" align="center"><font face="Montserrat" size=1>6 - 6.9</font></td>
+                                        <td align="center" bgcolor="#45A9BE"><font face="Liberation Serif"><br></font></td>
+                                    </tr>
+                                    <tr>
+                                        <td height="21" align="center"><font face="Montserrat" size=1>7 - 7.9</font></td>
+                                        <td align="center" bgcolor="#2079B5"><font face="Liberation Serif"><br></font></td>
+                                    </tr>
+                                    <tr>
+                                        <td height="21" align="center"><font face="Montserrat" size=1>8 - 8.9</font></td>
+                                        <td align="center" bgcolor="#2450A1"><font face="Liberation Serif"><br></font></td>
+                                    </tr>
+                                    <tr>
+                                        <td height="21" align="center"><font face="Montserrat" size=1>9- 9.9</font></td>
+                                        <td align="center" bgcolor="#263495"><font face="Liberation Serif"><br></font></td>
+                                    </tr>
+                                    <tr>
+                                        <td height="21" align="center"><font face="Montserrat" size=1>&gt; 10</font></td>
+                                        <td align="center" bgcolor="#091D58"><font face="Liberation Serif"><br></font></td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan=2 rowspan=3 height="64" align="center" valign=middle><i><font face="Montserrat" size=1>Fuente: National Renewable Energy Laboratory (<a href="https://www.nrel.gov/gis/wind-resource-maps.html" target="_blank">https://www.nrel.gov/gis/wind-resource-maps.html</a>)</font></i></td>
+
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div><!--//app-card-body-->
+                </div><!--//app-card-->
+
+
+
+            </div>
+        </div>
+    </div>
+
+
+</div>
+    <style>
+        #fullscreen-elements {
+            display: flex;
+            flex-direction: column;
+            height: auto; /* Valor inicial para cuando no esté en pantalla completa */
+        }
+
+        #fullscreen-last-update, #fullscreen-select {
+            flex-shrink: 0;
+        }
+
+        #map {
+            flex-grow: 1;
+        }
+
+        #main-container.fullscreen-active #fullscreen-elements {
+            height: 100vh;
+        }
+
+        #main-container.fullscreen-active #map {
+            height: calc(100vh - 60px);
+        }
+
+        #main-container:not(.fullscreen-active) #map {
+            height: 500px;
+        }
+    </style>
+</div>
+
+@*Script de Pantalla Completa*@
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const fullscreenButton = document.getElementById('fullscreen-btn');
+        const menuMapContainer = document.getElementById('menu-map-container');
+        const fullscreenElements = document.getElementById('fullscreen-elements');
+        const mainContainer = document.getElementById('main-container');
+
+        const lastUpdateBtn = document.getElementById('last-update-btn');
+        const selectElement = document.getElementById('estado');
+        const mapElement = document.getElementById('map');
+
+        const fullscreenLastUpdate = document.getElementById('fullscreen-last-update');
+        const fullscreenSelect = document.getElementById('fullscreen-select');
+
+        const originalContainer = document.querySelector('.container.pb-3 .row.d-flex.justify-content-center');
+
+        fullscreenButton.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                menuMapContainer.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', (event) => {
+            if (document.fullscreenElement) {
+                fullscreenButton.textContent = "Salir de Pantalla Completa";
+                fullscreenLastUpdate.appendChild(lastUpdateBtn);
+                fullscreenSelect.appendChild(selectElement);
+                fullscreenElements.appendChild(mapElement);
+                mainContainer.classList.add('fullscreen-active');
+                mapElement.style.height = "calc(100vh - 60px)";
+            } else {
+                fullscreenButton.textContent = "Pantalla Completa";
+                originalContainer.querySelector('.col:nth-child(1)').appendChild(lastUpdateBtn);
+                originalContainer.querySelector('.col:nth-child(2)').appendChild(selectElement);
+                document.getElementById('map-container').appendChild(mapElement);
+                mainContainer.classList.remove('fullscreen-active');
+                mapElement.style.height = "500px";
+
+                // Asegurarse de que los estilos se restablezcan
+                fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+            }
+        });
+
+        selectElement.addEventListener('change', (event) => {
+            const selectedState = event.target.value;
+            // Lógica para mostrar el estado seleccionado
+            console.log(`Selected state: ${selectedState}`);
+        });
+    });
+</script>
+
+
+
+@*Template del Mapa*@
+
+<script type="text/javascript" src="/js/configura_mapa.js"></script>
+<script type="text/javascript" src="/js/velocidad_de_viento.js"></script>

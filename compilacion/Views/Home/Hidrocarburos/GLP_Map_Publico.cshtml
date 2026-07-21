@@ -1,0 +1,837 @@
+@{
+    ViewData["Title"] = "Hidrocarburos | Gas L.P.";
+}
+
+<div class="text-center ">
+    <h1 class="display-4 titulo fw-bold ">@ViewData["Title"]</h1>
+</div>
+
+
+
+
+<div id="map" style="height: 500px;"></div>
+
+<div class="container">
+    <div class="row d-flex justify-content-center">
+        <div class="col col-sm-2"><img src="~/Mapas/Públicos/SEM/legend/DistribucinGasLP_5.png">Distribución Gas LP</div>
+        <div class="col col-sm-2"><img src="~/Mapas/Públicos/SEM/legend/AlmacenamientoGasLP_4.png">Almacenamiento Gas LP</div>
+        <div class="col col-sm-2"><img src="~/Mapas/Públicos/SEM/legend/ExpendiosGasLP_3.png">Expendios Gas LP</div>
+      
+    </div>
+</div>
+
+<div class="container">
+    <div class="row d-flex justify-content-center">
+        <div class="col ">
+            <button class="btn btn-cre-rojo" data-bs-toggle="offcanvas" data-bs-target="#ejemploOffcanvas">
+               <i class="bi bi-info-circle-fill"></i> - Ver Información Acerca de este Mapa
+            </button>
+          
+        </div>
+        <div class="col ">
+            <select id="estado" class="form-select  " aria-label=".form-select-sm ">
+                <option selected>
+                    Selecciona un estado:
+                </option>
+                <option value="ags">Aguascalientes</option>
+                <option value="bc">Baja California</option>
+                <option value="bcs">Baja California Sur</option>
+                <option value="camp">Campeche</option>
+                <option value="coah">Coahuila</option>
+                <option value="col">Colima</option>
+                <option value="chis">Chiapas</option>
+                <option value="chih">Chihuahua</option>
+                <option value="cdmx">Ciudad de México</option>
+                <option value="dgo">Durango</option>
+                <option value="gto">Guanajuato</option>
+                <option value="gro">Guerrero</option>
+                <option value="hgo">Hidalgo</option>
+                <option value="jal">Jalisco</option>
+                <option value="mex">México</option>
+                <option value="mich">Michoacán</option>
+                <option value="mor">Morelos</option>
+                <option value="nay">Nayarit</option>
+                <option value="nl">Nuevo León</option>
+                <option value="oax">Oaxaca</option>
+                <option value="pue">Puebla</option>
+                <option value="qro">Querétaro</option>
+                <option value="qroo">Quintana Roo</option>
+                <option value="slp">San Luis Potosí</option>
+                <option value="sin">Sinaloa</option>
+                <option value="son">Sonora</option>
+                <option value="tab">Tabasco</option>
+                <option value="tamps">Tamaulipas</option>
+                <option value="tlax">Tlaxcala</option>
+                <option value="ver">Veracruz</option>
+                <option value="yuc">Yucatán</option>
+                <option value="zac">Zacatecas</option>
+            </select>
+        </div>
+
+        <partial name="_Infomapas"/>
+
+    </div>
+</div>
+<hr />
+
+
+  <hr />
+
+
+
+
+
+
+
+
+<script src="~/Mapas/Públicos/SEM/js/qgis2web_expressions.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/leaflet.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/leaflet-svg-shape-markers.min.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/leaflet.rotatedMarker.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/leaflet.pattern.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/leaflet-hash.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/Autolinker.min.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/rbush.min.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/labelgun.min.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/labels.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/leaflet-control-geocoder.Geocoder.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/leaflet-measure.js"></script>
+<script src="~/Mapas/Públicos/SEM/js/leaflet-search.js"></script>
+
+ <script src="~/Mapas/Públicos/SEM/data/BusquedaGasLP_2.js"></script>
+ <script src="~/Mapas/Públicos/SEM/data/ExpendiosGasLP_3.js"></script>
+ <script src="~/Mapas/Públicos/SEM/data/AlmacenamientoGasLP_4.js"></script>
+ <script src="~/Mapas/Públicos/SEM/data/DistribucinGasLP_5.js"></script>
+
+<script>
+    var highlightLayer;
+    function highlightFeature(e) {
+        highlightLayer = e.target;
+
+        if (e.target.feature.geometry.type === 'LineString') {
+            highlightLayer.setStyle({
+                color: '#ffff00',
+            });
+        } else {
+            highlightLayer.setStyle({
+                fillColor: '#ffff00',
+                fillOpacity: 1
+            });
+        }
+    }
+    var map = L.map('map', {
+        zoomControl: true, maxZoom: 28, minZoom: 1
+    })
+    var hash = new L.Hash(map);
+    map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+    var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+    var measureControl = new L.Control.Measure({
+        position: 'topleft',
+        primaryLengthUnit: 'feet',
+        secondaryLengthUnit: 'miles',
+        primaryAreaUnit: 'sqfeet',
+        secondaryAreaUnit: 'sqmiles'
+    });
+    measureControl.addTo(map);
+    document.getElementsByClassName('leaflet-control-measure-toggle')[0]
+        .innerHTML = '';
+    document.getElementsByClassName('leaflet-control-measure-toggle')[0]
+        .className += ' fas fa-ruler';
+    var bounds_group = new L.featureGroup([]);
+    function setBounds() {
+        if (bounds_group.getLayers().length) {
+            map.fitBounds(bounds_group.getBounds());
+        }
+    }
+    map.createPane('pane_satelitegoogle_0');
+    map.getPane('pane_satelitegoogle_0').style.zIndex = 400;
+    var layer_satelitegoogle_0 = L.tileLayer('http://www.google.cn/maps/vt?lyrs=s@189&gl=cn&x={x}&y={y}&z={z}', {
+        pane: 'pane_satelitegoogle_0',
+        opacity: 1.0,
+        attribution: '',
+        minZoom: 1,
+        maxZoom: 28,
+        minNativeZoom: 0,
+        maxNativeZoom: 18
+    });
+    layer_satelitegoogle_0;
+    map.createPane('pane_Mapagoogle_1');
+    map.getPane('pane_Mapagoogle_1').style.zIndex = 401;
+    var layer_Mapagoogle_1 = L.tileLayer('https://mt1.google.com/vt/lyrs=r&x={x}&y={y}&z={z}', {
+        pane: 'pane_Mapagoogle_1',
+        opacity: 1.0,
+        attribution: '',
+        minZoom: 1,
+        maxZoom: 28,
+        minNativeZoom: 0,
+        maxNativeZoom: 18
+    });
+    layer_Mapagoogle_1;
+    map.addLayer(layer_Mapagoogle_1);
+    function pop_BusquedaGasLP_2(feature, layer) {
+        layer.on({
+            mouseout: function (e) {
+                for (i in e.target._eventParents) {
+                    e.target._eventParents[i].resetStyle(e.target);
+                }
+            },
+            mouseover: highlightFeature,
+        });
+        var popupContent = '<table>\
+                        <tr>\
+                            <td colspan="2">' + (feature.properties['Número de Permiso CRE'] !== null ? autolinker.link(feature.properties['Número de Permiso CRE'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <td colspan="2">' + (feature.properties['Latitud'] !== null ? autolinker.link(feature.properties['Latitud'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <td colspan="2">' + (feature.properties['Longitud'] !== null ? autolinker.link(feature.properties['Longitud'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                    </table>';
+        layer.bindPopup(popupContent, { maxHeight: 400 });
+    }
+
+    function style_BusquedaGasLP_2_0() {
+        return {
+            pane: 'pane_BusquedaGasLP_2',
+            radius: 5.551115123125783e-16,
+            opacity: 1,
+            color: 'rgba(35,35,35,1.0)',
+            dashArray: '',
+            lineCap: 'butt',
+            lineJoin: 'miter',
+            weight: 1,
+            fill: true,
+            fillOpacity: 1,
+            fillColor: 'rgba(229,182,54,1.0)',
+            interactive: false,
+        }
+    }
+    map.createPane('pane_BusquedaGasLP_2');
+    map.getPane('pane_BusquedaGasLP_2').style.zIndex = 402;
+    map.getPane('pane_BusquedaGasLP_2').style['mix-blend-mode'] = 'normal';
+    var layer_BusquedaGasLP_2 = new L.geoJson(json_BusquedaGasLP_2, {
+        attribution: '',
+        interactive: false,
+        dataVar: 'json_BusquedaGasLP_2',
+        layerName: 'layer_BusquedaGasLP_2',
+        pane: 'pane_BusquedaGasLP_2',
+        onEachFeature: pop_BusquedaGasLP_2,
+        pointToLayer: function (feature, latlng) {
+            var context = {
+                feature: feature,
+                variables: {}
+            };
+            return L.circleMarker(latlng, style_BusquedaGasLP_2_0(feature));
+        },
+    });
+    bounds_group.addLayer(layer_BusquedaGasLP_2);
+    function pop_ExpendiosGasLP_3(feature, layer) {
+        layer.on({
+            mouseout: function (e) {
+                for (i in e.target._eventParents) {
+                    e.target._eventParents[i].resetStyle(e.target);
+                }
+            },
+            mouseover: highlightFeature,
+        });
+        var popupContent = '<table>\
+                        <tr>\
+                            <td colspan="2"><strong>Número de Permiso CRE</strong><br />' + (feature.properties['Número de Permiso CRE'] !== null ? autolinker.link(feature.properties['Número de Permiso CRE'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Domicilio</th>\
+                            <td>' + (feature.properties['Domicilio'] !== null ? autolinker.link(feature.properties['Domicilio'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Latitud</th>\
+                            <td>' + (feature.properties['Latitud'] !== null ? autolinker.link(feature.properties['Latitud'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Longitud</th>\
+                            <td>' + (feature.properties['Longitud'] !== null ? autolinker.link(feature.properties['Longitud'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Expediente</th>\
+                            <td>' + (feature.properties['Expediente'] !== null ? autolinker.link(feature.properties['Expediente'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Nombre, Denominación o Razón Social</th>\
+                            <td>' + (feature.properties['Nombre, Denominación o Razón Social'] !== null ? autolinker.link(feature.properties['Nombre, Denominación o Razón Social'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Tipo de Permiso</th>\
+                            <td>' + (feature.properties['Tipo de Permiso'] !== null ? autolinker.link(feature.properties['Tipo de Permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Sub Tipo de Permiso</th>\
+                            <td>' + (feature.properties['Sub Tipo de Permiso'] !== null ? autolinker.link(feature.properties['Sub Tipo de Permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Vigencia del Permiso</th>\
+                            <td>' + (feature.properties['Vigencia del Permiso'] !== null ? autolinker.link(feature.properties['Vigencia del Permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Año de Otorgamiento</th>\
+                            <td>' + (feature.properties['Año de Otorgamiento'] !== null ? autolinker.link(feature.properties['Año de Otorgamiento'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de Otorgamiento</th>\
+                            <td>' + (feature.properties['Fecha de Otorgamiento'] !== null ? autolinker.link(feature.properties['Fecha de Otorgamiento'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de Acuse</th>\
+                            <td>' + (feature.properties['Fecha de Acuse'] !== null ? autolinker.link(feature.properties['Fecha de Acuse'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de Inicio de Operaciones</th>\
+                            <td>' + (feature.properties['Fecha de Inicio de Operaciones'] !== null ? autolinker.link(feature.properties['Fecha de Inicio de Operaciones'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Clasificación de permiso para el SAT</th>\
+                            <td>' + (feature.properties['Clasificación de permiso para el SAT'] !== null ? autolinker.link(feature.properties['Clasificación de permiso para el SAT'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Estatus del permiso</th>\
+                            <td>' + (feature.properties['Estatus del permiso'] !== null ? autolinker.link(feature.properties['Estatus del permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Marca Comercial</th>\
+                            <td>' + (feature.properties['Marca Comercial'] !== null ? autolinker.link(feature.properties['Marca Comercial'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Capacidad en litros de la Instalación</th>\
+                            <td>' + (feature.properties['Capacidad en litros de la Instalación'] !== null ? autolinker.link(feature.properties['Capacidad en litros de la Instalación'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Capacidad en kg de capacidad</th>\
+                            <td>' + (feature.properties['Capacidad en kg de capacidad'] !== null ? autolinker.link(feature.properties['Capacidad en kg de capacidad'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Asociación</th>\
+                            <td>' + (feature.properties['Asociación'] !== null ? autolinker.link(feature.properties['Asociación'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">GIE</th>\
+                            <td>' + (feature.properties['GIE'] !== null ? autolinker.link(feature.properties['GIE'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                    </table>';
+        layer.bindPopup(popupContent, { maxHeight: 400 });
+    }
+
+    function style_ExpendiosGasLP_3_0() {
+        return {
+            pane: 'pane_ExpendiosGasLP_3',
+            shape: 'diamond',
+            radius: 4.8,
+            opacity: 1,
+            color: 'rgba(0,0,0,0.5450980392156862)',
+            dashArray: '',
+            lineCap: 'butt',
+            lineJoin: 'miter',
+            weight: 1.0,
+            fill: true,
+            fillOpacity: 1,
+            fillColor: 'rgba(255,127,0,1.0)',
+            interactive: true,
+        }
+    }
+    map.createPane('pane_ExpendiosGasLP_3');
+    map.getPane('pane_ExpendiosGasLP_3').style.zIndex = 403;
+    map.getPane('pane_ExpendiosGasLP_3').style['mix-blend-mode'] = 'normal';
+    var layer_ExpendiosGasLP_3 = new L.geoJson(json_ExpendiosGasLP_3, {
+        attribution: '',
+        interactive: true,
+        dataVar: 'json_ExpendiosGasLP_3',
+        layerName: 'layer_ExpendiosGasLP_3',
+        pane: 'pane_ExpendiosGasLP_3',
+        onEachFeature: pop_ExpendiosGasLP_3,
+        pointToLayer: function (feature, latlng) {
+            var context = {
+                feature: feature,
+                variables: {}
+            };
+            return L.shapeMarker(latlng, style_ExpendiosGasLP_3_0(feature));
+        },
+    });
+    bounds_group.addLayer(layer_ExpendiosGasLP_3);
+    map.addLayer(layer_ExpendiosGasLP_3);
+    function pop_AlmacenamientoGasLP_4(feature, layer) {
+        layer.on({
+            mouseout: function (e) {
+                for (i in e.target._eventParents) {
+                    e.target._eventParents[i].resetStyle(e.target);
+                }
+            },
+            mouseover: highlightFeature,
+        });
+        var popupContent = '<table>\
+                        <tr>\
+                            <td colspan="2"><strong>Número de Permiso CRE</strong><br />' + (feature.properties['Número de Permiso CRE'] !== null ? autolinker.link(feature.properties['Número de Permiso CRE'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Domicilio</th>\
+                            <td>' + (feature.properties['Domicilio'] !== null ? autolinker.link(feature.properties['Domicilio'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Latitud</th>\
+                            <td>' + (feature.properties['Latitud'] !== null ? autolinker.link(feature.properties['Latitud'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Longitud</th>\
+                            <td>' + (feature.properties['Longitud'] !== null ? autolinker.link(feature.properties['Longitud'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Expediente</th>\
+                            <td>' + (feature.properties['Expediente'] !== null ? autolinker.link(feature.properties['Expediente'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Nombre, Denominación o Razón Social</th>\
+                            <td>' + (feature.properties['Nombre, Denominación o Razón Social'] !== null ? autolinker.link(feature.properties['Nombre, Denominación o Razón Social'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Tipo de Permiso</th>\
+                            <td>' + (feature.properties['Tipo de Permiso'] !== null ? autolinker.link(feature.properties['Tipo de Permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Vigencia del Permiso</th>\
+                            <td>' + (feature.properties['Vigencia del Permiso'] !== null ? autolinker.link(feature.properties['Vigencia del Permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Año de Otorgamiento</th>\
+                            <td>' + (feature.properties['Año de Otorgamiento'] !== null ? autolinker.link(feature.properties['Año de Otorgamiento'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de Otorgamiento</th>\
+                            <td>' + (feature.properties['Fecha de Otorgamiento'] !== null ? autolinker.link(feature.properties['Fecha de Otorgamiento'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de Acuse</th>\
+                            <td>' + (feature.properties['Fecha de Acuse'] !== null ? autolinker.link(feature.properties['Fecha de Acuse'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de Inicio de Operaciones</th>\
+                            <td>' + (feature.properties['Fecha de Inicio de Operaciones'] !== null ? autolinker.link(feature.properties['Fecha de Inicio de Operaciones'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Clasificación de permiso para el SAT</th>\
+                            <td>' + (feature.properties['Clasificación de permiso para el SAT'] !== null ? autolinker.link(feature.properties['Clasificación de permiso para el SAT'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Estatus del permiso</th>\
+                            <td>' + (feature.properties['Estatus del permiso'] !== null ? autolinker.link(feature.properties['Estatus del permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Subestatus</th>\
+                            <td>' + (feature.properties['Subestatus'] !== null ? autolinker.link(feature.properties['Subestatus'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">inicio de Periodo de Suspensión</th>\
+                            <td>' + (feature.properties['inicio de Periodo de Suspensión'] !== null ? autolinker.link(feature.properties['inicio de Periodo de Suspensión'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fin de Periodo de Suspensión</th>\
+                            <td>' + (feature.properties['Fin de Periodo de Suspensión'] !== null ? autolinker.link(feature.properties['Fin de Periodo de Suspensión'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Marca Comercial</th>\
+                            <td>' + (feature.properties['Marca Comercial'] !== null ? autolinker.link(feature.properties['Marca Comercial'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Capacidad en litros de la Instalación</th>\
+                            <td>' + (feature.properties['Capacidad en litros de la Instalación'] !== null ? autolinker.link(feature.properties['Capacidad en litros de la Instalación'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">No de Tanques de la Instalación</th>\
+                            <td>' + (feature.properties['No de Tanques de la Instalación'] !== null ? autolinker.link(feature.properties['No de Tanques de la Instalación'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Medio de suministro o recepción</th>\
+                            <td>' + (feature.properties['Medio de suministro o recepción'] !== null ? autolinker.link(feature.properties['Medio de suministro o recepción'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Permiso del medio de Suministro</th>\
+                            <td>' + (feature.properties['Permiso del medio de Suministro'] !== null ? autolinker.link(feature.properties['Permiso del medio de Suministro'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">GIE</th>\
+                            <td>' + (feature.properties['GIE'] !== null ? autolinker.link(feature.properties['GIE'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Estado</th>\
+                            <td>' + (feature.properties['Estado'] !== null ? autolinker.link(feature.properties['Estado'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                    </table>';
+        layer.bindPopup(popupContent, { maxHeight: 400 });
+    }
+
+    function style_AlmacenamientoGasLP_4_0() {
+        return {
+            pane: 'pane_AlmacenamientoGasLP_4',
+            radius: 4.0,
+            opacity: 1,
+            color: 'rgba(35,35,35,1.0)',
+            dashArray: '',
+            lineCap: 'butt',
+            lineJoin: 'miter',
+            weight: 1,
+            fill: true,
+            fillOpacity: 1,
+            fillColor: 'rgba(159,161,164,1.0)',
+            interactive: true,
+        }
+    }
+    map.createPane('pane_AlmacenamientoGasLP_4');
+    map.getPane('pane_AlmacenamientoGasLP_4').style.zIndex = 404;
+    map.getPane('pane_AlmacenamientoGasLP_4').style['mix-blend-mode'] = 'normal';
+    var layer_AlmacenamientoGasLP_4 = new L.geoJson(json_AlmacenamientoGasLP_4, {
+        attribution: '',
+        interactive: true,
+        dataVar: 'json_AlmacenamientoGasLP_4',
+        layerName: 'layer_AlmacenamientoGasLP_4',
+        pane: 'pane_AlmacenamientoGasLP_4',
+        onEachFeature: pop_AlmacenamientoGasLP_4,
+        pointToLayer: function (feature, latlng) {
+            var context = {
+                feature: feature,
+                variables: {}
+            };
+            return L.circleMarker(latlng, style_AlmacenamientoGasLP_4_0(feature));
+        },
+    });
+    bounds_group.addLayer(layer_AlmacenamientoGasLP_4);
+    map.addLayer(layer_AlmacenamientoGasLP_4);
+    function pop_DistribucinGasLP_5(feature, layer) {
+        layer.on({
+            mouseout: function (e) {
+                for (i in e.target._eventParents) {
+                    e.target._eventParents[i].resetStyle(e.target);
+                }
+            },
+            mouseover: highlightFeature,
+        });
+        var popupContent = '<table>\
+                        <tr>\
+                            <td colspan="2"><strong>Número de Permiso CRE</strong><br />' + (feature.properties['Número de Permiso CRE'] !== null ? autolinker.link(feature.properties['Número de Permiso CRE'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Domicilio</th>\
+                            <td>' + (feature.properties['Domicilio'] !== null ? autolinker.link(feature.properties['Domicilio'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Latitud</th>\
+                            <td>' + (feature.properties['Latitud'] !== null ? autolinker.link(feature.properties['Latitud'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Longitud</th>\
+                            <td>' + (feature.properties['Longitud'] !== null ? autolinker.link(feature.properties['Longitud'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Expediente</th>\
+                            <td>' + (feature.properties['Expediente'] !== null ? autolinker.link(feature.properties['Expediente'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Número de Permiso SENER</th>\
+                            <td>' + (feature.properties['Número de Permiso SENER'] !== null ? autolinker.link(feature.properties['Número de Permiso SENER'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Nombre, Denominación o Razón Social</th>\
+                            <td>' + (feature.properties['Nombre, Denominación o Razón Social'] !== null ? autolinker.link(feature.properties['Nombre, Denominación o Razón Social'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">RFC Permisionario</th>\
+                            <td>' + (feature.properties['RFC Permisionario'] !== null ? autolinker.link(feature.properties['RFC Permisionario'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Tipo de Permiso</th>\
+                            <td>' + (feature.properties['Tipo de Permiso'] !== null ? autolinker.link(feature.properties['Tipo de Permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Siglas Tipo de Permiso</th>\
+                            <td>' + (feature.properties['Siglas Tipo de Permiso'] !== null ? autolinker.link(feature.properties['Siglas Tipo de Permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Vigencia del Permiso</th>\
+                            <td>' + (feature.properties['Vigencia del Permiso'] !== null ? autolinker.link(feature.properties['Vigencia del Permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Año de Otorgamiento</th>\
+                            <td>' + (feature.properties['Año de Otorgamiento'] !== null ? autolinker.link(feature.properties['Año de Otorgamiento'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de Otorgamiento</th>\
+                            <td>' + (feature.properties['Fecha de Otorgamiento'] !== null ? autolinker.link(feature.properties['Fecha de Otorgamiento'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de Acuse</th>\
+                            <td>' + (feature.properties['Fecha de Acuse'] !== null ? autolinker.link(feature.properties['Fecha de Acuse'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de Inicio de Operaciones</th>\
+                            <td>' + (feature.properties['Fecha de Inicio de Operaciones'] !== null ? autolinker.link(feature.properties['Fecha de Inicio de Operaciones'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Clasificación de permiso para el SAT</th>\
+                            <td>' + (feature.properties['Clasificación de permiso para el SAT'] !== null ? autolinker.link(feature.properties['Clasificación de permiso para el SAT'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Estatus del permiso</th>\
+                            <td>' + (feature.properties['Estatus del permiso'] !== null ? autolinker.link(feature.properties['Estatus del permiso'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Subestatus</th>\
+                            <td>' + (feature.properties['Subestatus'] !== null ? autolinker.link(feature.properties['Subestatus'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Marca Comercial</th>\
+                            <td>' + (feature.properties['Marca Comercial'] !== null ? autolinker.link(feature.properties['Marca Comercial'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Capacidad en litros de la Instalación</th>\
+                            <td>' + (feature.properties['Capacidad en litros de la Instalación'] !== null ? autolinker.link(feature.properties['Capacidad en litros de la Instalación'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">No de Tanques de la Instalación</th>\
+                            <td>' + (feature.properties['No de Tanques de la Instalación'] !== null ? autolinker.link(feature.properties['No de Tanques de la Instalación'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Capacidad en litros unidades Parque Vehicular 3</th>\
+                            <td>' + (feature.properties['Capacidad en litros unidades Parque Vehicular 3'] !== null ? autolinker.link(feature.properties['Capacidad en litros unidades Parque Vehicular 3'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">No de unidades Parque Vehicular 3</th>\
+                            <td>' + (feature.properties['No de unidades Parque Vehicular 3'] !== null ? autolinker.link(feature.properties['No de unidades Parque Vehicular 3'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">No de Centrales de Guarda</th>\
+                            <td>' + (feature.properties['No de Centrales de Guarda'] !== null ? autolinker.link(feature.properties['No de Centrales de Guarda'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Domicilio Central de Guarda</th>\
+                            <td>' + (feature.properties['Domicilio Central de Guarda'] !== null ? autolinker.link(feature.properties['Domicilio Central de Guarda'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Medio de suministro o recepción</th>\
+                            <td>' + (feature.properties['Medio de suministro o recepción'] !== null ? autolinker.link(feature.properties['Medio de suministro o recepción'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Comparten tanques</th>\
+                            <td>' + (feature.properties['Comparten tanques'] !== null ? autolinker.link(feature.properties['Comparten tanques'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Fecha de la modificación</th>\
+                            <td>' + (feature.properties['Fecha de la modificación'] !== null ? autolinker.link(feature.properties['Fecha de la modificación'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Asociación</th>\
+                            <td>' + (feature.properties['Asociación'] !== null ? autolinker.link(feature.properties['Asociación'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">GIE</th>\
+                            <td>' + (feature.properties['GIE'] !== null ? autolinker.link(feature.properties['GIE'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                        <tr>\
+                            <th scope="row">Estado</th>\
+                            <td>' + (feature.properties['Estado'] !== null ? autolinker.link(feature.properties['Estado'].toLocaleString()) : '') + '</td>\
+                        </tr>\
+                    </table>';
+        layer.bindPopup(popupContent, { maxHeight: 400 });
+    }
+
+    function style_DistribucinGasLP_5_0() {
+        return {
+            pane: 'pane_DistribucinGasLP_5',
+            shape: 'triangle',
+            radius: 4.0,
+            opacity: 1,
+            color: 'rgba(0,0,0,1.0)',
+            dashArray: '',
+            lineCap: 'butt',
+            lineJoin: 'miter',
+            weight: 1,
+            fill: true,
+            fillOpacity: 1,
+            fillColor: 'rgba(178,223,138,1.0)',
+            interactive: true,
+        }
+    }
+    map.createPane('pane_DistribucinGasLP_5');
+    map.getPane('pane_DistribucinGasLP_5').style.zIndex = 405;
+    map.getPane('pane_DistribucinGasLP_5').style['mix-blend-mode'] = 'normal';
+    var layer_DistribucinGasLP_5 = new L.geoJson(json_DistribucinGasLP_5, {
+        attribution: '',
+        interactive: true,
+        dataVar: 'json_DistribucinGasLP_5',
+        layerName: 'layer_DistribucinGasLP_5',
+        pane: 'pane_DistribucinGasLP_5',
+        onEachFeature: pop_DistribucinGasLP_5,
+        pointToLayer: function (feature, latlng) {
+            var context = {
+                feature: feature,
+                variables: {}
+            };
+            return L.shapeMarker(latlng, style_DistribucinGasLP_5_0(feature));
+        },
+    });
+    bounds_group.addLayer(layer_DistribucinGasLP_5);
+    map.addLayer(layer_DistribucinGasLP_5);
+    var osmGeocoder = new L.Control.Geocoder({
+        collapsed: true,
+        position: 'topleft',
+        text: 'Search',
+        title: 'Testing'
+    }).addTo(map);
+    document.getElementsByClassName('leaflet-control-geocoder-icon')[0]
+        .className += ' fa fa-search';
+    document.getElementsByClassName('leaflet-control-geocoder-icon')[0]
+        .title += 'Search for a place';
+    var baseMaps = {};
+    L.control.layers(baseMaps, { '<img src="/Mapas/Públicos/SEM/legend/DistribucinGasLP_5.png" /> Distribución Gas LP': layer_DistribucinGasLP_5, '<img src="/Mapas/Públicos/SEM/legend/AlmacenamientoGasLP_4.png" /> Almacenamiento Gas LP': layer_AlmacenamientoGasLP_4, '<img src="/Mapas/Públicos/SEM/legend/ExpendiosGasLP_3.png" /> Expendios Gas LP': layer_ExpendiosGasLP_3,  "Mapa google": layer_Mapagoogle_1, "satelite google": layer_satelitegoogle_0, }).addTo(map); L.control.scale({ position: 'bottomleft', maxWidth: 100, metric: true, imperial: false, updateWhenIdle: false }).addTo(map);
+    setBounds();
+    map.addControl(new L.Control.Search({
+        layer: layer_BusquedaGasLP_2,
+        initial: false,
+        hideMarkerOnCollapse: true,
+        propertyName: 'Número de Permiso CRE'
+    }));
+    document.getElementsByClassName('search-button')[0].className +=
+        ' fa fa-binoculars';
+
+
+        /*Add google Street view https://www.mkrgeo-blog.com/quick-access-to-street-view-from-various-applications-based-on-leaflet-map-example/ */
+    map.on('click', function (e) {
+        let lat = e.latlng.lat.toPrecision(8);
+        let lon = e.latlng.lng.toPrecision(8);
+        const point = L.marker([lat, lon]).addTo(map)
+            .bindPopup('<a href="http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0" target="blank"><b> Google Street View </b></a>').openPopup();
+    })
+
+</script>
+
+
+<script>
+    // Crea un objeto de mapa de LeafletJS en el contenedor "map"
+    var map = L.map("map").setView([23.6345, -102.5528], 5);
+
+    // Agrega una capa de OpenStreetMap al mapa
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "Map data &copy; <a href='https://www.openstreetmap.org/'>OpenStreetMap</a> contributors",
+        maxZoom: 18,
+    }).addTo(map);
+
+
+</script>
+
+<script>
+    // Detecta el cambio de selección en el menú de estados
+    document.getElementById("estado").addEventListener("change", function () {
+        // Obtiene el valor seleccionado del menú de estados
+        var estado = document.getElementById("estado").value;
+
+               // Muestra el estado seleccionado en el mapa
+        switch (estado) {
+            case "ags":
+                map.setView([22.025278, -102.372778], 9);
+                break;
+            case "bc":
+                map.setView([30.391389, -115.291389], 7);
+                break;
+            case "bcs":
+                map.setView([26.044444, -112.399722], 7);
+                break;
+            case "camp":
+                map.setView([18.938333, -90.764722], 7);
+                break;
+            case "coah":
+                map.setView([27.158056, -101.719444], 7);
+                break;
+            case "col":
+                map.setView([19.101944, -103.014722], 9);
+                break;
+            case "chis":
+                map.setView([16.753056, -92.6375], 7);
+                break;
+            case "chih":
+                map.setView([28.673611, -106.102222], 7);
+                break;
+            case "cdmx":
+                map.setView([19.432778, -99.133333], 10);
+                break;
+            case "dgo":
+                map.setView([24.865278, -104.902222], 7);
+                break;
+            case "gto":
+                map.setView([20.875, -101.478611], 8);
+                break;
+            case "gro":
+                map.setView([17.814722, -100.353056], 8);
+                break;
+            case "hgo":
+                map.setView([20.5325, -98.870556], 8);
+                break;
+            case "jal":
+                map.setView([20.673611, -103.343333], 8);
+                break;
+            case "mex":
+                map.setView([19.483611, -99.689722], 8);
+                break;
+            case "mich":
+                map.setView([19.699722, -101.191389], 8);
+                break;
+            case "mor":
+                map.setView([18.858611, -99.223611], 9);
+                break;
+            case "nay":
+                map.setView([21.799444, -105.220833], 8);
+                break;
+            case "nl":
+                map.setView([25.649167, -100.443611], 9);
+                break;
+            case "oax":
+                map.setView([16.895833, -96.806667], 8);
+                break;
+            case "pue":
+                map.setView([19.051389, -98.193889], 8);
+                break;
+            case "qro":
+                map.setView([20.854722, -99.847222], 9);
+                break;
+            case "qroo":
+                map.setView([19.642778, -87.072222], 8);
+                break;
+            case "slp":
+                map.setView([22.156944, -100.985556], 8);
+                break;
+            case "sin":
+                map.setView([24.288611, -107.366944], 8);
+                break;
+            case "son":
+                map.setView([29.089444, -110.961667], 7);
+                break;
+            case "tab":
+                map.setView([17.980000, -92.930000], 8);
+                break;
+            case "tamps":
+
+                map.setView([24.014167, -98.844444], 7);
+                break;
+            case "tlax":
+                map.setView([19.312222, -98.239722], 10);
+                break;
+            case "ver":
+                map.setView([19.546389, -96.914167], 8);
+                break;
+            case "yuc":
+                map.setView([20.891944, -89.528611], 8);
+                break;
+            case "zac":
+                map.setView([22.770833, -102.583611], 8);
+                break;
+            default:
+                map.setView([23.634501, -102.552784], 5);
+                break;
+        }
+    });
+
+</script>
+

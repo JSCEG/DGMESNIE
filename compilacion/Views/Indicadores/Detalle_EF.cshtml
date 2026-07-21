@@ -1,0 +1,836 @@
+@model DetalleCalificacion_EF
+@{
+    ViewData["Title"] = "Detalle por Entidad Federativa ";
+}
+<div class="watermark-container">
+    @for (int i = 0; i < 50; i++) /* Cambiamos el número 3 por 9 para tener más marcas de agua */
+    {
+        <div class="watermark">
+            CRE-@DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") - @ViewData["NombreUsuario"]
+        </div>
+    }
+</div>
+@* Obteniendo los datos para la evaluación a nivel Municipío *@
+@foreach (var item in Model.Totales_EF)
+{
+    <div class="text-center ">
+        <input type="text" id="efid" value="@item.EF_ID" style="display:none">
+    </div>
+
+}
+@foreach (var totales in Model.Parametros_EF)
+{
+    <input type="text" id="indicadores_ef" value="@totales.ColumnasSeleccionadas_P1" style="display:none">
+    <input type="text" id="umbral_ef" value="@totales.Umbral_P1" style="display:none">
+}
+
+
+
+@* Comienza la pagina *@
+@foreach (var item in Model.Totales_EF)
+{
+    <div class="text-center">
+        <h3 class="cp-section cp-grouping-section pb-3"> <img src="@Cdn.Url/img_snier/vistas/mexicoi.png"
+                alt="Icono personalizado" class="iconomenu">@item.EF_Nombre</h3>
+    </div>
+
+}
+
+
+
+
+<div class="container fondo_blanco">
+    <partial name="_TotalSolicitudesPartial_EF" model="@Model" />
+    <div id="grafico1"></div>
+    <div id="grafico2"></div>
+    <partial name="_MapaSolicitudesPartial_EF" model="@Model" />
+    <partial name="_TablaSolicitudesPartial_EF" model="@Model" />
+</div>
+
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+@*Petrolíferos*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_petroliferos_4326_0.js"></script>
+
+<script src="~/js/kitmapapet.js"></script>
+@section scripts {
+
+    @*Radio de 3km*@
+    <script>
+        //1.Función que detecta cuántos permisos están dentro del radio de 3km de una solicitud:
+        function calcularDistancia(lat1, lon1, lat2, lon2) {
+            var R = 6371; // Radio de la tierra en km
+            var dLat = (lat2 - lat1) * (Math.PI / 180);
+            var dLon = (lon2 - lon1) * (Math.PI / 180);
+            var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            var distancia = R * c;
+            return distancia;
+        }
+
+
+        //Manda a Detalle de solicitud 3km
+        function redireccionarADetalle(idSolicitud) {
+            window.open("/Indicadores/DetalleSolicitud?id=" + idSolicitud, '_blank');
+        }
+
+
+        var permisosCercanos = {};  // Variable global para almacenar permisos cercanos por ID de solicitud
+    </script>
+
+    @*Ductos*@
+    <script>
+        function Ductospet() {
+            function pop_ductos_petroliferos_4326_0(feature, layer) {
+                // Variables para almacenar las coordenadas de clic
+                let clickedLat, clickedLon;
+                function updatePopupContent() {
+                    var popupContent = '<table>\
+                                            <tr>\
+                                                <th scope="row">Región: </th>\
+                                                <td>' + (feature.properties['regin'] !== null ? autolinker.link(feature.properties['regin'].toLocaleString()) : '') + '</td>\
+                                            </tr>\
+                                            <tr>\
+                                                <th scope="row">Ducto: </th>\
+                                                <td>' + (feature.properties['ducto'] !== null ? autolinker.link(feature.properties['ducto'].toLocaleString()) : '') + '</td>\
+                                            </tr>\
+                                            <tr>\
+                                                <th scope="row">Servicio: </th>\
+                                                <td>' + (feature.properties['servicio'] !== null ? autolinker.link(feature.properties['servicio'].toLocaleString()) : '') + '</td>\
+                                            </tr>\
+                                            <tr>\
+                                                <th scope="row">Longitud (km): </th>\
+                                                <td>' + (feature.properties['longitud_'] !== null ? autolinker.link(feature.properties['longitud_'].toLocaleString()) : '') + '</td>\
+                                            </tr>\
+                                            <tr>\
+                                                <th scope="row">Capacidad nominal (B): </th>\
+                                                <td>' + (feature.properties['capa_n'] !== null ? autolinker.link(feature.properties['capa_n'].toLocaleString()) : '') + '</td>\
+                                            </tr>\
+                                            <tr>\
+                                                <th scope="row">Capacidad opertiva (B): </th>\
+                                                <td>' + (feature.properties['capa_o'] !== null ? autolinker.link(feature.properties['capa_o'].toLocaleString()) : '') + '</td>\
+                                            </tr>\
+                                            <tr>\
+                                                <td><a class="street-view-link btn btn-cre-verde" href="http://maps.google.com/maps?q=&layer=c&cbll=' + clickedLat + ',' + clickedLon + '&cbp=11,0,0,0,0" target="_blank"><b> Ver vista de calle </b></a></td>\
+                                            </tr>\
+                                        </table>';
+                    layer.bindPopup(popupContent, { maxHeight: 400 }).openPopup();
+                }
+                // Evento para capturar clics en el mapa dentro del área del feature
+                layer.on('click', function (e) {
+                    clickedLat = e.latlng.lat.toPrecision(8);
+                    clickedLon = e.latlng.lng.toPrecision(8);
+                    updatePopupContent();
+                });
+            }
+
+            function style_ductos_petroliferos_4326_0_0() {
+                return {
+                    pane: 'pane_ductos_petroliferos_4326_0',
+                    opacity: 1,
+                    color: '#a77c50',
+                    dashArray: '',
+                    lineCap: 'square',
+                    lineJoin: 'bevel',
+                    weight: 4.0,
+                    fillOpacity: 0,
+                    interactive: true,
+                }
+            }
+            map.createPane('pane_ductos_petroliferos_4326_0');
+            map.getPane('pane_ductos_petroliferos_4326_0').style.zIndex = 400;
+            map.getPane('pane_ductos_petroliferos_4326_0').style['mix-blend-mode'] = 'normal';
+            var layer_ductos_petroliferos_4326_0 = new L.geoJson(json_ductos_petroliferos_4326_0, {
+                attribution: '',
+                interactive: true,
+                dataVar: 'json_ductos_petroliferos_4326_0',
+                layerName: 'layer_ductos_petroliferos_4326_0',
+                pane: 'pane_ductos_petroliferos_4326_0',
+                onEachFeature: pop_ductos_petroliferos_4326_0,
+                style: style_ductos_petroliferos_4326_0_0,
+            });
+            bounds_group.addLayer(layer_ductos_petroliferos_4326_0);
+            map.addLayer(layer_ductos_petroliferos_4326_0);
+            setBounds();
+        }
+    </script>
+    @*Funcionalidades del Mapa*@
+    <script>
+        //Funcion de Radio
+        function agregarCirculo(latlng) {
+            var circle = L.circle(latlng, {
+                radius: 3000, // Radio en metros (3 km = 3000 m)
+                color: '#1e3143', // Color del círculo
+                fillColor: '#1e3143', // Color de relleno del círculo
+                fillOpacity: 0.2 // Opacidad del relleno del círculo
+            }).addTo(map);
+        }
+        //Crea los Iconos
+        var iconoBase = L.Icon.extend({
+            options: {
+                iconSize: [24, 24],
+                iconAnchor: [12, 16],
+                popupAnchor: [-3, -76]
+            }
+        });
+
+        //Asignación de Iconos
+        var iconoSolicitudes = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Solicitudes.png' }),
+            iconoExpendio = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Expendio.png' }),
+            iconoAzul = new iconoBase({ iconUrl: 'azul.png' });
+        iconoAprobado = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Aprobado.png' });
+        iconoNoaprobado = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/NoAprobado.png' });
+
+
+        // Carga Resultados de las solicitudes al Mapa y permisos de la Entidad Federativa Seleccionada
+        var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_EF));
+        console.log("DetalleEF coord->:", coordenadasp);
+        var markers = L.markerClusterGroup();
+        for (var j = 0; j < coordenadasp.length; j++) {
+            var coordenada = coordenadasp[j];
+            // Selecciona el ícono dependiendo del resultado
+            var iconoSeleccionado;
+            if (coordenada.resultado === "Aprobado") {
+                iconoSeleccionado = iconoAprobado;
+            } else {
+                iconoSeleccionado = iconoNoaprobado;
+            }
+
+            // Crea y agrega el marcador con el ícono seleccionado
+            var marker = L.marker([coordenada.x_Geo, coordenada.y_Geo], { icon: iconoSeleccionado }).addTo(map);
+            agregarCirculo(marker.getLatLng());
+            //            marker.bindPopup("<h3> <i class='bi bi-fingerprint'></i> ID Solicitud: " + coordenada.id + "</h3><hr/><p><i class='bi bi-geo-alt-fill'></i> Entidad Federetiva: " + coordenada.eF_Nombre + "</p> <hr/><ul><li>Municipio: " + coordenada.municipio_Nombre + "</li><li>¿Documentos Completos?:" + coordenada.documentos_completos_text + "</li><li>¿Tiene Análisis de Riesgo?:" + coordenada.analisis_riesgo_text + "</li></ul> ");
+            marker.bindPopup(
+                "<style>" +
+                ".popup-content {" +
+                "width: 300px;" +
+                "height: 150px;" + // Nuevo estilo: altura de 300px
+                "overflow-y: auto;" + // Nuevo estilo: agregar desplazamiento vertical
+                "}" +
+                ".title {" +
+                "font-size: 16px;" +
+                "}" +
+                "</style>" +
+                "<div class='popup-content'>" +
+                "<h3 class='subtitulo text-justify'>" + coordenada.razon_social + "</h3>" +
+                "<br style='padiding-top:3%'>" +
+                "<h3 class='title'> <i class='bi bi-qr-code'></i> Turno de Kmis: " + coordenada.turno + "</h3>" +
+                "<h3 class='title'> <i class='bi bi-fingerprint'></i> ID Solicitud: " + coordenada.id + "</h3>" +
+
+                "<p><i class='bi bi-geo-alt-fill'></i> Entidad Federativa: " + coordenada.eF_Nombre + "</p>" +
+                "<ul>" +
+                "<li><strong>Marca Solicitada:</strong> " + coordenada.marca_solicitada + "</li>" +
+                "<li><strong>Municipio:</strong> " + coordenada.municipio_Nombre + "</li>" +
+                "<li><strong>¿Documentos Completos?:</strong> " + (coordenada.documentos_completos ? 'Sí' : 'No') + "</li>" +
+                "<li><strong>¿Tiene Análisis de Riesgo?:</strong> " + (coordenada.analisis_riesgo ? 'Sí' : 'No') + "</li>" +
+                "</ul> " +
+                "<button class='btn btn-cre-amarillo' onclick='redireccionarADetalle(" + coordenada.id + ")'>Ver Expendios Cercanos a Solicitud y Parque Vehicular</button>  <hr />" +
+                "<a class='street-view-link btn btn-cre-verde' href='#'>Ver vista de calle</a> <hr />" +
+                "<a class='btn btn-cre-rojo' target='_blank' href='https://titan.cre.gob.mx/" + coordenada.expediente + "'>Ver Expediente en Titán</a>" +
+                "</div>"
+            );
+
+
+            marker.on('popupopen', function (e) {
+                var popup = e.popup;
+                var streetViewLink = popup.getElement().querySelector('.street-view-link');
+                streetViewLink.addEventListener('click', function () {
+                    var lat = e.target.getLatLng().lat.toPrecision(8);
+                    var lon = e.target.getLatLng().lng.toPrecision(8);
+                    var streetViewURL = 'http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0';
+                    window.open(streetViewURL, '_blank');
+                });
+            });
+
+            markers.addLayer(marker);
+
+        }
+
+        map.addLayer(markers);
+        Ductospet();
+
+        ///////FUNCIONES//////////
+
+
+        //Función para Limpiar los Marcadores del Mapa y sus radios
+        function limpiarMarcadores() {
+            // Limpiar marcadores y círculos existentes
+            map.eachLayer(function (layer) {
+                if (layer instanceof L.Marker || layer instanceof L.MarkerClusterGroup || layer instanceof L.Circle || layer instanceof L.Polyline) {
+                    map.removeLayer(layer);
+                }
+            });
+        }
+
+
+
+        function CargaSolicitudes() {
+            // Limpiar marcadores existentes
+            limpiarMarcadores();
+            //Agreaga las Solicitudes de Permiso a evaluadas en el Mapa
+            // Carga Resultados de las solicitudes al Mapa y permisos de la Entidad Federativa Seleccionada
+            var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_EF));
+            console.log("DetalleEF coord->:", coordenadasp);
+            var markers = L.markerClusterGroup();
+            for (var j = 0; j < coordenadasp.length; j++) {
+                var coordenada = coordenadasp[j];
+                // Selecciona el ícono dependiendo del resultado
+                var iconoSeleccionado;
+                if (coordenada.resultado === "Aprobado") {
+                    iconoSeleccionado = iconoAprobado;
+                } else {
+                    iconoSeleccionado = iconoNoaprobado;
+                }
+
+                // Crea y agrega el marcador con el ícono seleccionado
+                var marker = L.marker([coordenada.x_Geo, coordenada.y_Geo], { icon: iconoSeleccionado }).addTo(map);
+                agregarCirculo(marker.getLatLng());
+                //            marker.bindPopup("<h3> <i class='bi bi-fingerprint'></i> ID Solicitud: " + coordenada.id + "</h3><hr/><p><i class='bi bi-geo-alt-fill'></i> Entidad Federetiva: " + coordenada.eF_Nombre + "</p> <hr/><ul><li>Municipio: " + coordenada.municipio_Nombre + "</li><li>¿Documentos Completos?:" + coordenada.documentos_completos_text + "</li><li>¿Tiene Análisis de Riesgo?:" + coordenada.analisis_riesgo_text + "</li></ul> ");
+                marker.bindPopup(
+                    "<style>" +
+                    ".popup-content {" +
+                    "width: 300px;" +
+                    "height: 150px;" + // Nuevo estilo: altura de 300px
+                    "overflow-y: auto;" + // Nuevo estilo: agregar desplazamiento vertical
+                    "}" +
+                    ".title {" +
+                    "font-size: 16px;" +
+                    "}" +
+                    "</style>" +
+                    "<div class='popup-content'>" +
+                    "<h3 class='subtitulo text-justify'>" + coordenada.razon_social + "</h3>" +
+                    "<br style='padiding-top:3%'>" +
+                    "<h3 class='title'> <i class='bi bi-qr-code'></i> Turno de Kmis: " + coordenada.turno + "</h3>" +
+                    "<h3 class='title'> <i class='bi bi-fingerprint'></i> ID Solicitud: " + coordenada.id + "</h3>" +
+
+                    "<p><i class='bi bi-geo-alt-fill'></i> Entidad Federativa: " + coordenada.eF_Nombre + "</p>" +
+                    "<ul>" +
+                    "<li><strong>Marca Solicitada:</strong> " + coordenada.marca_solicitada + "</li>" +
+                    "<li><strong>Municipio:</strong> " + coordenada.municipio_Nombre + "</li>" +
+                    "<li><strong>¿Documentos Completos?:</strong> " + (coordenada.documentos_completos ? 'Sí' : 'No') + "</li>" +
+                    "<li><strong>¿Tiene Análisis de Riesgo?:</strong> " + (coordenada.analisis_riesgo ? 'Sí' : 'No') + "</li>" +
+                    "</ul> " +
+                    "<button class='btn btn-cre-amarillo' onclick='redireccionarADetalle(" + coordenada.id + ")'>Ver Expendios Cercanos a Solicitud y Parque Vehicular</button>  <hr />" +
+                    "<a class='street-view-link btn btn-cre-verde' href='#'>Ver vista de calle</a> <hr />" +
+                    "<a class='btn btn-cre-rojo' target='_blank' href='https://titan.cre.gob.mx/Consulta/Turno/" + coordenada.expediente + "'>Ver Expediente en Titán</a>" +
+                    "</div>"
+                );
+
+
+                marker.on('popupopen', function (e) {
+                    var popup = e.popup;
+                    var streetViewLink = popup.getElement().querySelector('.street-view-link');
+                    streetViewLink.addEventListener('click', function () {
+                        var lat = e.target.getLatLng().lat.toPrecision(8);
+                        var lon = e.target.getLatLng().lng.toPrecision(8);
+                        var streetViewURL = 'http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0';
+                        window.open(streetViewURL, '_blank');
+                    });
+                });
+
+                markers.addLayer(marker);
+            }
+
+            map.addLayer(markers);
+            Ductospet();
+        }
+        //Función que carga los permisos de Expendio
+        function CargaExpendios() {
+            // Limpiar marcadores existentes
+            limpiarMarcadores();
+            //Carga los Expendios Autorizados
+
+            //Carga los Expendios Autorizados
+            var coordenadas1 = @Html.Raw(Json.Serialize(Model.Permisos_Autorizados));
+            console.log("Estas son las coordenadas: ", coordenadas1);
+            var markers = L.markerClusterGroup();
+            for (var j = 0; j < coordenadas1.length; j++) {
+                var coordenada = coordenadas1[j];
+
+                var marker = L.marker([coordenada.latitud_GEO, coordenada.longitud_GEO], { icon: iconoExpendio }).addTo(map);
+                marker.bindPopup(
+                    "<h3>" + coordenada.numeroPermiso + "</h3>" +
+                    "<p>" + coordenada.razón_social + "</p>" +
+                    "<hr/>" +
+                    "<ul>" +
+                    "<li>Fecha de Otorgamiento del Permiso: " + coordenada.fechaOtorgamiento + "</li>" +
+                    "<li>RFC: " + coordenada.rfc + "</li>" +
+                    "</ul>" +
+                    "<a class='btn btn-cre-amarillo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>" +
+                    "<br/>" +
+                    "<a class='street-view-link btn btn-cre-verde' href='http://maps.google.com/maps?q=&layer=c&cbll=" + coordenada.latitud_GEO + "," + coordenada.longitud_GEO + "&cbp=11,0,0,0,0' target='_blank'><b>Ver vista de calle</b></a>"
+                );
+
+
+                markers.addLayer(marker);
+            }
+            map.addLayer(markers);
+
+            Ductospet();
+
+
+        };
+        //Función que carga los permisos de Expendio y las Solicitudes
+        function CargaSyE() {
+            // Limpiar marcadores existentes
+            limpiarMarcadores();
+            //Agreaga las Solicitudes de Permiso a evaluadas en el Mapa
+            // Carga Resultados de las solicitudes al Mapa y permisos de la Entidad Federativa Seleccionada
+            var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_EF));
+            console.log("DetalleEF coord->:", coordenadasp);
+            var markers = L.markerClusterGroup();
+            for (var j = 0; j < coordenadasp.length; j++) {
+                var coordenada = coordenadasp[j];
+                // Selecciona el ícono dependiendo del resultado
+                var iconoSeleccionado;
+                if (coordenada.resultado === "Aprobado") {
+                    iconoSeleccionado = iconoAprobado;
+                } else {
+                    iconoSeleccionado = iconoNoaprobado;
+                }
+
+                // Crea y agrega el marcador con el ícono seleccionado
+                var marker = L.marker([coordenada.x_Geo, coordenada.y_Geo], { icon: iconoSeleccionado }).addTo(map);
+                agregarCirculo(marker.getLatLng());
+                //            marker.bindPopup("<h3> <i class='bi bi-fingerprint'></i> ID Solicitud: " + coordenada.id + "</h3><hr/><p><i class='bi bi-geo-alt-fill'></i> Entidad Federetiva: " + coordenada.eF_Nombre + "</p> <hr/><ul><li>Municipio: " + coordenada.municipio_Nombre + "</li><li>¿Documentos Completos?:" + coordenada.documentos_completos_text + "</li><li>¿Tiene Análisis de Riesgo?:" + coordenada.analisis_riesgo_text + "</li></ul> ");
+                marker.bindPopup(
+                    "<style>" +
+                    ".popup-content {" +
+                    "width: 300px;" +
+                    "height: 150px;" + // Nuevo estilo: altura de 300px
+                    "overflow-y: auto;" + // Nuevo estilo: agregar desplazamiento vertical
+                    "}" +
+                    ".title {" +
+                    "font-size: 16px;" +
+                    "}" +
+                    "</style>" +
+                    "<div class='popup-content'>" +
+                    "<h3 class='subtitulo text-justify'>" + coordenada.razon_social + "</h3>" +
+                    "<br style='padiding-top:3%'>" +
+                    "<h3 class='title'> <i class='bi bi-qr-code'></i> Turno de Kmis: " + coordenada.turno + "</h3>" +
+                    "<h3 class='title'> <i class='bi bi-fingerprint'></i> ID Solicitud: " + coordenada.id + "</h3>" +
+
+                    "<p><i class='bi bi-geo-alt-fill'></i> Entidad Federativa: " + coordenada.eF_Nombre + "</p>" +
+                    "<ul>" +
+                    "<li><strong>Marca Solicitada:</strong> " + coordenada.marca_solicitada + "</li>" +
+                    "<li><strong>Municipio:</strong> " + coordenada.municipio_Nombre + "</li>" +
+                    "<li><strong>¿Documentos Completos?:</strong> " + (coordenada.documentos_completos ? 'Sí' : 'No') + "</li>" +
+                    "<li><strong>¿Tiene Análisis de Riesgo?:</strong> " + (coordenada.analisis_riesgo ? 'Sí' : 'No') + "</li>" +
+                    "</ul> " +
+                    "<button class='btn btn-cre-amarillo' onclick='redireccionarADetalle(" + coordenada.id + ")'>Ver Expendios Cercanos a Solicitud y Parque Vehicular</button>  <hr />" +
+                    "<a class='street-view-link btn btn-cre-verde' href='#'>Ver vista de calle</a> <hr />" +
+                    "<a class='btn btn-cre-rojo' target='_blank' href='https://titan.cre.gob.mx/Consulta/Turno/" + coordenada.expediente + "'>Ver Expediente en Titán</a>" +
+                    "</div>"
+                );
+
+
+                marker.on('popupopen', function (e) {
+                    var popup = e.popup;
+                    var streetViewLink = popup.getElement().querySelector('.street-view-link');
+                    streetViewLink.addEventListener('click', function () {
+                        var lat = e.target.getLatLng().lat.toPrecision(8);
+                        var lon = e.target.getLatLng().lng.toPrecision(8);
+                        var streetViewURL = 'http://maps.google.com/maps?q=&layer=c&cbll=' + lat + ',' + lon + '&cbp=11,0,0,0,0';
+                        window.open(streetViewURL, '_blank');
+                    });
+                });
+
+                markers.addLayer(marker);
+            }
+
+            map.addLayer(markers);
+
+
+            //Carga los Expendios Autorizados
+            var coordenadas1 = @Html.Raw(Json.Serialize(Model.Permisos_Autorizados));
+            console.log(coordenadas1)
+            var markers = L.markerClusterGroup();
+            for (var j = 0; j < coordenadas1.length; j++) {
+                var coordenada = coordenadas1[j];
+
+                var marker = L.marker([coordenada.latitud_GEO, coordenada.longitud_GEO], { icon: iconoExpendio }).addTo(map);
+                marker.bindPopup(
+                    "<h3>" + coordenada.numeroPermiso + "</h3>" +
+                    "<p>" + coordenada.razón_social + "</p>" +
+                    "<hr/>" +
+                    "<ul>" +
+                    "<li>Fecha de Otorgamiento del Permiso: " + coordenada.fechaOtorgamiento + "</li>" +
+                    "<li>RFC: " + coordenada.rfc + "</li>" +
+                    "</ul>" +
+                    "<a class='btn btn-cre-amarillo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>" +
+                    "<br/>" +
+                    "<a class='street-view-link btn btn-cre-verde' href='http://maps.google.com/maps?q=&layer=c&cbll=" + coordenada.latitud_GEO + "," + coordenada.longitud_GEO + "&cbp=11,0,0,0,0' target='_blank'><b>Ver vista de calle</b></a>"
+                );
+
+                markers.addLayer(marker);
+            }
+            map.addLayer(markers);
+            Ductospet();
+
+        }
+
+
+
+        ////////////////SIDE BAR MUNICIPIOS//////////////////////////////////
+        const municipios = [];
+
+        var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_EF));
+
+        //console.log("MUNICIPIOS",municipios);
+        for (var j = 0; j < coordenadasp.length; j++) {
+            var coordenada = coordenadasp[j];
+            var iconoSeleccionado;
+            if (coordenada.resultado === "Aprobado") {
+                iconoSeleccionado = iconoAprobado;
+            } else {
+                iconoSeleccionado = iconoNoaprobado;
+            }
+            var municipio = {
+                rs: coordenada.razon_social,
+                nombre: coordenada.turno,
+                coordenadas: [coordenada.x_Geo, coordenada.y_Geo],
+                resultado: coordenada.id,
+                icono: iconoSeleccionado
+            };
+            municipios.push(municipio);
+        }
+        console.log("MUNICIPIOS", municipios);
+
+        //Seleccionamos el SIDE BAR
+        const sidebar = document.querySelector('#sidebar');
+
+
+        //Eventos Baiscos
+        map.on('click', (evento) => {
+            const lat = evento;
+            console.log(lat.latlng)
+        });
+
+        //Metodos
+        map.center
+        //Fly to Place
+        const volar = (latlng) => {
+            map.flyTo(latlng, 16);
+        }
+
+        //Fly to 
+        // Municipio
+        const volar_municipio = (latlng) => {
+            map.flyTo(latlng, 13);
+        }
+
+        //Limpiar Items del Side Bar
+        const limpiaritems = () => {
+            const listadoLi = document.querySelectorAll('li');
+            listadoLi.forEach(li => {
+                li.classList.remove('active');
+            })
+        }
+
+        const crearitem = () => {
+            const ul = document.createElement('ul');
+            ul.classList.add('list-group');
+            ul.style.overflow = 'auto'; // Habilitar desplazamiento interno
+            ul.style.maxHeight = 'calc(280vh - 80px)'; // Ajustar el tamaño máximo
+
+            sidebar.append(ul);
+
+            // Crear el elemento "Selecciona una Solicitud"
+            const seleccionaSolicitud = document.createElement('h6');
+            seleccionaSolicitud.classList.add('btn', 'btn-cre-verde', 'text-center');
+            seleccionaSolicitud.innerText = 'Selecciona una Solicitud:';
+            seleccionaSolicitud.style.position = 'sticky'; // Establecer la posición sticky
+            seleccionaSolicitud.style.top = '0'; // Asegurar que esté al inicio del sidebar
+            sidebar.prepend(seleccionaSolicitud);
+
+            municipios.forEach((lugar) => {
+                const li = document.createElement('li');
+                li.classList.add('list-group-item');
+                li.style.height = '200px'; // Establecer altura fija
+                li.style.marginBottom = '10px'; // Agregar margen inferior
+
+                // Agregar el texto "ID solicitud: lugar.nombre"
+                const texto = document.createElement('span');
+                //texto.innerText = `ID solicitud: ${lugar.nombre}`;
+                texto.innerHTML = `<strong>ID:</strong> ${lugar.resultado}<br><strong>Turno:</strong> ${lugar.nombre}<br><strong>Razón Social:</strong> ${lugar.rs}`;
+
+                li.appendChild(texto);
+
+                // Agregar el icono correspondiente
+                const icono = document.createElement('img');
+                icono.src = lugar.icono.options.iconUrl;
+                icono.classList.add('icono-responsivo'); // Agregar la clase CSS para el icono
+                li.insertBefore(icono, texto); // Insertar el icono antes del texto
+
+                ul.append(li);
+
+                li.addEventListener('click', () => {
+                    limpiaritems();
+                    li.classList.add('active');
+                    volar(lugar.coordenadas);
+                });
+            });
+        };
+
+        crearitem();
+
+        ////////BARRA DE MUNICIPIOS
+        const menu_municipios = [];
+
+        var coordenadasp = @Html.Raw(Json.Serialize(Model.Detalle_EF));
+
+        for (var j = 0; j < coordenadasp.length; j++) {
+            var coordenada = coordenadasp[j];
+
+            // Verificar si el municipio ya existe en menu_municipios
+            var municipioExistente = menu_municipios.find(function (municipio) {
+                return municipio.nombre === coordenada.municipio_Nombre;
+            });
+
+            // Si el municipio no existe en menu_municipios, agregarlo
+            if (!municipioExistente) {
+                var municipio = {
+                    nombre: coordenada.municipio_Nombre,
+                    coordenadas: [coordenada.x_Geo, coordenada.y_Geo]
+                };
+                menu_municipios.push(municipio);
+            }
+        }
+
+        console.log("MUNICIPIOS_MENU", menu_municipios);
+        //Carga los municipios al Dropdown
+        const dropdownMunicipios = document.querySelector('#dropdown-municipios');
+
+        menu_municipios.forEach((municipio) => {
+            const option = document.createElement('option');
+            option.text = municipio.nombre;
+            option.value = municipio.nombre;
+            dropdownMunicipios.appendChild(option);
+        });
+
+        dropdownMunicipios.addEventListener('change', (event) => {
+            const selectedMunicipio = event.target.value;
+            const selectedCoordenadas = menu_municipios.find((municipio) => municipio.nombre === selectedMunicipio).coordenadas;
+            volar_municipio(selectedCoordenadas);
+        });
+
+
+
+
+
+    </script>
+
+
+
+    @*Funcionalidades Dropdown Capas*@
+    <script>
+        $(document).ready(function () {
+            // Obtener el dropdown
+            var dropdown = document.getElementById("dropdownMenuLink");
+
+            // Obtener todas las opciones dentro del dropdown
+            var opciones = dropdown.nextElementSibling.getElementsByClassName("dropdown-item");
+
+            // Asignar el evento onclick a cada opción
+            for (var i = 0; i < opciones.length; i++) {
+                opciones[i].onclick = function (event) {
+                    event.preventDefault(); // Evitar que se siga el enlace
+
+                    // Quitar la clase activa de todas las opciones
+                    for (var j = 0; j < opciones.length; j++) {
+                        opciones[j].classList.remove("active");
+                    }
+
+                    // Agregar la clase activa a la opción seleccionada
+                    this.classList.add("active");
+
+                    // Obtener el texto de la opción seleccionada
+                    var textoSeleccionado = this.textContent.trim();
+
+                    // Actualizar el contenido del botón con el texto seleccionado
+                    dropdown.textContent = textoSeleccionado;
+
+                    // Obtener la función asociada a la opción seleccionada
+                    var funcion = this.getAttribute("onclick");
+                    // Ejecutar la función asociada
+                    eval(funcion);
+                };
+            }
+        });
+    </script>
+
+    @*Tabla de EF*@
+    <script>
+        var table = $('#I_EF').DataTable({
+            lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+            dom: 'Blfrtip',
+            buttons: [
+                {
+                    extend: 'copyHtml5',
+                    title: 'MEP-Calificación Final por Entidad Federativa'
+                },
+                {
+                    extend: 'excelHtml5',
+                    title: 'MEP-Calificación Final por Entidad Federativa'
+                },
+                {
+                    extend: 'csvHtml5',
+                    title: 'MEP-Calificación Final por Entidad Federativa'
+                },
+                {
+                    extend: 'pdfHtml5',
+                    title: 'MEP-Calificación Final por Entidad Federativa',
+                    customize: function (doc) {
+                        // Cambia el color de la línea de encabezado a rojo
+                        doc.styles.tableHeader.color = '#9fa1a4';
+                        // Centra la tabla
+                        doc.defaultStyle.alignment = 'center';
+                        // Cambia el color de fondo del encabezado
+                        doc.styles.tableHeader.fillColor = '#4c1922'; // Cambia a tu color preferido
+                    }
+                }
+            ]
+        });
+    </script>
+
+
+    <!-- Código JavaScript para generar el gráfico de Barras Apiladas 3D -->
+    <script>
+        $(document).ready(function () {
+            // Obtener los datos del Resultado Segundo SP del modelo
+            var data = @Html.Raw(Json.Serialize(Model.Detalle_EF));
+
+            // Obtén los nombres de todos los municipios únicos
+            var municipios = [...new Set(data.map(item => item.municipio_Nombre))];
+
+            // Inicializa arreglos para guardar los datos por categoría
+            var dataAprobados = [];
+            var dataNoAprobados = [];
+
+            // Para cada municipio, calcula el total de aprobados y no aprobados
+            municipios.forEach(function (municipio) {
+                var aprobados = data.filter(item => item.municipio_Nombre === municipio && item.resultado === 'Aprobado').length;
+                var noAprobados = data.filter(item => item.municipio_Nombre === municipio && item.resultado === 'No Aprobado').length;
+
+                dataAprobados.push(aprobados);
+                dataNoAprobados.push(noAprobados);
+            });
+
+            // Configurar opciones del gráfico
+            var options = {
+                chart: {
+                    type: 'column',
+                    //options3d: {
+                    //    enabled: true,
+                    //    alpha: 10,
+                    //    beta: 25,
+                    //    depth: 70
+                    //}
+                },
+                title: {
+                    text: 'Evaluación de Solicitudes a nivel la Entidad Federativa'
+                },
+                xAxis: {
+                    categories: municipios
+                },
+                yAxis: {
+                    title: {
+                        text: 'Cantidad'
+                    }
+                },
+                plotOptions: {
+                    column: {
+                        stacking: 'normal',
+                        depth: 40
+                    }
+                },
+                series: [
+                    {
+                        name: 'Solicitudes en Categoría "A" (No Saturadas)',
+                        data: dataAprobados,
+                        color: '#59b25d'
+                    },
+                    {
+                        name: 'Solicitudes en Catgegoría "D" (Saturadas)',
+                        data: dataNoAprobados,
+                        color: '#e63950'
+                    }
+                ],
+                colors: ['#59b25d', '#e63950']
+            };
+
+            // Renderizar el gráfico en el contenedor con el ID 'grafico'
+            Highcharts.chart('grafico1', options);
+        });
+    </script>
+
+    @*Por Marca*@
+    <script>
+        $(document).ready(function () {
+            // Obtener los datos del Resultado Segundo SP del modelo
+            var data = @Html.Raw(Json.Serialize(Model.Detalle_EF));
+
+            // Obtén los nombres de todas las marcas únicas
+            var marcas = [...new Set(data.map(item => item.marca_solicitada))];
+
+            console.log("Marcas únicas encontradas: ", marcas); // Imprime las marcas únicas
+
+            // Inicializa un arreglo para guardar la cantidad de ocurrencias por marca
+            var ocurrenciasPorMarca = [];
+
+            // Para cada marca, calcula la cantidad de ocurrencias
+            marcas.forEach(function (marca) {
+                var ocurrencias = data.filter(item => item.marca_solicitada === marca).length;
+                ocurrenciasPorMarca.push(ocurrencias);
+
+                console.log(`Marca: ${marca}, Ocurrencias: ${ocurrencias}`); // Imprime cada marca y sus ocurrencias
+            });
+
+            // Configurar opciones del gráfico
+            var options = {
+                chart: {
+                    type: 'area' // Cambiamos el tipo de gráfico a 'area'
+                },
+                title: {
+                    text: 'Marcas Solicitadas'
+                },
+                xAxis: {
+                    categories: marcas
+                },
+                yAxis: {
+                    title: {
+                        text: 'Marcas'
+                    }
+                },
+                plotOptions: {
+                    area: {  // Cambiamos las opciones de plot a 'area'
+                        dataLabels: {
+                            enabled: true
+                        },
+                        enableMouseTracking: false
+                    }
+                },
+                series: [
+                    {
+                        name: 'Solicitudes por Marca',
+                        data: ocurrenciasPorMarca,
+                        color: '#0a88b1' // Cambia el color como desees
+                    }
+                ]
+            };
+
+            // Renderizar el gráfico en el contenedor con el ID 'grafico2'
+            Highcharts.chart('grafico2', options);
+        });
+    </script>
+
+
+
+
+
+
+}

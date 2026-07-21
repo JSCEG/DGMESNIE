@@ -1,0 +1,340 @@
+@model Mep
+
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+
+
+@{
+    ViewData["Title"] = "Infraestructura del SEN - Solar Fotovoltaica";
+}
+
+<div class="text-center">
+    <h4 class="cp-section cp-grouping-section">
+        <img src="/img/fotovoltaica.png" alt="Icono personalizado" class="iconomenu" />
+        @ViewData["Title"]
+    </h4>
+</div>
+
+
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        @*  <li class="breadcrumb-item"><a href="@Url.Action("Hidrocarburos", "Home" )">Sector Petróleo y Gas</a></li>*@
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+
+@*Sección que Despliega el Mapa Inicial*@
+<div class="container">
+    <h2 class="fw-bold   subtitulo ">Infraestructura de Energía Solar Fotovoltaica</h2>
+
+    <section id="despliega_mapa" class="pb-5">
+
+        <br />
+
+        <div class="app-card-header p-3 border-0">
+
+            @*Menu*@
+            <div class="navbarmapag">
+
+
+                <a id="electricidad" class="icono-texto">
+                    <img src="/img/fotovoltaica.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Solar Fotovoltaica</span>
+
+                    <div id="total_electricidad"></div>
+                </a>
+
+
+            </div>
+
+
+
+            <div id="main-container">
+
+                <div class="row g-4 mb-4">
+                    <div class="col">
+                        <div class="app-card app-card-chart h-100 shadow-sm">
+
+                            <div class="search-container p-3" id="search-container">
+                                <label class="form-label">Buscar en el Mapa:</label>
+                                <input type="text" id="busquedaGeneralInput" class="form-control"
+                                    placeholder="Número de Permiso, Entidad Federativa o Municipio">
+                                <div id="autocomplete-list" class="autocomplete-items"></div>
+                                <!-- El resto de tu código -->
+
+                                <button class="btn btn-cre-rojo-home" onclick="buscarGeneral()"
+                                    style="width:10% !important"><i class="bi bi-search"></i></button>
+                            </div>
+
+                            @*Menu de Botones*@
+                            <div class="container-fluid">
+                            </div>
+                            <div class="app-card-body p-4">
+                                <div class="chart-container">
+                                    <div id="" class="app-card-body p-4">
+                                        <div class="row">
+
+                                            <div class="row">
+                                                <div class="col-lg-12 d-flex align-items-center">
+                                                    <button id="fullscreen-btn" class="btn btn-primary">Pantalla
+                                                        Completa</button>
+                                                    <div id="alert-message" class="alert alert-info ms-3" role="alert"
+                                                        style="margin-left: 15px; padding: 10px; background-color: #FCFEE7; border-left: 6px solid #DEF321; color: #818F31;">
+                                                        Para el caso del mercado de electricidad, las ubicaciones
+                                                        corresponden a la dirección proporcionada en la documentación
+                                                        del permiso otorgado que puede corresponder a la ubicación
+                                                        física de central eléctrica que representa.
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="row mt-3">
+                                                <div class="col-lg-8">
+                                                    <div id="map" class="p-3 bg"></div>
+                                                </div>
+                                                <div class="col-lg-4">
+                                                    <table cellspacing="0" border="0">
+                                                        <colgroup width="149"></colgroup>
+                                                        <colgroup width="98"></colgroup>
+                                                        <tr>
+                                                            <td colspan=2 rowspan=2 height="43" align="center"
+                                                                valign=middle><b>
+                                                                    <font face="Montserrat" size=4>Simbología</font>
+                                                                </b></td>
+                                                        </tr>
+                                                        <tr>
+                                                        </tr>
+                                                        <tr>
+                                                            <td colspan=2 height="43" align="center" valign=middle>
+                                                                <font face="Montserrat">Radiación solar en kilovatios
+                                                                    hora por día (kWh/m²/día)</font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="center">
+                                                                <font face="Montserrat">&lt;3</font>
+                                                            </td>
+                                                            <td align="left" bgcolor="#FAF6CD">
+                                                                <font face="Montserrat"><br></font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="center">
+                                                                <font face="Montserrat">3-3.5</font>
+                                                            </td>
+                                                            <td align="left" bgcolor="#FCEC9E">
+                                                                <font face="Montserrat"><br></font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="center">
+                                                                <font face="Montserrat">3.5-4</font>
+                                                            </td>
+                                                            <td align="left" bgcolor="#FCD977">
+                                                                <font face="Montserrat"><br></font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="center">
+                                                                <font face="Montserrat">4-4.5</font>
+                                                            </td>
+                                                            <td align="left" bgcolor="#FBB14D">
+                                                                <font face="Montserrat"><br></font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="center">4.5-5</td>
+                                                            <td align="left" bgcolor="#F68C3F">
+                                                                <font face="Montserrat"><br></font>
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="center">5-5.5</td>
+                                                            <td align="left" bgcolor="#F05131"><br></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="center">5.5-6</td>
+                                                            <td align="left" bgcolor="#E21D25"><br></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="center">6-6.5</td>
+                                                            <td align="left" bgcolor="#BD1F29"><br></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td height="21" align="center">
+                                                                <font face="Montserrat">6.5-9</font>
+                                                            </td>
+                                                            <td align="left" bgcolor="#7F1129"><br></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td colspan=2 rowspan=3 height="64" align="center"
+                                                                valign=middle><i>
+                                                                    <font face="Montserrat" size=1>Fuente: National
+                                                                        Renewable Energy Laboratory (<a
+                                                                            href="https://www.nrel.gov/gis/solar-resource-maps.html"
+                                                                            target="_blank">https://www.nrel.gov/gis/solar-resource-maps.html</a>)
+                                                                    </font>
+                                                                </i></td>
+                                                        </tr>
+                                                    </table>
+                                                </div>
+
+                                            </div>
+
+                                        </div>
+                                        <div class="leyenda pt-3">
+                                            <p>Mayor Concentración</p>
+                                            <p>Concentración Promedio</p>
+                                            <p>Menor Concentración</p>
+                                            <p> Ductos</p>
+                                        </div>
+                                        <br />
+                                        <div class="" id="grafico"></div>
+                                        @* <div class="" id="grafico2"></div> *@
+                                        <br />
+                                    </div>
+                                </div>
+                                <div class="container">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <h2 class="subtitulo">Temperatura Máxima</h2>
+                                            <img src="/img/TMAX.gif" alt="Temperatura Máxima" class="img-gift">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h2 class="subtitulo">Temperatura Mínima</h2>
+                                            <img src="/img/TMIN.gif" alt="Temperatura Mínima" class="img-gift">
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <style>
+        #fullscreen-search-container {
+            background-color: white;
+        }
+
+        #fullscreen-elements {
+            display: flex;
+            flex-direction: column;
+            height: auto;
+            /* Valor inicial para cuando no esté en pantalla completa */
+        }
+
+        #fullscreen-last-update,
+        #fullscreen-select,
+        #fullscreen-search-container {
+            flex-shrink: 0;
+        }
+
+        #map {
+            flex-grow: 1;
+        }
+
+        #main-container.fullscreen-active #fullscreen-elements {
+            height: 100vh;
+        }
+
+        #main-container.fullscreen-active #map {
+            height: calc(100vh - 60px);
+        }
+
+        #main-container:not(.fullscreen-active) #map {
+            height: 500px;
+        }
+    </style>
+
+
+</div>
+
+@*Script de Pantalla Completa*@
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        const mapElement = document.getElementById('map');
+        const fullscreenButton = document.getElementById('fullscreen-btn');
+        const searchContainer = document.getElementById('search-container');
+        const mainContainer = document.getElementById('main-container');
+        const fullscreenElements = document.createElement('div');
+        fullscreenElements.id = 'fullscreen-elements';
+
+        const originalMapParent = mapElement.parentNode;
+        const originalSearchParent = searchContainer.parentNode;
+        const originalMapNextSibling = mapElement.nextSibling;
+        const originalSearchNextSibling = searchContainer.nextSibling;
+
+        fullscreenButton.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                mainContainer.appendChild(fullscreenElements); // Asegurarnos de que fullscreenElements esté en el DOM
+                fullscreenElements.appendChild(searchContainer);
+                fullscreenElements.appendChild(mapElement);
+                fullscreenElements.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', (event) => {
+            if (document.fullscreenElement) {
+                fullscreenButton.textContent = "Salir de Pantalla Completa";
+                mainContainer.classList.add('fullscreen-active');
+                mapElement.style.height = "calc(100vh - 60px)";
+                searchContainer.style.backgroundColor = "white";
+            } else {
+                fullscreenButton.textContent = "Pantalla Completa";
+                if (originalSearchNextSibling) {
+                    originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+                } else {
+                    originalSearchParent.appendChild(searchContainer);
+                }
+                if (originalMapNextSibling) {
+                    originalMapParent.insertBefore(mapElement, originalMapNextSibling);
+                } else {
+                    originalMapParent.appendChild(mapElement);
+                }
+                mainContainer.classList.remove('fullscreen-active');
+                mapElement.style.height = "500px";
+
+                // Asegurarse de que los estilos se restablezcan
+                fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+            }
+        });
+    });
+</script>
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+
+
+
+@section scripts {
+    <script type="text/javascript" src="/js/configura_mapa.js"></script>
+    <script type="text/javascript" src="/js/I_radiacion_solar.js"></script>
+}

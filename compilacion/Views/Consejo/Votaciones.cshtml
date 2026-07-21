@@ -1,0 +1,1436 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["Title"] = "Votaciones Colegiadas";
+}
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Votaciones Colegiadas",
+        IconPath = "votaciones_consejo.png",
+        Description = "Sistema de votación digital para la toma de decisiones colegiada del Consejo.",
+        Section = "Consejo",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Votaciones Colegiadas",
+            description = "Sistema digital para la emisión y registro de votos del Consejo.",
+            functionality = "Permite emitir votos sobre los asuntos en agenda de forma digital y segura.",
+            stage = "Deliberación colegiada",
+            roles = new[] {
+new { icon = "vote-yea", text = "Consejeros: Emiten voto digital" },
+new { icon = "clipboard-check", text = "Secretaría Técnica: Registra resultados" }
+},
+            order = new { step = 4, description = "Permite la emisión de votos digitales." }
+        }),
+        LegalDescription = "El proceso de votación colegiada es fundamental para la toma de decisiones.",
+        Fundamentos = new List<FundamentoLegal> {
+new() { Reference = "Art. 76 RLPT", Description = "Establece el proceso de votación" },
+new() { Reference = "Art. 32 Lineamientos", Description = "Define el procedimiento" }
+}
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+@* 
+<div class="text-center mb-4">
+    <h3 class="cp-section cp-grouping-section">
+        <img src="@Cdn.Url/img_snier/vistas/modulos/votaciones_consejo.png" alt="Votaciones" class="iconomenu">
+        @ViewData["Title"]
+        <button class="btn btn-link text-info" onclick="mostrarAyudaModulo()" data-bs-toggle="tooltip"
+            title="¿Qué es este módulo?">
+            <i class="fas fa-question-circle fa-lg"></i>
+        </button>
+    </h3>
+    <div class="text-muted mt-2 text-justify px-5">
+        <i class="fas fa-info-circle text-primary"></i>
+        <em>Sistema de votación digital para la toma de decisiones colegiada del Consejo.</em>
+    </div>
+</div>
+
+<div class="alert alert-light mb-4" role="alert">
+    <nav aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div> *@
+
+
+<div class="container ps-5 pe-5">
+    @* <div class="alert alert-success mb-4" role="alert">
+        <div class="row align-items-center">
+            <div class="col-md-2 text-center">
+                <img src="@Cdn.Url/img_snier/vistas/iconos/legal_foundations.png" alt="Fundamento Legal" class="img-fluid">
+            </div>
+            <div class="col-md-10">
+                <h5 class="alert-heading mb-2">
+                    <i class="fas fa-book-reader"></i> Fundamento Legal
+                </h5>
+                <p class="mb-1 text-justify">
+                    <span class="badge bg-primary" data-bs-toggle="tooltip"
+                        title="Establece el proceso de votación colegiada">
+                        Art. 76 RLPT
+                    </span>
+                    <span class="badge bg-info ms-2" data-bs-toggle="tooltip"
+                        title="Define el procedimiento específico de votación">
+                        Art. 32 Lineamientos
+                    </span>
+                </p>
+                <hr>
+                <p class="mb-0 small text-justify">
+                    <i class="fas fa-info-circle"></i>
+                    El proceso de votación colegiada es fundamental para la toma de decisiones del Consejo,
+                    asegurando la participación efectiva de todos los integrantes.
+                </p>
+            </div>
+        </div>
+    </div> *@
+
+    <!-- Resumen de Votaciones -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card border-primary">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Asuntos Pendientes</h6>
+                    <h2 class="card-title mb-0">3</h2>
+                    <div class="progress mt-2" style="height: 4px;">
+                        <div class="progress-bar bg-primary" style="width: 30%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-success">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Votaciones Completadas</h6>
+                    <h2 class="card-title mb-0">12</h2>
+                    <div class="progress mt-2" style="height: 4px;">
+                        <div class="progress-bar bg-success" style="width: 80%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-warning">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Reservas Pendientes</h6>
+                    <h2 class="card-title mb-0">2</h2>
+                    <div class="progress mt-2" style="height: 4px;">
+                        <div class="progress-bar bg-warning" style="width: 20%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lista de votaciones disponibles -->
+    <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5><i class="fas fa-calendar-day"></i> Orden del Día - Sesión @DateTime.Now.ToString("dd/MM/yyyy")
+            </h5>
+            @* Timer comentado por ahora
+            <div class="d-flex align-items-center">
+                <i class="fas fa-clock text-warning me-2"></i>
+                <div id="sesionTimer" class="text-danger fw-bold">02:45:30</div>
+            </div>
+            *@
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle" id="tablaVotaciones">
+                <thead class="table-light">
+                    <tr>
+                        <th>Folio</th>
+                        <th>Asunto</th>
+                        <th>Tipo</th>
+                        <th>Cierre</th>
+                        <th>Quórum</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>SNIER-2024-001</td>
+                        <td>
+                            Actualización de lineamientos técnicos para la interconexión de centrales eléctricas
+                            <small class="d-block text-muted">Mayoría calificada requerida</small>
+                        </td>
+                        <td><span class="badge bg-info">Opinión Técnica</span></td>
+                        <td>
+                            10/07/2024
+                            <small class="d-block text-danger">2 días restantes</small>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-success" style="width: 60%">6/10</div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-warning text-dark">Pendiente</span></td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-success" onclick="emitirVoto('001', 'favor')">
+                                    <i class="fas fa-thumbs-up"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="emitirVoto('001', 'contra')">
+                                    <i class="fas fa-thumbs-down"></i>
+                                </button>
+                                <button class="btn btn-sm btn-secondary" onclick="emitirVoto('001', 'abstencion')">
+                                    <i class="fas fa-minus-circle"></i>
+                                </button>
+                                <button class="btn btn-sm btn-info" onclick="verResultados('001')">
+                                    <i class="fas fa-chart-pie"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="agregarReserva('001')">
+                                    <i class="fas fa-comment-dots"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="verTrazabilidad('001')"
+                                    data-bs-toggle="tooltip" title="Ver trazabilidad">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>SNIER-2024-002</td>
+                        <td>
+                            Plan de Expansión de la Red Nacional de Transmisión 2024-2038
+                            <small class="d-block text-muted">Mayoría simple requerida</small>
+                        </td>
+                        <td><span class="badge bg-primary">Plan Estratégico</span></td>
+                        <td>
+                            12/07/2024
+                            <small class="d-block text-danger">4 días restantes</small>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-success" style="width: 40%">4/10</div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-warning text-dark">En Discusión</span></td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-success" onclick="emitirVoto('002', 'favor')">
+                                    <i class="fas fa-thumbs-up"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="emitirVoto('002', 'contra')">
+                                    <i class="fas fa-thumbs-down"></i>
+                                </button>
+                                <button class="btn btn-sm btn-secondary" onclick="emitirVoto('002', 'abstencion')">
+                                    <i class="fas fa-minus-circle"></i>
+                                </button>
+                                <button class="btn btn-sm btn-info" onclick="verResultados('002')">
+                                    <i class="fas fa-chart-pie"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="agregarReserva('002')">
+                                    <i class="fas fa-comment-dots"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="verTrazabilidad('002')"
+                                    data-bs-toggle="tooltip" title="Ver trazabilidad">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>SNIER-2024-003</td>
+                        <td>
+                            Prospectiva del Sector Eléctrico 2024-2038
+                            <small class="d-block text-muted">Ya votado</small>
+                        </td>
+                        <td><span class="badge bg-success">Aprobado</span></td>
+                        <td>15/05/2024</td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-success" style="width: 100%">10/10</div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-success">Votado</span></td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-info" onclick="verResultados('003')">
+                                    <i class="fas fa-chart-pie"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="descargarAcuse('003')">
+                                    <i class="fas fa-file-pdf"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="verTrazabilidad('003')"
+                                    data-bs-toggle="tooltip" title="Ver trazabilidad">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>SNIER-2024-004</td>
+                        <td>
+                            Criterios de Interoperabilidad de Sistemas de Medición Avanzada
+                            <small class="d-block text-muted">Mayoría calificada requerida</small>
+                        </td>
+                        <td><span class="badge bg-info">Criterio Técnico</span></td>
+                        <td>
+                            20/07/2024
+                            <small class="d-block text-warning">12 días restantes</small>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-success" style="width: 20%">2/10</div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-info">En Análisis</span></td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-success" onclick="emitirVoto('004', 'favor')">
+                                    <i class="fas fa-thumbs-up"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="emitirVoto('004', 'contra')">
+                                    <i class="fas fa-thumbs-down"></i>
+                                </button>
+                                <button class="btn btn-sm btn-secondary" onclick="emitirVoto('004', 'abstencion')">
+                                    <i class="fas fa-minus-circle"></i>
+                                </button>
+                                <button class="btn btn-sm btn-info" onclick="verResultados('004')">
+                                    <i class="fas fa-chart-pie"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="agregarReserva('004')">
+                                    <i class="fas fa-comment-dots"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="verTrazabilidad('004')"
+                                    data-bs-toggle="tooltip" title="Ver trazabilidad">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>SNIER-2024-005</td>
+                        <td>
+                            Programa de Desarrollo del Sistema Eléctrico Nacional 2024-2038
+                            <small class="d-block text-danger">Requiere análisis prioritario</small>
+                        </td>
+                        <td><span class="badge bg-danger">Plan Estratégico</span></td>
+                        <td>
+                            25/07/2024
+                            <small class="d-block text-warning">17 días restantes</small>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-success" style="width: 30%">3/10</div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-primary">En Discusión</span></td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-success" onclick="emitirVoto('005', 'favor')">
+                                    <i class="fas fa-thumbs-up"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="emitirVoto('005', 'contra')">
+                                    <i class="fas fa-thumbs-down"></i>
+                                </button>
+                                <button class="btn btn-sm btn-secondary" onclick="emitirVoto('005', 'abstencion')">
+                                    <i class="fas fa-minus-circle"></i>
+                                </button>
+                                <button class="btn btn-sm btn-info" onclick="verResultados('005')">
+                                    <i class="fas fa-chart-pie"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="agregarReserva('005')">
+                                    <i class="fas fa-comment-dots"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="verTrazabilidad('005')"
+                                    data-bs-toggle="tooltip" title="Ver trazabilidad">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Reemplazar la sección actual del historial -->
+    <div class="mt-5 mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5><i class="fas fa-history"></i> Historial de Votaciones</h5>
+            <button class="btn btn-outline-primary btn-sm" onclick="verHistorialCompleto()">
+                <i class="fas fa-external-link-alt"></i> Ver Historial Completo
+            </button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm" id="tablaHistorial">
+                <thead class="table-light">
+                    <tr>
+                        <th>Folio</th>
+                        <th>Sesión</th>
+                        <th>Asunto</th>
+                        <th>Mi Voto</th>
+                        <th>Resultado Final</th>
+                        <th>Fecha Emisión</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>SNIER-2024-003</td>
+                        <td>
+                            12/2024
+                            <small class="d-block text-muted">Ordinaria</small>
+                        </td>
+                        <td>Prospectiva del Sector Eléctrico 2024-2038</td>
+                        <td>
+                            <span class="badge bg-success">
+                                <i class="fas fa-thumbs-up"></i> A Favor
+                            </span>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="progress flex-grow-1" style="height: 15px;">
+                                    <div class="progress-bar bg-success" style="width: 80%" data-bs-toggle="tooltip"
+                                        title="8 votos">8</div>
+                                    <div class="progress-bar bg-danger" style="width: 10%" data-bs-toggle="tooltip"
+                                        title="1 voto">1</div>
+                                    <div class="progress-bar bg-secondary" style="width: 10%" data-bs-toggle="tooltip"
+                                        title="1 abstención">1</div>
+                                </div>
+                                <span class="ms-2 badge bg-success">Aprobado</span>
+                            </div>
+                        </td>
+                        <td>
+                            15/05/2024 10:30
+                            <small class="d-block text-muted">
+                                <i class="fas fa-key"></i> Firmado
+                            </small>
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-info" onclick="verDetalleVoto('003')"
+                                    data-bs-toggle="tooltip" title="Ver detalle">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="descargarAcuse('003')"
+                                    data-bs-toggle="tooltip" title="Descargar acuse">
+                                    <i class="fas fa-file-pdf"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="verTrazabilidad('003')"
+                                    data-bs-toggle="tooltip" title="Ver trazabilidad">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>SNIER-2024-002</td>
+                        <td>
+                            11/2024
+                            <small class="d-block text-muted">Extraordinaria</small>
+                        </td>
+                        <td>Plan de Expansión de la RNT 2024-2038</td>
+                        <td>
+                            <span class="badge bg-danger">
+                                <i class="fas fa-thumbs-down"></i> En Contra
+                            </span>
+                            <small class="d-block text-muted">Con reservas</small>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="progress flex-grow-1" style="height: 15px;">
+                                    <div class="progress-bar bg-success" style="width: 40%">4</div>
+                                    <div class="progress-bar bg-danger" style="width: 50%">5</div>
+                                    <div class="progress-bar bg-secondary" style="width: 10%">1</div>
+                                </div>
+                                <span class="ms-2 badge bg-danger">Rechazado</span>
+                            </div>
+                        </td>
+                        <td>
+                            10/05/2024 15:45
+                            <small class="d-block text-muted">
+                                <i class="fas fa-key"></i> Firmado
+                            </small>
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-info" onclick="verDetalleVoto('002')"
+                                    data-bs-toggle="tooltip" title="Ver detalle">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="descargarAcuse('002')"
+                                    data-bs-toggle="tooltip" title="Descargar acuse">
+                                    <i class="fas fa-file-pdf"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="verTrazabilidad('002')"
+                                    data-bs-toggle="tooltip" title="Ver trazabilidad">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>SNIER-2024-001</td>
+                        <td>
+                            10/2024
+                            <small class="d-block text-muted">Ordinaria</small>
+                        </td>
+                        <td>Lineamientos de Interconexión</td>
+                        <td>
+                            <span class="badge bg-secondary">
+                                <i class="fas fa-minus-circle"></i> Abstención
+                            </span>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="progress flex-grow-1" style="height: 15px;">
+                                    <div class="progress-bar bg-success" style="width: 70%">7</div>
+                                    <div class="progress-bar bg-danger" style="width: 10%">1</div>
+                                    <div class="progress-bar bg-secondary" style="width: 20%">2</div>
+                                </div>
+                                <span class="ms-2 badge bg-success">Aprobado</span>
+                            </div>
+                        </td>
+                        <td>
+                            05/05/2024 09:30
+                            <small class="d-block text-muted">
+                                <i class="fas fa-key"></i> Firmado
+                            </small>
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-info" onclick="verDetalleVoto('001')"
+                                    data-bs-toggle="tooltip" title="Ver detalle">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="descargarAcuse('001')"
+                                    data-bs-toggle="tooltip" title="Descargar acuse">
+                                    <i class="fas fa-file-pdf"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="verTrazabilidad('001')"
+                                    data-bs-toggle="tooltip" title="Ver trazabilidad">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Emitir Voto -->
+<div class="modal fade" id="modalVoto" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-vote-yea"></i> Emitir Voto
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formVoto" class="needs-validation" novalidate>
+                    <div class="mb-3">
+                        <label class="form-label">Sentido del Voto</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="sentidoVoto" id="votoFavor" value="favor"
+                                required>
+                            <label class="btn btn-outline-success" for="votoFavor">
+                                <i class="fas fa-thumbs-up"></i> A Favor
+                            </label>
+
+                            <input type="radio" class="btn-check" name="sentidoVoto" id="votoContra" value="contra">
+                            <label class="btn btn-outline-danger" for="votoContra">
+                                <i class="fas fa-thumbs-down"></i> En Contra
+                            </label>
+
+                            <input type="radio" class="btn-check" name="sentidoVoto" id="votoAbstencion"
+                                value="abstencion">
+                            <label class="btn btn-outline-secondary" for="votoAbstencion">
+                                <i class="fas fa-minus-circle"></i> Abstención
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Comentarios (opcional)</label>
+                        <textarea class="form-control" name="comentarios" rows="2"
+                            placeholder="Agregue observaciones o justificación de su voto..."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="reservasCheck">
+                            <label class="form-check-label" for="reservasCheck">
+                                Tengo reservas en lo particular
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="reservasSection" class="mb-3" style="display: none;">
+                        <label class="form-label">Especifique sus reservas</label>
+                        <textarea class="form-control" name="reservas" rows="3"
+                            placeholder="Detalle los puntos específicos que desea reservar..."></textarea>
+                    </div>
+
+                    <hr>
+
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        Su voto será firmado digitalmente conforme al Art. 32 de los Lineamientos.
+                    </div>
+
+                    <!-- Campos e.firma -->
+                    <div class="mb-3">
+                        <label class="form-label">Certificado (.cer)</label>
+                        <input type="file" class="form-control" accept=".cer" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Llave Privada (.key)</label>
+                        <input type="file" class="form-control" accept=".key" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña</label>
+                        <input type="password" class="form-control" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="procesarVoto()">
+                    <i class="fas fa-signature"></i> Firmar y Emitir Voto
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Resultados -->
+<div class="modal fade" id="modalResultados" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-chart-pie"></i> Resultados de la Votación
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>Resultado General</h6>
+                                <canvas id="graficaGeneral"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>Reservas en lo Particular</h6>
+                                <canvas id="graficaReservas"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="table-responsive mt-4">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Consejero</th>
+                                <th>Voto</th>
+                                <th>Fecha</th>
+                                <th>Reservas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Datos de ejemplo -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Agregar Modal Detalle de Voto -->
+<div class="modal fade" id="modalDetalleVoto" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-vote-yea"></i> Detalle del Voto
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2">Información del Asunto</h6>
+                        <dl class="row">
+                            <dt class="col-sm-4">Folio</dt>
+                            <dd class="col-sm-8" id="detalleVotoFolio"></dd>
+
+                            <dt class="col-sm-4">Sesión</dt>
+                            <dd class="col-sm-8" id="detalleVotoSesion"></dd>
+
+                            <dt class="col-sm-4">Asunto</dt>
+                            <dd class="col-sm-8" id="detalleVotoAsunto"></dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2">Datos de la Votación</h6>
+                        <dl class="row">
+                            <dt class="col-sm-4">Tu Voto</dt>
+                            <dd class="col-sm-8" id="detalleVotoSentido"></dd>
+
+                            <dt class="col-sm-4">Fecha</dt>
+                            <dd class="col-sm-8" id="detalleVotoFecha"></dd>
+
+                            <dt class="col-sm-4">Resultado</dt>
+                            <dd class="col-sm-8" id="detalleVotoResultado"></dd>
+                        </dl>
+                    </div>
+                </div>
+
+                <div class="alert alert-light border mt-3">
+                    <h6><i class="fas fa-signature"></i> Sello Digital de Tiempo</h6>
+                    <small class="text-muted" id="detalleVotoSello"></small>
+                </div>
+
+                <div class="mt-3">
+                    <h6 class="border-bottom pb-2">Comentarios y Reservas</h6>
+                    <div id="detalleVotoComentarios"></div>
+                </div>
+
+                <div class="mt-4">
+                    <h6 class="border-bottom pb-2">Trazabilidad del Acuerdo</h6>
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-point bg-primary">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <div class="timeline-content">
+                                <h6>Registro en Buzón</h6>
+                                <p class="text-muted mb-1">01/05/2024 09:15</p>
+                                <p>Propuesta registrada por Secretaría Técnica</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-point bg-info">
+                                <i class="fas fa-search"></i>
+                            </div>
+                            <div class="timeline-content">
+                                <h6>Evaluación Técnica</h6>
+                                <p class="text-muted mb-1">03/05/2024 14:30</p>
+                                <p>Análisis completado por área especializada</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-point bg-warning">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="timeline-content">
+                                <h6>Discusión en Sesión</h6>
+                                <p class="text-muted mb-1">05/05/2024 10:00</p>
+                                <p>Presentado en sesión ordinaria</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-point bg-success">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="timeline-content">
+                                <h6>Votación Completada</h6>
+                                <p class="text-muted mb-1">05/05/2024 11:30</p>
+                                <p>Aprobado por mayoría calificada</p>
+                            </div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-point bg-secondary">
+                                <i class="fas fa-tasks"></i>
+                            </div>
+                            <div class="timeline-content">
+                                <h6>En Seguimiento</h6>
+                                <p class="text-muted mb-1">Actual</p>
+                                <p>Implementación en proceso</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" onclick="descargarAcuse(currentFolio)">
+                    <i class="fas fa-file-pdf"></i> Descargar Acuse
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Actualizar el modal de trazabilidad -->
+<div class="modal fade" id="modalTrazabilidad" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-history"></i> Trazabilidad del Asunto
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6>Información del Asunto</h6>
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">Folio:</dt>
+                            <dd class="col-sm-8" id="trazabilidadFolio">SNIER-2024-001</dd>
+                            <dt class="col-sm-4">Tipo:</dt>
+                            <dd class="col-sm-8"><span class="badge bg-info">Opinión Técnica</span></dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Estado Actual</h6>
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">Etapa:</dt>
+                            <dd class="col-sm-8"><span class="badge bg-primary">En Votación</span></dd>
+                            <dt class="col-sm-4">Días activo:</dt>
+                            <dd class="col-sm-8">15 días</dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="timeline-wrapper">
+                    <div class="timeline-stepper">
+                        <div class="timeline-step completed">
+                            <div class="timeline-step-marker">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <div class="timeline-step-content">
+                                <div class="d-flex justify-content-between">
+                                    <h6>1. Registro de propuesta</h6>
+                                    <small class="text-muted">01/05/2024 09:15</small>
+                                </div>
+                                <p class="text-muted small mb-2">Art. 21-22 Lineamientos</p>
+                                <p class="mb-2">Un integrante del Consejo registra el asunto</p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-info">
+                                        <i class="fas fa-user"></i> Miembro del Consejo
+                                    </small>
+                                    <button class="btn btn-sm btn-outline-info" onclick="verDetallesEtapa(1)">
+                                        <i class="fas fa-search"></i> Ver detalles
+                                    </button>
+                                </div>
+                                <div class="mt-2 p-2 bg-light rounded">
+                                    <small class="text-muted">
+                                        <i class="fas fa-comment"></i> Comentario: Se registra propuesta para
+                                        actualización de criterios técnicos.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="timeline-step completed">
+                            <div class="timeline-step-marker">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="timeline-step-content">
+                                <div class="d-flex justify-content-between">
+                                    <h6>2. Revisión inicial</h6>
+                                    <small class="text-muted">02/05/2024 11:30</small>
+                                </div>
+                                <p class="text-muted small mb-2">Art. 23 Lineamientos</p>
+                                <p class="mb-2">Validación de documentación y requisitos</p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="text-info">
+                                        <i class="fas fa-user"></i> Secretaría Técnica
+                                    </small>
+                                    <button class="btn btn-sm btn-outline-info" onclick="verDetallesEtapa(2)">
+                                        <i class="fas fa-search"></i> Ver detalles
+                                    </button>
+                                </div>
+                                <div class="mt-2">
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check"></i> Documentación completa
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Agregar más pasos con detalles similares... -->
+
+                        <div class="timeline-step active">
+                            <div class="timeline-step-marker">
+                                <i class="fas fa-vote-yea"></i>
+                            </div>
+                            <div class="timeline-step-content">
+                                <div class="d-flex justify-content-between">
+                                    <h6>10. Votación digital</h6>
+                                    <small class="text-muted">En curso</small>
+                                </div>
+                                <p class="text-muted small mb-2">Art. 32 Lineamientos</p>
+                                <p class="mb-2">Emisión de votos con firma digital</p>
+                                <div class="progress mb-2" style="height: 15px;">
+                                    <div class="progress-bar bg-success" style="width: 60%" title="6 votos">6/10</div>
+                                </div>
+                                <small class="d-block text-muted">
+                                    <i class="fas fa-clock"></i> Tiempo restante: 2 días
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary" onclick="exportarTrazabilidad()">
+                    <i class="fas fa-file-export"></i> Exportar
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let graficaGeneral, graficaReservas;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            // Inicializar DataTable
+            $('#tablaVotaciones').DataTable({
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json'
+                },
+                order: [[3, 'asc']] // Ordenar por fecha de cierre
+            });
+
+            // Inicializar tooltips
+            const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltips.forEach(t => new bootstrap.Tooltip(t));
+
+            // Inicializar gráficas
+            inicializarGraficas();
+
+            // Timer comentado por ahora
+            // inicializarTimer();
+
+            // Inicializar DataTable para el historial
+            $('#tablaHistorial').DataTable({
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json'
+                },
+                order: [[4, 'desc']] // Ordenar por fecha descendente
+            });
+        });
+
+        function inicializarGraficas() {
+            const ctxGeneral = document.getElementById('graficaGeneral').getContext('2d');
+            graficaGeneral = new Chart(ctxGeneral, {
+                type: 'doughnut',
+                data: {
+                    labels: ['A Favor', 'En Contra', 'Abstención'],
+                    datasets: [{
+                        data: [6, 2, 2],
+                        backgroundColor: ['#198754', '#dc3545', '#6c757d']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            const ctxReservas = document.getElementById('graficaReservas').getContext('2d');
+            graficaReservas = new Chart(ctxReservas, {
+                type: 'bar',
+                data: {
+                    labels: ['Art. 1', 'Art. 2', 'Art. 3'],
+                    datasets: [{
+                        label: 'Reservas',
+                        data: [3, 1, 2],
+                        backgroundColor: '#ffc107'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        /* Timer comentado por ahora
+        function inicializarTimer() {
+            let tiempo = 10000; // 2:45:30 en segundos
+            const timerElement = document.getElementById('sesionTimer');
+
+            function actualizarTimer() {
+                const horas = Math.floor(tiempo / 3600);
+                const minutos = Math.floor((tiempo % 3600) / 60);
+                const segundos = tiempo % 60;
+
+                timerElement.textContent = `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}:${String(segundos).padStart(2, '0')}`;
+
+                if (tiempo > 0) {
+                    tiempo--;
+                    setTimeout(actualizarTimer, 1000);
+                } else {
+                    timerElement.classList.add('text-danger', 'fw-bold');
+                    timerElement.textContent = 'SESIÓN FINALIZADA';
+                }
+            }
+
+            actualizarTimer();
+        }
+        */
+
+        function emitirVoto(folio, tipoVoto) {
+            const modal = new bootstrap.Modal(document.getElementById('modalVoto'));
+            document.getElementById('formVoto').reset();
+
+            // Pre-seleccionar el tipo de voto
+            document.getElementById(`voto${tipoVoto.charAt(0).toUpperCase() + tipoVoto.slice(1)}`).checked = true;
+
+            // Guardar folio para procesamiento
+            document.getElementById('formVoto').dataset.folio = folio;
+
+            modal.show();
+        }
+
+        function procesarVoto() {
+            const form = document.getElementById('formVoto');
+            if (!form.checkValidity()) {
+                form.classList.add('was-validated');
+                return;
+            }
+
+            const folio = form.dataset.folio;
+            const sentidoVoto = document.querySelector('input[name="sentidoVoto"]:checked').value;
+            const comentarios = document.querySelector('textarea[name="comentarios"]').value;
+            const tieneReservas = document.getElementById('reservasCheck').checked;
+            const reservas = tieneReservas ? document.querySelector('textarea[name="reservas"]').value : '';
+
+            // Simular firma digital
+            Swal.fire({
+                title: 'Procesando firma digital...',
+                html: `
+                                                                                                                                                                            <div class="progress mb-3">
+                                                                                                                                                                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                                                                                                                                                                     role="progressbar" style="width: 0%">
+                                                                                                                                                                                </div>
+                                                                                                                                                                            </div>
+                                                                                                                                                                            <div class="text-start mt-3">
+                                                                                                                                                                                <p class="step-validating">
+                                                                                                                                                                                    <i class="fas fa-spinner fa-spin"></i> Validando certificados...
+                                                                                                                                                                                </p>
+                                                                                                                                                                                <p class="step-signing text-muted">
+                                                                                                                                                                                    <i class="fas fa-clock"></i> Firmando voto...
+                                                                                                                                                                                </p>
+                                                                                                                                                                                <p class="step-saving text-muted">
+                                                                                                                                                                                    <i class="fas fa-clock"></i> Registrando voto...
+                                                                                                                                                                                </p>
+                                                                                                                                                                            </div>
+                                                                                                                                                                        `,
+                showConfirmButton: false,
+                allowOutsideClick: false,
+                didOpen: async () => {
+                    const barra = Swal.getHtmlContainer().querySelector('.progress-bar');
+                    const stepValidating = Swal.getHtmlContainer().querySelector('.step-validating');
+                    const stepSigning = Swal.getHtmlContainer().querySelector('.step-signing');
+                    const stepSaving = Swal.getHtmlContainer().querySelector('.step-saving');
+
+                    // Simular proceso
+                    barra.style.width = '33%';
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    stepValidating.innerHTML = '<i class="fas fa-check text-success"></i> Certificados validados';
+
+                    stepSigning.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Firmando voto...';
+                    barra.style.width = '66%';
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    stepSigning.innerHTML = '<i class="fas fa-check text-success"></i> Voto firmado';
+
+                    stepSaving.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando voto...';
+                    barra.style.width = '100%';
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    stepSaving.innerHTML = '<i class="fas fa-check text-success"></i> Voto registrado';
+
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                    // Mostrar acuse
+                    Swal.fire({
+                        icon: 'success',
+                        title: '¡Voto registrado exitosamente!',
+                        html: `
+                                                                                                                                                                                    <div class="text-start">
+                                                                                                                                                                                        <div class="alert alert-success">
+                                                                                                                                                                                            <h6><i class="fas fa-check-circle"></i> Acuse de voto</h6>
+                                                                                                                                                                                            <hr>
+                                                                                                                                                                                            <p><strong>Folio:</strong> SNIER-2024-${folio}</p>
+                                                                                                                                                                                            <p><strong>Fecha y hora:</strong> ${new Date().toLocaleString()}</p>
+                                                                                                                                                                                            <p><strong>Sentido del voto:</strong> ${sentidoVoto.toUpperCase()}</p>
+                                                                                                                                                                                            <p><strong>Sello digital:</strong></p>
+                                                                                                                                                                                            <small class="text-muted">hQIMA0yVHZKhN8ELAQf9H8...</small>
+                                                                                                                                                                                        </div>
+                                                                                                                                                                                    </div>
+                                                                                                                                                                                `,
+                        showCancelButton: true,
+                        confirmButtonText: '<i class="fas fa-file-pdf"></i> Descargar Acuse',
+                        cancelButtonText: 'Cerrar'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            window.open('data:application/pdf;base64,JVBERi0x...', '_blank');
+                        }
+                        actualizarTabla(folio, sentidoVoto);
+                        $('#modalVoto').modal('hide');
+                    });
+                }
+            });
+        }
+
+        function actualizarTabla(folio, sentidoVoto) {
+            const table = $('#tablaVotaciones').DataTable();
+            const row = table.row(`td:contains("SNIER-2024-${folio}")`).nodes().to$();
+
+            // Actualizar barra de quórum
+            const progress = row.find('.progress-bar');
+            const [actual, total] = progress.text().split('/');
+            progress.css('width', `${(parseInt(actual) + 1) * 100 / parseInt(total)}%`);
+            progress.text(`${parseInt(actual) + 1}/${total}`);
+
+            // Deshabilitar solo botones de voto
+            row.find('.btn-success, .btn-danger, .btn-secondary').prop('disabled', true);
+            row.find('.badge').removeClass('bg-warning').addClass('bg-success').text('Votado');
+
+            // Mantener habilitados los botones de resultados y reservas
+            row.find('.btn-info, .btn-outline-warning').prop('disabled', false);
+        }
+
+        function verResultados(folio) {
+            const modal = new bootstrap.Modal(document.getElementById('modalResultados'));
+
+            // Actualizar datos de ejemplo en la tabla
+            const tbody = document.querySelector('#modalResultados tbody');
+            tbody.innerHTML = `
+                                                                                                                                                                        <tr>
+                                                                                                                                                                            <td>Juan Pérez</td>
+                                                                                                                                                                            <td><span class="badge bg-success">A Favor</span></td>
+                                                                                                                                                                            <td>21/05/2024 10:30</td>
+                                                                                                                                                                            <td>Sin reservas</td>
+                                                                                                                                                                        </tr>
+                                                                                                                                                                        <tr>
+                                                                                                                                                                            <td>María García</td>
+                                                                                                                                                                            <td><span class="badge bg-danger">En Contra</span></td>
+                                                                                                                                                                            <td>21/05/2024 11:15</td>
+                                                                                                                                                                            <td>Art. 2 y 3</td>
+                                                                                                                                                                        </tr>
+                                                                                                                                                                    `;
+
+            modal.show();
+        }
+
+        function agregarReserva(folio) {
+            Swal.fire({
+                title: 'Agregar Reserva',
+                html: `
+                                                                                                                                                                            <form id="formReserva">
+                                                                                                                                                                                <div class="mb-3">
+                                                                                                                                                                                    <label class="form-label">Artículo o sección</label>
+                                                                                                                                                                                    <input type="text" class="form-control" required>
+                                                                                                                                                                                </div>
+                                                                                                                                                                                <div class="mb-3">
+                                                                                                                                                                                    <label class="form-label">Comentarios</label>
+                                                                                                                                                                                    <textarea class="form-control" rows="3" required></textarea>
+                                                                                                                                                                                </div>
+                                                                                                                                                                            </form>
+                                                                                                                                                                        `,
+                showCancelButton: true,
+                confirmButtonText: 'Guardar',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const form = document.getElementById('formReserva');
+                    if (!form.checkValidity()) {
+                        form.reportValidity();
+                        return false;
+                    }
+                    return true;
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire('¡Reserva registrada!', '', 'success');
+                }
+            });
+        }
+
+        function descargarAcuse(folio) {
+            Swal.fire({
+                title: 'Descargando acuse...',
+                html: 'Preparando documento PDF',
+                timer: 2000,
+                timerProgressBar: true,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            }).then((result) => {
+                window.open('data:application/pdf;base64,JVBERi0x...', '_blank');
+            });
+        }
+
+        function verHistorialCompleto() {
+            // Lógica para ver historial completo
+            Swal.fire({
+                title: 'Historial Completo',
+                html: 'Aquí se mostrará el historial completo de votaciones.',
+                icon: 'info',
+                confirmButtonText: 'Cerrar'
+            });
+        }
+
+        function verDetalleVoto(folio) {
+            // Simular carga de datos del voto
+            const detalleVoto = {
+                folio: `SNIER-2024-${folio}`,
+                sesion: '12/2024 Ordinaria',
+                asunto: 'Prospectiva del Sector Eléctrico 2024-2038',
+                sentido: '<span class="badge bg-success"><i class="fas fa-thumbs-up"></i> A Favor</span>',
+                fecha: '15/05/2024 10:30:15',
+                resultado: '<span class="badge bg-success">Aprobado por Mayoría</span>',
+                sello: 'hQIMA0yVHZKhN8ELAQf9H8... Firmado el 15/05/2024 a las 10:30:15 GMT-6',
+                comentarios: `
+                                                                                                                                                    <div class="mb-2">
+                                                                                                                                                        <strong>Comentario:</strong>
+                                                                                                                                                        <p>Se aprueba en lo general con las siguientes observaciones...</p>
+                                                                                                                                                    </div>
+                                                                                                                                                    <div>
+                                                                                                                                                        <strong>Reservas:</strong>
+                                                                                                                                                        <ul>
+                                                                                                                                                            <li>Artículo 2: Sobre los mecanismos de evaluación...</li>
+                                                                                                                                                            <li>Artículo 5: Respecto a los plazos establecidos...</li>
+                                                                                                                                                        </ul>
+                                                                                                                                                    </div>
+                                                                                                                                                `
+            };
+
+            // Actualizar modal con los datos
+            document.getElementById('detalleVotoFolio').innerHTML = detalleVoto.folio;
+            document.getElementById('detalleVotoSesion').innerHTML = detalleVoto.sesion;
+            document.getElementById('detalleVotoAsunto').innerHTML = detalleVoto.asunto;
+            document.getElementById('detalleVotoSentido').innerHTML = detalleVoto.sentido;
+            document.getElementById('detalleVotoFecha').innerHTML = detalleVoto.fecha;
+            document.getElementById('detalleVotoResultado').innerHTML = detalleVoto.resultado;
+            document.getElementById('detalleVotoSello').innerHTML = detalleVoto.sello;
+            document.getElementById('detalleVotoComentarios').innerHTML = detalleVoto.comentarios;
+
+            // Guardar folio actual para el botón de descarga
+            window.currentFolio = folio;
+
+            // Mostrar modal
+            const modal = new bootstrap.Modal(document.getElementById('modalDetalleVoto'));
+            modal.show();
+        }
+
+        function verTrazabilidad(folio) {
+            const modal = new bootstrap.Modal(document.getElementById('modalTrazabilidad'));
+
+            // Here you could load real data based on the folio
+            // For now we'll just show the modal with static content
+            modal.show();
+        }
+
+        function mostrarAyudaModulo() {
+            Swal.fire({
+                title: 'Votaciones Colegiadas',
+                html: `
+                                                                <div class="text-start">
+                                                                    <div class="mb-4">
+                                                                        <h6 class="border-bottom pb-2">
+                                                                            <i class="fas fa-info-circle"></i> Descripción
+                                                                        </h6>
+                                                                        <p>Sistema digital para la emisión y registro de votos del Consejo.</p>
+                                                                    </div>
+
+                                                                    <div class="mb-4">
+                                                                        <h6 class="border-bottom pb-2">
+                                                                            <i class="fas fa-tasks"></i> Funcionalidad
+                                                                        </h6>
+                                                                        <p>Permite emitir votos sobre los asuntos en agenda de forma digital y segura.</p>
+                                                                    </div>
+
+                                                                    <div class="mb-4">
+                                                                        <h6 class="border-bottom pb-2">
+                                                                            <i class="fas fa-sync-alt"></i> Etapa del Ciclo
+                                                                        </h6>
+                                                                        <p>Deliberación colegiada</p>
+                                                                    </div>
+
+                                                                    <div class="mb-4">
+                                                                        <h6 class="border-bottom pb-2">
+                                                                            <i class="fas fa-users-cog"></i> Interacción entre Roles
+                                                                        </h6>
+                                                                        <ul class="list-unstyled">
+                                                                            <li><i class="fas fa-vote-yea text-primary"></i> Consejeros: Emiten voto digital</li>
+                                                                            <li><i class="fas fa-clipboard-check text-success"></i> Secretaría Técnica: Registra resultados</li>
+                                                                        </ul>
+                                                                    </div>
+
+                                                                    <div class="mb-4">
+                                                                        <h6 class="border-bottom pb-2">
+                                                                            <i class="fas fa-star"></i> Importancia
+                                                                        </h6>
+                                                                        <p class="mb-0">
+                                                                            Facilita la toma de decisiones colegiada de manera eficiente y transparente, 
+                                                                            siendo clave para la operación del Consejo.
+                                                                        </p>
+                                                                    </div>
+
+                                                                    <div>
+                                                                        <h6 class="border-bottom pb-2">
+                                                                            <i class="fas fa-check-double"></i> Orden en el Ciclo
+                                                                        </h6>
+                                                                        <p class="mb-0">
+                                                                            <span class="badge bg-warning">Paso 4</span>
+                                                                            <span class="ms-2">
+                                                                                Permite la emisión de votos digitales sobre los puntos del orden del día,
+                                                                                materializando la toma de decisiones del Consejo.
+                                                                            </span>
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            `,
+                width: 'auto',
+                maxWidth: '400px',
+                customClass: {
+                    container: 'text-start',
+                    popup: 'swal-responsive',
+                    htmlContainer: 'swal-scrollable'
+                },
+                confirmButtonText: 'Entendido'
+            });
+        }
+    </script>
+
+    <style>
+        .swal-responsive {
+            margin: 1rem !important;
+            max-height: 90vh !important;
+            max-width: 400px !important;
+        }
+
+        .swal-scrollable {
+            max-height: calc(90vh - 200px) !important;
+            overflow-y: auto !important;
+            padding-right: 10px !important;
+        }
+
+        .timeline-wrapper {
+            padding: 20px;
+            max-height: 600px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+
+        .timeline-wrapper::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .timeline-wrapper::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .timeline-wrapper::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+
+        .timeline-wrapper {
+            padding: 20px;
+        }
+
+        .timeline-stepper {
+            position: relative;
+            padding-left: 50px;
+        }
+
+        .timeline-stepper:before {
+            content: '';
+            position: absolute;
+            left: 25px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #e9ecef;
+        }
+
+        .timeline-step {
+            position: relative;
+            padding-bottom: 30px;
+        }
+
+        .timeline-step:last-child {
+            padding-bottom: 0;
+        }
+
+        .timeline-step-marker {
+            position: absolute;
+            left: -50px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #fff;
+            border: 2px solid #e9ecef;
+            text-align: center;
+            line-height: 45px;
+            color: #6c757d;
+        }
+
+        .timeline-step.completed .timeline-step-marker {
+            background: #28a745;
+            border-color: #28a745;
+            color: #fff;
+        }
+
+        .timeline-step.active .timeline-step-marker {
+            background: #007bff;
+            border-color: #007bff;
+            color: #fff;
+        }
+
+        .timeline-step-content {
+            background: #fff;
+            padding: 15px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-left: 15px;
+        }
+
+        .timeline-step.completed .timeline-step-content h6 {
+            color: #28a745;
+        }
+
+        .timeline-step.active .timeline-step-content h6 {
+            color: #007bff;
+        }
+    </style>
+}

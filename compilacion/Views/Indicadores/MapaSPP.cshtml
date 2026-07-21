@@ -1,0 +1,2189 @@
+@model Mep
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+}
+
+
+
+@{
+    ViewData["Title"] = "Modelos de Evaluación de Proyectos Energéticos";
+}
+
+@* Modal de Alertas *@
+<!-- Modal para Alerta del Formulario -->
+
+<div class="modal fade" id="alertModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <!-- Clase modal-dialog-centered para centrar -->
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title subtitulo">SNIE-Mensaje</h5>
+                <button type="button" class="close btn btn-primary" data-dismiss="modal" aria-label="Close"
+                    onclick="cerraModal()">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Aquí se mostrará el mensaje -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal"
+                    onclick="cerraModal()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="print01">
+
+    <div class="text-center">
+        <h3 class="cp-section cp-grouping-section">
+            <img src="@Cdn.Url/img_snier/vistas/mexico.png" alt="Icono personalizado" class="iconomenu">
+            @ViewData["Title"]
+        </h3>
+    </div>
+    <!-- Miga de Pan -->
+    <nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+        aria-label="breadcrumb" style="padding-left:15px">
+        <ol class="breadcrumb lp-5">
+            <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home" )">Inicio</a></li>
+            <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+
+    <div class="watermark-container">
+        @for (int i = 0; i < 30; i++) /* Cambiamos el número 3 por 9 para tener más marcas de agua */
+        {
+            <div class="watermark">
+                SNIE-@DateTime.Now.AddHours(-6).ToString("dd/MM/yyyy HH:mm:ss") - @ViewData["NombreUsuario"]
+            </div>
+        }
+    </div>
+
+    <div class="container">
+        @*Sección de Info*@
+
+        @* <partial name="_InfoEP" /> *@
+    </div>
+
+    <div class="container">
+        <div class="row pt-3">
+            <h3 class="subtitulo">Evaluación y Modelado de Proyectos</h3>
+        </div>
+    </div>
+    <center lass="p-3">
+        @* Video Guia *@
+        <br>
+        <a class="btn btn-cre-verde" asp-controller="Usuarios" asp-action="Guia_Consulta_Publica" target="_self"
+            style="display: inline-block; width: 200px; text-align: center;">Ver video para realizar la Evaluación de la
+            Evaluación</a>
+        <br>
+    </center>
+    <br>
+
+    <!-- Slider -->
+    <div class="progress-indicator">
+        <span class="step-circle active">1</span>
+        <span class="step-circle">2</span>
+        <span class="step-circle">3</span>
+    </div>
+
+    @* Formulario *@
+    <div id="evaluacion" class=" container mt-5 bg-white shadow p-3 mb-5 bg-body rounded">
+        @* <h3 class="subtitulo cp-section cp-grouping-section"><img src="@Cdn.Url/img_snier/vistas/mexicoi.png" alt="Icono personalizado"
+        class="iconomenu pt-3">Consulta Preliminar de la Calidad de la Ubicación</h3> *@
+        <br>
+        <div id="alertPlaceholder" style="display:none">
+            <!-- Aquí se mostrará el mensaje -->
+        </div>
+
+
+        <!-- Paso 1: Selección -->
+        <div id="step1" class="step" style="display:block;">
+
+
+            <h3 class="subtitulo">Paso 1: ¡Proporciona el tipo de Mercado y año del Proyecto!
+            </h3>
+            <br>
+            <br>
+
+
+            <form id="selectionForm">
+
+                <div class="row">
+                    <br>
+                    <div class="col-md-6 col-sm-6 col-6">
+                        <label for="market">Selecciona el mercado:</label>
+                        <select id="mercadoSelect" name="market" class="form-control">
+                            <option value="">--Selecciona--</option>
+                            <option value="petroliferos">Petrolíferos</option>
+                            <option value="gas_lp">Gas L.P.</option>
+                        </select>
+
+                    </div>
+                    <div class="col-md-6 col-sm-6 col-6 mb-3">
+                        <label for="year">Selecciona el año:</label>
+                        <select id="yearSelect" name="year" class="form-control">
+                            <option value="">--Selecciona--</option>
+                            <!-- Opciones de año -->
+                            <script>
+                                for (let year = 2024; year <= 2031; year++) {
+                                    document.write(`<option value="${year}">${year}</option>`);
+                                }
+                            </script>
+                        </select>
+
+                    </div>
+                    <div class="mb-3">
+                        <div class="alert alert-success" role="alert">
+                            <strong>Importante:</strong> La valoración de viabilidad positiva o negativa en SNIEr
+                            se
+                            refiere
+                            exclusivamente a los criterios e indicadores definidos para las escalas de Entidad
+                            Federativa y
+                            Municipal. Estos
+                            han sido asociados a la metodología para los usuarios finales y el mercado de hidrocarburos
+                            en
+                            relación con el
+                            Sector de Energía.
+                            <br><br>
+                            El alcance de SNIEr permite al usuario elegir ubicaciones para localizar expendios con
+                            el
+                            propósito de
+                            realizar dicha actividad en lugares lícitos a nivel de escala de barrios o colonias. Esto
+                            incluye el uso de
+                            suelo permitido, programa de desarrollo urbano local, aspectos de protección civil,
+                            vulnerabilidades, entre
+                            otros.
+                        </div>
+                        <hr>
+                        <div class="d-flex justify-content-end">
+                            <button id="paso2" type="button" class="btn btn-primary"
+                                onclick="goToStep2()">Siguiente</button>
+                        </div>
+                    </div>
+                </div>
+
+
+            </form>
+        </div>
+
+        <!-- Paso 2: Preguntas -->
+
+        <div id="step2" class="step" style="display:none;">
+            <h3 class="subtitulo">Paso 2: Responda las siguientes Preguntas</h3>
+
+            <form id="questionsForm">
+                <div id="petroleosQuestions" class="" style="display:none;">
+                    <!-- Contenido de Petrolíferos -->
+                    <!-- Preguntas para Petrolíferos -->
+                    <!-- Sección Uso de Suelo -->
+                    <br>
+                    <br>
+                    <div class="alert alert-success mb-3" role="alert">
+                        <h5 class="alert-heading">Uso de suelo para la infraestructura del expendio</h5>
+                        <hr>
+                        Determinar el uso del suelo para construir la infraestructura del expendio en la propuesta del
+                        solicitante de permiso. Entendiendo la denominación de uso de suelo como el conjunto genérico de
+                        actividades
+                        <i>(De acuerdo con las políticas estatales de Ordenamiento Territorial y Desarrollo Urbano, así
+                            como de las dependencias locales que buscan regular este tipo de cuestiones.)</i> que pueden
+                        realizarse en un área específica, mismas que deben ser aprobadas o restringidas por las
+                        instituciones correspondientes.
+                    </div>
+                    <div class="form-section">
+                        <label>Pregunta 1.-¿Es compatible el uso de suelo para la actividad que solicita el permiso de
+                            expendio?</label>
+                        <div class="radio-group">
+                            <input type="radio" id="petroleos1_si" name="petroleos1" value="si">
+                            <label for="petroleos1_si">Sí</label>
+                            <input type="radio" id="petroleos1_no" name="petroleos1" value="no">
+                            <label for="petroleos1_no">No</label>
+                        </div>
+                        <label>Pregunta 2.-¿El participante ha revisado o consultado el uso de suelo a la fecha de
+                            realización de la presente consulta?</label>
+                        <div class="radio-group">
+
+                            <input type="radio" id="petroleos2_si" name="petroleos2" value="si">
+                            <label for="petroleos2_si">Sí</label>
+                            <input type="radio" id="petroleos1_no" name="petroleos2" value="no">
+                            <label for="petroleos2_no">No</label>
+
+                        </div>
+                        <label>Pregunta 3.-Bajo protesta de decir verdad. ¿Tiene evidencia de la compatibilidad o
+                            incompatibilidad del uso de suelo?</label>
+                        <div class="radio-group">
+                            <input type="radio" id="petroleos3_si" name="petroleos3" value="si">
+                            <label for="petroleos3_si">Sí</label>
+                            <input type="radio" id="petroleos3_no" name="petroleos3" value="no">
+                            <label for="petroleos3_no">No</label>
+                        </div>
+                    </div>
+                    <!-- Fin Sección Uso de Suelo -->
+                    <br>
+                    <!-- Sección Uso de Suelo -->
+                    <div class="alert alert-success mb-3" role="alert">
+                        <h5 class="alert-heading">Análisis preliminar del entorno local de la propuesta de permiso
+                            de expendio</h5>
+                        <hr>
+                        Consultar, desde la propuesta del solicitante de permiso, sus recursos y considerado como un
+                        agente racional como participante interesado en la cadena de valor del mercado al que desea
+                        acceder el proponente a nivel de escala local o de vecindario. Para ello considera el
+                        entorno técnico, tecnológico y operativo del subsector y la condición del mercado para
+                        asimilar e integrar la infraestructura asociada al proyecto de permiso.
+                    </div>
+                    <div class="form-section">
+                        <label>Pregunta 4.-Estime ¿Cuántas personas en escuelas y/o hospitales hay alrededor del
+                            expendio a 150 metros?</label>
+                        <div>
+                            <input type="number" id="petroleos4" name="petroleos4" min="0">
+                        </div>
+
+                        <label>Pregunta 5.-¿Cuántos expendios se encuentran en operación en un radio de 3
+                            kilometros?</label>
+                        <strong>Consulta los "Permisos Autorizados" a nivel Nacional </strong> <a asp-controller="Map"
+                            asp-action="I_Petroliferos" target="_blank">Ver expendios de combustible</a> para más
+                        información.
+
+                        <div>
+                            <input type="number" id="petroleos5" name="petroleos5" min="0">
+                        </div>
+
+                        <label>Pregunta 6.-¿Cuál es la extensión en metros cuadrados del terreno dedicado al
+                            expendio?</label>
+                        <div>
+                            <input type="number" id="petroleos6" name="petroleos6" min="0" step="any" value="10">
+
+
+                        </div>
+
+                        <label>Pregunta 7.-¿Tendrá elementos diferenciadores el expendio? (Ejemplo: número de
+                            tiendas de conveniencia, baños, áreas de descanso, áreas de servicio, u otro espacio que
+                            brinde un servicio a los clientes)</label>
+                        <div class="checkbox-group">
+                            <div class="checkbox-item">
+                                <label for="petroleos_convenience_stores">Tiendas de conveniencia</label>
+                                <input type="checkbox" id="petroleos_convenience_stores"
+                                    name="petroleos_differentiators" value="convenience_stores">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="petroleos_rest_areas">Áreas de descanso</label>
+                                <input type="checkbox" id="petroleos_rest_areas" name="petroleos_differentiators"
+                                    value="rest_areas">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="petroleos_service_areas">Áreas de servicio</label>
+                                <input type="checkbox" id="petroleos_service_areas" name="petroleos_differentiators"
+                                    value="service_areas">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="petroleos_restaurant">Restaurante</label>
+                                <input type="checkbox" id="petroleos_restaurant" name="petroleos_differentiators"
+                                    value="restaurant">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="petroleos_hotel">Hotel</label>
+                                <input type="checkbox" id="petroleos_hotel" name="petroleos_differentiators"
+                                    value="hotel">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="petroleos_workshop">Sanitarios</label>
+                                <input type="checkbox" id="petroleos_workshop" name="petroleos_differentiators"
+                                    value="workshop">
+                            </div>
+                        </div>
+
+
+                    </div>
+
+                </div>
+
+                <div id="gasLPQuestions" class="" style="display:none;">
+                    <!-- Contenido de Gas LP -->
+                    <br><br>
+                    <div class="alert alert-success mb-3" role="alert">
+                        <h5 class="alert-heading">Uso de suelo para la infraestructura del expendio</h5>
+                        <hr>
+                        Determinar el uso del suelo para construir la infraestructura del expendio en la propuesta del
+                        solicitante de permiso. Entendiendo la denominación de uso de suelo como el conjunto genérico de
+                        actividades
+                        <i>(De acuerdo con las políticas estatales de Ordenamiento Territorial y Desarrollo Urbano, así
+                            como de las dependencias locales que buscan regular este tipo de cuestiones.)</i> que pueden
+                        realizarse en un área específica, mismas que deben ser aprobadas o restringidas por las
+                        instituciones correspondientes.
+
+                    </div>
+                    <div class="form-section">
+                        <label>Pregunta 1.-¿Es compatible el uso de suelo para la actividad que solicita el permiso de
+                            expendio?</label>
+                        <div class="radio-group">
+                            <input type="radio" id="gasLP1_si" name="gasLP1" value="si">
+                            <label for="gasLP1_si">Sí</label>
+                            <input type="radio" id="gasLP1_no" name="gasLP1" value="no">
+                            <label for="gasLP1_no">No</label>
+                        </div>
+                        <label>Pregunta 2.-¿El participante ha revisado o consultado el uso de suelo a la fecha de
+                            realización de la presente consulta?</label>
+                        <div class="radio-group">
+                            <input type="radio" id="gasLP2_si" name="gasLP2" value="si">
+                            <label for="gasLP2_si">Sí</label>
+                            <input type="radio" id="gasLP1_no" name="gasLP2" value="no">
+                            <label for="gasLP2_no">No</label>
+                        </div>
+                        <label>Pregunta 3.-Bajo protesta de decir verdad. ¿Tiene evidencia de la compatibilidad o
+                            incompatibilidad del uso de suelo?</label>
+                        <div class="radio-group">
+                            <input type="radio" id="gasLP3_si" name="gasLP3" value="si">
+                            <label for="gasLP3_si">Sí</label>
+                            <input type="radio" id="gasLP3_no" name="gasLP3" value="no">
+                            <label for="gasLP3_no">No</label>
+                        </div>
+                    </div>
+                    <!-- Fin Sección Uso de Suelo -->
+                    <br>
+                    <!-- Sección Uso de Suelo -->
+                    <div class="alert alert-success mb-3" role="alert">
+                        <h5 class="alert-heading">Análisis preliminar del entorno local de la propuesta de permiso
+                            de expendio.</h5>
+                        <hr>
+                        Consultar, desde la propuesta del solicitante de permiso, sus recursos y considerado como un
+                        agente racional como participante interesado en la cadena de valor del mercado al que desea
+                        acceder el proponente a nivel de escala local o de vecindario. Para ello considera el
+                        entorno técnico, tecnológico y operativo del subsector y la condición del mercado para
+                        asimilar e integrar la infraestructura asociada al proyecto de permiso.
+                    </div>
+                    <div class="form-section">
+                        <label>Pregunta 4.-Estime ¿Cuántas personas en escuelas y/o hospitales hay alrededor del
+                            expendio a 150 metros?</label>
+                        <div>
+                            <input type="number" id="gasLP4" name="gasLP4" min="0">
+                        </div>
+
+                        <label>Pregunta 5.-¿Cuántos expendios se encuentran en operación en un radio de 3
+                            kilometros?</label>
+                        <strong>Consulta los "Permisos Autorizados" a nivel Nacional </strong> <a asp-controller="Map"
+                            asp-action="I_Gas_LP" target="_blank">Ver expendios de Gas L.P.</a> para más
+                        información.
+
+                        <div>
+                            <input type="number" id="gasLP5" name="gasLP5" min="0">
+                        </div>
+
+                        <label>Pregunta 6.-¿Cuál es la extensión en metros cuadrados del terreno dedicado al
+                            expendio?</label>
+                        <div>
+                            <input type="number" id="gasLP6" name="gasLP6" min="10" step="any" value="10">
+
+                        </div>
+
+
+                        <label>Pregunta 7.-¿Tendrá elementos diferenciadores el expendio? (Ejemplo: número de
+                            tiendas de conveniencia, baños, áreas de descanso, áreas de servicio, u otro espacio que
+                            brinde un servicio a los clientes)</label>
+                        <div class="checkbox-group">
+                            <div class="checkbox-item">
+                                <label for="gasLP_convenience_stores">Tiendas de conveniencia</label>
+                                <input type="checkbox" id="gasLP_convenience_stores" name="gasLP_differentiators"
+                                    value="convenience_stores">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="gasLP_rest_areas">Áreas de descanso</label>
+                                <input type="checkbox" id="gasLP_rest_areas" name="gasLP_differentiators"
+                                    value="rest_areas">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="gasLP_service_areas">Áreas de servicio</label>
+                                <input type="checkbox" id="gasLP_service_areas" name="gasLP_differentiators"
+                                    value="service_areas">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="gasLP_restaurant">Restaurante</label>
+                                <input type="checkbox" id="gasLP_restaurant" name="gasLP_differentiators"
+                                    value="restaurant">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="gasLP_hotel">Hotel</label>
+                                <input type="checkbox" id="gasLP_hotel" name="gasLP_differentiators" value="hotel">
+                            </div>
+                            <div class="checkbox-item">
+                                <label for="gasLP_workshop">Sanitarios</label>
+                                <input type="checkbox" id="gasLP_workshop" name="gasLP_differentiators"
+                                    value="workshop">
+                            </div>
+                        </div>
+
+
+                    </div>
+                </div>
+
+                <div class="form-buttons d-flex justify-content-end">
+                    @* <button type="button" class="btn btn-secondary d-none" onclick="goToStep1()">Regresar</button> *@
+                    <button id="paso3" type="button" class="btn btn-primary" onclick="goToStep3()">Siguiente</button>
+                </div>
+            </form>
+        </div>
+
+
+
+        @* <div id="step2" class="step">
+        <h3 class="subtitulo">Paso 2: Responda las siguientes Preguntas</h3>
+
+        <form id="questionsForm">
+        <div id="petroleosQuestions" class="question" style="display:none;">
+        <!-- Repetir para las demás preguntas -->
+        </div>
+
+        <div id="gasLPQuestions" class="question" style="display:none;">
+
+        </div>
+        <hr>
+        <button type="button" class="btn btn-secondary" onclick="goToStep1()">Regresar</button>
+        <button type="button" class="btn btn-primary" onclick="goToStep3()">Siguiente</button>
+
+        </form>
+        </div> *@
+
+        <!-- Paso 3: Resultados -->
+        <div id="step3" class="step" style="display:none;">
+
+            <h3 class="subtitulo">Paso 3: Ejecuta la consulta preliminar </h3>
+            <br><br>
+
+            <div class="row">
+                <div class="col-12">
+                    <div class="alert alert-success" role="alert">
+                        <h5 class="alert-heading">Puntuación de la ubicación propuesta</h5>
+                        <hr>
+                        <p class="mb-0"> Evaluar la ubicación geográfica del proyecto, desde el punto de vista de cobertura sin saturación en el Sistema de Energía
+                            (Subsector Hidrocarburos, Subsector Electricidad y sus relaciones) enfocado a armonizar los
+                            Artículos 41 y 42 de la LORCME.</p>
+                        <br><br>
+                        <div id="instrucciones" class="alert alert-warning" role="alert">
+                            <p style="text-align:justify">
+                                <strong>Instrucciones:</strong> Sobre el mapa
+                                seleccione la ubicación del proyecto, finalmente presione el botón "Ejecutar
+                                Evaluación".
+                            </p>
+                            <!-- Botón que activará el modal -->
+                            <button type="button" onclick="openModal()" class="btn btn-danger">Ver Guía</button>
+                            <!-- Modal para mostrar el video -->
+                            <div id="videoModal"
+                                style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:3000">
+                                <video width="80%" controls>
+                                    <source src="/video/guia.mp4" type="video/mp4">
+                                    Tu navegador no soporta el elemento video.
+                                </video>
+                                <button onclick="closeModal()" class="btn btn-cre-rojo"
+                                    style="position:absolute; top:10px; right:10px;z-index:3000; width:300px!important">
+                                    Cerrar
+                                </button>
+
+                            </div>
+                            <button type="button" id="btnEjecutar" class="btn btn-primary">Ejecutar Evaluación</button>
+                            <button id="pdf" type="button" class="btn btn-secondary btn-print is-btn-print01">Dercargar
+                                Evaluación en PDF</button>
+                        </div>
+
+                    </div>
+                    <div id="message" class="alert alert-warning mb-3 d-none" role="alert">
+                        <!-- Aquí se mostrará el mensaje -->
+                    </div>
+
+
+                    <div class="search-container pb-3">
+
+                        @* <label class="form-label">Buscar en el Mapa:</label> *@
+                        <input type="text" id="busquedaGeneralInput" class="form-control"
+                            placeholder="Por favor escriba la Entidad Federativa o Municipio a buscar...">
+                        <div id="autocomplete-list" class="autocomplete-items "></div>
+                        <!-- El resto de tu código -->
+
+                        <button id="btn_buscar" class="btn btn-cre-rojo-home" onclick="buscarGeneral()"
+                            style="width:15% !important">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-12 ">
+                    <div id="results">
+
+                        <div class="mb-3">
+                            <!-- Información que va al controlador -->
+                            <input type="hidden" id="cvegeo">
+                            <input type="hidden" id="cve_ent">
+                            <input type="hidden" id="cve_mun">
+                            <input type="hidden" id="lat">
+                            <input type="hidden" id="lon">
+                            @* <label class="form-label">Coloca el Marcador en el Mapa:</label> *@
+
+
+                            <div id="map" style="height:400px !important"></div>
+
+
+
+
+
+                        </div>
+
+
+                    </div> <!-- Aquí se mostrarían los resultados de la evaluación -->
+
+                </div>
+            </div>
+
+
+            @*Menu*@
+            <div class="navbarmapag" id="totales_en_isocrona">
+
+
+                <a id="coches" class="active icono-texto">
+                    <img src="@Cdn.Url/img_snier/vistas/coche.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Total de Vehículos</span>
+
+                    <div id="total_coches" style="font-size: 20px;"></div>
+                </a>
+
+                <a id="glp" class="icono-texto">
+                    <img src="@Cdn.Url/img_snier/vistas/moto.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Total de Motocicletas</span>
+
+                    <div id="total_motos" style="font-size: 20px;"></div>
+                </a>
+
+                <a id="expendios" class="icono-texto">
+                    <img src="@Cdn.Url/img_snier/vistas/evaluar.png" alt="Icono personalizado" class="iconomenu" />
+                    <span>Total de Expendios Autorizados</span>
+
+                    <div id="total_expendios" style="font-size: 20px;"></div>
+                </a>
+
+
+            </div>
+
+
+
+
+
+            <div class="col">
+
+                <div id="resultadoAlert" class="pb-2">
+                    <!-- Contenido aquí -->
+                </div>
+
+            </div>
+
+
+
+            <div class="alert alert-light" role="alert">
+                <div id="datos_ubicacion" class="scrollable-container row" style="display:none">
+                    <h3 class="subtitulo display-9 fw-bold mb-2">
+                        <img src="@Cdn.Url/img_snier/vistas/evaluar.png" alt="Icono personalizado" class="iconomenu pt-3">Datos de la
+                        Ubicación
+                    </h3>
+                    <br><br>
+                    <div class="row">
+                        <div class="col-6">
+                            <label class="form-label"><strong>Entidad Federativa:</strong></label>
+                        </div>
+                        <div class="col-6">
+                            <input type="text" id="entidad" class="form-control" readonly />
+                        </div>
+                    </div>
+
+                    <div class="row">
+
+                        <br>
+                        <div class="col-6">
+                            <label class="form-label"><strong>Municipio:</strong></label>
+                        </div>
+                        <div class="col-6">
+                            <input type="text" id="municipio" class="form-control" readonly />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-6">
+                            <label class="form-label"><strong>Coordenada: (lat,lon)</strong></label>
+                        </div>
+                        <div class="col-6">
+                            <input type="text" id="coordenada" class="form-control" readonly />
+                        </div>
+                    </div>
+                    @* <div class="row">
+                        <a class='street-view-link btn btn-cre-verde' href='http://maps.google.com/maps?q=&layer=c&cbll=" + ${e.latlng.lat} + "," + ${e.latlng.lng} + "&cbp=11,0,0,0,0' target='_blank'><b> Ver vista de calle </b></a>";
+                    </div> *@
+                </div>
+
+            </div>
+
+            @* <button class="btn btn-secondary" onclick="printResults()">Imprimir</button>
+            <button class="btn btn-secondary" onclick="downloadPDF()">Descargar PDF</button> *@
+            <div class="container">
+                <div class="row">
+                    <div class="col">
+                        <div class="pt-3" id="grafico"></div>
+                    </div>
+                </div>
+            </div>
+
+
+            <br />
+
+        </div>
+    </div>
+
+</div>
+
+
+
+
+@*Ductos*@
+@*Petrolíferos*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_petroliferos_4326_0.js"></script>
+@*Gas L.P.*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_glp_4326_0.js"></script>
+
+
+@*Shapes Estados*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosmin.js"></script>
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+<script src="@Cdn.Url/Geovisualizador/dist/bundle.js"></script>
+
+
+@* Funciones del Formulario *@
+<script>
+    //Para el mapa
+    var permitirMarcadores = true; // Variable para controlar si se permite agregar marcadores
+
+    $("#totales_en_isocrona").hide();
+    $("#pdf").hide();
+    $("#grafico").hide();
+    $("#highcharts-data-table").hide();
+    // $("#message").hide();
+    function goToStep2() {
+        if (!validateStep1()) {
+            showAlert('Por favor, completa todos los campos.');
+            return;
+        }
+        //document.getElementById('step1').style.display = 'none';
+        //document.getElementById('step2').style.display = 'block';
+        document.getElementById('step1').style.display = 'block';
+        document.getElementById('step2').style.display = 'block'; // Cambia a 'block' para mostrar
+        document.getElementById('paso2').style.display = 'none'; // Cambia a 'block' para mostrar
+        showRelevantQuestions();
+        updateProgressIndicator(2);
+    }
+
+    function goToStep3() {
+        if (!validateStep2()) {
+            showAlert('Por favor, completa todos los campos.');
+            return;
+        }
+        //document.getElementById('step2').style.display = 'none';
+        //document.getElementById('step3').style.display = 'block';
+        document.getElementById('step2').style.display = 'block';
+        document.getElementById('step3').style.display = 'block'; // Cambia a 'block' para mostrar
+        document.getElementById('paso3').style.display = 'none'; // Cambia a 'block' para mostrar
+        updateProgressIndicator(3);
+        // Procesar las respuestas y mostrar los resultados
+        // Re-calcula el tamaño del mapa después de que el paso 3 se hace visible
+        setTimeout(function () {
+            map.invalidateSize();
+        }, 200);
+    }
+
+    function validateStep1() {
+        var market = document.getElementById('mercadoSelect').value;
+        var year = document.getElementById('yearSelect').value;
+
+        if (market === '' || year === '') {
+            showAlert('Por favor, completa todos los campos.');
+            return false;
+        }
+
+
+
+        return true;
+    }
+
+    function validateStep2() {
+        var petroleosQuestions = document.getElementById('petroleosQuestions');
+        var gasLPQuestions = document.getElementById('gasLPQuestions');
+
+        // Verificar solo la sección que está visible
+        if (petroleosQuestions.style.display === 'block') {
+            // Validación para preguntas de tipo número en petroleosQuestions
+            var numberInputs = petroleosQuestions.querySelectorAll('input[type="number"]');
+            if (!areAllNumberInputsFilled(numberInputs)) {
+                return false;
+            }
+
+            var questions = petroleosQuestions.querySelectorAll('input[type="radio"]');
+            if (!areAllQuestionsAnswered(questions)) {
+                return false;
+            }
+        }
+
+        if (gasLPQuestions.style.display === 'block') {
+            // Validación para preguntas de tipo número en gasLPQuestions (si las hay)
+            var numberInputs = gasLPQuestions.querySelectorAll('input[type="number"]');
+            if (!areAllNumberInputsFilled(numberInputs)) {
+                return false;
+            }
+
+            var questions = gasLPQuestions.querySelectorAll('input[type="radio"]');
+            if (!areAllQuestionsAnswered(questions)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function areAllNumberInputsFilled(inputs) {
+        return Array.from(inputs).every(input => input.value.trim() !== '');
+    }
+
+    function areAllQuestionsAnswered(questions) {
+        let groupedQuestions = {};
+        questions.forEach(q => {
+            if (!groupedQuestions[q.name]) {
+                groupedQuestions[q.name] = [];
+            }
+            groupedQuestions[q.name].push(q);
+        });
+
+        return Object.values(groupedQuestions).every(group => {
+            return group.some(radio => radio.checked);
+        });
+    }
+
+    function showRelevantQuestions() {
+        var market = document.getElementById('mercadoSelect').value;
+        document.getElementById('petroleosQuestions').style.display = market === 'petroliferos' ? 'block' : 'none';
+        document.getElementById('gasLPQuestions').style.display = market === 'gas_lp' ? 'block' : 'none';
+    }
+    function goToStep1() {
+        document.getElementById('step1').style.display = 'block';
+        document.getElementById('step2').style.display = 'none';
+
+        // Restablecer el indicador de progreso
+        updateProgressIndicator(1);
+        // Opcionalmente, resetea el estado de paso 2 si es necesario
+    }
+
+    function goToStep2FromStep3() {
+        document.getElementById('step2').style.display = 'block';
+        document.getElementById('step3').style.display = 'none';
+
+        // Restablecer el indicador de progreso
+        updateProgressIndicator(2);
+        // Opcionalmente, resetea el estado de paso 3 si es necesario
+    }
+    function updateProgressIndicator(stepNumber) {
+        var circles = document.querySelectorAll('.progress-indicator .step-circle');
+        circles.forEach((circle, index) => {
+            if (index < stepNumber) {
+                circle.classList.add('active');
+            } else {
+                circle.classList.remove('active');
+            }
+        });
+    }
+
+    @* function showAlert(message, type) {
+        var alertPlaceholder = document.getElementById('alertPlaceholder');
+        var alertType = type || 'danger';
+
+        alertPlaceholder.innerHTML =
+        '<div class="alert alert-' + alertType + ' alert-dismissible fade show" role="alert">' +
+        message +
+        '</div>';
+        alertPlaceholder.style.display = 'block'; // Muestra la alerta
+
+        setTimeout(function () {
+        alertPlaceholder.innerHTML = '';
+        alertPlaceholder.style.display = 'none'; // Oculta la alerta después del tiempo establecido
+        }, 5000);
+        } *@
+
+        function showAlert(message, type) {
+            var alertModal = document.getElementById('alertModal');
+            var modalBody = alertModal.querySelector('.modal-body');
+
+            // Establece el mensaje y el tipo de alerta
+            modalBody.innerHTML = '<div class="alert alert-' + type + '">' + message + '</div>';
+
+            // Muestra el modal
+            $('#alertModal').modal('show');
+        }
+
+
+    // Función para cerrar el modal cuando se da click en el tache o en el botó cerrar
+    function cerraModal() {
+        $('#alertModal').modal('hide');
+    }
+    function resetForm() {
+        // Restablecer todos los campos del formulario
+        document.getElementById('selectionForm').reset();
+        document.getElementById('questionsForm').reset();
+
+        // Ocultar los pasos 2 y 3, mostrar el paso 1
+        document.getElementById('step1').style.display = 'block';
+        document.getElementById('step2').style.display = 'none';
+        document.getElementById('step3').style.display = 'none';
+
+        // Restablecer el indicador de progreso
+        updateProgressIndicator(1);
+
+        // Opcionalmente, puedes restablecer o limpiar cualquier otra cosa que necesites
+    }
+</script>
+
+
+@*Años*@
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var currentYear = new Date().getFullYear();
+        var select = document.getElementById("yearSelect");
+
+        // Limpiar opciones existentes
+        select.innerHTML = '';
+
+        for (var i = 0; i < 8; i++) {
+            var option = document.createElement("option");
+            option.value = currentYear + i;
+            option.text = currentYear + i;
+            select.appendChild(option);
+        }
+    });
+
+
+</script>
+
+@*Configuraciones del Mapa Inicial*@
+<script>
+    // Reiniciando availableTerms y las demas variables
+    availableTerms = [];
+    //  datosExpendios = [];
+    camposVisiblesGlobal = [];
+
+    var map = L.map('map', {
+        zoomControl: true,
+        maxZoom: 18,
+        minZoom: 5
+    }).fitBounds([
+        [16.515297504744552, -116.01198143543994],
+        [31.280203931152798, -90.79533052556764]
+    ]);
+
+    var hash = new L.Hash(map);
+    map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+    var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+    var bounds_group = new L.featureGroup([]);
+    function setBounds() {
+    }
+
+    // Crea los Iconos y Define su tamaño
+    var iconoBase = L.Icon.extend({
+        options: {
+            iconSize: [46, 46],
+            iconAnchor: [23, 46],
+            popupAnchor: [-3, -76]
+        }
+    });
+
+    // Asignación de Iconos
+    var iconoSolicitudes = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Solicitudes.png' });
+    iconoAprobado = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/Aprobado_.png' });
+    iconoNoaprobado = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/NoAprobado_.png' });
+    iconoIndeterminado = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/alarma.png' });
+
+
+    var currentMarker = null; // Referencia al marcador actual
+    // var seleccionado = 'estado'; // Estado inicial
+    var municipiosFiltrados = null;
+
+
+
+    //Colores
+    var initialStyle = {
+        color: '#187A8C', // Color de línea
+        fillColor: '#187A8C', // Color de relleno
+        fillOpacity: 0.01, // Opacidad del relleno
+        weight: 3 // Ancho de la línea
+    };
+
+    // Estilo para el hover
+    var highlightStyle = {
+        color: '#FFDB2EC',
+        fillColor: '#FFDB2E', // Color de relleno
+        fillOpacity: 0.3, // Opacidad del relleno
+        weight: 3
+    };
+    // Capa de estados
+    var estadosLayer = L.geoJSON(estados, {
+        style: initialStyle, // Aplicar estilo inicial
+        onEachFeature: function (feature, layer) {
+            layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOMGEO + '</div>');
+            layer.on('click', function (e) {
+                cargarMunicipios(feature.properties.CVE_ENT);
+                //lo comento para el zoom//   map.fitBounds(layer.getBounds(), { maxZoom: 15 }); // Centra el mapa en el estado
+            });
+            // Efecto de hover
+            layer.on('mouseover', function (e) {
+                layer.setStyle(highlightStyle);
+            });
+            layer.on('mouseout', function (e) {
+                estadosLayer.resetStyle(layer);
+            });
+        }
+    }).addTo(map);
+
+    // Capa de municipios (inicialmente vacía)
+    var municipiosLayer = L.geoJSON(null, {
+        style: initialStyle, // Aplicar estilo inicial
+        onEachFeature: onEachMunicipio
+    }).addTo(map);
+    var mapaMunicipios = {};
+    function onEachMunicipio(feature, layer) {
+
+        // Construir mapaMunicipios con la información del municipio
+        var cveEntMun = feature.properties.CVE_ENT + feature.properties.CVE_MUN;
+        var nomMun = feature.properties.NOM_MUN;
+        mapaMunicipios[cveEntMun] = nomMun;
+
+        layer.bindTooltip('<div class="custom-tooltip">' + feature.properties.NOM_MUN + ', ' + feature.properties.NOMGEO + '</div>');
+        // Efecto de hover
+        layer.on('mouseover', function (e) {
+            layer.setStyle(highlightStyle);
+        });
+        layer.on('mouseout', function (e) {
+            municipiosLayer.resetStyle(layer);
+        });
+        layer.on('click', function (e) { // Click en el municipio
+            if (currentMarker) {
+                map.removeLayer(currentMarker);
+            }
+            currentMarker = L.marker(e.latlng, { icon: iconoSolicitudes }).addTo(map);
+
+
+            // Crear el contenido del popup, incluyendo el botón
+            var popupContent = `
+                    <div>
+                        Entidad: <input type="text" id="entidad" value="${feature.properties.NOMGEO}"><br>
+                        Municipio: <input type="text" id="municipio" value="${feature.properties.NOM_MUN}"><br>
+                        Coordenada: <input type="text" id="coordenada" value="(${e.latlng.lat}, ${e.latlng.lng})"><br>
+                        <a class='street-view-link btn btn-cre-verde' href='http://maps.google.com/maps?q=&layer=c&cbll=" + ${e.latlng.lat} + "," + ${e.latlng.lng} + "&cbp=11,0,0,0,0' target='_blank'><b> Ver vista de calle </b></a>";
+                        <!-- Añade aquí más campos si es necesario -->
+                        <button id="miBotonEjecutar">Ejecutar</button>
+                    </div>
+                `;
+
+            // Añadir el popup al marcador
+            currentMarker.bindPopup(popupContent);
+
+            // Agregar un controlador de eventos para el botón cuando el popup se abra
+            currentMarker.on('popupopen', function () {
+                document.getElementById('miBotonEjecutar').addEventListener('click', function () {
+                    // Aquí pones lo que quieres que haga el botón al hacer clic
+                    console.log('Botón Ejecutar presionado');
+                    // Por ejemplo, podrías tomar los valores de los campos y hacer algo con ellos
+                });
+            });
+
+
+            // map.setView(e.latlng, 15); // Zoom en la ubicación
+            // Establece los valores
+            document.getElementById('entidad').value = feature.properties.NOMGEO;
+            document.getElementById('municipio').value = feature.properties.NOM_MUN;
+            document.getElementById('coordenada').value = '(' + e.latlng.lat + ', ' + e.latlng.lng + ')';
+            document.getElementById('cvegeo').value = feature.properties.CVEGEO;
+            document.getElementById('cve_ent').value = feature.properties.CVE_ENT;
+            document.getElementById('cve_mun').value = feature.properties.CVE_MUN;
+            document.getElementById('lat').value = e.latlng.lat;
+            document.getElementById('lon').value = e.latlng.lng;
+        });
+    }
+
+    // Función para cargar los municipios correspondientes a un estado
+    function cargarMunicipios(cveEnt) {
+        if (municipiosLayer) {
+            map.removeLayer(municipiosLayer);
+        }
+        if (currentMarker) {
+            map.removeLayer(currentMarker);
+            currentMarker = null;
+        }
+        municipiosFiltrados = {
+            type: "FeatureCollection",
+            features: municipios_mapa.features.filter(function (feature) {
+                return feature.properties.CVE_ENT === cveEnt;
+            })
+        };
+        municipiosLayer = L.geoJSON(municipiosFiltrados, {
+            style: initialStyle,
+            onEachFeature: onEachMunicipio
+        }).addTo(map);
+    }
+
+
+
+    map.on('click', function (e) {
+
+        if (!permitirMarcadores) {
+            return; // No hace nada si no se permiten marcadores
+        }
+
+        if (currentMarker) {
+            map.removeLayer(currentMarker);
+        }
+        //Habilita de nuevo los combos
+
+        //  $("#mercadoSelect").prop('disabled', false);
+        // $("#yearSelect").prop('disabled', false);
+        var point = turf.point([e.latlng.lng, e.latlng.lat]);
+        var found = false;
+        var messageDiv = document.getElementById('message');
+
+        municipiosFiltrados.features.forEach(function (feature) {
+            if (turf.booleanPointInPolygon(point, feature)) {
+                currentMarker = L.marker(e.latlng, { icon: iconoSolicitudes }).addTo(map);
+                //map.setView(e.latlng, 15);
+                document.getElementById('datos_ubicacion').style.display = 'block'; // Muestra el sidebar
+                var municipio = feature.properties.NOM_MUN;
+                var entidad = feature.properties.NOMGEO;
+                var latitud = e.latlng.lat;
+                var longitud = e.latlng.lng;
+                var cvegeo = feature.properties.CVEGEO;
+                var cve_ent = feature.properties.CVE_ENT;
+                var cve_mun = feature.properties.CVE_MUN;
+                document.getElementById('entidad').value = entidad;
+                document.getElementById('municipio').value = municipio;
+                document.getElementById('coordenada').value = '(' + latitud + ', ' + longitud + ')';
+                document.getElementById('cvegeo').value = cvegeo;
+                document.getElementById('cve_ent').value = cve_ent;
+                document.getElementById('cve_mun').value = cve_mun;
+                document.getElementById('lat').value = latitud;
+                document.getElementById('lon').value = longitud;
+                // messageDiv.classList.add('d-none'); // Oculta el mensaje si está visible
+                $("#resultadoAlert").html(''); // Limpiar el contenido del div que contiene la alerta
+                //document.getElementById('instrucciones').classList.add('d-none'); // Oculta el contenido del div que contiene la alerta
+                $("#grafico").hide(); //Oculta el grafico
+                $("#pdf").hide(); //Oculta el grafico
+                $("#highcharts-data-table").hide();
+
+                $("#btnEjecutar").show(); // Muestra el botón
+                messageDiv.classList.add('d-none');
+                found = true;
+                return;
+            }
+        });
+
+        if (!found) {
+            $("#message").show();
+            var messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = 'Por favor, seleccione una ubicación dentro del territorio nacional.';
+            messageDiv.classList.remove('d-none'); // Muestra el mensaje
+            // Opcional: Ocultar el mensaje después de 5 segundos
+            setTimeout(function () {
+                messageDiv.classList.add('d-none'); // Oculta el mensaje
+            }, 1000); // 5 segundos
+            document.getElementById('datos_ubicacion').style.display = 'none'; // Oculto el sidebar
+            $("#resultadoAlert").html(''); // Limpiar el contenido del div que contiene la alerta
+            $("#btnEjecutar").hide(); // Oculta el botón
+            $("#pdf").hide();
+        }
+    });
+
+    // Asignando a la búsqueda de términos
+    estadosLayer.eachLayer(function (layer) {
+        if (layer.feature.properties.NOMGEO) { // Asegúrate de que la propiedad existe
+            availableTerms.push(layer.feature.properties.NOMGEO);
+        }
+    });
+
+    for (var i = 0; i < municipios_mapa.features.length; i++) {
+        var municipio = municipios_mapa.features[i].properties.NOM_MUN;
+        var estado = municipios_mapa.features[i].properties.NOMGEO; // Asumiendo que esta es la propiedad correcta para el estado
+
+        // Asegúrate de que ambas propiedades existen antes de concatenar
+        if (municipio && estado) {
+            var nombreCompleto = municipio + ", " + estado;
+            availableTerms.push(nombreCompleto);
+        }
+    }
+
+
+
+    //Busquedas
+    var lastSearchedEstadoLayer = null; // para almacenar la última entidad federativa buscada
+    var lastSearchedMunicipioLayer = null; // para almacenar el último municipio buscado
+
+
+    function buscarGeneral() {
+        var terminoBuscado = document.getElementById('busquedaGeneralInput').value.trim();
+
+        if (!terminoBuscado) {
+            alert("Por favor, introduce un término de búsqueda.");
+            return;  // Termina la ejecución de la función si el campo está vacío
+        }
+
+        // Intenta buscar por número de permiso primero
+        var encontrado = false;
+    @* for (var i = 0; i < datosExpendios.length; i++) {
+            var expendio = datosExpendios[i];
+            if (expendio.numeroPermiso === terminoBuscado) {
+            var lat = expendio.latitudGeo;
+            var lon = expendio.longitudGeo;
+            map.setView([lat, lon], 15);
+            encontrado = true;
+            break;
+            }
+            } *@
+
+           // Si no se encontró por número de permiso, busca por entidad federativa
+           if (!encontrado) {
+            estadosLayer.eachLayer(function (layer) {
+                if (layer.feature.properties.NOMGEO === terminoBuscado) {
+                    map.fitBounds(layer.getBounds());
+
+                    // Si ya había una entidad federativa buscada anteriormente, restablecemos su estilo
+                    if (lastSearchedEstadoLayer) {
+                        estadosLayer.resetStyle(lastSearchedEstadoLayer);
+                    }
+
+                    // Resalta la entidad federativa encontrada
+                    layer.setStyle({
+                        color: '#FF0000',
+                        fillColor: '#FF0000',
+                        fillOpacity: 0.5
+                    });
+
+                    lastSearchedEstadoLayer = layer;
+
+                    // Reiniciar el estilo de la entidad después de 5 segundos
+                    setTimeout(function () {
+                        estadosLayer.resetStyle(lastSearchedEstadoLayer);
+                        lastSearchedEstadoLayer = null;
+                    }, 1000);
+
+                    encontrado = true;
+                }
+            });
+        }
+
+        // Si aún no se encontró, busca por municipio en la fuente de datos completa
+        if (!encontrado) {
+            // Divide el término de búsqueda en municipio y estado
+            var terminos = terminoBuscado.split(',');
+            var buscadoMunicipio = terminos[0].trim();
+            var buscadoEstado = terminos.length > 1 ? terminos[1].trim() : '';
+
+
+            for (var i = 0; i < municipios_mapa.features.length; i++) {
+                var municipio = municipios_mapa.features[i];
+                var nombreMunicipio = municipio.properties.NOM_MUN;
+                var nombreEstado = municipio.properties.NOMGEO;
+
+                // Comprueba si el nombre del municipio y del estado coinciden con el término de búsqueda
+                if (nombreMunicipio === buscadoMunicipio && (buscadoEstado === '' || nombreEstado === buscadoEstado)) {
+                    var bounds = L.geoJSON(municipio).getBounds();
+                    map.fitBounds(bounds);
+
+                    // Si ya había un municipio buscado anteriormente, lo elimina
+                    if (lastSearchedMunicipioLayer) {
+                        map.removeLayer(lastSearchedMunicipioLayer);
+                    }
+
+                    // Agrega el municipio encontrado al mapa y lo resalta
+                    lastSearchedMunicipioLayer = L.geoJSON(municipio, {
+                        style: {
+                            color: '#FF0000',
+                            fillColor: '#FF0000',
+                            fillOpacity: 0.5
+                        }
+                    }).addTo(map);
+
+                    // Reiniciar el estilo y eliminar el municipio después de 5 segundos
+                    setTimeout(function () {
+                        map.removeLayer(lastSearchedMunicipioLayer);
+                        lastSearchedMunicipioLayer = null;
+                    }, 1000);
+
+                    encontrado = true;
+                    break;
+                }
+            }
+        }
+
+
+        if (!encontrado) {
+            alert("Término no encontrado.");
+        }
+    }
+
+    map.createPane('pane_GoogleSatellite_0');
+    map.getPane('pane_GoogleSatellite_0').style.zIndex = 0;
+    var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        pane: 'pane_GoogleSatellite_0',
+        opacity: 1.0,
+        attribution: '<a href="https://www.google.at/permissions/geoguidelines/attr-guide.html">Map data ©2015 Google</a>',
+        minZoom: 1,
+        maxZoom: 18,
+        minNativeZoom: 0,
+        maxNativeZoom: 20
+    });
+
+    //Configura los Base Layers
+    var baseLayers = {
+        "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }),
+        "Vista Satélite": layer_GoogleSatellite_0
+    };
+
+    // Control de capas para seleccionar la vista del mapa
+    L.control.layers(baseLayers).addTo(map);
+
+    // Activa una capa de mosaicos como vista inicial
+    baseLayers["OpenStreetMap"].addTo(map);
+
+
+    @*Herramientas Mapa*@
+
+        // Redibujar la capa cuando se seleccione
+        map.on('baselayerchange', function (eventLayer) {
+            if (eventLayer.name === "Vista Satélite") {
+                layer_GoogleSatellite_0.redraw();
+            }
+        });
+
+    L.control.scale().addTo(map); // Agregar la escala gráfica al mapa
+
+</script>
+
+
+
+
+
+@*Botón Ejecutar para Evaluar La Solicitud*@
+<script>
+    $("#btnEjecutar").click(function (event) {
+
+        //Declarando las variables golbalmente:
+        var resultadoUSP;
+        var resultadoUSGLP;
+        var resultadoELP;
+        var resultadoELGLP;
+
+        // Obtener el nombre de la entidad federativa seleccionada
+        var nombreEntidad = $('#entidad').val(); // Asegúrate de que este campo se actualiza con el nombre correcto
+        $("#grafico").show(); // Muestra el grafico
+        $("#highcharts-data-table").show();
+        //event.preventDefault(); // Evita que el botón envíe el formulario
+        // Obtener las variables
+        var cvegeo = $('#cvegeo').val();
+        var cve_ent = $('#cve_ent').val();
+        var cve_mun = $('#cve_mun').val();
+        var latitud = $('#lat').val();
+        var longitud = $('#lon').val();
+        var mercadoSelect = $('#mercadoSelect').val();
+        var messageDiv = document.getElementById('message');
+        // Validar que ninguna de las variables esté vacía o nula
+        if (!cvegeo || !cve_ent || !cve_mun || !latitud || !longitud) {
+
+            messageDiv.innerHTML = '¡Debes colocar el marcador de la ubicación primero antes de ejecutar la evaluación, haz click dentro del mapa para colocar un marcador!';
+            messageDiv.classList.remove('d-none'); // Muestra el mensaje
+            // Opcional: Ocultar el mensaje después de 5 segundos
+            setTimeout(function () {
+                messageDiv.classList.add('d-none'); // Oculta el mensaje
+            }, 2000); // 5 segundos
+            return; // Termina la función aquí para no enviar la solicitud AJAX
+        }
+        // Desactiva el botón en lugar de ocultarlo
+        $("#btnEjecutar").prop('disabled', true);
+        $("#btn_buscar").prop('disabled', true);
+        $("#busquedaGeneralInput").prop('disabled', true);
+
+        //Muestra los Totales
+        $("#totales_en_isocrona").show();
+        //Desactiva campos del formulario
+        document.getElementById('mercadoSelect').disabled = true;
+        document.getElementById('yearSelect').disabled = true;
+        document.getElementById('petroleos4').disabled = true;
+        document.getElementById('petroleos5').disabled = true;
+        document.getElementById('petroleos6').disabled = true;
+        document.getElementById('gasLP4').disabled = true;
+        document.getElementById('gasLP5').disabled = true;
+        document.getElementById('gasLP6').disabled = true;
+        // Deshabilitar los botones de radio
+        var radiosp = document.querySelectorAll('input[type=radio][name^="petroleos"]');
+        radiosp.forEach(function (radio) {
+            radio.disabled = true;
+        });
+        var radiosglp = document.querySelectorAll('input[type=radio][name^="gasLP"]');
+        radiosglp.forEach(function (radio) {
+            radio.disabled = true;
+        });
+        // Deshabilitar los checkboxes
+        var checkboxesp = document.querySelectorAll('input[type=checkbox][name="petroleos_differentiators"]');
+        checkboxesp.forEach(function (checkbox) {
+            checkbox.disabled = true;
+        });
+        var checkboxesglp = document.querySelectorAll('input[type=checkbox][name="gasLP_differentiators"]');
+        checkboxesglp.forEach(function (checkbox) {
+            checkbox.disabled = true;
+        });
+
+
+
+        permitirMarcadores = false;
+        console.log("Aqui aqui:::", permitirMarcadores);
+
+        // Deshabilita zoom y arrastre del mapa
+
+        // map.dragging.disable();
+        // map.touchZoom.disable();
+        // map.doubleClickZoom.disable();
+        // map.scrollWheelZoom.disable();
+        // map.boxZoom.disable();
+        // map.keyboard.disable();
+        // if (map.tap) map.tap.disable();
+        // document.getElementById('map').style.cursor = 'default';
+
+        // Verifica si las capas existen y luego las elimina
+        if (estadosLayer) {
+            map.removeLayer(estadosLayer);
+        }
+        if (municipiosLayer) {
+            map.removeLayer(municipiosLayer);
+        }
+
+        // Eliminar las capas de ductos si están presentes
+        // Asegúrate de tener referencias a estas capas también
+    @* if (ductosPetroliferosLayer) {
+            map.removeLayer(ductosPetroliferosLayer);
+            }
+            if (ductosGlpLayer) {
+            map.removeLayer(ductosGlpLayer);
+            } *@
+            // Muestra el botón para recargar la página
+            //$("#btnRecargar").show();
+            //$("#btnEjecutar").hide(); // Oculta el botón
+
+            $("#pdf").show();
+        //$("#mercadoSelect").prop('disabled', true);
+        // $("#yearSelect").prop('disabled', true);
+        //$("#message").text("Para realizar otra evaluación haga click en el Mapa nuevamente.");
+
+        // messageDiv.innerHTML = '¡Para realizar otra evaluación haga click en el botón </strong>¡Realizar otra Evaluación!<strong>';
+        messageDiv.innerHTML = '¡Para realizar otra evaluación, presionar el botón <button id="btnRecargar" class="btn btn-primary" onclick="recargarPagina()">¡Realizar otra Evaluación!</button>';
+        messageDiv.classList.remove('d-none'); // Muestra el mensaje
+
+
+
+        var datos_solicitud = {
+            cvegeo: $('#cvegeo').val(),
+            cve_ent: $('#cve_ent').val(),
+            cve_mun: $('#cve_mun').val(),
+            yearSelect: $('#yearSelect').val(),
+            mercadoSelect: $('#mercadoSelect').val(),
+            latitud: $('#lat').val(),
+            longitud: $('#lon').val()
+
+
+            //DEBEN LLAMARSE IGUAL EN LA CLASE CLASE CALIFICACION FINAL
+        };
+
+        var mercadoSelect = $('#mercadoSelect').val();
+
+        // Lógica condicional basada en el valor de mercadoSelect
+        if (mercadoSelect === "petroliferos") {
+            // CargaPetrolíferos(); // Llama a esta función si el valor es "petroliferos"
+            var formDataPet = {
+                petroleos1: document.querySelector('input[name="petroleos1"]:checked').value,
+                petroleos2: document.querySelector('input[name="petroleos2"]:checked').value,
+                petroleos3: document.querySelector('input[name="petroleos3"]:checked').value,
+                petroleos4: document.getElementById('petroleos4').value,
+                petroleos5: document.getElementById('petroleos5').value,
+                petroleos6: document.getElementById('petroleos6').value,
+            };
+            // Para la pregunta 7 de Petroliferos
+            var UmbralPet = 0.5;
+            var elementosDiferenciadoresPet = [];
+            var checkboxes = document.querySelectorAll('input[name="petroleos_differentiators"]:checked');
+            checkboxes.forEach(function (checkbox) {
+                elementosDiferenciadoresPet.push(checkbox.value);
+            });
+            //Verificamos los valores en consola
+            console.log("Las preguntas de Pretrolíferos 1 a 6:", formDataPet);
+            console.log("Pregunta 7 Petrolíferos:", elementosDiferenciadoresPet);
+            //Cálculos
+            //1.-Uso de Suelo Petrolíferos
+            // Convirtiendo valores de 'sí' y 'no' a 1 y 0, respectivamente
+            var sumaUSP = 0;
+            sumaUSP += formDataPet.petroleos1 === 'si' ? 1 : 0;
+            sumaUSP += formDataPet.petroleos2 === 'si' ? 1 : 0;
+            sumaUSP += formDataPet.petroleos3 === 'si' ? 1 : 0;
+
+            // Calcular el promedio y determinar el resultado final
+            var promedioUSP = sumaUSP / 3;
+            resultadoUSP = promedioUSP > 0.5 ? 1 : 0;
+
+            console.log("ResultadoUSP: " + resultadoUSP);
+            //Análisis de Entorno Local Petrolíferos
+            // Calculando la fórmula para petroleos4
+            var resultadoPetroleos4;
+            if (formDataPet.petroleos4 > 0) {
+                resultadoPetroleos4 = Math.exp(-1 / formDataPet.petroleos4);
+            } else {
+                resultadoPetroleos4 = 0;
+            }
+            console.log("Resultado para petroleos4: " + resultadoPetroleos4);
+            // Calculando la fórmula para petroleos5
+            var resultadoPetroleos5;
+            if (formDataPet.petroleos5 === 0) {
+                resultadoPetroleos5 = 1;
+            } else {
+                resultadoPetroleos5 = (1 / formDataPet.petroleos5);
+            }
+            console.log("Resultado para petroleos5: " + resultadoPetroleos5);
+            // Calculando la fórmula para petroleos6
+            var resultadoPetroleos6;
+            if (formDataPet.petroleos6 > 400) {
+                resultadoPetroleos6 = 1;
+            } else {
+                resultadoPetroleos6 = 0;
+            }
+            console.log("Resultado para petroleos6: " + resultadoPetroleos6);
+
+            var totalCheckboxesPet = document.querySelectorAll('input[name="petroleos_differentiators"]').length;
+            var checkboxesSeleccionadosPet = document.querySelectorAll('input[name="petroleos_differentiators"]:checked').length;
+
+            var resultadoPetroleos7;
+            if (checkboxesSeleccionadosPet === 0) {
+                resultadoPetroleos7 = 0;
+            } else {
+                var proporcionSeleccionadosPet = checkboxesSeleccionadosPet / totalCheckboxesPet;
+                resultadoPetroleos7 = proporcionSeleccionadosPet;
+            }
+
+            console.log("Resultado para Pregunta 7: " + resultadoPetroleos7);
+
+            // Calculando ResultadoELP
+            var GIEPET = (resultadoPetroleos4 + resultadoPetroleos5 + resultadoPetroleos6 + resultadoPetroleos7) / (Math.exp(1) + 3);
+            if (GIEPET > 0.5) {
+                resultadoELP = 1;
+            } else {
+                resultadoELP = 0;
+            }
+
+            console.log("Resultado ELP: " + resultadoELP);
+
+        } else if (mercadoSelect === "gas_lp") {
+            // CargaGLP(); // Llama a esta función si el valor es "gas_lp"
+            //Valoles de las preguntas:
+            var formDataGLP = {
+                //Gas L.P.
+                gaslp1: document.querySelector('input[name="gasLP1"]:checked').value,
+                gaslp2: document.querySelector('input[name="gasLP2"]:checked').value,
+                gaslp3: document.querySelector('input[name="gasLP3"]:checked').value,
+                gaslp4: document.getElementById('gasLP4').value,
+                gaslp5: document.getElementById('gasLP5').value,
+                gaslp6: document.getElementById('gasLP6').value,
+            };
+            // Para la pregunta 7 de Gas L.P.
+            var elementosDiferenciadoresGLP = [];
+            var checkboxes = document.querySelectorAll('input[name="gasLP_differentiators"]:checked');
+            checkboxes.forEach(function (checkbox) {
+                elementosDiferenciadoresGLP.push(checkbox.value);
+            });
+            //Verificando en consola la captura de los valores
+            console.log("Las preguntas:", formDataGLP);
+            console.log("Pregunta 7 GLP:", elementosDiferenciadoresGLP);
+            //Cálculos
+            //1.-Uso de Suelo GLP
+            // Convirtiendo valores de 'sí' y 'no' a 1 y 0, respectivamente
+            var sumaUSGLP = 0;
+            sumaUSGLP += formDataGLP.gaslp1 === 'si' ? 1 : 0;
+            sumaUSGLP += formDataGLP.gaslp2 === 'si' ? 1 : 0;
+            sumaUSGLP += formDataGLP.gaslp3 === 'si' ? 1 : 0;
+
+            // Calcular el promedio y determinar el resultado final
+            var promedioUSGLP = sumaUSGLP / 3;
+            resultadoUSGLP = promedioUSGLP > 0.5 ? 1 : 0;
+
+            console.log("ResultadoUSPGLP: " + resultadoUSGLP);
+            /////////////////////
+            //Análisis de Entorno Local para Gas L.P.
+            // Calculando la fórmula para gaslp4
+            var resultadoglp4;
+            if (formDataGLP.gaslp4 > 0) {
+                resultadoglp4 = Math.exp(-1 / formDataGLP.gaslp4);
+            } else {
+                resultadoglp4 = 0;
+            }
+            console.log("Resultado para gaslp4: " + resultadoglp4);
+            // Calculando la fórmula para gaslp5
+            var resultadoglp5;
+            if (formDataGLP.gaslp5 === 0) {
+                resultadoglp5 = 1;
+            } else {
+                resultadoglp5 = (1 / formDataGLP.gaslp5);
+            }
+            console.log("Resultado para petroleos5: " + resultadoglp5);
+            // Calculando la fórmula para gaslp6
+            var resultadoglp6;
+            if (formDataGLP.gaslp6 > 400) {
+                resultadoglp6 = 1;
+            } else {
+                resultadoglp6 = 0;
+            }
+            console.log("Resultado para gaslp6: " + resultadoglp6);
+
+            var totalCheckboxesGLP = document.querySelectorAll('input[name="gasLP_differentiators"]').length;
+            var checkboxesSeleccionadosGLP = document.querySelectorAll('input[name="gasLP_differentiators"]:checked').length;
+
+            var resultadoglp7;
+            if (checkboxesSeleccionadosGLP === 0) {
+                resultadoglp7 = 0;
+            } else {
+                var proporcionSeleccionadosGLP = checkboxesSeleccionadosGLP / totalCheckboxesGLP;
+                resultadoglp7 = proporcionSeleccionadosPet;
+            }
+
+            console.log("Resultado para Pregunta 7 GLP: " + resultadoglp7);
+
+            // Calculando ResultadoELP
+            var GIEGLP = (resultadoglp4 + resultadoglp5 + resultadoglp6 + resultadoglp7) / (Math.exp(1) + 3);
+            if (GIEGLP > 0.5) {
+                resultadoELGLP = 1;
+            } else {
+                resultadoELGLP = 0;
+            }
+
+            console.log("Resultado ELGLP: " + resultadoELGLP);
+            //////////////
+
+
+        }
+
+
+
+
+        // Tabla de Resultados
+        $.ajax({
+            url: '/Indicadores/evalua_SolicitudPublica',
+            type: 'POST',
+            data: JSON.stringify(datos_solicitud),
+
+            contentType: 'application/json',
+            success: function (response) {
+                console.log("Resultado de la Evaluación del Proyecto:", response); // ver la respuesta en consola del navegador
+
+                //var resultadoFinal = response[0].resultadoFinal;
+
+                var resultadoIndicadores = response[0].resultadoFinal;
+
+                var resultadoFinal; // Declarando la variable
+                var evaluacionFinal;
+
+                if (mercadoSelect === "petroliferos") {
+                    var resultadoLOCP = resultadoIndicadores === "Factible" ? 1 : 0;
+                    console.log("Resultado de la Ubicación Pet:", resultadoLOCP);
+
+                    var contibucionUbicacion = resultadoLOCP * 0.5;
+                    var contibucionInfraExp = resultadoUSP * 0.2;
+                    var contibucionEntLoc = resultadoELP * 0.3;
+                    var contibucionTotalP = contibucionUbicacion + contibucionInfraExp + contibucionEntLoc;
+                    var contibucionUmbralP = 0.4;
+
+                    if (contibucionTotalP > contibucionUmbralP) {
+                        resultadoFinal = 1;
+                    } else {
+                        resultadoFinal = 0;
+                    }
+
+                    evaluacionFinal = resultadoFinal === 1 ? "Factible" : "No Factible";
+                    console.log("Evaluación Final:", evaluacionFinal);
+                } else {
+                    // Código para GLP
+                    var resultadoLOCGLP = resultadoIndicadores === "Factible" ? 1 : 0;
+                    console.log("Resultado de la Ubicación Pet:", resultadoLOCGLP);
+
+                    var contibucionUbicacionGLP = resultadoLOCGLP * 0.5;
+                    var contibucionInfraExpGLP = resultadoUSGLP * 0.2;
+                    var contibucionEntLocGLP = resultadoELGLP * 0.3;
+                    var contibucionTotalGLP = contibucionUbicacionGLP + contibucionInfraExpGLP + contibucionEntLocGLP;
+                    var contibucionUmbralGLP = 0.4;
+
+                    if (contibucionTotalGLP > contibucionUmbralGLP) {
+                        resultadoFinal = 1;
+                    } else {
+                        resultadoFinal = 0;
+                    }
+
+                    evaluacionFinal = resultadoFinal === 1 ? "Factible" : "No Factible";
+                    console.log("Evaluación Final:", evaluacionFinal);
+                }
+
+                var idUsuario = @perfilUsuario.IdUsuario;
+                //var fechaActual = @DateTime.Now;
+
+                bitacoraRegistro(idUsuario, evaluacionFinal);
+
+
+                var alertClass = evaluacionFinal === "Factible" ? "alert-success" : "alert-danger";
+                var mercadoSelectText = $("#mercadoSelect option:selected").text();
+
+                //  var textoAdicional = "La ubicación elegida actualmente es '<strong>" + resultadoFinal + "</strong>', en términos de los indicadores de atención al usuario final, densidad vehicular, densidad en expendios de combustibles, eventual saturación de la cadena de valor en los elementos adyacentes a expendios (especialmente distribución) o los indicadores asociados a las políticas públicas vigentes.<br><br> Para conseguir el otorgamiento de un permiso de expendios de gasolinas, en una ubicación viable, los requisitos son los estipulados en la DACG. De no contar con un resultado viable en la ubicación seleccionada puede realizar una nueva consulta en otra ubicación.<br><br> Nota: La valoración de viabilidad positiva se restringe exclusivamente a criterios asociados al Sector de Energía y se entiende que el usuario elige ubicaciones para localizar expendios con el propósito de realizar dicha actividad en lugares lícitos (zonas ecológicas, escuelas, ....).La ubicación viable en una zona ecológica no indica que es posible otorgar un permiso (visualmente hay restricciones lógicas acerca del uso de suelo).<br>";
+                //  var textoAdicional = "La ubicación elegida actualmente es '<strong>" + resultadoFinal + "</strong>', en términos de los indicadores de atención al usuario final, densidad vehicular, densidad en expendios de combustibles, eventual saturación de la cadena de valor en los elementos adyacentes a expendios (especialmente distribución) o los indicadoNota: La valoración de viabilidad positiva se restringe exclusivamente a criterios asociados al Sector de Energía y se entiende que el usuario elige ubicaciones para localizar expendios con el propósito de realizar dicha acta ecológica <br>";
+                var textoAdicional = "";
+                if (mercadoSelect === "petroliferos") {
+
+                    textoAdicional = "La ubicación elegida para el mercado de '<strong>" + mercadoSelectText + "</strong>' actualmente es '<strong>" + evaluacionFinal + "</strong>', en términos de los indicadores de atención al usuario final, densidad vehicular, densidad en expendios de combustibles, eventual saturación de la cadena de valor en los elementos adyacentes al eslabón de expendios(especialmente distribución) o los indicadores asociados a las políticas públicas vigentes.De no contar con un resultado Factible puede realizar una nueva consulta en otra ubicación o año.<br><br>Te recordamos que, para conseguir el otorgamiento de un permiso de expendio en una ubicación factible, debes cumplir con todos los requisitos estipulados en las Disposiciones Administrativas de Carácter General (DACG).<br><br>Por lo que, cualquier resultado en cuanto a la ubicación constituye sólo parte de la evaluación emitida por el proponente, debido a que la otra parte corresponde a los atributos de la SNIE que involucran el cumplimiento del Art. 42 de la SENER, fundamentalmente basada en un conjunto de criterios estratégicos para completar la evaluación del otorgamiento del permiso.<br><br><strong>Nota:</strong> la valoración de una factibilidad positiva está restringida exclusivamente a criterios asociados al sector de energía y se entiende que el usuario elige una ubicación, para localizar expendios, con el propósito de realizar dicha actividad en lugares que no incumplen los requisitos de seguridad o uso de suelo locales (visualmente hay restricciones lógicas acerca de las ubicaciones seleccionadas).";
+                }
+                else {
+
+                    textoAdicional = "La ubicación elegida para el mercado de '<strong>" + mercadoSelectText + "</strong>' actualmente es '<strong>" + evaluacionFinal + "</strong>', en términos de los indicadores de atención al usuario final, densidad vehicular, densidad de expendios de gas LP, cuotas de mercado de gas LP por tipos de recipiente, mediciones de eventual saturación de la cadena de valor, especialmente en los elementos adyacentes al eslabón de expendios (especialmente distribución) o los indicadores asociados a las políticas públicas vigentes. De no contar con un resultado Factible puede realizar una nueva consulta en otra ubicación o año.<br><br>Te recordamos que, para conseguir el otorgamiento de un permiso de expendio en una ubicación factible, debes cumplir con todos los requisitos estipulados en las Disposiciones Administrativas de Carácter General (DACG).<br><br>Por lo que, cualquier resultado en cuanto a la ubicación constituye sólo parte de la evaluación emitida por el proponente, debido a que la otra parte corresponde a los atributos de la SNIE que involucran el cumplimiento del Art. 42 de la SENER, fundamentalmente basada en un conjunto de criterios estratégicos para completar la evaluación del otorgamiento del permiso.<br><br><br><strong>Nota:</strong> la valoración de una factibilidad positiva está restringida exclusivamente a criterios asociados al sector de energía y se entiende que el usuario elige una ubicación, para localizar expendios, con el propósito de realizar dicha actividad en lugares que no incumplen los requisitos de seguridad o uso de suelo locales (visualmente hay restricciones lógicas acerca de las ubicaciones seleccionadas).";
+
+                }
+
+
+
+
+                var alertMessage = '<div class="alert ' + alertClass + ' alert-dismissible fade show" role="alert" style="text-align: justify;">' + // Agrega estilo para justificar el texto
+                    textoAdicional +
+                    //   '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                    '<br>' +
+                    //'<br><button type="button" class="btn btn-secundary" onclick="printWithCustomTitle()">Imprimir</button>' +
+                    //'<button type="button" class="btn btn-primary" onclick="genPDF()">Este Imagen</button>' +
+                    //  '<button id="pdf" type="button" class="btn btn-secondary btn-print is-btn-print01">Descargar PDF</button>' +
+                    //'<br><button type="button" class="btn btn-primary" onclick="saveMapAsPDF()>Guardar como PDF</button>' +
+                    '</div>';
+
+                $("#resultadoAlert").html(alertMessage);
+
+                // Verifica el resultado y establece el icono correspondiente
+                if (evaluacionFinal === "Factible") {
+                    currentMarker.setIcon(iconoAprobado);
+                } else if (evaluacionFinal === "No Factible") {
+                    currentMarker.setIcon(iconoNoaprobado);
+                }
+                //Nueva Isocrona
+                function dibujarIsocrona() {
+                    var url = 'https://api.openrouteservice.org/v2/isochrones/foot-walking'; // Modo de transporte a pie
+                    // var url = 'https://api.openrouteservice.org/v2/isochrones/driving-car';
+                    var token = '5b3ce3597851110001cf624831db9a67199a4c0bb04520c326f2f5d7'; // Reemplaza con tu token
+
+                    var datos = {
+                        locations: [[longitud, latitud]], // Reemplaza con tus coordenadas
+                        range: [600] // Rango en segundos (600 segundos = 10 minutos)
+                    };
+
+                    $.ajax({
+                        url: url,
+                        method: 'POST',
+                        headers: {
+                            'Authorization': token,
+                            'Content-Type': 'application/json'
+                        },
+                        data: JSON.stringify(datos),
+                        success: function (response) {
+                            // Dibuja la isocrona en el mapa
+                            isochroneLayer = L.geoJSON(response, { color: "blue", fillOpacity: 0.2, weight: 2 }).addTo(map);
+
+                            // Calcular el bounding box
+                            let bounds = isochroneLayer.getBounds();
+                            let northEast = bounds.getNorthEast();
+                            let southWest = bounds.getSouthWest();
+
+                            // Dibujar el bounding box en el mapa
+                            let boundingBox = [
+                                [northEast.lat, northEast.lng],
+                                [northEast.lat, southWest.lng],
+                                [southWest.lat, southWest.lng],
+                                [southWest.lat, northEast.lng],
+                                [northEast.lat, northEast.lng]
+                            ];
+
+                            let boundingBoxLayer = new L.Polygon(boundingBox, {
+                                color: "red",
+                                fillOpacity: 0.1,
+                                weight: 1
+                            }).addTo(map);
+
+                            // Enviando datos al backend.
+                            // Preparar los datos para enviar
+                            let boundingBoxPoints = {
+                                mercadoSelect: $('#mercadoSelect').val(),
+                                x1: Math.min(northEast.lng, southWest.lng), // longitud más pequeña
+                                y1: Math.min(northEast.lat, southWest.lat), // latitud más pequeña
+                                x2: Math.max(northEast.lng, southWest.lng), // longitud más grande
+                                y2: Math.max(northEast.lat, southWest.lat)  // latitud más grande
+
+                            };
+                            console.log("Coordenadas para enviar:", boundingBoxPoints);
+
+
+                            // Enviar los datos al backend con AJAX obteniendo totales de mostos coches y expendios
+                            $.ajax({
+                                url: '/Indicadores/getIsocrona',
+                                type: 'POST',
+                                contentType: 'application/json',
+                                data: JSON.stringify(boundingBoxPoints),
+                                success: function (response) {
+                                    console.log('Success:', response);
+
+                                    // Actualizar totales de vehículos
+                                    if (response.totalAutomoviles != null) {
+                                        $('#total_coches').text(response.totalAutomoviles.toLocaleString());
+                                    } else {
+                                        $('#total_coches').text('0');
+                                    }
+
+                                    // Actualizar totales de motos
+                                    if (response.totalMotos != null) {
+                                        $('#total_motos').text(response.totalMotos.toLocaleString());
+                                    } else {
+                                        $('#total_motos').text('0');
+                                    }
+
+                                    // Actualizar total de expendios autorizados
+                                    if (response.expendiosAutorizadosCP && response.expendiosAutorizadosCP.length > 0) {
+                                        $('#total_expendios').text(response.expendiosAutorizadosCP.length.toLocaleString());
+                                    } else {
+                                        $('#total_expendios').text('0');
+                                    }
+
+
+
+                                    // Crea los iconos
+                                    var iconoBase = L.Icon.extend({
+                                        options: {
+                                            iconSize: [36, 36],
+                                            iconAnchor: [18, 16],
+                                            popupAnchor: [0, -26]
+                                        }
+                                    });
+
+                                    var iconoPetroliferos = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/gasolinera.png' });
+                                    var iconoGLP = new iconoBase({ iconUrl: '@Cdn.Url/img_snier/vistas/glpmapa.png' });
+                                    // Determinar el ícono basado en tipoPermiso
+                                    var iconoActual;
+                                    switch (mercadoSelect) {
+                                        case "petroliferos":
+                                            iconoActual = iconoPetroliferos;
+                                            break;
+                                        case "gas_lp":
+                                            iconoActual = iconoGLP;
+                                            break;
+
+
+                                        default:
+                                            iconoActual = iconoPetroliferos; // Ícono por defecto si no hay coincidencia
+                                            break;
+                                    }
+                                    // Verificar si hay expendios autorizados y agregar marcadores
+                                    if (response.expendiosAutorizadosCP && response.expendiosAutorizadosCP.length > 0) {
+                                    response.expendiosAutorizadosCP.forEach(function (expendio) {
+                                        var lat = expendio.latitudGeo.toPrecision(8);
+                                        var lon = expendio.longitudGeo.toPrecision(8);
+                                        var popupContent = `
+                                            <div>
+                                                <p>${expendio.razonSocial}</p>
+                                                <a class="street-view-link btn btn-cre-verde" href="http://maps.google.com/maps?q=&layer=c&cbll=${lat},${lon}&cbp=11,0,0,0,0" target="_blank"><b> Ver vista de calle </b></a>
+                                            </div>
+                                        `;
+                                        
+                                        var marker = L.marker([lat, lon], { icon: iconoActual })
+                                            .addTo(map)
+                                            .bindPopup(popupContent);  // Mostrar la razón social y el enlace de Street View
+                                    });
+                                }
+                                else {
+                                        console.log("No hay expendios autorizados en esta área.");
+                                    }
+                                },
+                                error: function (error) {
+                                    console.error('Error:', error);
+                                    // Mostrar mensaje personalizado al usuario
+                                    showAlert('No se pudo realizar la evaluación, toda vez que la ubicación seleccionada tiene restricciones lógicas, por favor realice una vez más la evaluación de su proyecto.');
+                                    $("#resultadoAlert").hide();
+                                    $("#datos_ubicacion").hide();
+                                    $("#totales_en_isocrona").hide();
+                                    $("#pdf").hide();
+                                    // Cambiar el ícono a "indeterminado"
+                                    if (currentMarker) {
+                                        currentMarker.setIcon(iconoIndeterminado);
+                                    }
+                                }
+                            });
+
+
+
+
+
+
+
+                        },
+                        error: function (xhr, status, error) {
+                            console.error("Error al obtener la isocrona: " + error);
+                            // Mostrar mensaje personalizado al usuario
+                            showAlert('No se pudo realizar la evaluación, toda vez que la ubicación seleccionada tiene restricciones lógicas, por favor realice una vez más la evaluación de su proyecto.');
+                            $("#resultadoAlert").hide();
+                            $("#datos_ubicacion").hide();
+                            $("#totales_en_isocrona").hide();
+                            $("#pdf").hide();
+                            // Cambiar el ícono a "indeterminado"
+                            if (currentMarker) {
+                                currentMarker.setIcon(iconoIndeterminado);
+                            }
+                        }
+                    });
+                }
+
+
+                if (mercadoSelect === "petroliferos") {
+                    dibujarIsocrona();
+                }
+
+                if (mercadoSelect === "gas_lp") {
+                    ///
+                    $("#totales_en_isocrona").hide();
+
+                }
+                //Aqui
+
+            },
+            error: function (error) {
+                // Maneja el error si ocurre.
+                console.error('Error:', error);
+                // Mostrar mensaje personalizado al usuario
+                showAlert('No se pudo realizar la evaluación, toda vez que la ubicación seleccionada tiene restricciones lógicas, por favor realice una vez más la evaluación de su proyecto.');
+                $("#resultadoAlert").hide();
+                $("#datos_ubicacion").hide();
+                $("#totales_en_isocrona").hide();
+                $("#pdf").hide();
+                // Cambiar el ícono a "indeterminado"
+                if (currentMarker) {
+                    currentMarker.setIcon(iconoIndeterminado);
+                }
+            }
+
+
+        });
+        
+
+        function bitacoraRegistro(idUsuario, evaluacionFinal) {
+            var datos_solicitud = {
+                cvegeo: $('#cvegeo').val(),
+                cve_ent: $('#entidad').val(),
+                cve_mun: $('#municipio').val(),
+                yearSelect: $('#yearSelect').val(),
+                mercadoSelect: $('#mercadoSelect').val(),
+                latitud: $('#lat').val(),
+                longitud: $('#lon').val()
+            };
+            var finalYear = parseInt(datos_solicitud.yearSelect);
+            
+
+            // Primero, defines un objeto vacío para las preguntas
+            var preguntas = {};
+
+            var elementosDiferenciadoresPet = [];
+                var checkboxes = document.querySelectorAll('input[name="petroleos_differentiators"]:checked');
+                checkboxes.forEach(function (checkbox) {
+                    elementosDiferenciadoresPet.push(checkbox.value);
+                });
+            var pregunta7Pet = elementosDiferenciadoresPet.join(', ');
+
+            var elementosDiferenciadoresGLP = [];
+                var checkboxes = document.querySelectorAll('input[name="gasLP_differentiators"]:checked');
+                checkboxes.forEach(function (checkbox) {
+                    elementosDiferenciadoresGLP.push(checkbox.value);
+                });
+            var pregunta7GLP = elementosDiferenciadoresGLP.join(', ');
+                
+
+            // Luego, según la condición del mercadoSelect, asignas las preguntas correspondientes
+            if (mercadoSelect === "petroliferos") {
+                var formData = {
+                    petroleos1: document.querySelector('input[name="petroleos1"]:checked').value,
+                    petroleos2: document.querySelector('input[name="petroleos2"]:checked').value,
+                    petroleos3: document.querySelector('input[name="petroleos3"]:checked').value,
+                    petroleos4: document.getElementById('petroleos4').value,
+                    petroleos5: document.getElementById('petroleos5').value,
+                    petroleos6: document.getElementById('petroleos6').value,
+                };
+                preguntas.Pregunta1 = (formData.petroleos1.toLowerCase() === "si");
+                preguntas.Pregunta2 = (formData.petroleos2.toLowerCase() === "si");
+                preguntas.Pregunta3 = (formData.petroleos3.toLowerCase() === "si");
+                preguntas.Pregunta4 = formData.petroleos4;
+                preguntas.Pregunta5 = formData.petroleos5;
+                preguntas.Pregunta6 = formData.petroleos6;   
+                preguntas.Pregunta7 = pregunta7Pet;
+            } else {
+                var formData2 = {
+                    gaslp1: document.querySelector('input[name="gasLP1"]:checked').value,
+                    gaslp2: document.querySelector('input[name="gasLP2"]:checked').value,
+                    gaslp3: document.querySelector('input[name="gasLP3"]:checked').value,
+                    gaslp4: document.getElementById('gasLP4').value,
+                    gaslp5: document.getElementById('gasLP5').value,
+                    gaslp6: document.getElementById('gasLP6').value,
+                };
+                preguntas.Pregunta1 = (formData2.gaslp1.toLowerCase() === "si");
+                preguntas.Pregunta2 = (formData2.gaslp2.toLowerCase() === "si");
+                preguntas.Pregunta3 = (formData2.gaslp3.toLowerCase() === "si");
+                preguntas.Pregunta4 = formData2.gaslp4;
+                preguntas.Pregunta5 = formData2.gaslp5;
+                preguntas.Pregunta6 = formData2.gaslp6;
+                preguntas.Pregunta7 = pregunta7GLP;
+            }
+
+            // Aquí puedes agregar el código para calcular la evaluación final
+            // Concatenamos las coordenadas de latitud y longitud con una coma como separador
+            var coordenadas = datos_solicitud.latitud + ', ' + datos_solicitud.longitud;
+            var fecha = new Date();
+            var fechaFormateada = fecha.getFullYear() + '-' + ('0' + (fecha.getMonth() + 1)).slice(-2) + '-' + ('0' + fecha.getDate()).slice(-2) + 'T' + ('0' + fecha.getHours()).slice(-2) + ':' + ('0' + fecha.getMinutes()).slice(-2) + ':' + ('0' + fecha.getSeconds()).slice(-2);
+            var datosCompletos = {
+                IdLog: 1,
+                IdUsuario: idUsuario,
+                FechaYHora: fechaFormateada,
+                Mercado: datos_solicitud.mercadoSelect,
+                Año: finalYear,
+                Pregunta1: preguntas.Pregunta1,
+                Pregunta2: preguntas.Pregunta2,
+                Pregunta3: preguntas.Pregunta3, 
+                Pregunta4: preguntas.Pregunta4,
+                Pregunta5: preguntas.Pregunta5,
+                Pregunta6: preguntas.Pregunta6,
+                Pregunta7: preguntas.Pregunta7, 
+                Entidad_Federativa: datos_solicitud.cve_ent,
+                Municipio: datos_solicitud.cve_mun,
+                Coordenadas: coordenadas,
+                Evaluacion: evaluacionFinal
+            }
+
+            console.log("DATOS A REVISIÓN: ", datosCompletos);
+
+            console.log(JSON.stringify(datosCompletos));
+
+            // Envía los datos al servidor
+            $.ajax({
+                type: 'POST',
+                url: '/Indicadores/bitacoraIndicadoresRegistro',
+                contentType: 'application/json',
+                data: JSON.stringify(datosCompletos), // Convertir el objeto a formato JSON
+                success: function (response) {
+                    console.log('Bitacora de la solicitud:', response);
+                },
+                error: function (error) {
+                    console.error('Error al enviar los datos al servidor:', error);
+                }
+            });
+        }
+
+
+
+
+
+    });
+
+</script>
+
+
+@* Funcionalidades de Búsqueda y Menú*@
+<script>
+
+    // Función para inicializar el autocompletar
+    function autocomplete(inp, arr) {
+        var currentFocus;
+
+        inp.addEventListener("input", function (e) {
+            var a, b, i, val = this.value;
+            closeAllLists();
+            if (!val) { return false; }
+            currentFocus = -1;
+
+            a = document.getElementById("autocomplete-list");
+            a.innerHTML = "";
+
+            for (i = 0; i < arr.length; i++) {
+                if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                    b = document.createElement("DIV");
+                    b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                    b.innerHTML += arr[i].substr(val.length);
+                    b.addEventListener("click", function (e) {
+                        inp.value = this.innerText;
+                        closeAllLists();
+                        buscarGeneral(); // Llama a tu función de búsqueda aquí
+                    });
+                    a.appendChild(b);
+                }
+            }
+        });
+
+        function closeAllLists(elmnt) {
+            var x = document.getElementById("autocomplete-list");
+            if (elmnt != x && elmnt != inp) {
+                x.innerHTML = "";
+            }
+        }
+
+        document.addEventListener("click", function (e) {
+            closeAllLists(e.target);
+        });
+    }
+    // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+    var uniqueTerms = [...new Set(availableTerms)];
+
+    // Inicializa el autocompletar
+    autocomplete(document.getElementById("busquedaGeneralInput"), availableTerms);
+
+
+</script>
+
+
+
+@*Guia*@
+<script>
+    function openModal() {
+        document.getElementById('videoModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('videoModal').style.display = 'none';
+    }
+
+    function printWithCustomTitle() {
+        // Guardar el título original
+        var originalTitle = document.title;
+
+        // Obtener la fecha y hora actuales y formatearlas
+        var currentDate = new Date();
+        var formattedDate = currentDate.getFullYear() +
+            '-' + (currentDate.getMonth() + 1).toString().padStart(2, '0') +
+            '-' + currentDate.getDate().toString().padStart(2, '0') +
+            '_' + currentDate.getHours().toString().padStart(2, '0') +
+            '-' + currentDate.getMinutes().toString().padStart(2, '0') +
+            '-' + currentDate.getSeconds().toString().padStart(2, '0');
+
+            
+
+        // Cambiar el título de la página
+        document.title = 'CRE-Evaluación-' + formattedDate;
+
+        // Llamar a window.print()
+        window.print();
+
+        // Restaurar el título original después de un pequeño retraso
+        setTimeout(function () {
+            document.title = originalTitle;
+        }, 500);
+    }
+    var nombreUsuario = '@ViewData["NombreUsuario"]';
+    function obtenerFechaHora() {
+        const ahora = new Date();
+        return ahora.toLocaleDateString() + ' ' + ahora.toLocaleTimeString();
+
+        console.log("Fecha actual: ", ahora.toLocaleDateString() + ' ' + ahora.toLocaleTimeString());
+    }
+
+
+
+
+
+
+</script>
+<script>
+    // Configuración de L.easyPrint
+    var printPlugin = L.easyPrint({
+        title: 'Imprimir mapa',
+        position: 'topright',
+        sizeModes: ['A4Portrait', 'A4Landscape'],
+        exportOnly: true,
+        hideControlContainer: false
+    }).addTo(map);
+
+
+    //function genPDF(){
+    //         var doc=new jsPDF();
+    //         let mensaje=document.getElementById('step3');
+    //         doc.text(20,20,mensaje);
+    //         doc.addPage();
+    //         doc.text(20,20,'Mi trabajo!!');
+    //         doc.save('Test.pdf');
+    //     }
+
+    // Llamar a la función principal saveMapAsPDF();
+
+
+
+</script>
+<script>
+    $(function () {
+        $('.is-btn-print01').click(function () {
+            if (currentMarker) {
+                var latLng = currentMarker.getLatLng(); // Obtiene la posición del marcador
+                var currentZoom = map.getZoom(); // Obtiene el nivel de zoom actual
+
+                // Obtiene el tamaño del mapa en píxeles
+                var mapSize = map.getSize();
+
+                // Calcula el desplazamiento necesario para mover el marcador hacia la izquierda
+                // El factor de desplazamiento puede variar dependiendo del nivel de zoom y el tamaño del mapa
+                var offset = mapSize.x * 0.3 / Math.pow(2, currentZoom);
+
+                // Calcula la nueva posición del centro del mapa
+                var point = map.project(latLng, currentZoom).subtract([offset, 0]);
+                var newCenter = map.unproject(point, currentZoom);
+
+                // Centra el mapa en la nueva posición
+                map.setView(newCenter, currentZoom);
+            }
+
+            // Retrasar la impresión por 1 segundo para asegurar que el mapa se haya centrado
+            setTimeout(function () {
+                $('.print01').printThis();
+            }, 1000); // 1000 milisegundos = 1 segundo
+        });
+    });
+
+
+    // Función para recargar la página
+    function recargarPagina() {
+        // Guarda el identificador del div en la URL como un hash
+        window.location.hash = 'evaluacion';
+        // Recarga la página
+        window.location.reload(true);
+    }
+</script>
+<script>
+    function enforceMinimumValue(elementId) {
+        document.getElementById(elementId).addEventListener('input', function (e) {
+            var value = parseInt(e.target.value);
+            if (value < 10) {
+                e.target.value = 10;
+            }
+        });
+    }
+
+    enforceMinimumValue('gasLP6');
+    enforceMinimumValue('petroleos6');
+</script>

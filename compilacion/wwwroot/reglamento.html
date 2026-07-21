@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Mental: Reglamento de la Ley de Planeación y Transición Energética</title>
+
+    <!-- Tailwind CSS para un diseño moderno -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Fuentes de Google -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Estilos personalizados para la visualización de árbol */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7fafc;
+            /* Gris muy claro */
+        }
+
+        /* Contenedor principal del árbol */
+        .tree-container {
+            padding: 2rem;
+            overflow-x: auto;
+        }
+
+        /* Estructura base del árbol */
+        .tree ul {
+            position: relative;
+            padding-left: 50px;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .tree li {
+            position: relative;
+            list-style: none;
+            padding: 10px 0;
+        }
+
+        /* Ocultar sub-árboles por defecto */
+        .tree li.collapsed>ul {
+            display: none;
+        }
+
+        /* Estilo de las cajas (nodos) */
+        .tree li .node {
+            display: inline-flex;
+            /* Usar flex para alinear el toggler y el texto */
+            align-items: center;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            font-weight: 500;
+            color: #2d3748;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tree li .node:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+            border-color: #4299e1;
+        }
+
+        /* Estilo para el nodo raíz */
+        .tree>ul>li>.node {
+            background-color: #2c5282;
+            color: white;
+            font-weight: 700;
+            border-color: #2c5282;
+        }
+
+        /* Líneas de conexión */
+        .tree li::before,
+        .tree li::after {
+            content: '';
+            position: absolute;
+            left: -20px;
+            border-color: #cbd5e0;
+            border-style: solid;
+        }
+
+        .tree li::before {
+            /* Línea vertical */
+            top: 0;
+            bottom: 0;
+            width: 0;
+            border-width: 0 0 0 1px;
+        }
+
+        .tree li::after {
+            /* Línea horizontal */
+            top: 50%;
+            height: 0;
+            width: 20px;
+            border-width: 1px 0 0 0;
+            margin-top: -1px;
+        }
+
+        /* Ajustes de líneas */
+        .tree>ul>li::before,
+        .tree>ul>li::after {
+            display: none;
+        }
+
+        .tree li:last-child::before {
+            height: 50%;
+        }
+
+        /* Indicador de expandir/contraer */
+        .tree .toggler {
+            font-family: monospace;
+            font-weight: bold;
+            margin-right: 8px;
+            color: #718096;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+
+        .tree .toggler:hover {
+            background-color: #edf2f7;
+        }
+
+        .tree>ul>li>.node .toggler {
+            color: #bee3f8;
+        }
+
+        /* Estilos para el Modal Principal (Resumen) */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            width: 90%;
+            max-width: 800px;
+            max-height: 85vh;
+            /* Default max height for summary modal */
+            overflow-y: auto;
+            /* Default scroll for summary modal */
+            transform: translateY(-20px);
+            transition: transform 0.3s ease;
+        }
+
+        .modal-overlay.visible .modal-container {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #718096;
+        }
+
+        .modal-content pre {
+            background-color: #f7fafc;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            white-space: pre-wrap;
+            /* Para que el texto se ajuste */
+            word-wrap: break-word;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #4a5568;
+        }
+
+        /* Style for the "Ver detalle" button */
+        .modal-detail-button {
+            background-color: #4299e1;
+            /* Blue-500 */
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            /* rounded-md */
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin-left: 1rem;
+            /* Space from close button */
+        }
+
+        .modal-detail-button:hover {
+            background-color: #3182ce;
+            /* Blue-600 */
+        }
+
+        /* Estilos para el Segundo Modal (Detalle Completo) */
+        .full-detail-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            /* Fondo más oscuro para diferenciar */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1001;
+            /* Mayor z-index para que esté por encima del primer modal */
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .full-detail-modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .full-detail-modal-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            width: 90%;
+            max-width: 900px;
+            /* Un poco más ancho para el detalle completo */
+            height: 90vh;
+            /* Ocupa más altura para el scroll */
+            overflow-y: auto;
+            /* Scroll vertical siempre */
+            transform: translateY(-20px);
+            transition: transform 0.3s ease;
+        }
+
+        .full-detail-modal-overlay.visible .full-detail-modal-container {
+            transform: translateY(0);
+        }
+
+        .full-detail-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .full-detail-modal-title {
+            font-size: 1.75rem;
+            /* Título un poco más grande */
+            font-weight: 700;
+            color: #2c5282;
+            /* Color del nodo raíz */
+        }
+
+        .full-detail-modal-close {
+            background: none;
+            border: none;
+            font-size: 1.75rem;
+            cursor: pointer;
+            color: #718096;
+        }
+
+        .full-detail-modal-content pre {
+            background-color: #f7fafc;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 1rem;
+            /* Texto un poco más grande para mejor lectura */
+            line-height: 1.7;
+            color: #2d3748;
+        }
+    </style>
+</head>
+
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">Mapa Mental del Reglamento</h1>
+            <p class="mt-2 text-lg text-gray-600">Haz clic en `[+]` para expandir y en el texto para ver el detalle.</p>
+        </header>
+
+        <div class="tree-container bg-white rounded-xl border border-gray-200">
+            <div class="tree" id="mindmap-tree">
+                <!-- La estructura del árbol se generará aquí con JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Principal (Resumen) -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div id="modal-container" class="modal-container">
+            <div class="modal-header">
+                <h2 id="modal-title" class="modal-title"></h2>
+                <div class="flex items-center">
+                    <button id="modal-detail-toggle" class="modal-detail-button hidden">Ver todo el detalle</button>
+                    <button id="modal-close" class="modal-close">&times;</button>
+                </div>
+            </div>
+            <div id="modal-content" class="modal-content"></div>
+        </div>
+    </div>
+
+    <!-- Segundo Modal (Detalle Completo) -->
+    <div id="full-detail-modal-overlay" class="full-detail-modal-overlay">
+        <div id="full-detail-modal-container" class="full-detail-modal-container">
+            <div class="full-detail-modal-header">
+                <h2 id="full-detail-modal-title" class="full-detail-modal-title"></h2>
+                <button id="full-detail-modal-close" class="full-detail-modal-close">&times;</button>
+            </div>
+            <div id="full-detail-modal-content" class="full-detail-modal-content"></div>
+        </div>
+    </div>
+
+
+    <script>
+        // Declarar variables a nivel de script para asegurar su accesibilidad
+        let container, modalOverlay, modalTitle, modalContentEl, modalCloseBtn, modalDetailToggleButton, modalContainer;
+        let fullDetailModalOverlay, fullDetailModalContainer, fullDetailModalTitle, fullDetailModalContentEl, fullDetailModalCloseBtn;
+        let currentModalContentId = null; // Para almacenar el ID del contenido que se muestra actualmente
+
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- INICIO DE DATOS ---
+
+            // Datos del reglamento en formato de objeto anidado
+            const treeData = {
+                id: 'root', name: 'Reglamento de la Ley de Planeación y Transición Energética',
+                children: [
+                    { id: 't1', name: 'TÍTULO PRIMERO: Disposiciones Generales' },
+                    {
+                        id: 't2', name: 'TÍTULO SEGUNDO: Del Consejo de Planeación Energética', children: [
+                            { id: 't2_c1', name: 'Capítulo I: De la Organización y Funcionamiento del Consejo' },
+                            { id: 't2_c2', name: 'Capítulo II: De los Comités' }
+                        ]
+                    },
+                    {
+                        id: 't3', name: 'TÍTULO TERCERO: Instrumentos de Planeación Energética', children: [
+                            { id: 't3_c1', name: 'Capítulo I: Coordinación, Coherencia, Exhaustividad y Consistencia' },
+                            { id: 't3_c2', name: 'Capítulo II: Del Programa Sectorial de Energía' },
+                            { id: 't3_c3', name: 'Capítulo III: De la Estrategia Nacional de Transición Energética' },
+                            { id: 't3_c4', name: 'Capítulo IV: Del Plan para la Transición Energética y el Aprovechamiento Sustentable de la Energía' },
+                            { id: 't3_c5', name: 'Capítulo V: Del Plan de Desarrollo del Sector Eléctrico' },
+                            { id: 't3_c6', name: 'Capítulo VI: Del Plan de Desarrollo del Sector Hidrocarburos' }
+                        ]
+                    },
+                    {
+                        id: 't4', name: 'TÍTULO CUARTO: De la Planeación del Sector Energético', children: [
+                            { id: 't4_c1', name: 'Capítulo I: Del Sector Eléctrico' },
+                            { id: 't4_c2', name: 'Capítulo II: Del Sector Hidrocarburos' }
+                        ]
+                    },
+                    {
+                        id: 't5', name: 'TÍTULO QUINTO: Del Sistema Nacional de Información Energética', children: [
+                            { id: 't5_c1', name: 'Capítulo I: Del Sistema' },
+                            { id: 't5_c2', name: 'Capítulo II: De la Organización y funcionamiento del Sistema' },
+                            { id: 't5_c3', name: 'Capítulo III: De las funciones del Consejo y sus Comités en el marco del Sistema Nacional de Información Energética' },
+                            {
+                                id: 't5_c4', name: 'Capítulo IV: De los Registros e Información Geoespacial del Sistema Nacional de Información Energética', children: [
+                                    { id: 't5_s1', name: 'Sección I: De la información en materia de eficiencia energética' },
+                                    { id: 't5_s2', name: 'Sección II: Del Registro público de Certificados de Energías Limpias' }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        id: 't6', name: 'TÍTULO SEXTO: De la Transición Energética y la Reducción de la Pobreza Energética', children: [
+                            { id: 't6_c1', name: 'Capítulo I: Del Fondo para la Transición Energética y el Aprovechamiento Sustentable de la Energía' },
+                            { id: 't6_c2', name: 'Capítulo II: Del Fondo de Servicio Universal Energético' },
+                            { id: 't6_c3', name: 'Capítulo III: De los Recursos de Innovación, Desarrollo Tecnológico y Formación de Recursos Humanos' },
+                            {
+                                id: 't6_c4', name: 'Capítulo IV: Del Financiamiento y la Inversión para la Transición Energética', children: [
+                                    { id: 't6_s1', name: 'Sección I: Del Financiamiento para el Aprovechamiento Sustentable de la Energía' },
+                                    { id: 't6_s2', name: 'Sección II: De los Certificados de Energías Limpias' }
+                                ]
+                            },
+                            { id: 't6_c5', name: 'Capítulo V: Del Desarrollo Industrial' },
+                            {
+                                id: 't6_c6', name: 'Capítulo VI: De la Participación Voluntaria', children: [
+                                    { id: 't6_s1_vol', name: 'Sección I: Del Reconocimiento de Excelencia en Eficiencia Energética' },
+                                    { id: 't6_s2_vol', name: 'Sección II: De los Acuerdos Voluntarios' }
+                                ]
+                            },
+                            { id: 't6_c7', name: 'Capítulo VII: De las Metodologías' }
+                        ]
+                    },
+                    {
+                        id: 't7', name: 'TÍTULO SÉPTIMO: De la Inspección, Vigilancia y Sanciones', children: [
+                            { id: 't7_c1', name: 'Capítulo I: Del Seguimiento y Verificación' },
+                            { id: 't7_c2', name: 'Capítulo II: De la Responsabilidad de las Personas Servidoras Públicas' },
+                            { id: 't7_c3', name: 'Capítulo III: De la Transparencia, Rendición de Cuentas e Información' }
+                        ]
+                    },
+                    { id: 'transitorios', name: 'TRANSITORIOS' }
+                ]
+            };
+
+            // Contenido detallado para cada sección, extraído del PDF
+            const modalContent = {
+                't1': { title: 'TÍTULO PRIMERO: Disposiciones Generales', content: 'Artículos 1-4: Objeto del reglamento, la planeación vinculante, definiciones de términos clave (CENACE, CFE, Ley, etc.) y la interpretación del reglamento.' },
+                't2': { title: 'TÍTULO SEGUNDO: Del Consejo de Planeación Energética', content: 'Define al Consejo como órgano permanente de la Secretaría para la Planeación Vinculante.' },
+                't2_c1': { title: 'Capítulo I: De la Organización y Funcionamiento del Consejo', content: 'Artículos 5-15: Atribuciones del Consejo, carácter honorífico de sus miembros, emisión de Acuerdos, Lineamientos de Operación y Programa Anual de Trabajo del Consejo.' },
+                't2_c2': { title: 'Capítulo II: De los Comités', content: 'Artículos 16-22: Establece la conformación de Comités de apoyo técnico al Consejo, su carácter honorífico, su objeto, coordinación y los asuntos en los que brindarán apoyo (diagnósticos, estudios, propuestas, etc.). Sus opiniones no son vinculantes.' },
+                't3': { title: 'TÍTULO TERCERO: Instrumentos de Planeación Energética', content: 'Define los documentos rectores de la política energética nacional (PROSENER, Estrategia, PLATEASE, PLADESE, PLADESHI) y su jerarquía. Establece metas y líneas de acción para la Transición y Justicia Energética.' },
+                't3_c1': { title: 'Capítulo I: Coordinación, Coherencia, Exhaustividad y Consistencia', content: 'Artículos 23-35: Describe cómo los instrumentos se coordinan en horizontes de corto, mediano y largo plazo, las metas obligatorias (Energías Limpias, Pobreza Energética, etc.), y el proceso de elaboración, publicación y actualización. La Secretaría es responsable de su elaboración y actualización. \n\nEste capítulo es fundamental para comprender la estructura y la interconexión de todos los documentos de planeación energética. Asegura que no haya duplicidades ni contradicciones entre el Programa Sectorial de Energía, la Estrategia Nacional de Transición Energética, y los planes de desarrollo específicos para los sectores eléctrico e hidrocarburos. La coherencia es vital para una política energética robusta y predecible. Además, se enfatiza la exhaustividad, lo que significa que todos los aspectos relevantes de la planeación deben ser cubiertos, desde la generación hasta el consumo, pasando por la infraestructura y la investigación. La consistencia, por su parte, garantiza que los objetivos a largo plazo se reflejen en las acciones a corto y mediano plazo, creando un camino claro hacia la transición energética y la reducción de la pobreza energética. Este es un texto de ejemplo extendido para demostrar el funcionamiento del botón "Ver todo el detalle". Puedes reemplazarlo con contenido real si lo deseas. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.' },
+                't3_c2': { title: 'Capítulo II: Del Programa Sectorial de Energía (PROSENER)', content: 'Artículos 36-39: Instrumento rector de planeación en el corto plazo, alineado al Plan Nacional de Desarrollo. Se publica una vez por sexenio (dentro de los 6 meses siguientes a la emisión del PND).' },
+                't3_c3': { title: 'Capítulo III: De la Estrategia Nacional de Transición Energética', content: 'Artículos 40-44: Instrumento rector de mediano y largo plazo en materia de Transición Energética, Eficiencia Energética, Energías Limpias, Justicia Energética. Se publica dentro del primer año del Ejecutivo Federal y su componente de mediano plazo se actualiza cada tres años. Incluye diagnóstico y metas mínimas de energías limpias.' },
+                't3_c4': { title: 'Capítulo IV: Del Plan para la Transición Energética y el Aprovechamiento Sustentable de la Energía (PLATEASE)', content: 'Artículos 45-49: Documento de mediano plazo para instrumentar las acciones de la Estrategia y el PROSENER, asegurando su viabilidad técnica y económica. Se actualiza anualmente y debe incluir información sobre la reducción de la Pobreza Energética.' },
+                't3_c5': { title: 'Capítulo V: Del Plan de Desarrollo del Sector Eléctrico (PLADESE)', content: 'Artículos 50-53: Documento para el desarrollo y modernización de la infraestructura eléctrica a mediano plazo, consistente con otros instrumentos. Se elabora o actualiza anualmente con apoyo de CFE, CENACE y CNE. Incluye diagnóstico, escenarios, proyectos (PVIRCE, PAM, PROCFE) y generación distribuida.' },
+                't3_c6': { title: 'Capítulo VI: Del Plan de Desarrollo del Sector Hidrocarburos (PLADESHI)', content: 'Artículos 54-58: Documento para el desarrollo y modernización de la infraestructura de hidrocarburos a mediano plazo, consistente con otros instrumentos. Se elabora o actualiza con apoyo de PEMEX, CENAGAS, CNE. Incluye diagnóstico, escenarios, PROPEMEX y PSPEMEX.' },
+                't4': { title: 'TÍTULO CUARTO: De la Planeación del Sector Energético', content: 'Define la planeación vinculante como el enfoque de la Secretaría a través de los Acuerdos del Consejo.' },
+                't4_c1': { title: 'Capítulo I: Del Sector Eléctrico', content: 'Artículos 64-66: Principios de la planeación del sector eléctrico (eficiencia, calidad, soberanía, no prevalencia de particulares, justicia energética, etc.) y el procedimiento anual de planeación involucrando a SENER, CENACE, CFE y CNE para la elaboración, opinión y autorización de PVIRCE y PAM. La Secretaría define proyectos firmes.' },
+                't4_c2': { title: 'Capítulo II: Del Sector Hidrocarburos', content: 'Artículos 67-70: Principios de la planeación del sector hidrocarburos (justicia energética, soberanía, ampliación de infraestructura, prioridad a empresas públicas, etc.) y el procedimiento de planeación con PEMEX, CENAGAS, Secretaría de Economía. Incluye Planes Quinquenales y estrategias de fomento industrial.' },
+                't5': { title: 'TÍTULO QUINTO: Del Sistema Nacional de Información Energética (SNIER)', content: 'Define el SNIER como la infraestructura y registros para organizar y difundir la información del sector energético, siendo su operación prioritaria y de interés público.' },
+                't5_c1': { title: 'Capítulo I: Del Sistema', content: 'Artículos 71-72: Constitución y finalidad del SNIER, incluyendo hardware, software, redes, repositorios y servicios especializados. Su objetivo es registrar, organizar, actualizar y difundir información para apoyar la Planeación Vinculante.' },
+                't5_c2': { title: 'Capítulo II: De la Organización y funcionamiento del Sistema', content: 'Artículos 73-75: Estructura jerárquica del sistema (Secretaría a través de la Unidad del SNIER, Consejo, subsistemas de información). El Consejo puede incorporar subsistemas de entidades federativas y municipios.' },
+                't5_c3': { title: 'Capítulo III: De las funciones del Consejo y sus Comités en el marco del Sistema Nacional de Información Energética', content: 'Artículos 76-79: El Consejo coordina actividades, emite Acuerdos para especificaciones técnicas y coordina el Programa Anual de Trabajo del SNIER, con apoyo técnico de los Comités.' },
+                't5_c4': { title: 'Capítulo IV: De los Registros e Información Geoespacial del Sistema Nacional de Información Energética', content: 'Artículos 80-83: Obligaciones de las entidades para proporcionar información al SNIER. El SNIER es la fuente oficial de información del sector y debe integrar y actualizar registros de recursos, estadísticas, avance de proyectos, tecnologías, escenarios y otros que el Consejo determine.' },
+                't5_s1': { title: 'Sección I: De la información en materia de eficiencia energética', content: 'Artículos 84-88: La CONUEE integra y publica registros de eficiencia energética, resultados económicos y energéticos, lista de combustibles, catálogo de equipos, registro de excelencia y ahorros. Propone disposiciones reglamentarias y modificaciones para leyendas en recibos de pago.' },
+                't5_s2': { title: 'Sección II: Del Registro público de Certificados de Energías Limpias', content: 'Artículo 89: La CNE emite las disposiciones administrativas de carácter general para el funcionamiento y operación del registro de Certificados de Energías Limpias (CEL), incluyendo información estadística de otorgamiento, liquidación, cancelación, entidades inscritas y precios.' },
+                't6': { title: 'TÍTULO SEXTO: De la Transición Energética y la Reducción de la Pobreza Energética', content: 'Regula los fondos y mecanismos para impulsar la transición energética y reducir la pobreza energética.' },
+                't6_c1': { title: 'Capítulo I: Del Fondo para la Transición Energética y el Aprovechamiento Sustentable de la Energía', content: 'Artículo 90: La Secretaría elabora y publica anualmente un informe de labores del Fondo para la Transición Energética, el Fondo de Servicio Universal Energético y los Recursos de Innovación, Desarrollo Tecnológico y Formación de Recursos Humanos.' },
+                't6_c2': { title: 'Capítulo II: Del Fondo de Servicio Universal Energético', content: 'Artículos 91-94: Define la integración de recursos al Fondo (excedente de ingresos por gestión de pérdidas técnicas en el Mercado Eléctrico Mayorista), la conformación de su Comité Técnico y la posibilidad de integrar donaciones o créditos.' },
+                't6_c3': { title: 'Capítulo III: De los Recursos de Innovación, Desarrollo Tecnológico y Formación de Recursos Humanos', content: 'Artículos 95-100: Regula el ejercicio de recursos para investigación, desarrollo tecnológico y formación de recursos humanos. La Secretaría conforma comités de decisión y evaluación para aprobar demandas, proyectos y contratación de servicios especializados. Prioridad a instituciones públicas.' },
+                't6_c4': { title: 'Capítulo IV: Del Financiamiento y la Inversión para la Transición Energética', content: 'Regula los mecanismos de financiamiento para el aprovechamiento sustentable de la energía y los Certificados de Energías Limpias.' },
+                't6_s1': { title: 'Sección I: Del Financiamiento para el Aprovechamiento Sustentable de la Energía', content: 'Artículos 101-104: La Secretaría gestiona financiamiento con banca de desarrollo y comercial, ofreciendo tasas preferenciales y opción de pago a través de la factura eléctrica. Se pueden constituir mecanismos de garantía para reducir costos. La CONUEE determina materiales y equipos elegibles.' },
+                't6_s2': { title: 'Sección II: De los Certificados de Energías Limpias', content: 'Artículos 105-107: La Subsecretaría de Planeación y Transición Energética emite Disposiciones de Carácter General para los CEL, incluyendo método de cálculo de requisitos, criterios para generadores, metas de energías limpias, lineamientos de contratos de cobertura y negociabilidad. Los CEL pueden homologarse con bonos de carbono.' },
+                't6_c5': { title: 'Capítulo V: Del Desarrollo Industrial', content: 'Artículos 108-109: La Secretaría, con Economía, CFE y CENACE, somete a opinión del Consejo un estudio para determinar las necesidades y el potencial del sector eléctrico en energías limpias para el desarrollo industrial. Se pueden apoyar de los Recursos de Innovación y mecanismos de diálogo.' },
+                't6_c6': { title: 'Capítulo VI: De la Participación Voluntaria', content: 'Regula los mecanismos de participación voluntaria en eficiencia energética.' },
+                't6_s1_vol': { title: 'Sección I: Del Reconocimiento de Excelencia en Eficiencia Energética', content: 'Artículo 110: La CONUEE somete a opinión del Consejo disposiciones reglamentarias para el reconocimiento a instalaciones, edificaciones, empresas o productos que destaquen en el uso sustentable y eficiente de la energía.' },
+                't6_s2_vol': { title: 'Sección II: De los Acuerdos Voluntarios', content: 'Artículos 111-112: La CONUEE somete a opinión del Consejo disposiciones reglamentarias para celebrar acuerdos voluntarios con sectores productivos y criterios para Usuarios de Patrón de Alto Consumo. La Secretaría, con Economía y CONUEE, asesora a PyMEs en eficiencia energética.' },
+                't6_c7': { title: 'Capítulo VII: De las Metodologías', content: 'Artículos 113-114: La Secretaría, CNE y CONUEE, con otras dependencias, someten a opinión del Consejo diversas metodologías y cálculos (cuantificación de emisiones, factor de emisión del SEN, beneficios energéticos/económicos, valorización de externalidades, uso de respaldo de energías fósiles, cogeneración eficiente). Los resultados se publican en el SNIER.' },
+                't7': { title: 'TÍTULO SÉPTIMO: De la Inspección, Vigilancia y Sanciones', content: 'Establece los procedimientos para asegurar el cumplimiento del reglamento y las responsabilidades.' },
+                't7_c1': { title: 'Capítulo I: Del Seguimiento y Verificación', content: 'Artículos 115-121: Procedimientos para visitas de verificación, requerimientos de información/documentación, comparecencias para comprobar el cumplimiento de obligaciones. Las unidades administrativas integran expedientes por presuntos incumplimientos y el Comité de Asignaciones, Contratos y Permisos aprueba el inicio y resolución de procedimientos de sanción. Se pueden usar sistemas de notificación electrónica.' },
+                't7_c2': { title: 'Capítulo II: De la Responsabilidad de las Personas Servidoras Públicas', content: 'Artículo 122: Aclara que la planeación vinculante no contraviene el artículo 134 constitucional sobre la administración de recursos con eficacia, eficiencia, economía, transparencia y honradez, debido al análisis multicriterio para la Transición y Justicia Energética.' },
+                't7_c3': { title: 'Capítulo III: De la Transparencia, Rendición de Cuentas e Información', content: 'Artículo 123: La página de internet mencionada en la Ley se entiende como parte del repositorio de documentos de la Planeación Vinculante del Sistema Nacional de Información Energética.' },
+                'transitorios': { title: 'Artículos Transitorios', content: 'Artículos Primero a Octavo: Regulan la entrada en vigor del reglamento, el inicio de operaciones del SNIER (con un periodo de 6 meses para interoperabilidad), la vigencia de normatividad anterior, la emisión de obligaciones para Certificados de Energías Limpias en 2025 para 2026, la necesidad de asegurar recursos para el SNIER, y la posible no alineación secuencial de instrumentos en el primer ciclo de planeación.' }
+            };
+
+            // --- FIN DE DATOS ---
+
+            // Asignar variables después de que el DOM esté cargado
+            container = document.getElementById('mindmap-tree');
+            modalOverlay = document.getElementById('modal-overlay');
+            modalTitle = document.getElementById('modal-title');
+            modalContentEl = document.getElementById('modal-content');
+            modalCloseBtn = document.getElementById('modal-close');
+            modalDetailToggleButton = document.getElementById('modal-detail-toggle');
+            modalContainer = document.getElementById('modal-container');
+
+            // Nuevas referencias para el segundo modal
+            fullDetailModalOverlay = document.getElementById('full-detail-modal-overlay');
+            fullDetailModalContainer = document.getElementById('full-detail-modal-container');
+            fullDetailModalTitle = document.getElementById('full-detail-modal-title');
+            fullDetailModalContentEl = document.getElementById('full-detail-modal-content');
+            fullDetailModalCloseBtn = document.getElementById('full-detail-modal-close');
+
+            // Función recursiva para construir el HTML del árbol
+            function buildTree(node) {
+                const li = document.createElement('li');
+                const nodeDiv = document.createElement('div');
+                nodeDiv.className = 'node';
+                nodeDiv.dataset.id = node.id; // Asignar ID para el modal
+
+                let togglerSpan = '';
+                if (node.children && node.children.length > 0) {
+                    li.className = 'collapsed';
+                    togglerSpan = `<span class="toggler" data-id="${node.id}">[+]</span>`;
+                }
+
+                const nodeText = `<span class="node-text">${node.name}</span>`;
+                nodeDiv.innerHTML = `${togglerSpan}${nodeText}`;
+                li.appendChild(nodeDiv);
+
+                if (node.children && node.children.length > 0) {
+                    const ul = document.createElement('ul');
+                    node.children.forEach(child => ul.appendChild(buildTree(child)));
+                    li.appendChild(ul);
+                }
+                return li;
+            }
+
+            // Iniciar la construcción del árbol
+            const rootUl = document.createElement('ul');
+            const rootLi = buildTree(treeData);
+            rootLi.className = ''; // El nodo raíz no se colapsa
+            // Asegurarse de que el toggler del nodo raíz se muestre como '[-]'
+            const rootToggler = rootLi.querySelector('.toggler');
+            if (rootToggler) {
+                rootToggler.textContent = '[-]';
+            }
+            rootUl.appendChild(rootLi);
+            container.appendChild(rootUl);
+
+            // Función para mostrar el modal principal (resumen)
+            function showModal(id) {
+                const data = modalContent[id];
+                if (!data) return;
+
+                currentModalContentId = id; // Almacenar el ID del contenido actual
+                modalTitle.textContent = data.title;
+                modalContentEl.innerHTML = `<pre>${data.content}</pre>`;
+                modalOverlay.classList.add('visible');
+
+                // Check if content overflows and show/hide the toggle button
+                setTimeout(() => {
+                    // Clonar el contenido para medir su altura real sin las restricciones del modal
+                    const tempDiv = document.createElement('div');
+                    tempDiv.style.visibility = 'hidden';
+                    tempDiv.style.position = 'absolute';
+                    tempDiv.style.width = modalContentEl.clientWidth + 'px'; // Usar el mismo ancho que el modal visible
+                    tempDiv.innerHTML = `<pre>${data.content}</pre>`;
+                    document.body.appendChild(tempDiv);
+
+                    const isOverflowing = tempDiv.scrollHeight > modalContentEl.clientHeight;
+                    document.body.removeChild(tempDiv); // Limpiar el elemento temporal
+
+                    if (isOverflowing) {
+                        modalDetailToggleButton.classList.remove('hidden');
+                    } else {
+                        modalDetailToggleButton.classList.add('hidden');
+                    }
+                }, 50);
+            }
+
+            // Función para ocultar el modal principal (resumen)
+            function hideModal() {
+                modalOverlay.classList.remove('visible');
+                modalDetailToggleButton.classList.add('hidden'); // Ocultar el botón al cerrar
+                currentModalContentId = null; // Limpiar el ID
+            }
+
+            // Función para mostrar el modal de detalle completo
+            function showFullDetailModal(id) {
+                const data = modalContent[id];
+                if (!data) return;
+
+                fullDetailModalTitle.textContent = data.title;
+                fullDetailModalContentEl.innerHTML = `<pre>${data.content}</pre>`;
+                fullDetailModalOverlay.classList.add('visible');
+            }
+
+            // Función para ocultar el modal de detalle completo
+            function hideFullDetailModal() {
+                fullDetailModalOverlay.classList.remove('visible');
+            }
+
+
+            // Lógica de Clics para el árbol
+            container.addEventListener('click', function (event) {
+                const target = event.target;
+
+                // Si se hace clic en el toggler [+] / [-]
+                if (target.classList.contains('toggler')) {
+                    const li = target.closest('li');
+                    if (li && li.querySelector('ul')) {
+                        li.classList.toggle('collapsed');
+                        target.textContent = li.classList.contains('collapsed') ? '[+]' : '[-]';
+                    }
+                    event.stopPropagation(); // Evitar que el clic se propague al nodo
+                }
+                // Si se hace clic en el texto del nodo
+                else if (target.closest('.node')) {
+                    const nodeDiv = target.closest('.node');
+                    const id = nodeDiv.dataset.id;
+                    if (id !== 'root') { // No mostrar modal para el nodo raíz
+                        showModal(id);
+                    }
+                }
+            });
+
+            // Eventos para cerrar el modal principal (resumen)
+            modalCloseBtn.addEventListener('click', hideModal);
+            modalOverlay.addEventListener('click', function (event) {
+                if (event.target === modalOverlay) {
+                    hideModal();
+                }
+            });
+
+            // Event listener para el botón "Ver todo el detalle" en el modal principal
+            modalDetailToggleButton.addEventListener('click', function () {
+                if (currentModalContentId) {
+                    showFullDetailModal(currentModalContentId);
+                }
+            });
+
+            // Eventos para cerrar el segundo modal (detalle completo)
+            fullDetailModalCloseBtn.addEventListener('click', hideFullDetailModal);
+            fullDetailModalOverlay.addEventListener('click', function (event) {
+                if (event.target === fullDetailModalOverlay) {
+                    hideFullDetailModal();
+                }
+            });
+        });
+    </script>
+
+</body>
+
+</html>

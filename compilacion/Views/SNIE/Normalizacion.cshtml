@@ -1,0 +1,149 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["IDUsuario"] = perfilUsuario.IdUsuario;
+    ViewData["Title"] = "Validación Técnica";
+    var header = new HeaderViewModel
+    {
+        Title = "Validación Técnica y Normalización de Datos",
+        IconPath = "validacion_info.png",
+        Description = "Supervisa la calidad, congruencia y normalización de la información cargada para asegurar la interoperabilidad del sistema energético nacional.",
+        Section = "🧾 Validación, Control de Calidad y Oficios",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Validación Técnica y Normalización",
+            description = "Sistema de aseguramiento técnico y estandarización de la información energética cargada en el SNIEr.",
+            functionality = "Valida formatos, estructura, congruencia y normaliza nomenclatura conforme a catálogos oficiales.",
+            stage = "Post-carga",
+            roles = new[] {
+                new { icon = "building", text = "SENER: Supervisión general" },
+                new { icon = "check-double", text = "Unidad SNIEr: Control de calidad" },
+                new { icon = "user-shield", text = "TICs: Soporte técnico" },
+                new { icon = "file-code", text = "Normalizadores: Alineación a estándares" },
+                new { icon = "users-cog", text = "Validadores Técnicos: Verificación" },
+                new { icon = "balance-scale", text = "Dirección Jurídica: Cumplimiento" }
+            },
+            order = new { step = 2, description = "Asegura interoperabilidad técnica y cumplimiento normativo (Art. 75)" }
+        }),
+        LegalDescription = "Validación y normalización conforme al Art. 75 del Reglamento para asegurar integridad de datos.",
+        Fundamentos = new List<FundamentoLegal> {
+            new() { Reference = "Art. 75 Reglamento", Description = "Define los criterios de validación y control técnico" },
+            new() { Reference = "Lineamientos Técnicos SNIEr", Description = "Establecen catálogos oficiales y criterios de interoperabilidad" }
+        }
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container ps-5 pe-5">
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-white bg-success shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-check-circle"></i> Archivos Correctos</h5>
+                    <p class="card-text fs-4">8</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-dark bg-warning shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-hourglass-half"></i> Archivos en Revisión</h5>
+                    <p class="card-text fs-4">3</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-secondary shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-clock"></i> Archivos Pendientes</h5>
+                    <p class="card-text fs-4">2</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <strong>Instrucciones:</strong>
+        <ul class="mb-0">
+            <li>Verifica los archivos y ajusta su estado: <strong>Revisado</strong> o <strong>Correcto</strong>.</li>
+            <li>Utiliza la firma electrónica (.cer, .key y contraseña) para validar la revisión.</li>
+            <li>Los datos deben cumplir con catálogos oficiales y estructuras normalizadas.</li>
+        </ul>
+    </div>
+
+    <div class="mt-4">
+        <h5><i class="fas fa-folder-open"></i> Archivos para Validar y Firmar</h5>
+        <div class="table-responsive">
+            <table class="table table-striped table-bordered" id="tablaArchivos">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Archivo</th>
+                        <th>Fecha de Carga</th>
+                        <th>Dependencia</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><a href="#" target="_blank">balance_sener_abril2025.xlsx</a></td>
+                        <td>2025-04-21 10:42 AM</td>
+                        <td>SENER</td>
+                        <td>
+                            <select class="form-select form-select-sm">
+                                <option>Pendiente</option>
+                                <option>Revisado</option>
+                                <option>Correcto</option>
+                            </select>
+                        </td>
+                        <td>
+                            <button class="btn btn-outline-success btn-sm btn-firmar" title="Firmar"><i class="bi bi-pencil-square"></i></button>
+                            <button class="btn btn-outline-danger btn-sm btn-eliminar" title="Eliminar"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de firma electrónica -->
+<div class="modal fade" id="modalFirma" tabindex="-1" aria-labelledby="modalFirmaLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalFirmaLabel">Firma con e.firma</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formFirma">
+                    <div class="mb-3">
+                        <label for="archivoKey" class="form-label">Archivo .key</label>
+                        <input type="file" class="form-control" id="archivoKey" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="archivoCer" class="form-label">Archivo .cer</label>
+                        <input type="file" class="form-control" id="archivoCer" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Contraseña</label>
+                        <input type="password" class="form-control" id="password" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnConfirmarFirma">Firmar</button>
+            </div>
+        </div>
+    </div>
+</div>S

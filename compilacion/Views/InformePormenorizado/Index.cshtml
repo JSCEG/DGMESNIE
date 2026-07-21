@@ -1,0 +1,861 @@
+@model NSIE.Models.InformePormenorizadoViewModel
+
+@{
+    ViewData["Title"] = "Informe Pormenorizado";
+
+    string UrlPagina(int p) => Url.Action("Index", new
+    {
+        busqueda = Model.Busqueda,
+        etapa = Model.Etapa,
+        tipoFinanciamiento = Model.TipoFinanciamiento,
+        universo = Model.Universo,
+        pagina = p
+    });
+
+    var ventanaInicio = Math.Max(1, Model.Pagina - 2);
+    var ventanaFin = Math.Min(Model.TotalPaginas, ventanaInicio + 4);
+    ventanaInicio = Math.Max(1, ventanaFin - 4);
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 informe-pormenorizado-page">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+        </div>
+    }
+
+    <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-4">
+        <div>
+            <h4 class="mb-1">Seguimiento de proyectos de modernización</h4>
+            <p class="text-muted mb-0">Base oficial, detalle por proyecto y mantenimiento operativo desde una sola vista.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <form asp-action="ImportarBaseOficial" method="post" onsubmit="return confirm('Esta acción reemplaza la base vigente con el contenido del Excel oficial. ¿Deseas continuar?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-primary">
+                    <i class="fas fa-file-import me-2"></i>Importar base oficial
+                </button>
+            </form>
+            <a asp-action="Crear" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Nuevo registro
+            </a>
+        </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="ip-kpi-grid mb-4">
+        <div class="ip-kpi">
+            <span class="ip-kpi__label">Total de proyectos</span>
+            <strong class="ip-kpi__value">@Model.TotalRegistros</strong>
+            <span class="ip-kpi__hint">Con filtros aplicados</span>
+        </div>
+        <div class="ip-kpi ip-kpi--dorado">
+            <span class="ip-kpi__label">Monto agregado</span>
+            <strong class="ip-kpi__value">@Model.MontoTotalMdp.ToString("N0")</strong>
+            <span class="ip-kpi__hint">MDP del universo filtrado</span>
+        </div>
+        <div class="ip-kpi ip-kpi--verde">
+            <span class="ip-kpi__label">Avance promedio</span>
+            <strong class="ip-kpi__value">@Model.AvancePromedio.ToString("N1")%</strong>
+            <span class="ip-kpi__hint">Sobre registros con % informado</span>
+        </div>
+        <div class="ip-kpi">
+            <span class="ip-kpi__label">Universo presidencia</span>
+            <strong class="ip-kpi__value">@Model.ProyectosPriorizados</strong>
+            <span class="ip-kpi__hint">Marcados para presentación</span>
+        </div>
+    </div>
+
+    <!-- Resúmenes -->
+    <div class="row g-4 mb-4">
+        <div class="col-xl-8">
+            <div class="ip-panel h-100">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <h5 class="mb-0">Resumen por etapa</h5>
+                    <span class="ip-chip ip-chip--verde">@Model.ProyectosOperacion en operación</span>
+                </div>
+                <div class="ip-etapa-grid">
+                    @foreach (var item in Model.ResumenEtapas)
+                    {
+                        <a class="ip-etapa" href="@Url.Action("Index", new { busqueda = Model.Busqueda, tipoFinanciamiento = Model.TipoFinanciamiento, universo = Model.Universo, etapa = item.Etiqueta == "Sin etapa" ? null : item.Etiqueta })" title="Filtrar por esta etapa">
+                            <span class="ip-etapa__nombre">@item.Etiqueta</span>
+                            <strong class="ip-etapa__total">@item.Total</strong>
+                            <span class="ip-etapa__monto">@item.Monto.ToString("N0") MDP</span>
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4">
+            <div class="ip-panel h-100">
+                <h5 class="mb-3">Concentrado por financiamiento</h5>
+                <div class="d-flex flex-column gap-3">
+                    @foreach (var item in Model.ResumenFinanciamiento)
+                    {
+                        var pct = Model.MontoTotalMdp == 0 ? 0 : Math.Round(item.Monto * 100 / Model.MontoTotalMdp, 1);
+                        <div>
+                            <div class="d-flex justify-content-between gap-3 small mb-1">
+                                <span class="fw-semibold ip-texto">@item.Etiqueta</span>
+                                <span class="text-muted">@item.Total proyectos</span>
+                            </div>
+                            <div class="ip-progress" role="progressbar" aria-label="Monto por financiamiento" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100">
+                                <span style="width:@pct.ToString(System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                            </div>
+                            <div class="small text-muted mt-1">@item.Monto.ToString("N0") MDP · @pct.ToString("N1")%</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="ip-panel mb-4">
+        <form method="get" class="row g-3 align-items-end" id="ip-filtros">
+            <div class="col-lg-4">
+                <label for="busqueda" class="form-label fw-semibold">Buscar</label>
+                <input id="busqueda" name="busqueda" value="@Model.Busqueda" class="form-control" placeholder="Proyecto, GRT, clave PEM o estado real" />
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label for="etapa" class="form-label fw-semibold">Etapa</label>
+                <select id="etapa" name="etapa" class="form-select">
+                    <option value="">Todas</option>
+                    @foreach (var item in Model.EtapasDisponibles)
+                    {
+                        <option value="@item" selected="@(item == Model.Etapa)">@item</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label for="tipoFinanciamiento" class="form-label fw-semibold">Financiamiento</label>
+                <select id="tipoFinanciamiento" name="tipoFinanciamiento" class="form-select">
+                    <option value="">Todos</option>
+                    @foreach (var item in Model.TiposFinanciamientoDisponibles)
+                    {
+                        <option value="@item" selected="@(item == Model.TipoFinanciamiento)">@item</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4 col-lg-2">
+                <label for="universo" class="form-label fw-semibold">Universo</label>
+                <select id="universo" name="universo" class="form-select">
+                    <option value="">Todos</option>
+                    @foreach (var item in Model.UniversosDisponibles)
+                    {
+                        <option value="@item" selected="@(item == Model.Universo)">@item</option>
+                    }
+                </select>
+            </div>
+            <div class="col-lg-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Limpiar</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Listado -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <span class="text-muted small">
+            Mostrando <strong>@Model.RegistroDesde–@Model.RegistroHasta</strong> de <strong>@Model.TotalRegistros</strong> proyectos
+        </span>
+        <span class="text-muted small">Página @Model.Pagina de @Model.TotalPaginas</span>
+    </div>
+
+    <div class="ip-lista">
+        @foreach (var item in Model.Registros)
+        {
+            var etapa = string.IsNullOrWhiteSpace(item.EtapaProyecto) ? "Sin etapa" : item.EtapaProyecto;
+            var chipClass = etapa.Contains("Operación", StringComparison.OrdinalIgnoreCase)
+                ? "ip-chip--verde"
+                : etapa.Contains("concurs", StringComparison.OrdinalIgnoreCase)
+                    ? "ip-chip--dorado"
+                    : "ip-chip--gris";
+            var avance = item.PorcentajeAvanceEjecucion ?? 0;
+            <article class="ip-row" data-proyecto-id="@item.ProyectoModernizacionId">
+                <div class="ip-row__numero" aria-hidden="true">@item.Numero</div>
+                <div class="ip-row__main">
+                    <div class="ip-row__titulo">@item.NombreProyecto</div>
+                    <div class="ip-row__claves">
+                        @(string.IsNullOrWhiteSpace(item.GRT) ? "Sin GRT" : item.GRT) · @(string.IsNullOrWhiteSpace(item.ClavePem) ? "Sin clave PEM" : item.ClavePem)
+                    </div>
+                    <div class="ip-row__chips">
+                        <span class="ip-chip @chipClass">@etapa</span>
+                        @if (string.Equals(item.UniversoPresentacionPresidencia, "Sí", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <span class="ip-chip ip-chip--guinda">Presidencia</span>
+                        }
+                    </div>
+                </div>
+                <div class="ip-row__metricas">
+                    <div class="ip-metrica">
+                        <span class="ip-metrica__label">Monto MDP</span>
+                        <strong>@((item.MontoProyectoMdp ?? 0).ToString("N0"))</strong>
+                    </div>
+                    <div class="ip-metrica">
+                        <span class="ip-metrica__label">Avance</span>
+                        <strong>@avance.ToString("N1")%</strong>
+                        <span class="ip-avance"><span style="width:@Math.Clamp(avance, 0, 100).ToString(System.Globalization.CultureInfo.InvariantCulture)%"></span></span>
+                    </div>
+                </div>
+                <div class="ip-row__acciones">
+                    <button class="ip-btn ip-btn--detalle" type="button" data-detalle-toggle="@item.ProyectoModernizacionId" aria-expanded="false" title="Ver detalle">
+                        <i class="fas fa-chevron-down"></i><span class="d-none d-md-inline ms-1">Detalle</span>
+                    </button>
+                    <a asp-action="Editar" asp-route-id="@item.ProyectoModernizacionId" class="ip-btn ip-btn--editar" title="Editar registro" aria-label="Editar registro">
+                        <i class="fas fa-pen-to-square"></i>
+                    </a>
+                    <form asp-action="Eliminar" asp-route-id="@item.ProyectoModernizacionId" method="post" class="d-inline"
+                          onsubmit="return confirm('¿Deseas eliminar este proyecto del informe?');">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="ip-btn ip-btn--eliminar" title="Eliminar registro" aria-label="Eliminar registro">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </form>
+                </div>
+                <div class="ip-row__detalle" id="detalle-@item.ProyectoModernizacionId" hidden>
+                    <div class="ip-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+                </div>
+            </article>
+        }
+        @if (!Model.Registros.Any())
+        {
+            <div class="ip-vacio">
+                <i class="fas fa-inbox"></i>
+                <p class="mb-0">No hay registros para los filtros seleccionados. Si la base está vacía, importa primero la base oficial.</p>
+            </div>
+        }
+    </div>
+
+    <!-- Paginación -->
+    @if (Model.TotalPaginas > 1)
+    {
+        <nav class="ip-paginacion mt-4" aria-label="Paginación del informe">
+            <a class="ip-page @(Model.Pagina == 1 ? "is-disabled" : "")" href="@(Model.Pagina == 1 ? "#" : UrlPagina(Model.Pagina - 1))" aria-label="Página anterior">
+                <i class="fas fa-chevron-left"></i>
+            </a>
+            @if (ventanaInicio > 1)
+            {
+                <a class="ip-page" href="@UrlPagina(1)">1</a>
+                @if (ventanaInicio > 2)
+                {
+                    <span class="ip-page is-gap">…</span>
+                }
+            }
+            @for (var p = ventanaInicio; p <= ventanaFin; p++)
+            {
+                <a class="ip-page @(p == Model.Pagina ? "is-active" : "")" href="@UrlPagina(p)" aria-current="@(p == Model.Pagina ? "page" : null)">@p</a>
+            }
+            @if (ventanaFin < Model.TotalPaginas)
+            {
+                @if (ventanaFin < Model.TotalPaginas - 1)
+                {
+                    <span class="ip-page is-gap">…</span>
+                }
+                <a class="ip-page" href="@UrlPagina(Model.TotalPaginas)">@Model.TotalPaginas</a>
+            }
+            <a class="ip-page @(Model.Pagina == Model.TotalPaginas ? "is-disabled" : "")" href="@(Model.Pagina == Model.TotalPaginas ? "#" : UrlPagina(Model.Pagina + 1))" aria-label="Página siguiente">
+                <i class="fas fa-chevron-right"></i>
+            </a>
+        </nav>
+    }
+</div>
+
+<style>
+    /* ══════ Informe Pormenorizado — mobile first, tokens shell ══════ */
+
+    .informe-pormenorizado-page {
+        --ip-surface: var(--shell-surface, #ffffff);
+        --ip-surface-2: var(--shell-surface-2, #f8fafc);
+        --ip-line: var(--shell-line, rgba(138, 0, 49, 0.10));
+        --ip-ink: var(--shell-ink, #243444);
+        --ip-muted: var(--shell-muted, #6c7a89);
+        --ip-accent: var(--shell-accent, #8a0031);
+        --ip-accent-2: var(--shell-accent-2, #b48934);
+        --ip-accent-3: var(--shell-accent-3, #1e5b4f);
+    }
+
+    /* KPIs */
+    .informe-pormenorizado-page .ip-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+
+    .informe-pormenorizado-page .ip-kpi {
+        position: relative;
+        padding: 0.9rem 1rem 1rem 1.15rem;
+        border: 1px solid var(--ip-line);
+        border-radius: 16px;
+        background: var(--ip-surface);
+        overflow: hidden;
+    }
+
+    .informe-pormenorizado-page .ip-kpi::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px;
+        background: var(--ip-accent);
+    }
+
+    .informe-pormenorizado-page .ip-kpi--dorado::before { background: var(--ip-accent-2); }
+    .informe-pormenorizado-page .ip-kpi--verde::before { background: var(--ip-accent-3); }
+
+    .informe-pormenorizado-page .ip-kpi__label {
+        display: block;
+        color: var(--ip-muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .informe-pormenorizado-page .ip-kpi__value {
+        display: block;
+        margin-top: 0.3rem;
+        color: var(--ip-ink);
+        font-size: clamp(1.45rem, 4.5vw, 1.9rem);
+        line-height: 1;
+    }
+
+    .informe-pormenorizado-page .ip-kpi__hint {
+        display: block;
+        margin-top: 0.3rem;
+        color: var(--ip-muted);
+        font-size: 0.74rem;
+    }
+
+    /* Paneles */
+    .informe-pormenorizado-page .ip-panel {
+        padding: 1.1rem 1.15rem;
+        border: 1px solid var(--ip-line);
+        border-radius: 18px;
+        background: var(--ip-surface);
+    }
+
+    .informe-pormenorizado-page .ip-texto { color: var(--ip-ink); }
+
+    /* Resumen etapa */
+    .informe-pormenorizado-page .ip-etapa-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+
+    .informe-pormenorizado-page .ip-etapa {
+        display: block;
+        padding: 0.75rem 0.85rem;
+        border: 1px solid var(--ip-line);
+        border-radius: 14px;
+        background: var(--ip-surface-2);
+        text-decoration: none;
+        transition: border-color 0.18s ease, transform 0.18s ease;
+    }
+
+    .informe-pormenorizado-page .ip-etapa:hover {
+        border-color: rgba(212, 83, 126, 0.4);
+        transform: translateY(-1px);
+    }
+
+    .informe-pormenorizado-page .ip-etapa__nombre {
+        display: block;
+        color: var(--ip-muted);
+        font-size: 0.76rem;
+        font-weight: 600;
+        line-height: 1.3;
+        min-height: 2em;
+    }
+
+    .informe-pormenorizado-page .ip-etapa__total {
+        display: block;
+        margin-top: 0.15rem;
+        color: var(--ip-ink);
+        font-size: 1.3rem;
+        line-height: 1.1;
+    }
+
+    .informe-pormenorizado-page .ip-etapa__monto {
+        color: var(--ip-muted);
+        font-size: 0.74rem;
+    }
+
+    /* Chips y progreso */
+    .informe-pormenorizado-page .ip-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.22rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+    }
+
+    .informe-pormenorizado-page .ip-chip--verde { background: rgba(30, 91, 79, 0.12); color: var(--ip-accent-3); }
+    .informe-pormenorizado-page .ip-chip--dorado { background: rgba(180, 137, 52, 0.14); color: var(--ip-accent-2); }
+    .informe-pormenorizado-page .ip-chip--guinda { background: rgba(138, 0, 49, 0.10); color: var(--ip-accent); }
+    .informe-pormenorizado-page .ip-chip--gris { background: var(--ip-surface-2); color: var(--ip-muted); border: 1px solid var(--ip-line); }
+
+    .informe-pormenorizado-page .ip-progress {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--ip-surface-2);
+        border: 1px solid var(--ip-line);
+        overflow: hidden;
+    }
+
+    .informe-pormenorizado-page .ip-progress > span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--ip-accent);
+    }
+
+    /* Filas de proyecto (mobile first: tarjeta apilada) */
+    .informe-pormenorizado-page .ip-lista {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .informe-pormenorizado-page .ip-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas:
+            "num main"
+            "met met"
+            "acc acc"
+            "det det";
+        gap: 0.6rem 0.75rem;
+        padding: 0.9rem 1rem;
+        border: 1px solid var(--ip-line);
+        border-radius: 16px;
+        background: var(--ip-surface);
+    }
+
+    .informe-pormenorizado-page .ip-row__numero {
+        grid-area: num;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 40px;
+        height: 40px;
+        padding-inline: 0.4rem;
+        border-radius: 12px;
+        background: rgba(138, 0, 49, 0.08);
+        color: var(--ip-accent);
+        font-weight: 800;
+        font-size: 0.85rem;
+    }
+
+    .informe-pormenorizado-page .ip-row__main { grid-area: main; min-width: 0; }
+
+    .informe-pormenorizado-page .ip-row__titulo {
+        color: var(--ip-ink);
+        font-weight: 700;
+        font-size: 0.95rem;
+        line-height: 1.3;
+    }
+
+    .informe-pormenorizado-page .ip-row__claves {
+        margin-top: 0.15rem;
+        color: var(--ip-muted);
+        font-size: 0.78rem;
+    }
+
+    .informe-pormenorizado-page .ip-row__chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.45rem;
+    }
+
+    .informe-pormenorizado-page .ip-row__metricas {
+        grid-area: met;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.6rem;
+        padding-top: 0.6rem;
+        border-top: 1px dashed var(--ip-line);
+    }
+
+    .informe-pormenorizado-page .ip-metrica__label {
+        display: block;
+        color: var(--ip-muted);
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .informe-pormenorizado-page .ip-metrica strong {
+        color: var(--ip-ink);
+        font-size: 1rem;
+    }
+
+    .informe-pormenorizado-page .ip-avance {
+        display: block;
+        height: 6px;
+        margin-top: 0.35rem;
+        border-radius: 999px;
+        background: var(--ip-surface-2);
+        overflow: hidden;
+    }
+
+    .informe-pormenorizado-page .ip-avance > span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--ip-accent-3);
+    }
+
+    .informe-pormenorizado-page .ip-row__acciones {
+        grid-area: acc;
+        display: flex;
+        gap: 0.45rem;
+    }
+
+    .informe-pormenorizado-page .ip-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 36px;
+        min-width: 36px;
+        padding: 0 0.65rem;
+        border: 1px solid var(--ip-line);
+        border-radius: 10px;
+        background: var(--ip-surface-2);
+        color: var(--ip-muted);
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+    }
+
+    .informe-pormenorizado-page .ip-btn--detalle { color: var(--ip-accent); flex: 1 1 auto; }
+    .informe-pormenorizado-page .ip-btn--detalle .fa-chevron-down { transition: transform 0.2s ease; }
+    .informe-pormenorizado-page .ip-btn--detalle[aria-expanded="true"] .fa-chevron-down { transform: rotate(180deg); }
+    .informe-pormenorizado-page .ip-btn--editar { color: var(--ip-accent-2); }
+    .informe-pormenorizado-page .ip-btn--eliminar { color: #dc2626; }
+
+    .informe-pormenorizado-page .ip-btn:hover {
+        border-color: rgba(212, 83, 126, 0.4);
+        background: var(--shell-hover, rgba(138, 0, 49, 0.06));
+    }
+
+    /* Detalle bajo demanda */
+    .informe-pormenorizado-page .ip-row__detalle {
+        grid-area: det;
+        padding-top: 0.85rem;
+        border-top: 1px dashed var(--ip-line);
+        animation: ipDetalleIn 0.25s ease;
+    }
+
+    @@keyframes ipDetalleIn {
+        from { opacity: 0; transform: translateY(-4px); }
+        to { opacity: 1; transform: none; }
+    }
+
+    /* Ficha técnica: specs compactas */
+    .informe-pormenorizado-page .ip-specs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+        margin-bottom: 0.85rem;
+    }
+
+    .informe-pormenorizado-page .ip-spec {
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--ip-line);
+        border-radius: 12px;
+        background: var(--ip-surface-2);
+        min-width: 0;
+    }
+
+    .informe-pormenorizado-page .ip-spec span {
+        display: block;
+        color: var(--ip-muted);
+        font-size: 0.64rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .informe-pormenorizado-page .ip-spec strong {
+        display: block;
+        margin-top: 0.15rem;
+        color: var(--ip-ink);
+        font-size: 0.85rem;
+        line-height: 1.35;
+        overflow-wrap: break-word;
+    }
+
+    /* Secciones narrativas con acento */
+    .informe-pormenorizado-page .ip-seccion {
+        margin-bottom: 0.7rem;
+        padding: 0.75rem 0.85rem 0.8rem;
+        border: 1px solid var(--ip-line);
+        border-left-width: 3px;
+        border-radius: 12px;
+        background: var(--ip-surface-2);
+    }
+
+    .informe-pormenorizado-page .ip-seccion:last-child { margin-bottom: 0; }
+
+    .informe-pormenorizado-page .ip-seccion--estado { border-left-color: var(--ip-accent-3); }
+    .informe-pormenorizado-page .ip-seccion--atrasos { border-left-color: var(--ip-accent-2); }
+    .informe-pormenorizado-page .ip-seccion--mitigacion { border-left-color: var(--ip-accent); }
+    .informe-pormenorizado-page .ip-seccion--equipos { border-left-color: var(--ip-muted); }
+
+    .informe-pormenorizado-page .ip-seccion h6 {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin: 0 0 0.45rem;
+        color: var(--ip-muted);
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .informe-pormenorizado-page .ip-seccion--estado h6 i { color: var(--ip-accent-3); }
+    .informe-pormenorizado-page .ip-seccion--atrasos h6 i { color: var(--ip-accent-2); }
+    .informe-pormenorizado-page .ip-seccion--mitigacion h6 i { color: var(--ip-accent); }
+    .informe-pormenorizado-page .ip-seccion--equipos h6 i { color: var(--ip-muted); }
+
+    .informe-pormenorizado-page .ip-seccion__texto {
+        max-height: 260px;
+        overflow: auto;
+        white-space: pre-line;
+        color: var(--ip-ink);
+        font-size: 0.87rem;
+        line-height: 1.6;
+    }
+
+    .informe-pormenorizado-page .ip-seccion__texto::-webkit-scrollbar { width: 5px; }
+    .informe-pormenorizado-page .ip-seccion__texto::-webkit-scrollbar-thumb {
+        background: rgba(138, 0, 49, 0.25);
+        border-radius: 999px;
+    }
+
+    .informe-pormenorizado-page .ip-detalle-vacio {
+        color: var(--ip-muted);
+        font-size: 0.84rem;
+    }
+
+    /* Skeleton mientras carga */
+    .informe-pormenorizado-page .ip-skeleton {
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .informe-pormenorizado-page .ip-skeleton span {
+        display: block;
+        height: 14px;
+        border-radius: 999px;
+        background: var(--ip-surface-2);
+        animation: ipPulse 1.1s ease-in-out infinite;
+    }
+
+    .informe-pormenorizado-page .ip-skeleton span:nth-child(2) { width: 82%; animation-delay: 0.12s; }
+    .informe-pormenorizado-page .ip-skeleton span:nth-child(3) { width: 64%; animation-delay: 0.24s; }
+
+    @@keyframes ipPulse {
+        0%, 100% { opacity: 0.55; }
+        50% { opacity: 1; }
+    }
+
+    /* Vacío */
+    .informe-pormenorizado-page .ip-vacio {
+        padding: 2.5rem 1.5rem;
+        border: 1px dashed var(--ip-line);
+        border-radius: 18px;
+        text-align: center;
+        color: var(--ip-muted);
+    }
+
+    .informe-pormenorizado-page .ip-vacio i {
+        display: block;
+        margin-bottom: 0.6rem;
+        font-size: 1.8rem;
+        color: var(--ip-accent);
+    }
+
+    /* Paginación */
+    .informe-pormenorizado-page .ip-paginacion {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.4rem;
+    }
+
+    .informe-pormenorizado-page .ip-page {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 40px;
+        height: 40px;
+        padding: 0 0.7rem;
+        border: 1px solid var(--ip-line);
+        border-radius: 12px;
+        background: var(--ip-surface);
+        color: var(--ip-accent);
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .informe-pormenorizado-page .ip-page.is-active {
+        background: var(--ip-accent);
+        border-color: var(--ip-accent);
+        color: var(--shell-accent-contrast, #ffffff);
+    }
+
+    .informe-pormenorizado-page .ip-page.is-disabled {
+        pointer-events: none;
+        opacity: 0.4;
+    }
+
+    .informe-pormenorizado-page .ip-page.is-gap {
+        border: 0;
+        background: transparent;
+        color: var(--ip-muted);
+        pointer-events: none;
+    }
+
+    /* ── Escalado a tablet/escritorio ── */
+    @@media (min-width: 768px) {
+        .informe-pormenorizado-page .ip-kpi-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 1rem;
+        }
+
+        .informe-pormenorizado-page .ip-specs {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .informe-pormenorizado-page .ip-etapa-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .informe-pormenorizado-page .ip-row {
+            grid-template-columns: auto minmax(0, 1fr) 260px auto;
+            grid-template-areas:
+                "num main met acc"
+                "det det det det";
+            align-items: center;
+        }
+
+        .informe-pormenorizado-page .ip-row__metricas {
+            padding-top: 0;
+            border-top: 0;
+            border-left: 1px dashed var(--ip-line);
+            padding-left: 0.9rem;
+        }
+
+        .informe-pormenorizado-page .ip-btn--detalle { flex: 0 0 auto; }
+
+    }
+</style>
+
+@section scripts {
+    <script>
+        (function () {
+            const cache = new Map();
+            const urlDetalle = '@Url.Action("Detalle")';
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            const hayValor = v => v != null && String(v).trim() !== '';
+
+            const spec = (label, valor) => `
+                <div class="ip-spec">
+                    <span>${label}</span>
+                    <strong>${hayValor(valor) ? escapeHtml(String(valor)) : '—'}</strong>
+                </div>`;
+
+            const seccion = (tipo, icono, titulo, valor) => !hayValor(valor) ? '' : `
+                <section class="ip-seccion ip-seccion--${tipo}">
+                    <h6><i class="fas ${icono}"></i>${titulo}</h6>
+                    <div class="ip-seccion__texto">${escapeHtml(String(valor))}</div>
+                </section>`;
+
+            function render(data) {
+                const specs = `<div class="ip-specs">
+                    ${spec('Financiamiento', data.tipoFinanciamiento)}
+                    ${spec('Año de instrucción', data.anioInstruccion)}
+                    ${spec('Clasificación SENER', data.clasificacionSener)}
+                    ${spec('Programación / publicación', [data.fechaProgramacionTrimestre, data.quincenaPublicacion].filter(hayValor).join(' / '))}
+                    ${spec('Inicio estimado', data.fechaEstimadaInicio)}
+                    ${spec('FEO oficio SENER', data.feoIndicadaOficioSener)}
+                    ${spec('FEO factible', data.feoFactible)}
+                    ${spec('MVA · MVAR · km-C', [data.mva, data.mvar, data.kmC].map(v => hayValor(v) ? v : '—').join(' · '))}
+                </div>`;
+
+                const secciones =
+                    seccion('estado', 'fa-clipboard-check', 'Estado real que guarda el proyecto', data.estadoRealProyecto) +
+                    seccion('atrasos', 'fa-triangle-exclamation', 'Circunstancias de atraso', data.circunstanciasAtrasos) +
+                    seccion('mitigacion', 'fa-shield-halved', 'Acciones de mitigación', data.accionesMitigacionCorreccion) +
+                    seccion('equipos', 'fa-plug-circle-bolt', 'Elementos y equipos asociados', data.elementosEquiposAsociados);
+
+                return specs + (secciones || '<p class="ip-detalle-vacio mb-0"><i class="fas fa-circle-info me-2"></i>Sin narrativa registrada para este proyecto.</p>');
+            }
+
+            document.querySelectorAll('[data-detalle-toggle]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.getAttribute('data-detalle-toggle');
+                    const panel = document.getElementById('detalle-' + id);
+                    if (!panel) return;
+
+                    const abierto = btn.getAttribute('aria-expanded') === 'true';
+                    if (abierto) {
+                        panel.hidden = true;
+                        btn.setAttribute('aria-expanded', 'false');
+                        return;
+                    }
+
+                    panel.hidden = false;
+                    btn.setAttribute('aria-expanded', 'true');
+
+                    if (cache.has(id)) {
+                        panel.innerHTML = cache.get(id);
+                        return;
+                    }
+
+                    try {
+                        const resp = await fetch(`${urlDetalle}?id=${id}`, { headers: { 'Accept': 'application/json' } });
+                        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                        const data = await resp.json();
+                        const html = render(data);
+                        cache.set(id, html);
+                        panel.innerHTML = html;
+                    } catch (e) {
+                        panel.innerHTML = '<div class="text-danger small">No fue posible cargar el detalle. Intenta de nuevo.</div>';
+                    }
+                });
+            });
+
+            // Autofiltrar al cambiar selects (conserva UX de un clic)
+            ['etapa', 'tipoFinanciamiento', 'universo'].forEach(idSel => {
+                const el = document.getElementById(idSel);
+                if (el) el.addEventListener('change', () => document.getElementById('ip-filtros').requestSubmit());
+            });
+        })();
+    </script>
+}

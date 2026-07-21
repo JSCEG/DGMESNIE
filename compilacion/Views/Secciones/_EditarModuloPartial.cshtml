@@ -1,0 +1,152 @@
+@model NSIE.Models.Modulo
+
+<form id="formEditarModulo" asp-action="GuardarEdicionModulo" asp-controller="Secciones" method="post">
+    <input type="hidden" asp-for="Id" />
+    <input type="hidden" asp-for="SeccionId" />
+
+    <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-pen-to-square text-dorado me-1"></i> Editar Módulo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+    </div>
+
+    <div class="modal-body">
+        <div class="mb-3">
+            <label asp-for="Title" class="form-label">Título del Módulo</label>
+            <input asp-for="Title" class="form-control" />
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="FundamentoLegalModulo" class="form-label">Fundamento Legal</label>
+            <textarea asp-for="FundamentoLegalModulo" class="form-control" rows="2"></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Desc" class="form-label">Descripción</label>
+            <textarea asp-for="Desc" class="form-control" rows="2"></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Roles" class="form-label">Roles (IDs separados por coma)</label>
+            <input asp-for="Roles" class="form-control" />
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="NombresRoles" class="form-label">Nombres de Roles</label>
+            <input asp-for="NombresRoles" class="form-control" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label fw-bold">Usuarios con acceso</label>
+            <div class="input-group mb-2">
+                <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                <input type="text" id="buscarUsuarioEditarModulo" class="form-control form-control-sm" placeholder="Buscar usuario..." />
+            </div>
+            <div id="usuariosCheckboxContainerEditarModulo" class="border rounded p-2 bg-light mb-1" style="max-height: 150px; overflow-y: auto;">
+                <div class="text-muted small"><i class="fas fa-spinner fa-spin me-1"></i> Cargando usuarios...</div>
+            </div>
+            <input type="hidden" asp-for="Perfiles" id="inputPerfilesHiddenEditarModulo" />
+            <small class="form-text text-muted">Selecciona los usuarios individuales autorizados para ver este módulo.</small>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="Controller" class="form-label">Controller</label>
+                <input asp-for="Controller" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="Action" class="form-label">Action</label>
+                <input asp-for="Action" class="form-control" />
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Orden" class="form-label">Orden</label>
+            <input asp-for="Orden" type="number" class="form-control" />
+        </div>
+
+        <div class="form-check form-switch mb-3">
+            <input asp-for="Activo" class="form-check-input" type="checkbox" role="switch" />
+            <label class="form-check-label" asp-for="Activo">¿Activo?</label>
+        </div>
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="guardarCambiosModulo()">
+            <i class="fas fa-save me-1"></i> Guardar Cambios
+        </button>
+    </div>
+</form>
+
+<script>
+    $(document).ready(function () {
+        const hiddenInput = $("#inputPerfilesHiddenEditarModulo");
+        const container = $("#usuariosCheckboxContainerEditarModulo");
+        const initialValues = (hiddenInput.val() || "").split(",").map(v => v.trim()).filter(v => v !== "");
+
+        $.getJSON("/Secciones/GetUsuariosVigentes", function (users) {
+            container.empty();
+            if (!users || users.length === 0) {
+                container.html('<div class="text-muted small">No hay usuarios vigentes disponibles.</div>');
+                return;
+            }
+
+            users.forEach(function (user) {
+                const userId = (user.idUsuario !== undefined ? user.idUsuario : user.IdUsuario).toString();
+                const userName = user.nombre !== undefined ? user.nombre : user.Nombre;
+                const isChecked = initialValues.includes(userId);
+                const checkedAttr = isChecked ? "checked" : "";
+
+                const itemHtml = `
+                    <div class="form-check usuario-row-item py-1">
+                        <input class="form-check-input chk-usuario-acceso-edit-modulo" type="checkbox" value="${userId}" id="chk_user_edit_mod_${userId}" ${checkedAttr}>
+                        <label class="form-check-label text-truncate w-100 cursor-pointer" for="chk_user_edit_mod_${userId}">
+                            ${userName}
+                        </label>
+                    </div>
+                `;
+                container.append(itemHtml);
+            });
+
+            // Registrar evento change
+            container.on("change", ".chk-usuario-acceso-edit-modulo", function () {
+                const checkedIds = [];
+                container.find(".chk-usuario-acceso-edit-modulo:checked").each(function () {
+                    checkedIds.push($(this).val());
+                });
+                hiddenInput.val(checkedIds.join(","));
+            });
+        }).fail(function () {
+            container.html('<div class="text-danger small"><i class="fas fa-exclamation-triangle me-1"></i> Error al cargar usuarios.</div>');
+        });
+
+        // Búsqueda interactiva
+        $("#buscarUsuarioEditarModulo").on("keyup", function () {
+            const searchVal = $(this).val().toLowerCase();
+            container.find(".usuario-row-item").each(function () {
+                const labelText = $(this).find("label").text().toLowerCase();
+                if (labelText.includes(searchVal)) {
+                    $(this).show();
+                } else {
+                    $(this).hide();
+                }
+            });
+        });
+    });
+
+    function guardarCambiosModulo() {
+        const form = $("#formEditarModulo");
+        $.ajax({
+            url: form.attr("action"),
+            type: "POST",
+            data: form.serialize(),
+            success: function () {
+                $("#moduloModal").modal("hide");
+                location.reload();
+            },
+            error: function (xhr) {
+                Swal.fire("Error", "No se pudo guardar el módulo. " + xhr.responseText, "error");
+            }
+        });
+    }
+</script>

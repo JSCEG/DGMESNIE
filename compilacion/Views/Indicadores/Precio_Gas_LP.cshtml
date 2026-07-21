@@ -1,0 +1,1582 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+    ViewData["Title"] = "Precios de Gas L.P.";
+}
+
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Precios de Gas L.P.",
+        IconPath = "precio.png",
+        Description = "Consulta los precios de Gas L.P. por región y unidad de medida.",
+        Section = "📊 Indicadores",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Precios de Gas L.P.",
+            description = "Sistema de consulta de precios de Gas L.P. por región.",
+            functionality = "Permite visualizar precios por kilo y litro en diferentes regiones del país.",
+            stage = "Consulta de Precios",
+            roles = new[] {
+new { icon = "building", text = "CRE: Monitoreo oficial" },
+new { icon = "search", text = "Público: Consulta de precios" },
+new { icon = "chart-bar", text = "Análisis: Estadísticas" }
+},
+            order = new { step = 1, description = "Consulta de precios por región" }
+        }),
+        LegalDescription = "Precios conforme a la regulación vigente."
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<!-- Elementos descriptivos con AOS -->
+<div class="container-fluid px-4 mb-5">
+    <div class="row g-4">
+        <!-- Card Descripción -->
+        <div class="col-12 col-lg-6" data-aos="fade-right">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="bi bi-info-circle-fill text-primary me-2"></i>
+                        Consulta de Precios
+                    </h5>
+                    <p class="card-text">
+                        Visualiza los precios de Gas L.P. a nivel nacional:
+                    </p>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item" data-aos="fade-left" data-aos-delay="100">
+                            <i class="bi bi-geo-alt text-danger me-2"></i>
+                            Por región geográfica
+                        </li>
+                        <li class="list-group-item" data-aos="fade-left" data-aos-delay="200">
+                            <i class="bi bi-calendar3 text-success me-2"></i>
+                            Histórico semanal
+                        </li>
+                        <li class="list-group-item" data-aos="fade-left" data-aos-delay="300">
+                            <i class="bi bi-graph-up text-info me-2"></i>
+                            Comparativa por unidad (kg/L)
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card Instrucciones -->
+        <div class="col-12 col-lg-6" data-aos="fade-left">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">
+                        <i class="bi bi-question-circle-fill text-success me-2"></i>
+                        ¿Cómo consultar?
+                    </h5>
+                    <div class="alert alert-light border shadow-sm" role="alert">
+                        <ol class="mb-0">
+                            <li class="mb-2" data-aos="fade-up" data-aos-delay="100">
+                                Seleccione el año y mes deseado
+                            </li>
+                            <li class="mb-2" data-aos="fade-up" data-aos-delay="200">
+                                Elija la semana específica
+                            </li>
+                            <li class="mb-2" data-aos="fade-up" data-aos-delay="300">
+                                Seleccione la unidad (kilos/litros)
+                            </li>
+                            <li data-aos="fade-up" data-aos-delay="400">
+                                Presione "Consultar Precios por Región"
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Informativo -->
+        <div class="col-12" data-aos="fade-up">
+            <div class="alert alert-info border-0 shadow-sm">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-lightbulb-fill fs-4 me-2"></i>
+                    <div>
+                        <h6 class="alert-heading mb-1">Información Importante</h6>
+                        <p class="mb-0">
+                            Los precios mostrados son los vigentes para cada región según la regulación aplicable.
+                            La información se actualiza semanalmente.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tu contenido existente del mapa y controles -->
+<!-- Miga de Pan -->
+<nav style="--bs-breadcrumb-divider: url(&#34;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath d='M2.5 0L1 1.5 3.5 4 1 6.5 2.5 8l4-4-4-4z' fill='currentColor'/%3E%3C/svg%3E&#34;);"
+    aria-label="breadcrumb" style="padding-left:15px">
+    <ol class="breadcrumb lp-5">
+        <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
+        <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
+    </ol>
+</nav>
+
+
+
+
+@*Sección que Despliega el Mapap Inicial*@
+<div class="container">
+    <h6 class="subtitulo pb-3">Consulta de Precios de Gas L.P.</h6>
+    <br>
+    <section id="despliega_mapa" class="pb-5">
+        <br />
+
+
+        <div class="row">
+            <div class="col pt-3">
+                <select id="estado" class="form-select">
+                    <option selected>
+                        Selecciona una Entidad Federativa:
+                    </option>
+                    <option value="ags">Aguascalientes</option>
+                    <option value="bc">Baja California</option>
+                    <option value="bcs">Baja California Sur</option>
+                    <option value="camp">Campeche</option>
+                    <option value="coah">Coahuila</option>
+                    <option value="col">Colima</option>
+                    <option value="chis">Chiapas</option>
+                    <option value="chih">Chihuahua</option>
+                    <option value="cdmx">Ciudad de México</option>
+                    <option value="dgo">Durango</option>
+                    <option value="gto">Guanajuato</option>
+                    <option value="gro">Guerrero</option>
+                    <option value="hgo">Hidalgo</option>
+                    <option value="jal">Jalisco</option>
+                    <option value="mex">México</option>
+                    <option value="mich">Michoacán</option>
+                    <option value="mor">Morelos</option>
+                    <option value="nay">Nayarit</option>
+                    <option value="nl">Nuevo León</option>
+                    <option value="oax">Oaxaca</option>
+                    <option value="pue">Puebla</option>
+                    <option value="qro">Querétaro</option>
+                    <option value="qroo">Quintana Roo</option>
+                    <option value="slp">San Luis Potosí</option>
+                    <option value="sin">Sinaloa</option>
+                    <option value="son">Sonora</option>
+                    <option value="tab">Tabasco</option>
+                    <option value="tamps">Tamaulipas</option>
+                    <option value="tlax">Tlaxcala</option>
+                    <option value="ver">Veracruz</option>
+                    <option value="yuc">Yucatán</option>
+                    <option value="zac">Zacatecas</option>
+                </select>
+            </div>
+            @* <div class="col-sm pt-3">
+            <div class="justify-content-center">
+            <button class="btn btn-cre-rojo" data-bs-toggle="offcanvas" data-bs-target="#ejemploOffcanvas">
+            <i class="bi bi-info-circle-fill"></i> - Ver Información
+            </button>
+            @if (perfilUsuario.Rol != "0")
+            {
+            <partial name="_Infomapas_PRPEP" />
+            }
+
+            @if (perfilUsuario.Rol == "0")
+            {
+            <partial name="_Infomapa_publico_SEM" />
+            }
+            </div>
+            </div>
+            *@
+        </div>
+        <br />
+        @*Mapa*@
+        @* <div id="buscador" class="search-container p-3" style="display:none">
+        <label class="form-label">Buscar en el Mapa:</label>
+        <input type="text" id="busquedaPermisoInput" class="form-control" placeholder="Escribe el Número de Permiso:
+        (LP/XXXXX/.../.../AAAA)">
+
+        <button class="btn btn-cre-rojo-home" onclick="buscarPorNumeroPermiso()" style="width:10% !important"><i
+        class="bi bi-search"></i></button>
+        </div> *@
+
+
+        <div id="buscador" class="search-container p-3" style="display:none">
+            <label class="form-label">Buscar en el Mapa:</label>
+            <input type="text" id="busquedaPermisoInput" class="form-control"
+                placeholder="Escribe el Número de Permiso: (LP/XXXXX/.../.../AAAA)">
+            <div id="autocomplete-list" class="autocomplete-items"></div>
+            <!-- El resto de tu código -->
+
+            <button class="btn btn-cre-rojo-home" onclick="buscarPorNumeroPermiso()" style="width:10% !important"><i
+                    class="bi bi-search"></i></button>
+        </div>
+
+
+
+
+
+
+        <div class="container">
+
+            <div class="row">
+                <!-- Columna para los combos -->
+                <div class="col-md-3">
+                    <div id="instrucciones" class="alert alert-warning" role="alert">
+                        <p style="text-align:justify">
+                            <strong>Instrucciones:</strong>
+                            Seleccione el año, mes, semana, tipo de precio y presione el botón "Consultar Precios por
+                            Región".
+                        </p>
+                    </div>
+                    <!-- Aquí van tus combos y botón -->
+                    <div class="mb-3">
+                        <label class="form-label">Año:</label>
+                        <select id="yearSelect" class="form-select">
+                            <!-- Opciones de año se llenan dinámicamente -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Mes:</label>
+                        <select id="mesSelect" class="form-select">
+                            <!-- Opciones de año se llenan dinámicamente -->
+                            @* <option value="1">Enero</option>
+                            <option value="2">Febrero</option>
+                            <option value="3">Marzo</option>
+                            <option value="4">Abril</option>
+                            <option value="5">Mayo</option>
+                            <option value="6">Junio</option>
+                            <option value="7">Julio</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Septiembre</option>
+                            <option value="10">Octubre</option>
+                            <option value="11">Noviembre</option>
+                            <option value="12">Diciembre</option> *@
+                        </select>
+                    </div>
+
+
+
+                    <div class="mb-3">
+                        <label class="form-label">Semana:</label>
+                        <select id="semanaSelect" class="form-select">
+                            <!-- Las opciones se llenarán dinámicamente basadas en el año y mes seleccionados -->
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Tipo de Precio (MXN):</label>
+                        <select id="precioSelect" class="form-select">
+                            <option value="kilos">1.-Precio por Kilo</option>
+                            <option value="litros">2.-Precio por Litros</option>
+                        </select>
+                    </div>
+
+
+                    <button id="btnConsultar" class="btn btn-primary w-100">Consultar Precios por Región</button>
+
+
+                </div>
+
+                <!-- Columna para el mapa -->
+                <div class="col-md-9">
+                    <div id="map" style="position: relative; z-index: 500; height: 500px;">
+                        <!-- Aquí va tu mapa -->
+                    </div>
+                    <br />
+                    <div class="row justify-content-center">
+
+                        <div class="col-md-12 leyenda_glp" id="leyendaLitros">
+                            <p><strong>Precio del Gas L.P. por Litro ($) MXN</strong></p>
+                            <div class="legend horizontal-legend">
+                                <div class="legend-item"><span style="background-color: #FEEBE2;"></span>$8.15 – $8.9
+                                </div>
+                                <div class="legend-item"><span style="background-color: #FBB4B9;"></span>$8.9 – $9.08
+                                </div>
+                                <div class="legend-item"><span style="background-color: #F768A1;"></span>$9.08 – $9.23
+                                </div>
+                                <div class="legend-item"><span style="background-color: #C51B8A;"></span>$9.23 – $9.47
+                                </div>
+                                <div class="legend-item"><span style="background-color: #7A0177;"></span>$9.47 – $11.4
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-12 leyenda_glp" id="leyendaKilos">
+                            <p><strong>Precio del Gas LP por Kilo ($) MXN</strong> </p>
+                            <div class="legend horizontal-legend">
+                                <div class="legend-item"><span style="background-color: #FEEBE2;"></span>$15.1 – $16
+                                </div>
+                                <div class="legend-item"><span style="background-color: #FBB4B9;"></span>$16 – $17</div>
+                                <div class="legend-item"><span style="background-color: #F768A1;"></span>$17 – $18</div>
+                                <div class="legend-item"><span style="background-color: #C51B8A;"></span>$18 – $19</div>
+                                <div class="legend-item"><span style="background-color: #7A0177;"></span>$19 – $21.11
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- Fin de la fila para las leyendas -->
+                </div>
+
+                <!-- Columna para la información del marcador -->
+
+
+            </div>
+            <!-- Panel para mostrar la información del marcador -->
+            <!-- Alerta de Bootstrap -->
+
+            <!-- Panel para mostrar la información del marcador -->
+            <div id="marker-info-panel" class="col-md-12 " style="display:none">
+
+
+                <h2 id="panel-title" class="subtitulo">Información de Expendios y Precios</h2>
+                <br />
+
+
+            </div>
+
+
+        </div>
+
+
+
+
+
+
+
+        <br />
+        <div class="fondo_grafico_ef" id="grafico" style="fill:#efefee !important"></div>
+        <br />
+
+        @*Precios*@
+        <div class="table-responsive">
+            <table id="precios" class="display table table-hover table-responsive table-bordered">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Región</th>
+                        <th>Precio</th>
+                        <th>Tipo</th> <!-- Nueva columna -->
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Los datos de la tabla se insertarán aquí con JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+
+    </section>
+
+</div>
+
+
+
+@*Gas L.P.*@
+<script src="@Cdn.Url/Geovisualizador/data/ductos_glp_4326_0.js"></script>
+@*Shapes de Regiones de Precios de Gas L.P. por Litro y por Kilo*@
+<script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/regiones_litro_0.js"></script>
+
+
+@section scripts {
+
+    <script>
+
+        var regionesLayer;
+        var ductosLayer; // Variable para el shape de ductos
+        var markers; // Variable para los marcadores
+
+        $(document).ready(function () {
+            var fechaActual = new Date();
+            var añoActual = fechaActual.getFullYear();
+            var mesActual = fechaActual.getMonth() + 1;
+            var diaActual = fechaActual.getDate();
+
+            var nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+            var yearSelect = $('#yearSelect');
+            for (var year = 2023; year <= añoActual; year++) {
+                yearSelect.append($('<option>', {
+                    value: year,
+                    text: year
+                }));
+            }
+
+            function actualizarMeses() {
+                var selectedYear = parseInt(yearSelect.val());
+                var mesSelect = $('#mesSelect');
+                mesSelect.empty();
+                var maxMes = (selectedYear === añoActual) ? mesActual : 12;
+
+                for (var month = 1; month <= maxMes; month++) {
+                    mesSelect.append($('<option>', {
+                        value: month,
+                        text: nombresMeses[month - 1]
+                    }));
+                }
+                actualizarSemanas();
+            }
+
+            yearSelect.change(actualizarMeses);
+            actualizarMeses();
+
+            function actualizarSemanas() {
+                var selectedYear = parseInt(yearSelect.val());
+                var selectedMonth = parseInt($('#mesSelect').val());
+                var semanaSelect = $('#semanaSelect');
+                semanaSelect.empty();
+
+                var fechaInicioMes = new Date(selectedYear, selectedMonth - 1, 1);
+                var fechaFinMes = new Date(selectedYear, selectedMonth, 0);
+
+                var semanas = [];
+                var semanaInicio = 1;
+                while (semanaInicio <= fechaFinMes.getDate()) {
+                    var semanaFin = Math.min(semanaInicio + 6, fechaFinMes.getDate());
+                    semanas.push({ inicio: semanaInicio, fin: semanaFin });
+                    semanaInicio = semanaFin + 1;
+                }
+
+                if (selectedYear === añoActual && selectedMonth === mesActual) {
+                    semanas = semanas.filter(function (semana) {
+                        return semana.inicio <= diaActual;
+                    });
+                }
+
+                for (var i = 0; i < semanas.length; i++) {
+                    semanaSelect.append($('<option>', {
+                        value: i + 1,
+                        text: 'Semana ' + (i + 1) + ' (' + semanas[i].inicio + ' - ' + semanas[i].fin + ')'
+                    }));
+                }
+            }
+
+            $('#mesSelect').change(actualizarSemanas);
+
+            // Establecer los valores iniciales al cargar la página
+            yearSelect.val(añoActual);
+            yearSelect.trigger('change');
+            $('#mesSelect').val(mesActual);
+            $('#mesSelect').trigger('change');
+
+            var currentWeek = Math.ceil((diaActual - 1) / 7) + 1;
+            $('#semanaSelect').val(currentWeek);
+
+
+            // Esperar un momento para asegurarse de que los valores de los combos se establezcan correctamente
+            setTimeout(function () {
+                consultarPrecios();
+            }, 500);
+
+            // Limpiar el mapa al cambiar los combos
+            $('#yearSelect, #mesSelect, #semanaSelect, #precioSelect').change(function () {
+                limpiarMapa();
+                limpiarTabla();
+                limpiarDuctos();
+            });
+        });
+    </script>
+
+
+
+
+    @*Campos Visbles de los popup*@
+    <script>
+        //Busqueda
+        var availableTerms = [];//Variable global para almacenar los terminos de búqueda Sugerencia de Terminos
+        var datosExpendios = []; // variable global para almacenar todos los expendios de Petrolíferos
+        var camposVisiblesGlobal = [];
+        var datosExpendiosAcumulados = [];
+        let tpet = 0;
+        let tglp = 0;
+        let tgn = 0;
+        let te = 0;
+        var tpetg = [];
+        var tglpg = [];
+        var tgng = [];
+        let teg = [];
+    </script>
+
+
+    @*Configuración inicial del Mapa*@
+    <script>
+        //Inicializando el mapa de litros
+        var map = L.map('map', {
+            zoomControl: true, maxZoom: 28, minZoom: 5
+        }).fitBounds([[14.262432279466552, -120.05095834191424], [33.35831524012141, -86.17580751397107]]);
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } });
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+
+
+        //Vista Satelite
+        map.createPane('pane_GoogleSatellite_0');
+        map.getPane('pane_GoogleSatellite_0').style.zIndex = 0;
+        var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            pane: 'pane_GoogleSatellite_0',
+            opacity: 1.0,
+            attribution: '<a href="https://www.google.at/permissions/geoguidelines/attr-guide.html">Map data ©2015 Google</a>',
+            minZoom: 1,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 20
+        });
+
+        //Configura los Base Layers
+        var baseLayers = {
+            "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }),
+            "Vista Satélite": layer_GoogleSatellite_0
+        };
+
+        // Control de capas para seleccionar la vista del mapa
+        L.control.layers(baseLayers).addTo(map);
+
+        // Activa una capa de mosaicos como vista inicial
+        baseLayers["OpenStreetMap"].addTo(map);
+
+        // Redibujar la capa cuando se seleccione
+        map.on('baselayerchange', function (eventLayer) {
+            if (eventLayer.name === "Vista Satélite") {
+                layer_GoogleSatellite_0.redraw();
+            }
+        });
+
+        L.control.scale().addTo(map); // Agregar la escala gráfica al mapa
+
+
+        //Herramientas
+        //ZOOM
+        var resetZoomControl = L.control({ position: 'topleft' });
+
+        resetZoomControl.onAdd = function (map) {
+            var div = L.DomUtil.create('div', 'reset-zoom-control');
+            div.innerHTML = '<button class="btn btn-cre-rojo-home" onclick="resetZoom()"><i class="bi bi-house-door"></i></button>';
+            return div;
+        };
+
+        resetZoomControl.addTo(map);
+
+        function resetZoom() {
+            map.setView([24.572503, -101.768257], 5);
+        }
+        /////////////DISTANCIAS/////////////////////
+        // Configura las opciones de dibujo
+        var drawControl = new L.Control.Draw({
+            draw: {
+                polygon: false,
+                polyline: true,
+                rectangle: false,
+                circle: false,
+                marker: false,
+                circlemarker: false
+            },
+            edit: false
+        });
+
+        map.addControl(drawControl);
+
+        // Cuando se dibuja una línea, calcula la distancia
+        map.on('draw:created', function (e) {
+            var type = e.layerType,
+                layer = e.layer;
+
+            if (type === 'polyline') {
+                var latlngs = layer.getLatLngs();
+                var distance = 0;
+                for (var i = 1; i < latlngs.length; i++) {
+                    distance += latlngs[i - 1].distanceTo(latlngs[i]);
+                }
+                // Convertir la distancia a km y redondear a 2 decimales
+                distance = Math.round((distance / 1000) * 100) / 100;
+                // Crear un popup con la distancia
+                layer.bindPopup('Distancia: ' + distance + ' km').openPopup();
+                // Añadir la línea al mapa
+                layer.addTo(map);
+            }
+        });
+
+
+        //Info Precios y Región
+        // Crear un control fijo en la esquina superior derecha del mapa
+        var info = L.control({ position: 'topright' });
+
+        info.onAdd = function (map) {
+            // Crear un div con una clase para CSS
+            this._div = L.DomUtil.create('div', 'info');
+            return this._div;
+        };
+
+    </script>
+
+    @*Menú de Estados*@
+    <script>
+        // Detecta el cambio de selección en el menú de estados
+        document.getElementById("estado").addEventListener("change", function () {
+            // Obtiene el valor seleccionado del menú de estados
+            var estado = document.getElementById("estado").value;
+
+            // Muestra el estado seleccionado en el mapa
+            switch (estado) {
+                case "ags":
+                    map.setView([22.025278, -102.372778], 9);
+                    break;
+                case "bc":
+                    map.setView([30.391389, -115.291389], 7);
+                    break;
+                case "bcs":
+                    map.setView([26.044444, -112.399722], 7);
+                    break;
+                case "camp":
+                    map.setView([18.938333, -90.764722], 7);
+                    break;
+                case "coah":
+                    map.setView([27.158056, -101.719444], 7);
+                    break;
+                case "col":
+                    map.setView([19.101944, -103.014722], 9);
+                    break;
+                case "chis":
+                    map.setView([16.753056, -92.6375], 7);
+                    break;
+                case "chih":
+                    map.setView([28.673611, -106.102222], 7);
+                    break;
+                case "cdmx":
+                    map.setView([19.432778, -99.133333], 10);
+                    break;
+                case "dgo":
+                    map.setView([24.865278, -104.902222], 7);
+                    break;
+                case "gto":
+                    map.setView([20.875, -101.478611], 8);
+                    break;
+                case "gro":
+                    map.setView([17.814722, -100.353056], 8);
+                    break;
+                case "hgo":
+                    map.setView([20.5325, -98.870556], 8);
+                    break;
+                case "jal":
+                    map.setView([20.673611, -103.343333], 8);
+                    break;
+                case "mex":
+                    map.setView([19.483611, -99.689722], 8);
+                    break;
+                case "mich":
+                    map.setView([19.699722, -101.191389], 8);
+                    break;
+                case "mor":
+                    map.setView([18.858611, -99.223611], 9);
+                    break;
+                case "nay":
+                    map.setView([21.799444, -105.220833], 8);
+                    break;
+                case "nl":
+                    map.setView([25.649167, -100.443611], 9);
+                    break;
+                case "oax":
+                    map.setView([16.895833, -96.806667], 8);
+                    break;
+                case "pue":
+                    map.setView([19.051389, -98.193889], 8);
+                    break;
+                case "qro":
+                    map.setView([20.854722, -99.847222], 9);
+                    break;
+                case "qroo":
+                    map.setView([19.642778, -87.072222], 8);
+                    break;
+                case "slp":
+                    map.setView([22.156944, -100.985556], 8);
+                    break;
+                case "sin":
+                    map.setView([24.288611, -107.366944], 8);
+                    break;
+                case "son":
+                    map.setView([29.089444, -110.961667], 7);
+                    break;
+                case "tab":
+                    map.setView([17.980000, -92.930000], 8);
+                    break;
+                case "tamps":
+
+                    map.setView([24.014167, -98.844444], 7);
+                    break;
+                case "tlax":
+                    map.setView([19.312222, -98.239722], 10);
+                    break;
+                case "ver":
+                    map.setView([19.546389, -96.914167], 8);
+                    break;
+                case "yuc":
+                    map.setView([20.891944, -89.528611], 8);
+                    break;
+                case "zac":
+                    map.setView([22.770833, -102.583611], 8);
+                    break;
+                default:
+
+                    map.setView([23.634501, -102.552784], 5);
+                    break;
+            }
+        });
+    </script>
+
+    @*Carga los Expendios*@
+    <script>
+
+        function limpiarMarcadores() {
+            // Limpiar todas las capas de marcadores y círculos
+            map.eachLayer(function (layer) {
+                if (layer instanceof L.Marker || layer instanceof L.MarkerClusterGroup || layer instanceof L.Circle) {
+                    map.removeLayer(layer);
+                }
+            });
+
+
+        }
+        function handleNull(value) {
+            return value ? value : "S/D-Sin Dato";
+        }
+
+        function buscarPorNumeroPermiso() {
+            var numeroBuscado = document.getElementById('busquedaPermisoInput').value.trim();
+
+            if (!numeroBuscado) {
+                alert("Por favor, introduce un Número de Permiso.");
+                return;  // Termina la ejecución de la función si el campo está vacío
+            }
+
+            var encontrado = false;
+
+            for (var i = 0; i < datosExpendios.length; i++) {
+                var expendio = datosExpendios[i];
+                if (expendio.numeroPermiso === numeroBuscado) {
+                    var lat = expendio.latitudGeo;
+                    var lon = expendio.longitudGeo;
+                    map.setView([lat, lon], 15); // 15 es el nivel de zoom, puedes ajustarlo según prefieras
+                    encontrado = true;
+                    break;
+                }
+            }
+
+            if (!encontrado) {
+                alert("Número de Permiso no encontrado.");
+            }
+        }
+
+
+        var datosExpendios; // variable global para almacenar todos los expendios
+
+        Highcharts.setOptions({
+            lang: {
+                decimalPoint: '.',
+                thousandsSep: ','
+            }
+        });
+
+
+        //Carga GLP
+        function CargaGLP() {
+            // Reiniciando availableTerms y las demas variables
+            availableTerms = [];
+            datosExpendios = [];
+            camposVisiblesGlobal = [];
+            totalpermisos = 0;
+
+
+
+            // Primera llamada AJAX como una promesa
+            function cargarCamposVisiblesGLP() {
+                return new Promise((resolve, reject) => {
+                    $.ajax({
+                        url: '/Indicadores/GetCamposVisiblesGLP_Infra', // Asegúrate de actualizar con el nombre de tu controlador
+                        type: 'GET',
+                        contentType: 'application/json',
+                        success: function (camposVisibles) {
+                            // Aquí tienes la lista de campos visibles
+                            console.log("campos GLP", camposVisibles);
+                            camposVisiblesGlobal = camposVisibles;
+
+                            resolve(camposVisibles); // Agrega esta línea
+
+                        },
+                        error: function (error) {
+                            console.error("Error al obtener campos visibles", error);
+                        }
+                    });
+                });
+            }
+            //Carga Ductos de GLP
+            function pop_ductos_glp_4326_0(feature, layer) {
+                var popupContent = '<table>\
+                                                                                    <tr>\
+                                                                                        <th scope="row">Región: </th>\
+                                                                                        <td>' + (feature.properties['Región: '] !== null ? autolinker.link(feature.properties['regin'].toLocaleString()) : '') + '</td>\
+                                                                                    </tr>\
+                                                                                    <tr>\
+                                                                                        <th scope="row">Ducto: </th>\
+                                                                                        <td>' + (feature.properties['Ducto: '] !== null ? autolinker.link(feature.properties['ducto'].toLocaleString()) : '') + '</td>\
+                                                                                    </tr>\
+                                                                                    <tr>\
+                                                                                        <th scope="row">Servicio: </th>\
+                                                                                        <td>' + (feature.properties['Servicio: '] !== null ? autolinker.link(feature.properties['servicio'].toLocaleString()) : '') + '</td>\
+                                                                                    </tr>\
+                                                                                    <tr>\
+                                                                                        <th scope="row">Longitud (km): </th>\
+                                                                                        <td>' + (feature.properties['Longitud (km): '] !== null ? autolinker.link(feature.properties['lon'].toLocaleString()) : '') + '</td>\
+                                                                                    </tr>\
+                                                                                    <tr>\
+                                                                                        <th scope="row">Capa nominal (B): </th>\
+                                                                                        <td>' + (feature.properties['Capacidad nominal (B): '] !== null ? autolinker.link(feature.properties['capa_n'].toLocaleString()) : '') + '</td>\
+                                                                                    </tr>\
+                                                                                    <tr>\
+                                                                                        <th scope="row">Capa operativa (B): </th>\
+                                                                                        <td>' + (feature.properties['Capacidad operativa (B): '] !== null ? autolinker.link(feature.properties['capa_o'].toLocaleString()) : '') + '</td>\
+                                                                                    </tr>\
+                                                                                </table>';
+                layer.bindPopup(popupContent, { maxHeight: 400 });
+            }
+
+            function style_ductos_glp_4326_0_0() {
+                return {
+                    pane: 'pane_ductos_glp_4326_0',
+                    opacity: 1,
+                    color: 'rgba(128,64,0,1.0)',
+                    dashArray: '',
+                    lineCap: 'square',
+                    lineJoin: 'bevel',
+                    weight: 2.0,
+                    fillOpacity: 0,
+                    interactive: true,
+                }
+            }
+            map.createPane('pane_ductos_glp_4326_0');
+            map.getPane('pane_ductos_glp_4326_0').style.zIndex = 400;
+            map.getPane('pane_ductos_glp_4326_0').style['mix-blend-mode'] = 'normal';
+            var layer_ductos_glp_4326_0 = new L.geoJson(json_ductos_glp_4326_0, {
+                attribution: '',
+                interactive: true,
+                dataVar: 'json_ductos_glp_4326_0',
+                layerName: 'layer_ductos_glp_4326_0',
+                pane: 'pane_ductos_glp_4326_0',
+                onEachFeature: pop_ductos_glp_4326_0,
+                style: style_ductos_glp_4326_0_0,
+            });
+            bounds_group.addLayer(layer_ductos_glp_4326_0);
+            map.addLayer(layer_ductos_glp_4326_0);
+            setBounds();
+
+            cargarCamposVisiblesGLP().then(camposVisibles => {
+                // Limpiar marcadores existentes
+                limpiarMarcadores()
+                // Carga los Marcadores y Ductos
+
+                $.ajax({
+                    url: '/Indicadores/GetExpendiosAutorizadosGLP_Infra',
+                    type: 'GET',
+                    // data: JSON.stringify(datos_mun),
+                    contentType: 'application/json',
+                    success: function (response) {
+                        console.log("Estos son los Expendios Autorizados de GLP:", response); // ver la respuesta en consola
+                        datosExpendios = response; // Guarda la respuesta en la variable global
+
+
+                        //Guardo los terminos en la  búsqueda
+                        for (var i = 0; i < datosExpendios.length; i++) {
+                            availableTerms.push(datosExpendios[i].numeroPermiso);
+
+                        }
+
+                        function generarContenidoPopup(coordenada) {
+                            var contenido = "<style>" +
+                                ".popup-content {" +
+                                "    width: 280px;" +
+                                "    max-height: 180px;" +
+                                "    overflow-y: auto;" +
+                                "    padding: 10px;" +
+                                "}" +
+                                "h2, h3, h4, p, li {" +
+                                "    margin: 0 0 10px 0;" +
+                                "}" +
+                                "ul {" +
+                                "    padding-left: 20px;" +
+                                "}" +
+                                "img {" +
+                                "    vertical-align: middle;" +
+                                "    margin-right: 10px;" +
+                                "}" +
+                                "</style>";
+
+                            contenido += "<div class='popup-content'>";
+
+                            if (camposVisiblesGlobal.includes("RazonSocial")) {
+                                var imgSrc; // La URL de la imagen que se mostrará en el pop-up
+                                switch (coordenada.tipoPermiso) {
+                                    case "Almacenamiento de Gas Licuado de Petróleo":
+                                        imgSrc = 'https://cdn.sassoapps.com/img_snier/vistas/glpmapa_alma.png';
+                                        break;
+                                    case "Distribución de Gas Licuado de Petróleo mediante Planta de Distribución":
+                                        imgSrc = 'https://cdn.sassoapps.com/img_snier/vistas/glpmapa_dist.png';
+                                        break;
+                                    case "Expendio al Público de Gas Licuado de Petróleo mediante Estación de Servicio con fin Específico":
+                                        imgSrc = 'https://cdn.sassoapps.com/img_snier/vistas/glpmapa.png';
+                                        break;
+                                    default:
+                                        imgSrc = 'https://cdn.sassoapps.com/img_snier/vistas/glpmapa.png'; // Ícono por defecto si no hay coincidencia
+                                        break;
+                                }
+                                contenido += "<h2 class='subtitulo'><img src='" + imgSrc + "' style='height: 24px; width: 24px;'/><strong>" + handleNull(coordenada.razonSocial) + "</strong></h2><br>";
+                            }
+
+                            contenido += "<ul>";
+
+                            if (camposVisiblesGlobal.includes("EfId")) {//NO TENEMOS EL NOMBRE DE LA EF EN CAMPOS VISIBLES SOLO EL ID LO CRUZO EN LA CONSULTA DEL REPOSITORIO
+                                contenido += "<li><strong>Entidad Federativa:</strong> " + handleNull(coordenada.efNombre) + "</li>";
+                            }
+                            if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                                contenido += "<li><strong>NumeroPermiso:</strong> " + handleNull(coordenada.numeroPermiso) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("EfId")) {
+                                contenido += "<li><strong>EfId:</strong> " + handleNull(coordenada.efId) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("MpoId")) {
+                                contenido += "<li><strong>MpoId:</strong> " + handleNull(coordenada.mpoId) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Expediente")) {
+                                contenido += "<li><strong>Expediente:</strong> " + handleNull(coordenada.expediente) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("RazonSocial")) {
+                                contenido += "<li><strong>RazonSocial:</strong> " + handleNull(coordenada.razonSocial) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("FechaDeOtorgamiento")) {
+                                contenido += "<li><strong>FechaDeOtorgamiento:</strong> " + handleNull(coordenada.fechaDeOtorgamiento) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("LatitudGeo")) {
+                                contenido += "<li><strong>LatitudGeo:</strong> " + handleNull(coordenada.latitudGeo) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("LongitudGeo")) {
+                                contenido += "<li><strong>LongitudGeo:</strong> " + handleNull(coordenada.longitudGeo) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Calle")) {
+                                contenido += "<li><strong>Calle:</strong> " + handleNull(coordenada.calle) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Colonia")) {
+                                contenido += "<li><strong>Colonia:</strong> " + handleNull(coordenada.colonia) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("CodigoPostal")) {
+                                contenido += "<li><strong>CodigoPostal:</strong> " + handleNull(coordenada.codigoPostal) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Estatus")) {
+                                contenido += "<li><strong>Estatus:</strong> " + handleNull(coordenada.estatus) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Rfc")) {
+                                contenido += "<li><strong>Rfc:</strong> " + handleNull(coordenada.rfc) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("FechaRecepcion")) {
+                                contenido += "<li><strong>FechaRecepcion:</strong> " + handleNull(coordenada.fechaRecepcion) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Marca")) {
+                                contenido += "<li><strong>Marca:</strong> " + handleNull(coordenada.marca) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("TipoPermiso")) {
+                                contenido += "<li><strong>TipoPermiso:</strong> " + handleNull(coordenada.tipoPermiso) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("inicioOperaciones")) {
+                                contenido += "<li><strong>inicioOperaciones:</strong> " + handleNull(coordenada.inicioOperaciones) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("CapacidadInstalacion")) {
+                                contenido += "<li><strong>CapacidadInstalacion:</strong> " + handleNull(coordenada.capacidadInstalacion) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("VigenciaAnos")) {
+                                contenido += "<li><strong>VigenciaAnos:</strong> " + handleNull(coordenada.vigenciaAnos) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("NumeroSENER")) {
+                                contenido += "<li><strong>NumeroSENER:</strong> " + handleNull(coordenada.numeroSENER) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("SubTipo")) {
+                                contenido += "<li><strong>SubTipo:</strong> " + handleNull(coordenada.subTipo) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("SiglasTipo")) {
+                                contenido += "<li><strong>SiglasTipo:</strong> " + handleNull(coordenada.siglasTipo) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Otorgamiento")) {
+                                contenido += "<li><strong>Otorgamiento:</strong> " + handleNull(coordenada.otorgamiento) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("FechaAcuse")) {
+                                contenido += "<li><strong>FechaAcuse:</strong> " + handleNull(coordenada.fechaAcuse) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("EstatusSAT")) {
+                                contenido += "<li><strong>EstatusSAT:</strong> " + handleNull(coordenada.estatusSAT) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("SuspensionInicio")) {
+                                contenido += "<li><strong>SuspensionInicio:</strong> " + handleNull(coordenada.suspensionInicio) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("SuspensionFin")) {
+                                contenido += "<li><strong>SuspensionFin:</strong> " + handleNull(coordenada.suspensionFin) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("NumeroTanques")) {
+                                contenido += "<li><strong>NumeroTanques:</strong> " + handleNull(coordenada.numeroTanques) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("CapacidadLitros")) {
+                                contenido += "<li><strong>CapacidadLitros:</strong> " + handleNull(coordenada.capacidadLitros) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("NumeroUnidades")) {
+                                contenido += "<li><strong>NumeroUnidades:</strong> " + handleNull(coordenada.numeroUnidades) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("NumeroDeCentralesDeGuarda")) {
+                                contenido += "<li><strong>NumeroDeCentralesDeGuarda:</strong> " + handleNull(coordenada.numeroDeCentralesDeGuarda) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("DomicilioDeGuarda")) {
+                                contenido += "<li><strong>DomicilioDeGuarda:</strong> " + handleNull(coordenada.domicilioDeGuarda) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("SuministroRecepcion")) {
+                                contenido += "<li><strong>SuministroRecepcion:</strong> " + handleNull(coordenada.suministroRecepcion) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("PermisoSuministro")) {
+                                contenido += "<li><strong>PermisoSuministro:</strong> " + handleNull(coordenada.permisoSuministro) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("CompartenTanques")) {
+                                contenido += "<li><strong>CompartenTanques:</strong> " + handleNull(coordenada.compartenTanques) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Modificacion")) {
+                                contenido += "<li><strong>Modificacion:</strong> " + handleNull(coordenada.modificacion) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Asociacion")) {
+                                contenido += "<li><strong>Asociacion:</strong> " + handleNull(coordenada.asociacion) + "</li>";
+                            }
+
+                            if (camposVisiblesGlobal.includes("Gie")) {
+                                contenido += "<li><strong>Gie:</strong> " + handleNull(coordenada.gie) + "</li>";
+                            }
+
+                            contenido += "</ul>";
+
+                            if (camposVisiblesGlobal.includes("NumeroPermiso")) {
+                                contenido += "<a class='btn btn-cre-rojo' target='_blank' href='/Indicadores/DetalleExpendio?NumeroPermiso=" + coordenada.numeroPermiso + "'>Ver detalle</a>";
+                            }
+
+
+                            contenido += "</div>";
+
+                            return contenido;
+                        }
+                        //Mapa de Resultados/////////////////////////////////////////////////////////////////////
+                        // Crea un grupo de marcadores
+                        var markers = L.markerClusterGroup();
+                        // Crea los iconos
+                        var iconoBase = L.Icon.extend({
+                            options: {
+                                iconSize: [36, 36],
+                                iconAnchor: [18, 16],
+                                popupAnchor: [0, -26]
+                            }
+                        });
+
+                        var iconoExpendio = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/glpmapa.png' });
+                        var iconoAlmacenamiento = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/glpmapa_alma.png' });
+                        var iconoDistribucion = new iconoBase({ iconUrl: 'https://cdn.sassoapps.com/img_snier/vistas/glpmapa_dist.png' });
+                        // Agrega los marcadores para las coordenadas del mapa actual
+                        for (var j = 0; j < response.length; j++) {
+                            var coordenada = response[j];
+                            //Determina el icono a Usar
+                            // Determinar el ícono basado en tipoPermiso
+                            var iconoActual;
+                            switch (coordenada.tipoPermiso) {
+                                case "Almacenamiento de Gas Licuado de Petróleo":
+                                    iconoActual = iconoAlmacenamiento;
+                                    break;
+                                case "Distribución de Gas Licuado de Petróleo mediante Planta de Distribución":
+                                    iconoActual = iconoDistribucion;
+                                    break;
+                                case "Expendio al Público de Gas Licuado de Petróleo mediante Estación de Servicio con fin Específico":
+                                    iconoActual = iconoExpendio;
+                                    break;
+                                default:
+                                    iconoActual = iconoExpendio; // Ícono por defecto si no hay coincidencia
+                                    break;
+                            }
+
+
+
+                            var marker = L.marker([coordenada.latitudGeo, coordenada.longitudGeo], { icon: iconoActual });
+                            var contenidoPopup = generarContenidoPopup(coordenada);
+                            marker.bindPopup(contenidoPopup);
+
+
+
+                            markers.addLayer(marker);
+                        }
+
+                        map.addLayer(markers);
+
+
+
+
+                        //Grafico de Columnas
+                        // Paso 1: Procesa la respuesta
+                        var counts = {};
+                        response.forEach(function (coordenada) {
+                            if (!counts[coordenada.efNombre]) {
+                                counts[coordenada.efNombre] = 0;
+                            }
+                            counts[coordenada.efNombre]++;
+                        });
+
+                        // Paso 2: Extrae categorías y datos
+                        var categories = [];
+                        var dataPermisos = [];
+                        for (var entidad in counts) {
+                            categories.push(entidad);
+                            dataPermisos.push(counts[entidad]);
+                        }
+
+                        // Paso 3: Configura las opciones del gráfico
+                        var options = {
+                            chart: {
+                                type: 'column',
+                                backgroundColor: '#ffffff'  // Color de fondo del gráfico
+                            },
+                            title: {
+                                text: 'Total de Permisos de Gas L.P. Vigentes por Entidad Federativa'
+                            },
+                            xAxis: {
+                                categories: categories
+                            },
+                            yAxis: {
+                                title: {
+                                    text: 'Número de permisos'
+                                }
+                            },
+                            series: [{
+                                name: 'Permisos',
+                                data: dataPermisos,
+                                color: '#1a8092ff',
+                                dataLabels: {
+                                    enabled: true,   // Habilita las etiquetas de datos
+                                    rotation: 0,     // Rota las etiquetas (en este caso, no hay rotación)
+                                    color: '#000000', // Color del texto de las etiquetas
+                                    align: 'center',  // Alinea las etiquetas al centro
+                                    format: '{point.y:,.0f}',  // Formato con separador de miles
+                                    y: 10, // Posiciona las etiquetas un poco arriba del tope de la columna
+                                    style: {
+                                        fontSize: '13px', // Tamaño de la fuente de las etiquetas
+                                        fontFamily: 'Verdana, sans-serif' // Tipo de letra de las etiquetas
+                                    }
+                                }
+                            }],
+                            tooltip: {
+                                formatter: function () {
+                                    return '<b>' + this.x + '</b><br/>' +
+                                        this.series.name + ': ' + Highcharts.numberFormat(this.y, 0);  // Usando separador de miles
+
+                                }
+                            }
+                        };
+
+                        // Renderizar el gráfico en el contenedor con el ID 'grafico'
+                        Highcharts.chart('grafico', options);
+                        //Mete el autocompetar ala busqueda
+                        // Función para inicializar el autocompletar
+                        function autocomplete(inp, arr) {
+                            var currentFocus;
+
+                            inp.addEventListener("input", function (e) {
+                                var a, b, i, val = this.value;
+                                closeAllLists();
+                                if (!val) { return false; }
+                                currentFocus = -1;
+
+                                a = document.getElementById("autocomplete-list");
+                                a.innerHTML = "";
+
+                                for (i = 0; i < arr.length; i++) {
+                                    if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                                        b = document.createElement("DIV");
+                                        b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                                        b.innerHTML += arr[i].substr(val.length);
+                                        b.addEventListener("click", function (e) {
+                                            inp.value = this.innerText;
+                                            closeAllLists();
+                                            // buscarGeneral(); // Llama a tu función de búsqueda aquí
+                                            buscarPorNumeroPermiso();
+                                        });
+                                        a.appendChild(b);
+                                    }
+                                }
+                            });
+
+                            function closeAllLists(elmnt) {
+                                var x = document.getElementById("autocomplete-list");
+                                if (elmnt != x && elmnt != inp) {
+                                    x.innerHTML = "";
+                                }
+                            }
+
+                            document.addEventListener("click", function (e) {
+                                closeAllLists(e.target);
+                            });
+                        }
+                        // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+                        var uniqueTerms = [...new Set(availableTerms)];
+
+                        // Inicializa el autocompletar
+                        autocomplete(document.getElementById("busquedaPermisoInput"), availableTerms);
+
+
+
+                    },
+                    error: function (error) {
+                        console.error("Error al obtener los permisos autorizados y sus campos visibles", error);
+                        reject(error); // Rechazar la promesa aquí
+                    }
+                });
+            }).catch(error => {
+                // Manejo de errores del primer AJAX
+                // Manejar cualquier error que ocurra en cualquier promesa
+                console.error("Error en la cadena de promesas", error);
+
+            });
+
+
+
+        }
+
+
+    </script>
+
+
+    @* Obtiene las Semanas *@
+    <script>
+        function actualizarSemanas(year, month) {
+            $.ajax({
+                url: '/Indicadores/GetNumeroDeSemanas',
+                data: { year: year, month: month },
+                success: function (data) {
+                    var numSemanas = data.numSemanas;
+                    var semanaSelect = $('#semanaSelect');
+                    semanaSelect.empty();
+
+                    for (var i = 1; i <= numSemanas; i++) {
+                        semanaSelect.append($('<option>', {
+                            value: i,
+                            text: 'Semana ' + i
+                        }));
+                    }
+                }
+            });
+        }
+
+        // Llama a esta función cuando el año o el mes cambien
+        $('#yearSelect, #mesSelect').change(function () {
+            var year = $('#yearSelect').val();
+            var month = $('#mesSelect').val();
+            actualizarSemanas(year, month);
+        });
+
+        // Llama a la función de inicialización en la carga de la página
+        $(document).ready(function () {
+            var year = $('#yearSelect').val();
+            var month = $('#mesSelect').val();
+            actualizarSemanas(year, month);
+        });
+    </script>
+
+
+    @*Consulta los Precios*@
+    <script>
+
+        // Inicializa DataTables al cargar la página
+        var table = $('#precios').DataTable({
+            lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
+            dom: 'Bfrtip',
+            buttons: [
+                'copyHtml5',
+                'excelHtml5',
+                'csvHtml5',
+                'pdfHtml5'
+            ],
+            language: {
+                url: '//cdn.datatables.net/plug-ins/1.10.24/i18n/Spanish.json'
+            }
+        });
+        var regionesLayer;
+
+        function limpiarMapa() {
+            if (regionesLayer) {
+                map.removeLayer(regionesLayer);
+                regionesLayer = null;
+            }
+        }
+
+        function limpiarTabla() {
+            var table = $('#precios').DataTable();
+            table.clear().draw();
+        }
+
+        function limpiarDuctos() {
+            if (ductosLayer) {
+                map.removeLayer(ductosLayer);
+                ductosLayer = null;
+            }
+        }
+
+
+
+        // Define tu capa de regiones aquí para que sea accesible globalmente
+        @* function limpiarMapa() {
+            // Limpiar todas las capas de marcadores y círculos
+            map.eachLayer(function (layer) {
+                if (layer instanceof L.Marker || layer instanceof L.MarkerClusterGroup || layer instanceof L.Circle) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            // Eliminar la capa de regiones si existe
+            if (regionesLayer) {
+                map.removeLayer(regionesLayer);
+                regionesLayer = null;  // Restablece la capa de regiones a nula
+            }
+
+
+        } *@
+            // Oculta ambas leyendas al inicio
+            $("#leyendaLitros").hide();
+        $("#leyendaKilos").hide();
+        $("#btnConsultar").click(function (event) {
+            consultarPrecios();
+        });
+
+
+        function consultarPrecios() {
+            var yearSelect = $('#yearSelect').val();
+            var mesSelect = $('#mesSelect').val();
+            var semanaSelect = $('#semanaSelect').val();
+            var precioSelect = $('#precioSelect').val();
+
+            if (precioSelect == "litros") {
+                $("#leyendaLitros").show();
+                $("#leyendaKilos").hide();
+            } else if (precioSelect == "kilos") {
+                $("#leyendaLitros").hide();
+                $("#leyendaKilos").show();
+            }
+
+            $("#buscador").show();
+            $("#marker-info-panel").show();
+
+            var datos_solicitud = {
+                yearSelect: yearSelect,
+                mesSelect: mesSelect,
+                semanaSelect: semanaSelect,
+                precioSelect: precioSelect
+            };
+
+            console.log("Datos de la consulta de Precios:", datos_solicitud);
+
+            limpiarMapa();
+
+            var preciosResponse;
+            //Consulta los Precios
+            $.ajax({
+                url: '/Indicadores/GetPreciosGLP',
+                type: 'GET',
+                data: datos_solicitud,
+                success: function (response) {
+                    console.log("Estos son los Precios Consultados:", response);
+                    preciosResponse = response;
+
+                    // Añade la información de unidad y precio a las propiedades del GeoJSON
+                    json_regiones_litro_0.features.forEach(function (feature) {
+                        var precioObj = preciosResponse.find(function (precio) {
+                            return precio.region === feature.properties["Región"];
+                        });
+
+                        if (precioObj) {
+                            feature.properties.unidad = precioObj.unidad;
+                            feature.properties.precio = precioObj.precio;
+                        }
+                    });
+
+                    function getPrecio(region) {
+                        var precioObj = preciosResponse.find(function (precio) {
+                            return precio.region === region;
+                        });
+                        return precioObj ? precioObj.precio : 0;
+                    }
+
+                    function getColorPorPrecio(precio) {
+                        precio = Number(precio);
+                        return precio >= 9.47 && precio <= 15 ? 'rgba(122,1,119,1.0)' :
+                            precio >= 9.234 && precio <= 9.47 ? 'rgba(197,27,138,1.0)' :
+                                precio >= 9.09 && precio <= 9.234 ? 'rgba(247,104,161,1.0)' :
+                                    precio >= 8.918 && precio <= 9.09 ? 'rgba(251,180,185,1.0)' :
+                                        precio >= 8.15 && precio <= 8.918 ? 'rgba(254,235,226,1.0)' :
+                                            precio >= 15.1 && precio < 16 ? 'rgba(254,235,226,1.0)' :
+                                                precio >= 16 && precio < 17 ? 'rgba(251,180,185,1.0)' :
+                                                    precio >= 17 && precio < 18 ? 'rgba(247,104,161,1.0)' :
+                                                        precio >= 18 && precio < 19 ? 'rgba(197,27,138,1.0)' :
+                                                            precio >= 19 ? 'rgba(122,1,119,1.0)' :
+                                                                '#FFFFFF';
+                    }
+
+                    function estiloPorPrecio(feature) {
+                        var precio = getPrecio(feature.properties["Región"]);
+                        return {
+                            fillColor: getColorPorPrecio(precio),
+                            weight: 2,
+                            opacity: 1,
+                            color: 'white',
+                            dashArray: '3',
+                            fillOpacity: 0.7
+                        };
+                    }
+
+                    info.update = function (props) {
+                        this._div.innerHTML = props ? "Región: " + props.region + "<br>Precio por " + props.unidadTexto + ": $" + props.precio : "Pasa el mouse sobre una región";
+                    };
+
+                    info.addTo(map);
+
+                    regionesLayer = L.geoJson(json_regiones_litro_0, {
+                        style: estiloPorPrecio,
+                        onEachFeature: function (feature, layer) {
+                            var precio = getPrecio(feature.properties["Región"]);
+                            var unidad = $('#precioSelect').val();
+                            var unidadTexto = unidad === 'litros' ? 'Litro' : 'Kilo';
+
+                            layer.on({
+                                mouseover: function (e) {
+                                    info.update({
+                                        region: feature.properties["Región"],
+                                        precio: precio,
+                                        unidadTexto: unidadTexto
+                                    });
+                                },
+                                mouseout: function (e) {
+                                    info.update();
+                                }
+                            });
+                        }
+                    }).addTo(map);
+
+                    var tipoPrecio = $('#precioSelect').val();
+                    table.clear().draw();
+
+                    response.forEach(function (item) {
+                        var formattedDate = item.fecha.split("T")[0];
+                        table.row.add([
+                            formattedDate,
+                            item.region,
+                            item.precio,
+                            tipoPrecio
+                        ]).draw();
+                    });
+                },
+                error: function (error) {
+                    console.log("Error:", error);
+                }
+            });
+
+            CargaGLP();
+        }
+    </script>
+
+    @* Función en el Campo de Búsquedas *@
+    <script>
+        // Función para inicializar el autocompletar
+        function autocomplete(inp, arr) {
+            var currentFocus;
+
+            inp.addEventListener("input", function (e) {
+                var a, b, i, val = this.value;
+                closeAllLists();
+                if (!val) { return false; }
+                currentFocus = -1;
+
+                a = document.getElementById("autocomplete-list");
+                a.innerHTML = "";
+
+                for (i = 0; i < arr.length; i++) {
+                    if (arr[i].substr(0, val.length).toUpperCase() === val.toUpperCase()) {
+                        b = document.createElement("DIV");
+                        b.innerHTML = "<strong>" + arr[i].substr(0, val.length) + "</strong>";
+                        b.innerHTML += arr[i].substr(val.length);
+                        b.addEventListener("click", function (e) {
+                            inp.value = this.innerText;
+                            closeAllLists();
+                            // buscarGeneral(); // Llama a tu función de búsqueda aquí
+                            buscarPorNumeroPermiso();
+                        });
+                        a.appendChild(b);
+                    }
+                }
+            });
+
+            function closeAllLists(elmnt) {
+                var x = document.getElementById("autocomplete-list");
+                if (elmnt != x && elmnt != inp) {
+                    x.innerHTML = "";
+                }
+            }
+
+            document.addEventListener("click", function (e) {
+                closeAllLists(e.target);
+            });
+        }
+        // Usamos un objeto Set para filtrar los duplicados, ya que un Set solo permite valores únicos
+        var uniqueTerms = [...new Set(availableTerms)];
+
+        // Inicializa el autocompletar
+        autocomplete(document.getElementById("busquedaPermisoInput"), availableTerms);
+    </script>
+
+}

@@ -1,0 +1,1299 @@
+@model NSIE.Models.HomeViewModel
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@inject IHttpContextAccessor HttpContextAccessor
+@inject NSIE.Servicios.IRepositorioUsuarios RepositorioUsuarios
+
+@{
+    const string tituloInstitucional = "Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información de Energía";
+    ViewData["Title"] = tituloInstitucional;
+
+    var perfilJson = HttpContextAccessor.HttpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+
+    // Obtener lista de usuarios de forma dinámica
+    var listaUsuarios = await RepositorioUsuarios.ObtenerListadeUsuarios();
+    var totalUsuariosCount = listaUsuarios?.Count() ?? 0;
+
+    var header = new HeaderViewModel
+    {
+        Title = "Dirección General de Metodologías y Estadísticas",
+        IconPath = "sistema.png",
+        Description = "Sistema Nacional de Información de Energía",
+        Section = "Inicio",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = tituloInstitucional,
+            description = "Pantalla principal para entrar al SNIEr, continuar la navegación reciente y consultar el estado general del ecosistema energético.",
+            functionality = "Desde aquí puedes retomar tus vistas recientes y orientarte según tu perfil de consulta o gestión.",
+            stage = "Operación",
+            roles = new[] {
+                new { icon = "globe", text = "Consulta pública: entrada rápida a tableros, indicadores y vistas de consulta." },
+                new { icon = "user-shield", text = "Operación institucional: acceso a módulos de captura, seguimiento y administración." }
+            },
+            highlights = new[] {
+                "Retomar las vistas recientes disponibles para tu perfil.",
+                "Ubicar accesos directos al punto correcto sin recorrer todo el menú.",
+                "Revisar la actividad reciente y navegar al punto correcto sin recorrer todo el menú."
+            },
+            context = "Úsalo como punto de arranque: desde aquí puedes continuar lo último que consultaste y volver rápidamente al flujo de trabajo.",
+            order = new { step = 0, description = "Pantalla de inicio y navegación general del sistema" },
+            manualUrl = "/Documentos/ManualSNIEr.pdf"
+        })
+    };
+
+    var idUsuario = Convert.ToInt32(ViewData["IDUsuario"]);
+    var rolUsuario = perfilUsuario?.Rol;
+    var nombreUsuario = perfilUsuario?.Nombre?.ToString();
+    var esConsultaPublica = rolUsuario == "10"
+        || (nombreUsuario?.Contains("consult", StringComparison.OrdinalIgnoreCase) == true);
+    var nombreUsuarioTexto = string.IsNullOrWhiteSpace(nombreUsuario) ? "Usuario" : nombreUsuario;
+
+    var modulosDisponibles = Model.Secciones
+        .Where(s => s.Modulos != null)
+        .SelectMany(s => s.Modulos.Select(m => new { Seccion = s, Modulo = m }))
+        .Where(x => x.Modulo != null
+            && !string.IsNullOrWhiteSpace(x.Modulo.Action)
+            && (x.Modulo.EsExterno || !string.IsNullOrWhiteSpace(x.Modulo.Controller)))
+        .GroupBy(x => $"{x.Modulo.EsExterno}|{x.Modulo.Controller}|{x.Modulo.Action}")
+        .Select(g => g.First())
+        .ToList();
+
+    var accesosGenerales = new[]
+    {
+        new { Titulo = "Reportes", Descripcion = "Generar reportes e informes", Icono = "bi-file-text", Href = Url.Action("EnConstruccion", "Home"), AbrirNuevaPestana = false, EsNuevo = false, Tono = 0 },
+        new { Titulo = "Dashboards de proyectos", Descripcion = "Explorar proyectos energéticos interactivos", Icono = "bi-speedometer2", Href = Url.Action("Index", "DashboardProyectos"), AbrirNuevaPestana = false, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Áreas de interés", Descripcion = "Geovisualizador dinámico de capas espaciales", Icono = "bi-map", Href = Url.Action("Index", "AreasInteres"), AbrirNuevaPestana = false, EsNuevo = true, Tono = 2 },
+        new { Titulo = "Balance de energía", Descripcion = "Balance Nacional de Energía Oficial", Icono = "bi-bezier2", Href = Url.Action("BNE", "SankeySener"), AbrirNuevaPestana = false, EsNuevo = false, Tono = 0 },
+        new { Titulo = "Balance animado", Descripcion = "Diagrama de flujos y transiciones", Icono = "bi-lightning-charge", Href = Url.Action("FlujoEnergia", "SankeySener"), AbrirNuevaPestana = false, EsNuevo = false, Tono = 0 },
+        new { Titulo = "Atlas AZEL", Descripcion = "Zonas con alto potencial de energías limpias", Icono = "bi-sun", Href = Url.Action("AZEL_Publico", "Atlas"), AbrirNuevaPestana = false, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Buscador de leyes", Descripcion = "Consulta de leyes y reglamentos", Icono = "bi-bank", Href = "https://buscador-leyes.pages.dev", AbrirNuevaPestana = true, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Manuales, guías y presentaciones", Descripcion = "Documentación y material institucional", Icono = "bi-book", Href = Url.Action("Index", "Manuales"), AbrirNuevaPestana = false, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Guía de transparencia", Descripcion = "Gestión y flujo de solicitudes", Icono = "bi-file-earmark-slides", Href = Url.Content("~/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html"), AbrirNuevaPestana = true, EsNuevo = true, Tono = 0 },
+        new { Titulo = "Atribuciones DGMESNIE", Descripcion = "Atribuciones y objetivos de la DGMESNIE", Icono = "bi-file-slides", Href = Url.Content("~/Presentaciones/Presentacion%20DGMESNIE.html"), AbrirNuevaPestana = true, EsNuevo = false, Tono = 0 }
+    };
+
+    var totalSecciones = Model.Secciones.Count;
+    var totalModulos = modulosDisponibles.Count;
+    var heroBackgroundUrl = "https://cdn.sassoapps.com/img_fondos/portada.PNG";
+    var fondosBienvenida = new[]
+    {
+        new
+        {
+            Url = "https://cdn.sassoapps.com/dgmesnie/marian_rom.jpg",
+            Tema = "Editorial",
+            Posicion = "88% center"
+        }
+    };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/home-dashboard.css" asp-append-version="true" />
+    <style>
+        .badge-new-pulse {
+            background-color: #8A0031;
+            color: #ffffff !important;
+            font-size: 0.62rem;
+            font-weight: 800;
+            padding: 0.15rem 0.35rem;
+            border-radius: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            animation: badge-pulse 1.8s infinite;
+            display: inline-flex;
+            align-items: center;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+            line-height: 1;
+            box-shadow: 0 2px 6px rgba(138, 0, 49, 0.2);
+        }
+
+        @@keyframes badge-pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(138, 0, 49, 0.45);
+            }
+            70% {
+                transform: scale(1.04);
+                box-shadow: 0 0 0 5px rgba(138, 0, 49, 0);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(138, 0, 49, 0);
+            }
+        }
+
+        /* Asegurar la misma altura en las tarjetas del carrusel en escritorio */
+        .carousel-item .hero-home__copy {
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+        }
+
+        .carousel-item .hero-home__stats-card,
+        .carousel-item .hero-home__mock-preview {
+            height: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
+        /* Contención: nada del carrusel se sale del marco del hero */
+        #heroCarousel,
+        #heroCarousel .carousel-inner {
+            overflow: hidden;
+            border-radius: inherit;
+        }
+
+        /* Aire inferior: el CTA no debe pegar con el borde de la tarjeta */
+        .carousel-item .hero-home__copy {
+            padding-bottom: 1.9rem !important;
+        }
+
+        .carousel-item .hero-home__cta-row {
+            margin-bottom: 0.35rem;
+        }
+
+        .hero-home__mock-preview {
+            min-width: 0;
+        }
+
+        .mockup-card {
+            max-width: min(360px, 100%);
+        }
+
+        @@media (max-width: 991px) {
+            .hero-home__mock-preview {
+                display: none !important;
+            }
+            .hero-home__content--split {
+                grid-template-columns: 1fr !important;
+            }
+            .hero-home__copy {
+                padding: 1rem !important;
+            }
+            /* Aire para los indicadores: que no pisen el CTA */
+            .home-dashboard-page #hero-home {
+                padding-bottom: 2.2rem !important;
+            }
+        }
+
+        /* La cenefa ocupa la franja superior; el contenido principal queda a todo lo ancho. */
+        @@media (min-width: 992px) {
+            /* min-height en vez de height fijo: las tarjetas se alinean entre
+               slides pero crecen si el contenido lo pide (antes el CTA se cortaba
+               porque .hero-home__copy tiene overflow:hidden) */
+            .carousel-item .hero-home__copy {
+                height: auto !important;
+                min-height: 415px !important;
+            }
+
+            .carousel-item .hero-home__stats-card,
+            .carousel-item .hero-home__mock-preview {
+                height: auto !important;
+                min-height: 415px !important;
+            }
+
+            .home-dashboard-page .dashboard-grid--landing {
+                display: grid !important;
+                grid-template-columns: minmax(0, 1fr) !important;
+                grid-template-areas: 
+                    "hero"
+                    "presentation" !important;
+                align-items: start !important;
+                gap: 1.5rem !important;
+            }
+
+            #hero-home-wrapper {
+                grid-area: hero !important;
+            }
+
+            #atribuciones-section {
+                grid-area: presentation !important;
+            }
+
+        }
+
+        /* Estilo para el título de novedad */
+        .hero-home__title--novedad {
+            font-size: clamp(1.8rem, 2.8vw, 2.2rem) !important;
+            font-weight: 700 !important;
+            color: #333333 !important;
+            line-height: 1.25 !important;
+            margin-top: 0.5rem !important;
+            margin-bottom: 0.5rem !important;
+        }
+
+        /* Novedad destacada badge */
+        .badge-novedad {
+            background-color: rgba(138, 0, 49, 0.08);
+            color: #8A0031;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.3rem 0.8rem;
+            border-radius: 99px;
+            display: inline-block;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            width: fit-content;
+        }
+
+        .text-guinda {
+            color: #8A0031;
+            font-weight: 800;
+        }
+
+        .hero-features-row {
+            margin-top: 1rem;
+        }
+
+        .hero-feature-item strong {
+            font-size: 0.78rem;
+            color: #333;
+            display: block;
+        }
+
+        .hero-feature-item small {
+            font-size: 0.68rem;
+            color: #777;
+        }
+
+        .hero-feature-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(180, 137, 52, 0.1);
+            color: #b48934;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        .hero-feature-item:nth-child(2) .hero-feature-icon {
+            background: rgba(138, 0, 49, 0.1);
+            color: #8A0031;
+        }
+
+        .hero-feature-item:nth-child(3) .hero-feature-icon {
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+        }
+
+        /* Mockup Card */
+        .hero-home__mock-preview {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem;
+        }
+
+        .mockup-card {
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+            width: 100%;
+            max-width: 360px;
+            overflow: hidden;
+            position: relative;
+            aspect-ratio: 1.6;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s;
+        }
+
+        .mockup-card:hover {
+            transform: translateY(-4px) scale(1.01);
+        }
+
+        .mockup-header {
+            background: #f8f9fa;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 0.4rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            height: 32px;
+        }
+
+        .mockup-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .mockup-dots span {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .mockup-dots span:nth-child(1) { background: #ff5f56; }
+        .mockup-dots span:nth-child(2) { background: #ffbd2e; }
+        .mockup-dots span:nth-child(3) { background: #27c93f; }
+
+        .mockup-address {
+            font-size: 0.65rem;
+            color: #aaa;
+            font-family: monospace;
+            background: #ffffff;
+            padding: 1px 12px;
+            border-radius: 4px;
+            border: 1px solid rgba(0,0,0,0.04);
+            line-height: 1.2;
+        }
+
+        .mockup-body {
+            flex: 1;
+            padding: 0.75rem;
+            display: flex;
+            gap: 0.75rem;
+            background-image: radial-gradient(circle at 10% 20%, rgba(138, 0, 49, 0.02) 0%, transparent 80%);
+        }
+
+        .mockup-map {
+            flex: 1.2;
+            background: #f1f3f5;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: rgba(138, 0, 49, 0.15);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pulse-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #8A0031;
+            box-shadow: 0 0 0 0 rgba(138, 0, 49, 0.4);
+            animation: pulse-dot-anim 1.5s infinite;
+        }
+
+        .pin-1 { top: 40%; left: 30%; }
+        .pin-2 { top: 60%; left: 55%; animation-delay: 0.4s; }
+        .pin-3 { top: 30%; left: 70%; animation-delay: 0.8s; }
+
+        @@keyframes pulse-dot-anim {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(138, 0, 49, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 6px rgba(138, 0, 49, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(138, 0, 49, 0);
+            }
+        }
+
+        .mockup-stats {
+            flex: 0.8;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .mockup-bar-chart {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.5rem;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+            height: 50px;
+        }
+
+        .mockup-bar-chart .bar {
+            width: 6px;
+            background: rgba(138, 0, 49, 0.4);
+            border-radius: 2px 2px 0 0;
+        }
+
+        .bar-1 { height: 60%; background: #b48934 !important; }
+        .bar-2 { height: 85%; background: #8A0031 !important; }
+        .bar-3 { height: 40%; }
+
+        .mockup-donut {
+            flex: 1;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 4px solid #fff;
+            box-shadow: inset 0 0 0 4px rgba(138, 0, 49, 0.1);
+        }
+
+        .mockup-fab {
+            position: absolute;
+            top: 40px;
+            right: 10px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #8A0031;
+            color: #ffffff !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            box-shadow: 0 4px 10px rgba(138, 0, 49, 0.3);
+            transition: all 0.2s;
+            z-index: 10;
+        }
+
+        .mockup-fab:hover {
+            transform: scale(1.1);
+            background: #a3003a;
+        }
+
+        /* Carousel Indicators */
+        .carousel-indicators-custom {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 15;
+        }
+
+        .carousel-indicators-custom button {
+            width: 20px;
+            height: 5px;
+            border-radius: 2px;
+            border: none;
+            background: rgba(0,0,0,0.15);
+            transition: all 0.3s;
+        }
+
+        .carousel-indicators-custom button.active {
+            background: #8A0031;
+            width: 32px;
+        }
+
+        /* --- Modo oscuro: mockups del carrusel y features del hero --- */
+        [data-bs-theme="dark"] .hero-home__title--novedad {
+            color: var(--shell-ink, #ece7e2) !important;
+        }
+
+        /* Badges de slide: fondo uniforme legible; el guinda pleno no
+           contrasta en oscuro, se sube a acento (los inline dorado/verde/azul
+           sí son legibles y conservan su identidad) */
+        [data-bs-theme="dark"] .badge-novedad {
+            background-color: rgba(255, 255, 255, 0.08) !important;
+        }
+
+        [data-bs-theme="dark"] .badge-novedad:not([style]),
+        [data-bs-theme="dark"] .badge-novedad[style*="#8A0031"] {
+            color: var(--shell-accent, #d4537e) !important;
+        }
+
+        [data-bs-theme="dark"] .text-guinda {
+            color: var(--shell-accent, #d4537e) !important;
+        }
+
+        [data-bs-theme="dark"] .hero-feature-item strong {
+            color: var(--shell-ink, #ece7e2);
+        }
+
+        [data-bs-theme="dark"] .hero-feature-item small {
+            color: var(--shell-muted, #a39aa8);
+        }
+
+        [data-bs-theme="dark"] .mockup-card {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+
+        [data-bs-theme="dark"] .mockup-header {
+            background: var(--shell-surface-2, #241f2e);
+            border-bottom-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .mockup-address {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+            color: var(--shell-muted, #a39aa8);
+        }
+
+        [data-bs-theme="dark"] .mockup-map,
+        [data-bs-theme="dark"] .mockup-bar-chart,
+        [data-bs-theme="dark"] .mockup-donut {
+            background: var(--shell-surface-2, #241f2e);
+        }
+
+        [data-bs-theme="dark"] .mockup-donut {
+            border-color: var(--shell-surface, #1d1925);
+            box-shadow: inset 0 0 0 4px rgba(212, 83, 126, 0.2);
+        }
+
+        [data-bs-theme="dark"] .mockup-map {
+            color: rgba(212, 83, 126, 0.3);
+        }
+
+        [data-bs-theme="dark"] .carousel-indicators-custom button {
+            background: rgba(255,255,255,0.2);
+        }
+
+        [data-bs-theme="dark"] .carousel-indicators-custom button.active {
+            background: var(--shell-accent, #d4537e);
+        }
+
+    </style>
+}
+
+<div class="home-dashboard-page">
+    <div class="home-dashboard-page__view-header">
+        @await Html.PartialAsync("_ViewHeader", header)
+    </div>
+
+    @if (accesosGenerales.Any())
+    {
+        <section id="accesos-rapidos"
+                 class="quick-access-ribbon"
+                 data-quick-access-ribbon
+                 aria-labelledby="quickAccessRibbonTitle">
+            <h2 id="quickAccessRibbonTitle" class="visually-hidden">Accesos rápidos</h2>
+            <div class="quick-access-ribbon__shell">
+                <div id="quickAccessViewport"
+                     class="quick-access-ribbon__viewport"
+                     data-quick-access-viewport
+                     tabindex="0"
+                     aria-label="Accesos rápidos generales">
+                    <div class="quick-access-ribbon__track" data-quick-access-track>
+                        @foreach (var acceso in accesosGenerales)
+                        {
+                            var claseTono = $"quick-access-bubble--tone-{acceso.Tono}";
+
+                            <a class="quick-access-bubble @claseTono"
+                               href="@acceso.Href"
+                               target="@(acceso.AbrirNuevaPestana ? "_blank" : null)"
+                               rel="@(acceso.AbrirNuevaPestana ? "noopener noreferrer" : null)"
+                               title="@acceso.Titulo">
+                                <span class="quick-access-bubble__icon" aria-hidden="true">
+                                    <i class="bi @acceso.Icono"></i>
+                                </span>
+                                <span class="quick-access-bubble__copy">
+                                    <span class="quick-access-bubble__title-row">
+                                        <strong>@acceso.Titulo</strong>
+                                        @if (acceso.EsNuevo)
+                                        {
+                                            <span class="quick-access-bubble__badge">Nuevo</span>
+                                        }
+                                    </span>
+                                    <small>@acceso.Descripcion</small>
+                                </span>
+                                @if (acceso.AbrirNuevaPestana)
+                                {
+                                    <i class="bi bi-box-arrow-up-right quick-access-bubble__external" aria-hidden="true"></i>
+                                    <span class="visually-hidden">(abre en una pestaña nueva)</span>
+                                }
+                            </a>
+                        }
+                    </div>
+                </div>
+
+                <div class="quick-access-ribbon__controls" aria-label="Controles de la cenefa">
+                    <button type="button"
+                            class="quick-access-ribbon__control"
+                            data-quick-access-prev
+                            aria-controls="quickAccessViewport"
+                            aria-label="Ver accesos anteriores">
+                        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                    </button>
+                    <button type="button"
+                            class="quick-access-ribbon__control"
+                            data-quick-access-next
+                            aria-controls="quickAccessViewport"
+                            aria-label="Ver más accesos">
+                        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+    }
+
+    <div class="dashboard-container mt-2">
+        <div class="container">
+            <div class="dashboard-grid dashboard-grid--landing">
+                <!-- Hero/Carrusel -->
+                <div id="hero-home-wrapper" class="hero-container-wrapper" style="margin-bottom: 0;">
+                    <section id="hero-home" aria-label="Inicio principal" style="margin-bottom: 0; border: none; border-radius: 34px; overflow: hidden; position: relative;">
+                        <div class="hero-home__background" aria-hidden="true" style="background-image: linear-gradient(112deg, rgba(255,255,255,.92) 0%, rgba(255,255,255,.72) 42%, rgba(255,255,255,.42) 100%), url('@heroBackgroundUrl'); text-align: center;">
+                            <div class="hero-home__media" id="heroMediaContainer">
+                            </div>
+                            <div class="hero-home__brand-strip">
+                                <img src="https://cdn.sassoapps.com/dgmesnie/logo_gob.png" alt="Gobierno de México"
+                                     class="hero-home__brand-logo hero-home__brand-logo--gob" />
+                                <span class="hero-home__brand-divider"></span>
+                                <img src="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" alt="Secretaría de Energía"
+                                     class="hero-home__brand-logo hero-home__brand-logo--sener" />
+                            </div>
+                            <div class="hero-home__pattern hero-home__pattern--chip"></div>
+                            <div class="hero-home__pattern hero-home__pattern--rings"></div>
+                            <div class="hero-home__pattern hero-home__pattern--bars"></div>
+                            <div class="hero-home__pattern hero-home__pattern--lines"></div>
+                        </div>
+                        <div class="w-100 position-relative">
+                            <div id="heroCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="6000">
+                                <div class="carousel-inner">
+                                    <!-- Slide 1: Nuevo Dashboard (Mockup) -->
+                                    <div class="carousel-item active">
+                                        <div class="hero-home__content hero-home__content--portal hero-home__content--split">
+                                            <div class="hero-home__copy">
+                                                <span class="badge-novedad mb-3">Novedad destacada</span>
+                                                <h1 class="hero-home__title hero-home__title--portal hero-home__title--novedad">
+                                                    Nuevo <span class="text-guinda">Dashboard</span> de proyectos energéticos
+                                                </h1>
+                                                <p class="hero-home__lead">Visualiza, analiza y da seguimiento a los proyectos energéticos en tiempo real con datos interactivos.</p>
+                                                <div class="hero-home__cta-row gap-3">
+                                                    <a href="@Url.Action("Index", "DashboardProyectos")" class="hero-home__cta-btn">
+                                                        Ir al dashboard
+                                                        <i class="bi bi-arrow-right"></i>
+                                                    </a>
+                                                    <a href="https://cdn.sassoapps.com/video/fondo_dgmesnie.mp4" target="_blank" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2" style="border-radius: 99px; padding: 0.75rem 1.5rem; font-weight: 600; color: #8A0031; border-color: rgba(138, 0, 49, 0.2); background: transparent;">
+                                                        Ver video demo <i class="bi bi-play-circle"></i>
+                                                    </a>
+                                                </div>
+                                                <!-- Features row at bottom -->
+                                                <div class="hero-features-row d-flex gap-4">
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon"><i class="bi bi-lightning-charge"></i></span>
+                                                        <div>
+                                                            <strong>Datos en tiempo real</strong>
+                                                            <small class="d-block text-muted">Información actualizada continuamente</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon"><i class="bi bi-bar-chart"></i></span>
+                                                        <div>
+                                                            <strong>Análisis interactivo</strong>
+                                                            <small class="d-block text-muted">Filtros dinámicos y avanzados</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon"><i class="bi bi-shield-check"></i></span>
+                                                        <div>
+                                                            <strong>Información confiable</strong>
+                                                            <small class="d-block text-muted">Fuentes oficiales y validadas</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="hero-home__mock-preview">
+                                                <div class="mockup-card">
+                                                    <div class="mockup-header">
+                                                        <div class="mockup-dots"><span></span><span></span><span></span></div>
+                                                        <span class="mockup-address">tablero-9rj.pages.dev</span>
+                                                    </div>
+                                                    <div class="mockup-body">
+                                                        <div class="mockup-map">
+                                                            <i class="bi bi-map-fill"></i>
+                                                            <span class="pulse-dot pin-1"></span>
+                                                            <span class="pulse-dot pin-2"></span>
+                                                            <span class="pulse-dot pin-3"></span>
+                                                        </div>
+                                                        <div class="mockup-stats">
+                                                            <div class="mockup-bar-chart">
+                                                                <div class="bar bar-1"></div>
+                                                                <div class="bar bar-2"></div>
+                                                                <div class="bar bar-3"></div>
+                                                            </div>
+                                                            <div class="mockup-donut"></div>
+                                                        </div>
+                                                    </div>
+                                                    <a href="@Url.Action("Index", "DashboardProyectos")" class="mockup-fab" aria-label="Abrir dashboard">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Slide 2: Portal General (Original) -->
+                                    <div class="carousel-item">
+                                        <div class="hero-home__content hero-home__content--portal hero-home__content--split">
+                                            <div class="hero-home__copy" id="heroWelcomePanel">
+                                                <span class="hero-home__eyebrow">Portal principal</span>
+                                                <h1 class="hero-home__title hero-home__title--portal">
+                                                    <span class="hero-home__title-main">Dirección General de Metodologías y Estadísticas</span>
+                                                    <span class="hero-home__title-welcome">
+                                                        @if (esConsultaPublica)
+                                                        {
+                                                            <text>Consulta pública del SNIEr</text>
+                                                        }
+                                                        else
+                                                        {
+                                                            <text>Bienvenido, @nombreUsuarioTexto</text>
+                                                        }
+                                                    </span>
+                                                </h1>
+                                                <p class="hero-home__lead">Accede a módulos, indicadores y reportes de la Dirección General de Metodologías y Estadísticas desde un solo lugar.</p>
+                                                <div class="hero-home__cta-row">
+                                                    <a href="#accesos-rapidos" class="hero-home__cta-btn">
+                                                        Explorar módulos
+                                                        <i class="bi bi-arrow-right"></i>
+                                                    </a>
+                                                    <p class="hero-home__cta-text">Consulta los accesos rápidos y la presentación institucional del área.</p>
+                                                </div>
+                                            </div>
+
+                                            <aside class="hero-home__stats-card" aria-label="Resumen institucional">
+                                                <div class="hero-home__stats-item">
+                                                    <span class="hero-home__stats-icon"><i class="bi bi-file-earmark-text"></i></span>
+                                                    <div>
+                                                        <small>Módulos disponibles</small>
+                                                        <strong>@totalModulos</strong>
+                                                        <a href="#accesos-rapidos" class="text-decoration-none"><span>Ver todos <i class="bi bi-arrow-up-right"></i></span></a>
+                                                    </div>
+                                                </div>
+                                                <div class="hero-home__stats-item">
+                                                    <span class="hero-home__stats-icon"><i class="bi bi-bar-chart-line"></i></span>
+                                                    <div>
+                                                        <small>Indicadores activos</small>
+                                                        <strong>1,240</strong>
+                                                        <a href="@Url.Action("EnConstruccion", "Home")" class="text-decoration-none"><span>Ver indicadores <i class="bi bi-arrow-up-right"></i></span></a>
+                                                    </div>
+                                                </div>
+                                                <div class="hero-home__stats-item">
+                                                    <span class="hero-home__stats-icon"><i class="bi bi-people"></i></span>
+                                                    <div>
+                                                        <small>Usuarios registrados</small>
+                                                        <strong>@totalUsuariosCount</strong>
+                                                        <a href="@Url.Action("AdministrarUsuarios", "Usuarios")" class="text-decoration-none"><span>Ver usuarios <i class="bi bi-arrow-up-right"></i></span></a>
+                                                    </div>
+                                                </div>
+                                            </aside>
+                                        </div>
+                                    </div>
+
+                                    <!-- Slide 3: Guía de Transparencia -->
+                                    <div class="carousel-item">
+                                        <div class="hero-home__content hero-home__content--portal hero-home__content--split">
+                                            <div class="hero-home__copy">
+                                                <span class="badge-novedad mb-3" style="background-color: rgba(180, 137, 52, 0.08); color: #b48934;">Material de Consulta</span>
+                                                <h1 class="hero-home__title hero-home__title--portal hero-home__title--novedad">
+                                                    Guía para Solicitudes de <span class="text-guinda">Transparencia</span>
+                                                </h1>
+                                                <p class="hero-home__lead">Consulta de forma ágil e interactiva el flujo de gestión, plazos oficiales y respuestas a peticiones de información pública.</p>
+                                                <div class="hero-home__cta-row gap-3">
+                                                    <a href="@Url.Content("~/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html")" target="_blank" class="hero-home__cta-btn">
+                                                        Abrir guía interactiva
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                                <!-- Features row at bottom -->
+                                                <div class="hero-features-row d-flex gap-4">
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #b48934; background: rgba(180, 137, 52, 0.08);"><i class="bi bi-clock"></i></span>
+                                                        <div>
+                                                            <strong>Plazos y Tiempos</strong>
+                                                            <small class="d-block text-muted">Calendario oficial de respuesta</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #b48934; background: rgba(180, 137, 52, 0.08);"><i class="bi bi-diagram-3"></i></span>
+                                                        <div>
+                                                            <strong>Flujo de Gestión</strong>
+                                                            <small class="d-block text-muted">Proceso paso a paso detallado</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="hero-home__mock-preview">
+                                                <div class="mockup-card" style="border-color: rgba(180, 137, 52, 0.25);">
+                                                    <div class="mockup-header" style="background: rgba(180, 137, 52, 0.05);">
+                                                        <div class="mockup-dots"><span></span><span></span><span></span></div>
+                                                        <span class="mockup-address">Guía de Transparencia DGMESNIE</span>
+                                                    </div>
+                                                    <div class="mockup-body" style="background: #9B2247; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 2rem; text-align: center; height: 100%;">
+                                                        <i class="bi bi-file-slides" style="font-size: 3rem; color: #E0A12E; margin-bottom: 0.5rem;"></i>
+                                                        <strong style="font-size: 1.1rem; color: white;">Guía de Solicitudes</strong>
+                                                        <span style="font-size: 0.75rem; opacity: 0.8; margin-top: 0.2rem;">Dirección General</span>
+                                                    </div>
+                                                    <a href="@Url.Content("~/Presentaciones/Guia%20para%20Solicitudes%20de%20Transparencia.html")" target="_blank" class="mockup-fab" style="background: #E0A12E; color: white;" aria-label="Abrir guía">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Slide 4: PODECOBIS -->
+                                    <div class="carousel-item">
+                                        <div class="hero-home__content hero-home__content--portal hero-home__content--split">
+                                            <div class="hero-home__copy">
+                                                <span class="badge-novedad mb-3" style="background-color: rgba(138, 0, 49, 0.08); color: #8A0031;">Desarrollo Regional</span>
+                                                <h1 class="hero-home__title hero-home__title--portal hero-home__title--novedad">
+                                                    Polos de Desarrollo Económico para el <span class="text-guinda">Bienestar</span>
+                                                </h1>
+                                                <p class="hero-home__lead">Conoce qué son los PODECOBIS, sus objetivos estratégicos y el impacto de los polos de desarrollo en el sector energético nacional.</p>
+                                                <div class="hero-home__cta-row gap-3">
+                                                    <a href="@Url.Content("~/Presentaciones/PODECOBIS.html")" target="_blank" class="hero-home__cta-btn">
+                                                        Ver presentación
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                                <!-- Features row at bottom -->
+                                                <div class="hero-features-row d-flex gap-4">
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #8A0031; background: rgba(138, 0, 49, 0.08);"><i class="bi bi-geo-alt"></i></span>
+                                                        <div>
+                                                            <strong>Polos Regionales</strong>
+                                                            <small class="d-block text-muted">Distribución geográfica clave</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #8A0031; background: rgba(138, 0, 49, 0.08);"><i class="bi bi-graph-up-arrow"></i></span>
+                                                        <div>
+                                                            <strong>Impacto Económico</strong>
+                                                            <small class="d-block text-muted">Atracción de inversión y desarrollo</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="hero-home__mock-preview">
+                                                <div class="mockup-card" style="border-color: rgba(138, 0, 49, 0.25);">
+                                                    <div class="mockup-header" style="background: rgba(138, 0, 49, 0.05);">
+                                                        <div class="mockup-dots"><span></span><span></span><span></span></div>
+                                                        <span class="mockup-address">Información de PODECOBIS</span>
+                                                    </div>
+                                                    <div class="mockup-body" style="background: #8A0031; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 2rem; text-align: center; height: 100%;">
+                                                        <i class="bi bi-file-earmark-slides" style="font-size: 3rem; color: #b48934; margin-bottom: 0.5rem;"></i>
+                                                        <strong style="font-size: 1.1rem; color: white;">¿Qué son los PODECOBIS?</strong>
+                                                        <span style="font-size: 0.75rem; opacity: 0.8; margin-top: 0.2rem;">Presentación Institucional</span>
+                                                    </div>
+                                                    <a href="@Url.Content("~/Presentaciones/PODECOBIS.html")" target="_blank" class="mockup-fab" style="background: #b48934; color: white;" aria-label="Ver presentación">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Slide 5: Geovisualizador de Áreas de Interés -->
+                                    <div class="carousel-item">
+                                        <div class="hero-home__content hero-home__content--portal hero-home__content--split">
+                                            <div class="hero-home__copy">
+                                                <span class="badge-novedad mb-3" style="background-color: rgba(40, 167, 69, 0.08); color: #28a745;">Geovisualizador</span>
+                                                <h1 class="hero-home__title hero-home__title--portal hero-home__title--novedad">
+                                                    Áreas de <span class="text-guinda">Interés</span> Energético
+                                                </h1>
+                                                <p class="hero-home__lead">Consulta capas geográficas, áreas naturales protegidas y reservas territoriales para la planeación del sector energético.</p>
+                                                <div class="hero-home__cta-row gap-3">
+                                                    <a href="@Url.Action("Index", "AreasInteres")" class="hero-home__cta-btn">
+                                                        Ir al geovisualizador
+                                                        <i class="bi bi-arrow-right"></i>
+                                                    </a>
+                                                </div>
+                                                <!-- Features row at bottom -->
+                                                <div class="hero-features-row d-flex gap-4">
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #28a745; background: rgba(40, 167, 69, 0.08);"><i class="bi bi-globe"></i></span>
+                                                        <div>
+                                                            <strong>Análisis Espacial</strong>
+                                                            <small class="d-block text-muted">Capas interactivas en el mapa</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #28a745; background: rgba(40, 167, 69, 0.08);"><i class="bi bi-layer-forward"></i></span>
+                                                        <div>
+                                                            <strong>Superposición de Datos</strong>
+                                                            <small class="d-block text-muted">Zonas de reserva y exclusión</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="hero-home__mock-preview">
+                                                <div class="mockup-card" style="border-color: rgba(40, 167, 69, 0.25);">
+                                                    <div class="mockup-header" style="background: rgba(40, 167, 69, 0.05);">
+                                                        <div class="mockup-dots"><span></span><span></span><span></span></div>
+                                                        <span class="mockup-address">areasdeinteres.pages.dev</span>
+                                                    </div>
+                                                    <div class="mockup-body" style="background: #198754; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 2rem; text-align: center; height: 100%;">
+                                                        <i class="bi bi-map" style="font-size: 3rem; color: #ffc107; margin-bottom: 0.5rem;"></i>
+                                                        <strong style="font-size: 1.1rem; color: white;">Áreas de Interés</strong>
+                                                        <span style="font-size: 0.75rem; opacity: 0.8; margin-top: 0.2rem;">Geovisualizador Territorial</span>
+                                                    </div>
+                                                    <a href="@Url.Action("Index", "AreasInteres")" class="mockup-fab" style="background: #ffc107; color: #333;" aria-label="Abrir mapa">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Slide 6: AZEL -->
+                                    <div class="carousel-item">
+                                        <div class="hero-home__content hero-home__content--portal hero-home__content--split">
+                                            <div class="hero-home__copy">
+                                                <span class="badge-novedad mb-3" style="background-color: rgba(0, 123, 255, 0.08); color: #007bff;">Atlas Limpio</span>
+                                                <h1 class="hero-home__title hero-home__title--portal hero-home__title--novedad">
+                                                    Atlas de Energías Limpias <span class="text-guinda">(AZEL)</span>
+                                                </h1>
+                                                <p class="hero-home__lead">Explora las zonas con alto potencial para la generación y desarrollo de energías limpias en todo el territorio nacional.</p>
+                                                <div class="hero-home__cta-row gap-3">
+                                                    <a href="@Url.Action("AZEL_Publico", "Atlas")" class="hero-home__cta-btn">
+                                                        Explorar AZEL
+                                                        <i class="bi bi-arrow-right"></i>
+                                                    </a>
+                                                </div>
+                                                <!-- Features row at bottom -->
+                                                <div class="hero-features-row d-flex gap-4">
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #007bff; background: rgba(0, 123, 255, 0.08);"><i class="bi bi-sun"></i></span>
+                                                        <div>
+                                                            <strong>Energía Limpia</strong>
+                                                            <small class="d-block text-muted">Solar, eólica y geotérmica</small>
+                                                        </div>
+                                                    </div>
+                                                    <div class="hero-feature-item d-flex align-items-center gap-2">
+                                                        <span class="hero-feature-icon" style="color: #007bff; background: rgba(0, 123, 255, 0.08);"><i class="bi bi-speedometer"></i></span>
+                                                        <div>
+                                                            <strong>Potencial Estimado</strong>
+                                                            <small class="d-block text-muted">Zonas de alto rendimiento</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="hero-home__mock-preview">
+                                                <div class="mockup-card" style="border-color: rgba(0, 123, 255, 0.25);">
+                                                    <div class="mockup-header" style="background: rgba(0, 123, 255, 0.05);">
+                                                        <div class="mockup-dots"><span></span><span></span><span></span></div>
+                                                        <span class="mockup-address">Atlas AZEL</span>
+                                                    </div>
+                                                    <div class="mockup-body" style="background: #0d6efd; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 2rem; text-align: center; height: 100%;">
+                                                        <i class="bi bi-sun-fill" style="font-size: 3rem; color: #ffc107; margin-bottom: 0.5rem;"></i>
+                                                        <strong style="font-size: 1.1rem; color: white;">Atlas AZEL</strong>
+                                                        <span style="font-size: 0.75rem; opacity: 0.8; margin-top: 0.2rem;">Alto Potencial de Energías Limpias</span>
+                                                    </div>
+                                                    <a href="@Url.Action("AZEL_Publico", "Atlas")" class="mockup-fab" style="background: #ffc107; color: #333;" aria-label="Abrir AZEL">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Indicadores de Carousel -->
+                                <div class="carousel-indicators-custom">
+                                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="0" class="active" aria-current="true" aria-label="Slide 1"></button>
+                                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="1" aria-label="Slide 2"></button>
+                                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="2" aria-label="Slide 3"></button>
+                                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="3" aria-label="Slide 4"></button>
+                                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="4" aria-label="Slide 5"></button>
+                                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="5" aria-label="Slide 6"></button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Columna: Atribuciones -->
+                <section id="atribuciones-section" class="home-panel" aria-label="Atribuciones DGMESNIE 2026" style="margin-bottom: 0;">
+                    <div class="card-header card-header--split align-items-center">
+                        <div class="card-header__title-wrap">
+                            <div class="card-icon" style="background: rgba(138, 0, 49, 0.08); color: #8A0031; width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;">
+                                <i class="bi bi-journal-bookmark-fill"></i>
+                            </div>
+                            <div>
+                                <h3 class="card-title mb-1" style="font-size: 1.25rem; font-weight: 700; color: #333;">Atribuciones DGMESNIE 2026</h3>
+                                <p class="text-muted small mb-0">Presentación interactiva sobre las funciones y atribuciones institucionales de la Dirección General.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="iframe-container-canva"
+                             style="position: relative; width: 100%; height: 0; padding-top: 56.2500%; overflow: hidden; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.08);">
+                            <iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"  loading="lazy"
+                                    style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; border: none; padding: 0; margin: 0; display: block;"
+                                    src="@Url.Content("~/Presentaciones/Presentacion%20DGMESNIE.html")"
+                                    allowfullscreen="allowfullscreen" allow="fullscreen">
+                            </iframe>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script>
+        $(function () {
+            const fondosBienvenida = @Html.Raw(JsonConvert.SerializeObject(fondosBienvenida));
+            const $heroWelcomePanel = $('#heroWelcomePanel');
+
+            function aplicarFondoBienvenida(item) {
+                if (!item || !$heroWelcomePanel.length) {
+                    return;
+                }
+
+                $heroWelcomePanel[0].style.setProperty('--hero-welcome-bg', `url("${item.Url}")`);
+                $heroWelcomePanel[0].style.setProperty('--hero-welcome-position', item.Posicion || 'center center');
+            }
+
+            if (fondosBienvenida.length && $heroWelcomePanel.length) {
+                aplicarFondoBienvenida(fondosBienvenida[0]);
+            }
+
+            function inicializarCenefaAccesos() {
+                const ribbon = document.querySelector('[data-quick-access-ribbon]');
+                const viewport = ribbon?.querySelector('[data-quick-access-viewport]');
+                const track = ribbon?.querySelector('[data-quick-access-track]');
+
+                if (!ribbon || !viewport || !track) {
+                    return;
+                }
+
+                const accesosOriginales = Array.from(track.children);
+                const botonAnterior = ribbon.querySelector('[data-quick-access-prev]');
+                const botonSiguiente = ribbon.querySelector('[data-quick-access-next]');
+                const preferenciaMovimientoReducido = window.matchMedia('(prefers-reduced-motion: reduce)');
+                const accesosClonados = [];
+                let hayDesbordamiento = false;
+                let puntoReinicio = 0;
+                let punteroEncima = false;
+                let arrastreActivo = false;
+                let pausadoPorFoco = false;
+                let pausaTemporalHasta = performance.now() + 1800;
+                let ultimoFotograma = 0;
+
+                if (accesosOriginales.length > 1) {
+                    accesosOriginales.forEach((acceso) => {
+                        const clon = acceso.cloneNode(true);
+                        clon.setAttribute('aria-hidden', 'true');
+                        clon.setAttribute('tabindex', '-1');
+                        clon.dataset.quickAccessClone = 'true';
+                        track.appendChild(clon);
+                        accesosClonados.push(clon);
+                    });
+                }
+
+                const actualizarMedidas = () => {
+                    const primerAcceso = accesosOriginales[0];
+                    const ultimoAcceso = accesosOriginales[accesosOriginales.length - 1];
+                    const estilosTrack = window.getComputedStyle(track);
+                    const separacion = Number.parseFloat(estilosTrack.columnGap || estilosTrack.gap) || 0;
+                    const anchoOriginal = primerAcceso && ultimoAcceso
+                        ? (ultimoAcceso.offsetLeft + ultimoAcceso.offsetWidth - primerAcceso.offsetLeft + separacion)
+                        : 0;
+
+                    hayDesbordamiento = anchoOriginal > viewport.clientWidth + 4;
+
+                    accesosClonados.forEach((clon) => {
+                        clon.hidden = !hayDesbordamiento || preferenciaMovimientoReducido.matches;
+                    });
+
+                    puntoReinicio = hayDesbordamiento && accesosClonados.length && !preferenciaMovimientoReducido.matches
+                        ? accesosClonados[0].offsetLeft
+                        : 0;
+
+                    [botonAnterior, botonSiguiente].forEach((boton) => {
+                        if (boton) {
+                            boton.disabled = !hayDesbordamiento;
+                        }
+                    });
+
+                    if (!hayDesbordamiento) {
+                        viewport.scrollLeft = 0;
+                    }
+                };
+
+                actualizarMedidas();
+
+                if (typeof ResizeObserver !== 'undefined') {
+                    const observadorTamano = new ResizeObserver(actualizarMedidas);
+                    observadorTamano.observe(viewport);
+                } else {
+                    window.addEventListener('resize', actualizarMedidas, { passive: true });
+                }
+
+                preferenciaMovimientoReducido.addEventListener?.('change', actualizarMedidas);
+
+                const pausarTemporalmente = (milisegundos = 2400) => {
+                    pausaTemporalHasta = performance.now() + milisegundos;
+                };
+
+                const desplazarManualmente = (direccion) => {
+                    if (!hayDesbordamiento) {
+                        return;
+                    }
+
+                    pausarTemporalmente();
+                    const paso = Math.min(360, Math.max(210, viewport.clientWidth * 0.7));
+
+                    if (direccion < 0 && viewport.scrollLeft <= 2 && puntoReinicio > 0) {
+                        viewport.scrollLeft = puntoReinicio;
+                    }
+
+                    viewport.scrollBy({
+                        left: direccion * paso,
+                        behavior: preferenciaMovimientoReducido.matches ? 'auto' : 'smooth'
+                    });
+                };
+
+                botonAnterior?.addEventListener('click', () => desplazarManualmente(-1));
+                botonSiguiente?.addEventListener('click', () => desplazarManualmente(1));
+
+                ribbon.addEventListener('mouseenter', () => { punteroEncima = true; });
+                ribbon.addEventListener('mouseleave', () => { punteroEncima = false; });
+                ribbon.addEventListener('focusin', () => { pausadoPorFoco = true; });
+                ribbon.addEventListener('focusout', () => {
+                    requestAnimationFrame(() => {
+                        pausadoPorFoco = ribbon.contains(document.activeElement);
+                    });
+                });
+                viewport.addEventListener('pointerdown', () => { arrastreActivo = true; });
+                window.addEventListener('pointerup', () => {
+                    arrastreActivo = false;
+                    pausarTemporalmente(1200);
+                });
+                window.addEventListener('pointercancel', () => { arrastreActivo = false; });
+                viewport.addEventListener('wheel', () => pausarTemporalmente(), { passive: true });
+
+                const animarCenefa = (marcaTiempo) => {
+                    if (!ultimoFotograma) {
+                        ultimoFotograma = marcaTiempo;
+                    }
+
+                    const delta = Math.min(marcaTiempo - ultimoFotograma, 34);
+                    ultimoFotograma = marcaTiempo;
+
+                    const puedeAvanzar = hayDesbordamiento
+                        && puntoReinicio > 0
+                        && !preferenciaMovimientoReducido.matches
+                        && !punteroEncima
+                        && !arrastreActivo
+                        && !pausadoPorFoco
+                        && !document.hidden
+                        && marcaTiempo >= pausaTemporalHasta;
+
+                    if (puedeAvanzar) {
+                        viewport.scrollLeft += delta * 0.025;
+
+                        if (viewport.scrollLeft >= puntoReinicio) {
+                            viewport.scrollLeft -= puntoReinicio;
+                        }
+                    }
+
+                    requestAnimationFrame(animarCenefa);
+                };
+
+                requestAnimationFrame(animarCenefa);
+            }
+
+            inicializarCenefaAccesos();
+
+            // Animación de entrada con AnimeJS (estilo login)
+            if (typeof anime !== 'undefined') {
+                // Estado inicial
+                anime.set([
+                    '.home-dashboard-page__view-header',
+                    '.quick-access-ribbon',
+                    '.quick-access-bubble:not([data-quick-access-clone])',
+                    '.hero-home__background',
+                    '.hero-home__copy > span',
+                    '.hero-home__copy > h1',
+                    '.hero-home__copy > p',
+                    '.hero-home__cta-row',
+                    '.hero-home__stats-item',
+                    '.home-panel'
+                ], {
+                    opacity: 0,
+                    translateY: 15
+                });
+
+                const timeline = anime.timeline({
+                    easing: 'easeOutExpo',
+                    duration: 800
+                });
+
+                timeline
+                    .add({
+                        targets: '.home-dashboard-page__view-header',
+                        opacity: [0, 1],
+                        translateY: [10, 0],
+                        duration: 600
+                    })
+                    .add({
+                        targets: '.quick-access-ribbon',
+                        opacity: [0, 1],
+                        translateY: [10, 0],
+                        duration: 650
+                    }, '-=420')
+                    .add({
+                        targets: '.quick-access-bubble:not([data-quick-access-clone])',
+                        opacity: [0, 1],
+                        translateY: [10, 0],
+                        delay: anime.stagger(35),
+                        duration: 430
+                    }, '-=430')
+                    .add({
+                        targets: '.hero-home__background',
+                        opacity: [0, 1],
+                        scale: [0.98, 1],
+                        duration: 800
+                    }, '-=400')
+                    .add({
+                        targets: [
+                            '.hero-home__copy > span',
+                            '.hero-home__copy > h1',
+                            '.hero-home__copy > p',
+                            '.hero-home__cta-row'
+                        ],
+                        opacity: [0, 1],
+                        translateY: [15, 0],
+                        delay: anime.stagger(100),
+                        duration: 600
+                    }, '-=600')
+                    .add({
+                        targets: '.hero-home__stats-item',
+                        opacity: [0, 1],
+                        translateY: [15, 0],
+                        delay: anime.stagger(80),
+                        duration: 600
+                    }, '-=400')
+                    .add({
+                        targets: '.home-panel',
+                        opacity: [0, 1],
+                        translateY: [20, 0],
+                        delay: anime.stagger(120),
+                        duration: 700
+                    }, '-=400');
+            }
+        });
+
+        function makeFullscreen() {
+            const container = document.querySelector('.iframe-container-canva');
+            if (container) {
+                if (container.requestFullscreen) {
+                    container.requestFullscreen();
+                } else if (container.webkitRequestFullscreen) { /* Safari */
+                    container.webkitRequestFullscreen();
+                } else if (container.msRequestFullscreen) { /* IE11 */
+                    container.msRequestFullscreen();
+                }
+            }
+        }
+    </script>
+}
+

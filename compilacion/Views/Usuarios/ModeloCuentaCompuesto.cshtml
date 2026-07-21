@@ -1,0 +1,1111 @@
+@model NSIE.Models.ModeloCuentaCompuesto
+@inject IHttpContextAccessor HttpContextAccessor
+@using NSIE.Models
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    ViewData["NombreUsuario"] = perfilUsuario?.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario?.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario?.Mercado_ID;
+    ViewData["IDUsuario"] = perfilUsuario?.IdUsuario;
+    ViewData["Title"] = "Cuenta de usuario";
+
+    var header = new HeaderViewModel
+    {
+        Title = "Cuenta de usuario",
+        IconPath = "usuarios_scel.png",
+        Description = "Consulta el perfil, la actividad reciente y la seguridad de acceso del usuario.",
+        Section = "Gobernanza y Seguridad",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Cuenta de usuario",
+            description = "Ficha operativa del usuario con monitoreo de accesos y control de seguridad.",
+            functionality = "Permite revisar la identidad del usuario, su rol, su adscripción y el comportamiento de acceso reciente.",
+            stage = "Operación",
+            roles = new[] {
+                new { icon = "person-badge", text = "Administración de usuarios y seguimiento de accesos." },
+                new { icon = "shield-check", text = "Control de seguridad y validación operativa de cuentas." }
+            },
+            order = new { step = 2, description = "Consulta y seguimiento del expediente operativo del usuario" }
+        })
+    };
+}
+
+@section Styles {
+    <style>
+        .cuenta-page {
+            padding: 1.5rem 0 2.5rem;
+        }
+
+        .cuenta-stack {
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .cuenta-panel {
+            border: 1px solid rgba(138, 0, 49, 0.08);
+            border-radius: 28px;
+            background: #fff;
+            padding: 1.5rem;
+            box-shadow: 0 12px 32px rgba(36, 52, 68, 0.05);
+        }
+
+        .cuenta-panel__header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .cuenta-panel__title {
+            margin: 0;
+            color: #243444;
+            font-size: 1.4rem;
+            font-weight: 800;
+        }
+
+        .cuenta-panel__subtitle {
+            margin: 0.35rem 0 0;
+            color: #6c7a89;
+        }
+
+        .cuenta-hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+            gap: 1.5rem;
+        }
+
+        .cuenta-profile {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .cuenta-profile__headline {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .cuenta-profile__name {
+            margin: 0;
+            color: #243444;
+            font-size: 2rem;
+            font-weight: 800;
+            line-height: 1.05;
+        }
+
+        .cuenta-profile__email {
+            margin: 0.35rem 0 0;
+            color: #6c7a89;
+        }
+
+        .cuenta-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.45rem 0.8rem;
+            border-radius: 999px;
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .cuenta-badge--active {
+            background: rgba(30, 91, 79, 0.12);
+            color: #1e5b4f;
+        }
+
+        .cuenta-badge--inactive {
+            background: rgba(138, 0, 49, 0.12);
+            color: #8a0031;
+        }
+
+        .cuenta-info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+        }
+
+        .cuenta-field {
+            border: 1px solid #edf0f3;
+            border-radius: 18px;
+            background: #fbfcfd;
+            padding: 0.95rem 1rem;
+        }
+
+        .cuenta-field span {
+            display: block;
+            margin-bottom: 0.3rem;
+            color: #7b8797;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .cuenta-field strong,
+        .cuenta-field p {
+            margin: 0;
+            color: #243444;
+            font-size: 0.98rem;
+            line-height: 1.45;
+        }
+
+        .cuenta-metrics {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .cuenta-metric {
+            border: 1px solid rgba(138, 0, 49, 0.08);
+            border-radius: 22px;
+            background: #fff;
+            padding: 1rem 1.1rem;
+        }
+
+        .cuenta-metric span {
+            display: block;
+            margin-bottom: 0.4rem;
+            color: #7b8797;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .cuenta-metric strong {
+            color: #243444;
+            font-size: 2rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .cuenta-metric__accent {
+            color: #8a0031 !important;
+        }
+
+        .cuenta-charts {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1.5rem;
+        }
+
+        .cuenta-chart-card {
+            border: 1px solid rgba(138, 0, 49, 0.08);
+            border-radius: 24px;
+            background: #fff;
+            padding: 1rem;
+        }
+
+        .cuenta-chart-card__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .cuenta-chart-card__action {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            border: 1px solid rgba(138, 0, 49, 0.15);
+            border-radius: 999px;
+            background: #fff;
+            color: #8a0031;
+            font-size: 0.82rem;
+            font-weight: 700;
+            padding: 0.4rem 0.75rem;
+        }
+
+        .cuenta-chart-card h3 {
+            margin: 0 0 0.75rem;
+            color: #243444;
+            font-size: 1.08rem;
+            font-weight: 800;
+        }
+
+        .cuenta-chart {
+            height: 320px;
+        }
+
+        .cuenta-chart,
+        .cuenta-chart .highcharts-container,
+        .cuenta-chart .highcharts-root,
+        .cuenta-chart .highcharts-background {
+            background: #fff;
+        }
+
+        .cuenta-chart-modal .modal-content {
+            border: 0;
+            border-radius: 0;
+            background: #fff;
+        }
+
+        .cuenta-chart-modal {
+            z-index: 20100 !important;
+        }
+
+        .cuenta-chart-modal+.modal-backdrop {
+            z-index: 20090 !important;
+        }
+
+        .cuenta-chart-modal .modal-header {
+            border-bottom: 1px solid rgba(138, 0, 49, 0.08);
+            padding: 5.5rem 1.5rem 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #fff;
+        }
+
+        .cuenta-chart-modal .modal-title {
+            color: #243444;
+            font-weight: 800;
+        }
+
+        .cuenta-chart-modal .modal-body {
+            padding: 1rem 1.5rem 1.5rem;
+        }
+
+        .cuenta-chart-modal__container {
+            width: 100%;
+            height: calc(100vh - 8rem);
+            min-height: 540px;
+            background: #fff;
+        }
+
+        .cuenta-empty {
+            border: 1px dashed rgba(138, 0, 49, 0.18);
+            border-radius: 20px;
+            background: #fff;
+            padding: 1.5rem;
+            color: #6c7a89;
+            text-align: center;
+        }
+
+        .cuenta-table-wrap {
+            overflow-x: auto;
+        }
+
+        .cuenta-table {
+            margin: 0;
+        }
+
+        .cuenta-table thead th {
+            color: #7b8797;
+            font-size: 0.78rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+
+        .cuenta-security {
+            max-width: 720px;
+        }
+
+        .cuenta-security .form-control,
+        .cuenta-security .input-group-text {
+            border-radius: 14px;
+        }
+
+        @@media (max-width: 1199.98px) {
+
+            .cuenta-hero,
+            .cuenta-charts {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @@media (max-width: 767.98px) {
+            .cuenta-page {
+                padding: 0.75rem 0 1.75rem;
+            }
+
+            .cuenta-stack {
+                gap: 1rem;
+                width: 100%;
+                overflow: hidden;
+                min-width: 0;
+            }
+
+            .cuenta-panel {
+                padding: 1.1rem;
+                border-radius: 20px;
+                width: 100%;
+                overflow: hidden;
+                min-width: 0;
+            }
+
+            .cuenta-panel__title {
+                font-size: 1.25rem;
+            }
+
+            .cuenta-profile__headline {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.85rem;
+            }
+
+            .cuenta-profile__name {
+                font-size: 1.65rem;
+            }
+
+            .cuenta-badge {
+                padding: 0.35rem 0.7rem;
+                font-size: 0.78rem;
+            }
+
+            .cuenta-info-grid {
+                grid-template-columns: 1fr;
+                gap: 0.75rem;
+            }
+
+            .cuenta-field {
+                padding: 0.75rem 0.85rem;
+                border-radius: 14px;
+            }
+
+            .cuenta-field span {
+                font-size: 0.72rem;
+                margin-bottom: 0.2rem;
+            }
+
+            .cuenta-field strong,
+            .cuenta-field p {
+                font-size: 0.9rem;
+            }
+
+            .cuenta-metrics {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.75rem;
+            }
+
+            .cuenta-metric {
+                padding: 0.85rem 0.95rem;
+                border-radius: 16px;
+            }
+
+            .cuenta-metric:last-child {
+                grid-column: span 2;
+            }
+
+            .cuenta-metric span {
+                font-size: 0.72rem;
+                margin-bottom: 0.25rem;
+            }
+
+            .cuenta-metric strong {
+                font-size: 1.6rem;
+            }
+
+            #metricUltimoAcceso {
+                font-size: 1.05rem !important;
+            }
+
+            .cuenta-chart-card {
+                padding: 0.85rem;
+                border-radius: 18px;
+                width: 100%;
+                overflow: hidden;
+                min-width: 0;
+            }
+
+            .cuenta-chart-card__header {
+                gap: 0.5rem;
+            }
+
+            .cuenta-chart-card__action span {
+                display: none;
+            }
+
+            .cuenta-chart-card__action {
+                padding: 0;
+                width: 32px;
+                height: 32px;
+                justify-content: center;
+                border-radius: 50%;
+                flex: 0 0 32px;
+            }
+
+            .cuenta-chart-card h3 {
+                font-size: 0.98rem;
+            }
+
+            .cuenta-chart {
+                height: 280px;
+                width: 100% !important;
+                overflow: hidden;
+            }
+
+            .cuenta-table th,
+            .cuenta-table td {
+                padding: 0.65rem 0.75rem;
+                font-size: 0.82rem;
+                white-space: nowrap;
+            }
+        }
+
+        /* --- Modo oscuro --- */
+        [data-bs-theme="dark"] .cuenta-panel,
+        [data-bs-theme="dark"] .cuenta-metric,
+        [data-bs-theme="dark"] .cuenta-chart-card,
+        [data-bs-theme="dark"] .cuenta-empty {
+            background: var(--shell-surface, #1d1925);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+        }
+
+        [data-bs-theme="dark"] .cuenta-field {
+            background: var(--shell-surface-2, #241f2e);
+            border-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+
+        [data-bs-theme="dark"] .cuenta-panel__title,
+        [data-bs-theme="dark"] .cuenta-profile__name,
+        [data-bs-theme="dark"] .cuenta-field strong,
+        [data-bs-theme="dark"] .cuenta-field p,
+        [data-bs-theme="dark"] .cuenta-metric strong,
+        [data-bs-theme="dark"] .cuenta-chart-card h3,
+        [data-bs-theme="dark"] .cuenta-chart-modal .modal-title {
+            color: var(--shell-ink, #ece7e2);
+        }
+
+        [data-bs-theme="dark"] .cuenta-panel__subtitle,
+        [data-bs-theme="dark"] .cuenta-profile__email,
+        [data-bs-theme="dark"] .cuenta-field span,
+        [data-bs-theme="dark"] .cuenta-metric span,
+        [data-bs-theme="dark"] .cuenta-table thead th,
+        [data-bs-theme="dark"] .cuenta-empty {
+            color: var(--shell-muted, #a39aa8);
+        }
+
+        [data-bs-theme="dark"] .cuenta-metric__accent {
+            color: var(--shell-accent, #d4537e) !important;
+        }
+
+        [data-bs-theme="dark"] .cuenta-badge--active {
+            background: rgba(76, 207, 174, 0.14);
+            color: var(--shell-accent-3, #4ccfae);
+        }
+
+        [data-bs-theme="dark"] .cuenta-badge--inactive {
+            background: rgba(212, 83, 126, 0.14);
+            color: var(--shell-accent, #d4537e);
+        }
+
+        [data-bs-theme="dark"] .cuenta-chart-card__action {
+            background: var(--shell-surface-2, #241f2e);
+            border-color: rgba(212, 83, 126, 0.35);
+            color: var(--shell-accent, #d4537e);
+        }
+
+        [data-bs-theme="dark"] .cuenta-chart,
+        [data-bs-theme="dark"] .cuenta-chart .highcharts-container,
+        [data-bs-theme="dark"] .cuenta-chart .highcharts-root,
+        [data-bs-theme="dark"] .cuenta-chart-modal .modal-content,
+        [data-bs-theme="dark"] .cuenta-chart-modal .modal-header,
+        [data-bs-theme="dark"] .cuenta-chart-modal__container {
+            background: var(--shell-surface, #1d1925);
+        }
+
+        [data-bs-theme="dark"] .cuenta-chart .highcharts-background {
+            fill: transparent;
+        }
+
+        [data-bs-theme="dark"] .cuenta-chart-modal .modal-header {
+            border-bottom-color: var(--shell-line, rgba(255,255,255,0.09));
+        }
+    </style>
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+<div class="container cuenta-page">
+    <div class="cuenta-stack">
+        <section class="cuenta-panel">
+            <div class="cuenta-hero">
+                <div class="cuenta-profile">
+                    <div class="cuenta-profile__headline">
+                        <div>
+                            <h2 class="cuenta-profile__name">@Model.CuentaUsuario.Nombre</h2>
+                            <p class="cuenta-profile__email">@Model.CuentaUsuario.Correo</p>
+                        </div>
+                        <span
+                            class="cuenta-badge @(Model.CuentaUsuario.SesionActiva ? "cuenta-badge--active" : "cuenta-badge--inactive")">
+                            <i
+                            class="bi @(Model.CuentaUsuario.SesionActiva ? "bi-check2-circle" : "bi-pause-circle")"></i>
+                            @(Model.CuentaUsuario.SesionActiva ? "Sesión activa" : "Sesión inactiva")
+                        </span>
+                    </div>
+
+                    <div class="cuenta-info-grid">
+                        <div class="cuenta-field">
+                            <span>Rol</span>
+                            <strong>@Model.CuentaUsuario.Rol_Nombre</strong>
+                        </div>
+                        <div class="cuenta-field">
+                            <span>Mercado</span>
+                            <strong>@Model.CuentaUsuario.Mercado_Nombre</strong>
+                        </div>
+                        <div class="cuenta-field">
+                            <span>Unidad de adscripción</span>
+                            <p>@(string.IsNullOrWhiteSpace(Model.CuentaUsuario.Unidad_de_Adscripcion) ? "Sin registro" :
+                                                                                                                                Model.CuentaUsuario.Unidad_de_Adscripcion)</p>
+                            </div>
+                            <div class="cuenta-field">
+                                <span>Cargo</span>
+                                <p>@(string.IsNullOrWhiteSpace(Model.CuentaUsuario.Cargo) ? "Sin registro" :
+                                                                                                                                            Model.CuentaUsuario.Cargo)</p>
+                                </div>
+                                <div class="cuenta-field">
+                                    <span>RFC</span>
+                                    <strong>@(string.IsNullOrWhiteSpace(Model.CuentaUsuario.RFC) ? "Sin registro" :
+                                                                                                                                                        Model.CuentaUsuario.RFC)</strong>
+                                    </div>
+                                    <div class="cuenta-field">
+                                        <span>Clave de empleado</span>
+                                        <strong>@(string.IsNullOrWhiteSpace(Model.CuentaUsuario.ClaveEmpleado) ? "Sin registro" :
+                                                                                                                                                                    Model.CuentaUsuario.ClaveEmpleado)</strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <aside class="cuenta-metrics">
+                                    <div class="cuenta-metric">
+                                        <span>Total de accesos del usuario</span>
+                                        <strong id="metricTotalAccesos">0</strong>
+                                    </div>
+                                    <div class="cuenta-metric">
+                                        <span>Accesos hoy</span>
+                                        <strong id="metricAccesosHoy" class="cuenta-metric__accent">0</strong>
+                                    </div>
+                                    <div class="cuenta-metric">
+                                        <span>Último acceso registrado</span>
+                                        <strong id="metricUltimoAcceso" style="font-size:1.2rem; line-height:1.3;">Sin datos</strong>
+                                    </div>
+                                </aside>
+                            </div>
+                        </section>
+
+                        <section class="cuenta-panel">
+                            <div class="cuenta-panel__header">
+                                <div>
+                                    <h2 class="cuenta-panel__title">Estadísticas de acceso</h2>
+                                    <p class="cuenta-panel__subtitle">Actividad reciente del usuario consultado, sin mezclar datos
+                                        globales de otros perfiles.</p>
+                                    </div>
+                                </div>
+
+                                <div id="cuentaSinDatos" class="cuenta-empty" style="display:none;">
+                                    No hay accesos registrados para este usuario en el rango consultado.
+                                </div>
+
+                                <div id="cuentaChartsBlock" class="cuenta-charts">
+                                    <div class="cuenta-chart-card">
+                                        <div class="cuenta-chart-card__header">
+                                            <h3>Accesos por fecha</h3>
+                                            <button type="button" class="cuenta-chart-card__action" data-chart-fullscreen
+                                                    data-chart-target="grafico-accesos" data-chart-title="Accesos por fecha">
+                                                <i class="bi bi-arrows-fullscreen"></i>
+                                                <span>Full view</span>
+                                            </button>
+                                        </div>
+                                        <div id="grafico-accesos" class="cuenta-chart"></div>
+                                    </div>
+                                    <div class="cuenta-chart-card">
+                                        <div class="cuenta-chart-card__header">
+                                            <h3>Accesos del día de hoy</h3>
+                                            <button type="button" class="cuenta-chart-card__action" data-chart-fullscreen
+                                                    data-chart-target="grafico-accesos-hoy" data-chart-title="Accesos del día de hoy">
+                                                <i class="bi bi-arrows-fullscreen"></i>
+                                                <span>Full view</span>
+                                            </button>
+                                        </div>
+                                        <div id="grafico-accesos-hoy" class="cuenta-chart"></div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="cuenta-panel">
+                                <div class="cuenta-panel__header">
+                                    <div>
+                                        <h2 class="cuenta-panel__title">Bitácora reciente</h2>
+                                        <p class="cuenta-panel__subtitle">Últimos eventos de acceso reportados para esta cuenta.</p>
+                                    </div>
+                                </div>
+
+                                <div class="cuenta-table-wrap">
+                                    <table class="table cuenta-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha y hora</th>
+                                                <th>Tipo de acceso</th>
+                                                <th>IP</th>
+                                                <th>Unidad</th>
+                                                <th>Cargo</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tablaAccesosBody">
+                                            <tr>
+                                                <td colspan="5" class="text-muted">Cargando actividad...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+
+                            <section class="cuenta-panel cuenta-security">
+                                <div class="cuenta-panel__header">
+                                    <div>
+                                        <h2 class="cuenta-panel__title">Cambio de contraseña</h2>
+                                        <p class="cuenta-panel__subtitle">Activa esta opción solo cuando necesites restablecer el acceso de
+                                            la cuenta.</p>
+                                        </div>
+                                    </div>
+
+                                    <form id="cambio-contrasena-form" action="@Url.Action("ResetPasswordUser", "Acceso")" method="post"
+                                          data-skip-page-preloader="true">
+                                        <div class="form-group mb-3">
+                                            <label for="cambio-contrasena-checkbox" class="form-label">¿Deseas cambiar la contraseña?</label>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" id="cambio-contrasena-checkbox">
+                                                <label class="form-check-label" for="cambio-contrasena-checkbox">Sí</label>
+                                            </div>
+                                        </div>
+
+                                        <div id="cambio-contrasena-fields" style="display: none;">
+                                            <div class="input-group mb-3">
+                                                <span class="input-group-text"><i class="fas fa-key"></i></span>
+                                                <input type="password" name="Clave" class="form-control input_pass"
+                                                       placeholder="Nueva contraseña" required autocomplete="new-password">
+                                            </div>
+
+                                            <div class="input-group mb-3">
+                                                <span class="input-group-text"><i class="fas fa-key"></i></span>
+                                                <input type="password" name="ConfirmarClave" class="form-control input_pass"
+                                                       placeholder="Confirmar contraseña" required autocomplete="new-password">
+                                            </div>
+                                        </div>
+
+                                        @if (ViewData["Mensaje"] != null)
+                                        {
+                                            <div class="alert alert-danger text-center" role="alert">
+                                                @ViewData["Mensaje"]
+                                            </div>
+                                        }
+
+                                        <input type="hidden" name="IdUsuario" value="@Model.CuentaUsuario.IdUsuario">
+
+                                        <div id="mensaje-reset-password"></div>
+
+                                        <div class="d-flex justify-content-start mt-3" id="cambio-contrasena-submit" style="display: none;">
+                                            <button type="submit" class="btn btn-primary" style="display: none;"
+                                                    id="cambio-contrasena-button">Restablecer contraseña</button>
+                                        </div>
+                                    </form>
+                                </section>
+                            </div>
+                        </div>
+
+                        <div class="modal fade cuenta-chart-modal" id="cuentaChartModal" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-fullscreen">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="cuentaChartModalTitle">Full view</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div id="cuentaChartFullscreenContainer" class="cuenta-chart-modal__container"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        @section Scripts {
+                            <script>
+                                (() => {
+                                    const userId = @Model.CuentaUsuario.IdUsuario;
+                                    const chartRegistry = new Map();
+                                    const chartModalElement = document.getElementById('cuentaChartModal');
+                                    const chartModalTitle = document.getElementById('cuentaChartModalTitle');
+                                    const fullscreenContainerId = 'cuentaChartFullscreenContainer';
+                                    const chartModal = chartModalElement ? new bootstrap.Modal(chartModalElement) : null;
+                                    let modalChart = null;
+                                    const mexicoTimeZone = 'America/Mexico_City';
+                                    const cuentaDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+                                    const chartColors = cuentaDark ? {
+                                        guinda: '#d4537e',
+                                        verde: '#4ccfae',
+                                        dorado: '#d4ab52',
+                                        gris: '#a39aa8',
+                                        linea: 'rgba(255, 255, 255, 0.16)',
+                                        fondo: 'transparent',
+                                        texto: '#ece7e2'
+                                    } : {
+                                        guinda: '#8a0031',
+                                        verde: '#1e5b4f',
+                                        dorado: '#a57f2c',
+                                        gris: '#6c7a89',
+                                        linea: '#d9c7ad',
+                                        fondo: 'transparent',
+                                        texto: '#243444'
+                                    };
+                                    // Los gráficos se construyen una sola vez: al cambiar de tema, recargar
+                                    window.addEventListener('themechange', () => window.location.reload());
+
+                                    function registerChart(containerId, chartInstance) {
+                                        chartRegistry.set(containerId, chartInstance);
+                                    }
+
+                                    function parseServerDate(dateValue) {
+                                        if (!dateValue) {
+                                            return null;
+                                        }
+
+                                        if (dateValue instanceof Date) {
+                                            return Number.isNaN(dateValue.getTime()) ? null : dateValue;
+                                        }
+
+                                        const normalizedValue = typeof dateValue === 'string' && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(dateValue)
+                                            ? `${dateValue}Z`
+                                            : dateValue;
+
+                                        const parsed = new Date(normalizedValue);
+                                        return Number.isNaN(parsed.getTime()) ? null : parsed;
+                                    }
+
+                                    function getMexicoDateKey(dateValue) {
+                                        const parsed = parseServerDate(dateValue);
+                                        if (!parsed) {
+                                            return '';
+                                        }
+
+                                        const parts = new Intl.DateTimeFormat('en-CA', {
+                                            timeZone: mexicoTimeZone,
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit'
+                                        }).formatToParts(parsed);
+
+                                        const year = parts.find((part) => part.type === 'year')?.value;
+                                        const month = parts.find((part) => part.type === 'month')?.value;
+                                        const day = parts.find((part) => part.type === 'day')?.value;
+
+                                        return year && month && day ? `${year}-${month}-${day}` : '';
+                                    }
+
+                                    function openChartFullView(chartId, chartTitle) {
+                                        const chartInstance = chartRegistry.get(chartId);
+                                        if (!chartInstance || !window.Highcharts || !chartModal) {
+                                            return;
+                                        }
+
+                                        chartModalTitle.textContent = chartTitle || 'Full view';
+                                        chartModal.show();
+
+                                        window.setTimeout(() => {
+                                            if (modalChart) {
+                                                modalChart.destroy();
+                                                modalChart = null;
+                                            }
+
+                                            const modalOptions = Highcharts.merge({}, chartInstance.userOptions, {
+                                                chart: Highcharts.merge({}, chartInstance.userOptions.chart || {}, {
+                                                    renderTo: fullscreenContainerId,
+                                                    backgroundColor: chartColors.fondo,
+                                                    animation: false
+                                                }),
+                                                title: Highcharts.merge({}, chartInstance.userOptions.title || {}, {
+                                                    text: null
+                                                }),
+                                                credits: {
+                                                    enabled: false
+                                                }
+                                            });
+
+                                            modalChart = Highcharts.chart(fullscreenContainerId, modalOptions);
+                                            modalChart.reflow();
+                                        }, 180);
+                                    }
+
+                                    function bindChartFullscreen() {
+                                        document.querySelectorAll('[data-chart-fullscreen]').forEach((button) => {
+                                            if (button.dataset.fullscreenBound === 'true') {
+                                                return;
+                                            }
+
+                                            button.dataset.fullscreenBound = 'true';
+                                            button.addEventListener('click', () => {
+                                                openChartFullView(button.dataset.chartTarget, button.dataset.chartTitle);
+                                            });
+                                        });
+                                    }
+
+                                    if (chartModalElement) {
+                                        chartModalElement.addEventListener('hidden.bs.modal', () => {
+                                            if (modalChart) {
+                                                modalChart.destroy();
+                                                modalChart = null;
+                                            }
+                                        });
+                                    }
+
+                                    bindChartFullscreen();
+
+                                    function formatDate(dateValue) {
+                                        const parsed = parseServerDate(dateValue);
+                                        if (!parsed) {
+                                            return 'Sin datos';
+                                        }
+
+                                        return parsed.toLocaleString('es-MX', {
+                                            timeZone: mexicoTimeZone,
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                            hour12: true
+                                        });
+                                    }
+
+                                    function renderNoData() {
+                                        document.getElementById('cuentaSinDatos').style.display = 'block';
+                                        document.getElementById('cuentaChartsBlock').style.display = 'none';
+                                        document.getElementById('tablaAccesosBody').innerHTML = '<tr><td colspan="5" class="text-muted">No hay accesos registrados para este usuario.</td></tr>';
+                                        document.getElementById('metricTotalAccesos').textContent = '0';
+                                        document.getElementById('metricAccesosHoy').textContent = '0';
+                                        document.getElementById('metricUltimoAcceso').textContent = 'Sin datos';
+                                    }
+
+                                    function renderTable(detallesAcceso) {
+                                        const tableBody = document.getElementById('tablaAccesosBody');
+                                        tableBody.innerHTML = '';
+
+                                        detallesAcceso
+                                            .slice()
+                                            .sort((a, b) => new Date(b.fechaHoraLocal) - new Date(a.fechaHoraLocal))
+                                            .slice(0, 10)
+                                            .forEach((acceso) => {
+                                                const row = document.createElement('tr');
+                                                row.innerHTML = `
+                                                                                                                <td>${formatDate(acceso.fechaHoraLocal)}</td>
+                                                                                                                <td>${acceso.tipoAcceso || '-'}</td>
+                                                                                                                <td>${acceso.ip || '-'}</td>
+                                                                                                                <td>${acceso.unidadDeAdscripcion || '-'}</td>
+                                                                                                                <td>${acceso.cargo || '-'}</td>`;
+                                                tableBody.appendChild(row);
+                                            });
+                                    }
+
+                                    function renderCharts(detallesAcceso) {
+                                        if (!window.Highcharts) {
+                                            return;
+                                        }
+
+                                        Highcharts.setOptions({
+                                            chart: {
+                                                backgroundColor: chartColors.fondo,
+                                                style: {
+                                                    fontFamily: 'Montserrat, sans-serif'
+                                                }
+                                            },
+                                            title: {
+                                                style: {
+                                                    color: chartColors.texto,
+                                                    fontWeight: '700'
+                                                }
+                                            },
+                                            xAxis: {
+                                                lineColor: chartColors.linea,
+                                                tickColor: chartColors.linea,
+                                                labels: {
+                                                    style: {
+                                                        color: chartColors.texto
+                                                    }
+                                                }
+                                            },
+                                            yAxis: {
+                                                gridLineColor: '#edf0f3',
+                                                labels: {
+                                                    style: {
+                                                        color: chartColors.texto
+                                                    }
+                                                },
+                                                title: {
+                                                    style: {
+                                                        color: chartColors.texto
+                                                    }
+                                                }
+                                            },
+                                            legend: {
+                                                itemStyle: {
+                                                    color: chartColors.texto
+                                                }
+                                            },
+                                            credits: {
+                                                enabled: false
+                                            }
+                                        });
+
+                                        const accesosPorFecha = {};
+                                        detallesAcceso.forEach((acceso) => {
+                                            const fecha = getMexicoDateKey(acceso.fechaHoraLocal);
+                                            if (!fecha) {
+                                                return;
+                                            }
+
+                                            accesosPorFecha[fecha] = (accesosPorFecha[fecha] || 0) + 1;
+                                        });
+
+                                        let serieFechas = Object.keys(accesosPorFecha).map((fecha) => [fecha, accesosPorFecha[fecha]]);
+                                        serieFechas.sort((a, b) => new Date(a[0]) - new Date(b[0]));
+                                        if (serieFechas.length > 10) {
+                                            serieFechas = serieFechas.slice(serieFechas.length - 10);
+                                        }
+
+                                        const hoyClave = getMexicoDateKey(new Date());
+                                        const accesosHoy = detallesAcceso.filter((acceso) => getMexicoDateKey(acceso.fechaHoraLocal) === hoyClave);
+                                        const accesosPorTipoHoy = {};
+                                        accesosHoy.forEach((acceso) => {
+                                            const tipo = acceso.tipoAcceso || 'Sin dato';
+                                            accesosPorTipoHoy[tipo] = (accesosPorTipoHoy[tipo] || 0) + 1;
+                                        });
+
+                                        const serieTiposHoy = Object.keys(accesosPorTipoHoy).map((tipo) => ({
+                                            name: tipo,
+                                            y: accesosPorTipoHoy[tipo],
+                                            color: tipo.toLowerCase().includes('login') ? chartColors.guinda : chartColors.verde
+                                        }));
+
+                                        const accesosChart = Highcharts.chart('grafico-accesos', {
+                                            chart: { type: 'column' },
+                                            title: { text: null },
+                                            xAxis: {
+                                                type: 'category',
+                                                title: { text: 'Fecha' }
+                                            },
+                                            yAxis: {
+                                                min: 0,
+                                                title: { text: 'Número de accesos' },
+                                                allowDecimals: false
+                                            },
+                                            legend: { enabled: false },
+                                            series: [{
+                                                name: 'Accesos',
+                                                borderRadius: 8,
+                                                data: serieFechas.map((item) => ({ name: item[0], y: item[1], color: chartColors.guinda }))
+                                            }]
+                                        });
+
+                                        const accesosHoyChart = Highcharts.chart('grafico-accesos-hoy', {
+                                            chart: { type: 'bar' },
+                                            title: { text: null },
+                                            xAxis: {
+                                                type: 'category',
+                                                title: { text: 'Tipo de acceso' }
+                                            },
+                                            yAxis: {
+                                                min: 0,
+                                                title: { text: 'Eventos' },
+                                                allowDecimals: false
+                                            },
+                                            legend: { enabled: false },
+                                            series: [{
+                                                name: 'Hoy',
+                                                data: serieTiposHoy.length ? serieTiposHoy : [{ name: 'Sin accesos hoy', y: 0, color: chartColors.gris }]
+                                            }]
+                                        });
+
+                                        registerChart('grafico-accesos', accesosChart);
+                                        registerChart('grafico-accesos-hoy', accesosHoyChart);
+                                    }
+
+                                    $.ajax({
+                                        url: '@Url.Action("MonitoreoUsuario", "Usuarios")',
+                                        type: 'GET',
+                                        data: { id: userId },
+                                        success: function (modeloCompuesto) {
+                                            const detallesAcceso = modeloCompuesto?.cuentaMonitoreo?.detallesAcceso || [];
+                                            const totalAccesos = detallesAcceso.length;
+                                            const hoyClave = getMexicoDateKey(new Date());
+                                            const accesosHoy = detallesAcceso.filter((acceso) => getMexicoDateKey(acceso.fechaHoraLocal) === hoyClave).length;
+                                            const ultimoAcceso = detallesAcceso.length
+                                                ? detallesAcceso.slice().sort((a, b) => parseServerDate(b.fechaHoraLocal) - parseServerDate(a.fechaHoraLocal))[0].fechaHoraLocal
+                                                : null;
+
+                                            document.getElementById('metricTotalAccesos').textContent = totalAccesos;
+                                            document.getElementById('metricAccesosHoy').textContent = accesosHoy;
+                                            document.getElementById('metricUltimoAcceso').textContent = formatDate(ultimoAcceso);
+
+                                            if (!detallesAcceso.length) {
+                                                renderNoData();
+                                                return;
+                                            }
+
+                                            renderTable(detallesAcceso);
+                                            renderCharts(detallesAcceso);
+                                        },
+                                        error: function () {
+                                            renderNoData();
+                                        }
+                                    });
+
+                                    $('#cambio-contrasena-checkbox').change(function () {
+                                        if ($(this).is(':checked')) {
+                                            $('#cambio-contrasena-fields').show();
+                                            $('#cambio-contrasena-submit').show();
+                                            $('#cambio-contrasena-button').show();
+                                        } else {
+                                            $('#cambio-contrasena-fields').hide();
+                                            $('#cambio-contrasena-submit').hide();
+                                            $('#cambio-contrasena-button').hide();
+                                        }
+                                    });
+
+                                    $('#cambio-contrasena-form').submit(function (event) {
+                                        event.preventDefault();
+
+                                        var $btn = $('#cambio-contrasena-button');
+                                        var originalText = $btn.text();
+
+                                        console.log('[ResetPasswordUser] Iniciando cambio de contraseña y envío de correo...');
+                                        $btn.prop('disabled', true).text('Enviando...');
+                                        $('#page-preloader').hide();
+                                        $('#mensaje-reset-password').html("<div class='alert alert-info'>Procesando solicitud, por favor espera...</div>");
+
+                                        $.ajax({
+                                            type: 'POST',
+                                            url: $(this).attr('action'),
+                                            data: $(this).serialize(),
+                                            success: function (response) {
+                                                console.log('[ResetPasswordUser] Solicitud completada.');
+                                                $('#page-preloader').hide();
+                                                $('#mensaje-reset-password').html("<div class='alert alert-success'>" + response + '</div>');
+                                                $('#cambio-contrasena-form')[0].reset();
+                                                $('#cambio-contrasena-fields').hide();
+                                                $('#cambio-contrasena-submit').hide();
+                                                $('#cambio-contrasena-button').hide();
+                                                $btn.prop('disabled', false).text(originalText);
+                                            },
+                                            error: function (xhr, status, error) {
+                                                console.log('[ResetPasswordUser] Error en solicitud:', error || status);
+                                                $('#page-preloader').hide();
+                                                const message = xhr?.responseText || 'Ha ocurrido un error al actualizar la contraseña.';
+                                                $('#mensaje-reset-password').html("<div class='alert alert-danger'>" + message + '</div>');
+                                                $btn.prop('disabled', false).text(originalText);
+                                            }
+                                        });
+                                    });
+                                })();
+                            </script>
+                        }

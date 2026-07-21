@@ -1,0 +1,464 @@
+
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    var httpContext = HttpContextAccessor.HttpContext;
+    var perfilUsuarioJson = httpContext.Session.GetString("PerfilUsuario");
+    var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+
+    // Utilizar los datos del usuario para personalizar la vista
+    ViewData["NombreUsuario"] = perfilUsuario.Nombre;
+    ViewData["RolUsuario"] = perfilUsuario.Rol;
+    ViewData["MercadoUsuario"] = perfilUsuario.Mercado_ID;
+}
+
+@{
+    ViewData["Title"] = "Demanda Histórica por GCR";
+}
+@{
+    var header = new HeaderViewModel
+    {
+        Title = "Demanda Histórica por GCR",
+        IconPath = "electricidad.png",
+        Description = "Análisis histórico de demanda eléctrica por Gerencia de Control Regional.",
+        Section = "⚡ Mercado Eléctrico",
+        ModuleInfo = JsonConvert.SerializeObject(new
+        {
+            title = "Demanda por GCR",
+            description = "Sistema de monitoreo de demanda eléctrica histórica.",
+            functionality = "Permite analizar tendencias y patrones de demanda por región.",
+            stage = "Análisis de Demanda",
+            roles = new[] {
+new { icon = "building", text = "CENACE: Control operativo" },
+new { icon = "graph-up", text = "Analistas: Tendencias" },
+new { icon = "search", text = "Público: Consulta" }
+},
+            order = new { step = 1, description = "Visualización de demanda histórica" }
+        })
+    };
+}
+
+@await Html.PartialAsync("_ViewHeader", header)
+
+
+@* Mapa de Gerencias de Contorl Regional *@
+@*Sección que Despliega el Mapa Inicial*@
+    <div class="container">
+        <h2 class="fw-bold   subtitulo ">Infraestructura de Energía Convencional</h2>
+
+        <section id="despliega_mapa" class="pb-5">
+            <br />
+
+            <div class="app-card-header p-3 border-0">
+
+
+                @*Menu*@
+                <div class="navbarmapag">
+                    <a id="electricidad" class="icono-texto">
+                        <img src="@Cdn.Url/img_snier/vistas/electricidadi.png" alt="Icono personalizado" class="iconomenu" />
+                        <span>Electricidad</span>
+                        <div id="total_electricidad"></div>
+                    </a>
+                </div>
+
+                @* Tarjetas debajo del menú *@
+                <div class="row text-center mt-4">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <center>
+                                    <img src="@Cdn.Url/img_snier/vistas/s_energia.png" alt="Icono personalizado" class="iconomenu">
+                                    <h5>Permisos Autorizados</h5>
+                                    <p id="totalPermisosAutorizados" class="">0</p>
+                                </center>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <center>
+                                    <img src="@Cdn.Url/img_snier/vistas/sectore.png" alt="Icono personalizado" class="iconomenu">
+                                    <h5>Capacidad Autorizada Total (MW)</h5>
+                                    <p id="totalCapacidadAutorizada" class="">0</p>
+                                </center>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <center>
+                                    <img src="@Cdn.Url/img_snier/vistas/casas.png" alt="Icono personalizado" class="iconomenu">
+                                    <h5>Generación Estimada Total (MWh)</h5>
+                                    <p id="totalGeneracionEstimada" class="">0</p>
+                                </center>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+
+                <div id="main-container">
+                    <div class="row g-4 mb-4">
+                        <div class="col">
+                            <div class="app-card app-card-chart h-100 shadow-sm">
+
+                                <div class="search-container p-3" id="search-container">
+                                    <label class="form-label">Buscar en el Mapa:</label>
+                                    <input type="text" id="busquedaGeneralInput" class="form-control"
+                                        placeholder="Número de Permiso, Entidad Federativa o Municipio">
+                                    <div id="autocomplete-list" class="autocomplete-items"></div>
+                                    <!-- El resto de tu código -->
+
+                                    <button class="btn btn-cre-rojo-home" onclick="buscarGeneral()"
+                                        style="width:10% !important"><i class="bi bi-search"></i></button>
+                                </div>
+
+                                @*Menu de Botones*@
+                                <div class="container-fluid">
+                                </div>
+                                <div class="app-card-body p-4">
+                                    <div class="chart-container">
+                                        <div id="" class="app-card-body p-4 d-flex align-items-center">
+                                            <button id="fullscreen-btn" class="btn btn-primary">Pantalla
+                                                Completa</button>
+                                            <div id="alert-message" class="alert alert-info ms-3" role="alert"
+                                                style="margin-left: 15px; padding: 10px; background-color: #FCFEE7; border-left: 6px solid #DEF321; color: #818F31;">
+                                                Para el caso del mercado de electricidad, las ubicaciones corresponden a
+                                                la dirección proporcionada en la documentación del permiso otorgado que
+                                                puede corresponder a la ubicación física de central eléctrica que
+                                                representa.
+                                            </div>
+                                        </div>
+                                        <div id="map" class="p-3 bg"></div>
+                                        <div class="leyenda pt-3">
+                                            <p>Mayor Concentración</p>
+                                            <p>Concentración Promedio</p>
+                                            <p>Menor Concentración</p>
+                                            <p> Ductos</p>
+                                        </div>
+                                        <br />
+                                        <div id="graficoCapacidad" style="width: 100%; height: 400px;"></div>
+                                        <div id="graficoGeneracion"
+                                            style="width: 100%; height: 400px; margin-top: 20px;"></div>
+
+                                        <br />
+                                        @* <div id="graficoCapacidadGeneracionPorTipoYRegion" style="width: 100%; height: 400px;"></div>
+                                      <br />
+                                    <div id="graficoPorRegion" style="width: 100%; height: 400px;"></div>
+                                  
+                                    <br />
+                                    <div id="graficoCapacidadGeneracionEF" style="width: 100%; height: 400px;"></div>
+                                    <br />
+                                    <div class="" id="grafico"></div>
+                                    <br>
+                                     <div class="" id="graficoPorcentajes"></div>  *@
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <style>
+            #fullscreen-search-container {
+                background-color: white;
+            }
+
+            #fullscreen-elements {
+                display: flex;
+                flex-direction: column;
+                height: auto;
+                /* Valor inicial para cuando no esté en pantalla completa */
+            }
+
+            #fullscreen-last-update,
+            #fullscreen-select,
+            #fullscreen-search-container {
+                flex-shrink: 0;
+            }
+
+            #map {
+                flex-grow: 1;
+            }
+
+            #main-container.fullscreen-active #fullscreen-elements {
+                height: 100vh;
+            }
+
+            #main-container.fullscreen-active #map {
+                height: calc(100vh - 60px);
+            }
+
+            #main-container:not(.fullscreen-active) #map {
+                height: 500px;
+            }
+
+            @* .autocomplete-items {
+            position: absolute;
+            border: 1px solid #d4d4d4;
+            border-bottom: none;
+            border-top: none;
+            z-index: 99;
+            top: 100%;
+            left: 0;
+            right: 0;
+        }
+
+        .autocomplete-items div {
+            padding: 10px;
+            cursor: pointer;
+            background-color: #fff; 
+            border-bottom: 1px solid #d4d4d4; 
+        }
+
+        .autocomplete-items div:hover {
+            background-color: #e9e9e9; 
+        }
+
+        .autocomplete-active {
+            background-color: DodgerBlue !important; 
+            color: #ffffff; 
+        } *@
+        </style>
+
+    </div>
+
+@* Demanda Diaria  *@
+    <div class="container">
+        <h2 class="text-center">@ViewData["Title"]</h2>
+
+        <!-- Filtros de Fechas -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <label for="inicio" class="form-label">Fecha Inicio:</label>
+                <input type="date" id="inicio" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label for="fin" class="form-label">Fecha Fin:</label>
+                <input type="date" id="fin" class="form-control">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button id="filtrar" class="btn btn-primary w-100">Filtrar Datos</button>
+            </div>
+        </div>
+
+
+    <!-- Cards Informativas con AOS -->
+    <div class="container-fluid px-4 mb-5">
+        <div class="row g-4">
+            <!-- Resumen de Demanda -->
+            <div class="col-12 col-lg-4" data-aos="fade-right">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-body">
+                        <h5 class="card-title d-flex align-items-center mb-3">
+                            <i class="bi bi-lightning-charge-fill text-warning me-2"></i>
+                            Resumen de Demanda
+                        </h5>
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <div class="p-3 bg-light rounded-3">
+                                    <small class="text-muted d-block">Demanda Máxima</small>
+                                    <span class="h5 mb-0" id="demandaMaxima">-- MW</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="p-3 bg-light rounded-3">
+                                    <small class="text-muted d-block">Demanda Mínima</small>
+                                    <span class="h5 mb-0" id="demandaMinima">-- MW</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filtros Mejorados -->
+            <div class="col-12 col-lg-8" data-aos="fade-left">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <h5 class="card-title d-flex align-items-center mb-3">
+                            <i class="bi bi-funnel-fill text-primary me-2"></i>
+                            Filtros de Consulta
+                        </h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Fecha Inicio</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                                    <input type="date" id="inicio" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Fecha Fin</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                                    <input type="date" id="fin" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Acción</label>
+                                <button id="filtrar" class="btn btn-primary w-100">
+                                    <i class="bi bi-search me-2"></i>Consultar Demanda
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+        <!-- Contenedor del gráfico -->
+        <div id="grafico_demanda_diaria" style="height: 500px;"></div>
+    </div>
+
+@section scripts {
+    @*Script de Pantalla Completa*@
+        <script>
+            document.addEventListener('DOMContentLoaded', (event) => {
+                const mapElement = document.getElementById('map');
+                const fullscreenButton = document.getElementById('fullscreen-btn');
+                const searchContainer = document.getElementById('search-container');
+                const mainContainer = document.getElementById('main-container');
+                const fullscreenElements = document.createElement('div');
+                fullscreenElements.id = 'fullscreen-elements';
+
+                const originalMapParent = mapElement.parentNode;
+                const originalSearchParent = searchContainer.parentNode;
+                const originalMapNextSibling = mapElement.nextSibling;
+                const originalSearchNextSibling = searchContainer.nextSibling;
+
+                fullscreenButton.addEventListener('click', () => {
+                    if (!document.fullscreenElement) {
+                        mainContainer.appendChild(fullscreenElements); // Asegurarnos de que fullscreenElements esté en el DOM
+                        fullscreenElements.appendChild(searchContainer);
+                        fullscreenElements.appendChild(mapElement);
+                        fullscreenElements.requestFullscreen().catch(err => {
+                            alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                        });
+                    } else {
+                        document.exitFullscreen();
+                    }
+                });
+
+                document.addEventListener('fullscreenchange', (event) => {
+                    if (document.fullscreenElement) {
+                        fullscreenButton.textContent = "Salir de Pantalla Completa";
+                        mainContainer.classList.add('fullscreen-active');
+                        mapElement.style.height = "calc(100vh - 60px)";
+                        searchContainer.style.backgroundColor = "white";
+                    } else {
+                        fullscreenButton.textContent = "Pantalla Completa";
+                        if (originalSearchNextSibling) {
+                            originalSearchParent.insertBefore(searchContainer, originalSearchNextSibling);
+                        } else {
+                            originalSearchParent.appendChild(searchContainer);
+                        }
+                        if (originalMapNextSibling) {
+                            originalMapParent.insertBefore(mapElement, originalMapNextSibling);
+                        } else {
+                            originalMapParent.appendChild(mapElement);
+                        }
+                        mainContainer.classList.remove('fullscreen-active');
+                        mapElement.style.height = "500px";
+
+                        // Asegurarse de que los estilos se restablezcan
+                        fullscreenElements.style.height = 'auto'; // Restablecer altura a su valor inicial
+                    }
+                });
+            });
+        </script>
+
+    @*Shapes Estados*@
+        <script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/regiones_poligon_0.js"></script>
+        <script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/estadosminlight.js"></script>
+        <script type="text/javascript" src="@Cdn.Url/Geovisualizador/shapes/municipiosminlight.js"></script>
+
+
+    @*  Configuración inicial del gráfico  Demanda Diaria de Highcharts *@
+        <script>
+            const grafico = Highcharts.chart('grafico_demanda_diaria', {
+                chart: { type: 'line' },
+                title: { text: 'Demanda Histórica por GCR' },
+                xAxis: {
+                    categories: [], // Las fechas se llenarán dinámicamente
+                    title: { text: 'Fecha' }
+                },
+                yAxis: {
+                    title: { text: 'Demanda (MW)' }
+                },
+                series: [] // Las series se llenarán dinámicamente
+            });
+
+            // Función para cargar datos
+            function cargarDatos(inicio, fin) {
+                $.ajax({
+                    url: `/MIM/DemandaHistorica?inicio=${inicio}&fin=${fin}`,
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function (response) {
+                        console.log('Respuesta recibida del controlador:', response);
+
+                        if (response.success === false) {
+                            alert(response.message);
+                            return;
+                        }
+
+                        // Actualizar el gráfico con las fechas y las series
+                        grafico.xAxis[0].setCategories(response.fechas);
+                        grafico.series.forEach(s => s.remove());
+                        response.series.forEach(serie => {
+                            grafico.addSeries(serie);
+                        });
+                    },
+                    error: function (error) {
+                        console.error('Error al obtener los datos:', error);
+                        alert('Error al obtener los datos. Inténtalo más tarde.');
+                    }
+                });
+            }
+
+            // Cargar datos por defecto al cargar la página
+            $(document).ready(function () {
+                const fechaInicio = new Date();
+                fechaInicio.setDate(fechaInicio.getDate() - 7); // Últimos 7 días por defecto
+                const fechaFin = new Date();
+
+                const inicio = fechaInicio.toISOString().split('T')[0];
+                const fin = fechaFin.toISOString().split('T')[0];
+
+                // Establecer las fechas por defecto en los inputs
+                $('#inicio').val(inicio);
+                $('#fin').val(fin);
+
+                cargarDatos(inicio, fin);
+            });
+
+            // Filtrar datos al presionar el botón
+            document.getElementById('filtrar').addEventListener('click', () => {
+                const inicio = document.getElementById('inicio').value;
+                const fin = document.getElementById('fin').value;
+
+                if (!inicio || !fin) {
+                    alert('Por favor selecciona ambas fechas.');
+                    return;
+                }
+
+                cargarDatos(inicio, fin);
+            });
+        </script>
+
+        <script type="text/javascript" src="/js/configura_mapa.js"></script>
+        <script type="text/javascript" src="/js/I_e_convencional_y_limpia.js"></script>
+}

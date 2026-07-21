@@ -1,0 +1,1247 @@
+@model NSIE.Models.PamrntProyectosIdentificadosViewModel
+
+@{
+    ViewData["Title"] = "Dashboard maestro PAM/PAMRNT";
+
+    // ── Datos para los gráficos SVG (server-rendered, sin librerías) ──
+    var pamVigentes = Math.Max(0, Model.TotalPam - Model.TotalCancelados);
+    var composicion = new[]
+    {
+        (Etiqueta: "PAM vigentes", Valor: pamVigentes, Clase: "guinda"),
+        (Etiqueta: "Nuevos PAMRNT", Valor: Model.TotalPamrnt, Clase: "dorado"),
+        (Etiqueta: "Cancelados", Valor: Model.TotalCancelados, Clase: "gris")
+    };
+    var totalComposicion = Math.Max(1, composicion.Sum(s => s.Valor));
+
+    const double donutRadio = 44;
+    var donutCirc = 2 * Math.PI * donutRadio;
+    double offsetAcumulado = 0;
+
+    // Gauge: proporción de renovación (PAMRNT sobre cartera vigente)
+    var pctRenovacion = Model.TotalVigentes == 0 ? 0 : (double)Model.TotalPamrnt / Model.TotalVigentes;
+    const double gaugeRadio = 50;
+    var gaugeLargo = Math.PI * gaugeRadio;
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+
+    string UrlPag(int p) => Url.Action("Index", new
+    {
+        universo = Model.Filtro.Universo,
+        busqueda = Model.Filtro.Busqueda,
+        origen = Model.Filtro.Origen,
+        etapa = Model.Filtro.Etapa,
+        region = Model.Filtro.Region,
+        tipo = Model.Filtro.Tipo,
+        fuente = Model.Filtro.Fuente,
+        estatus = Model.Filtro.Estatus,
+        empalme = Model.Filtro.Empalme,
+        equipo = Model.Filtro.Equipo,
+        tamanoPagina = Model.Filtro.TamanoPagina,
+        pagina = p
+    });
+
+    string UrlEstatus(string estatus) => Url.Action("Index", new
+    {
+        universo = Model.Filtro.Universo,
+        busqueda = Model.Filtro.Busqueda,
+        origen = Model.Filtro.Origen,
+        etapa = Model.Filtro.Etapa,
+        region = Model.Filtro.Region,
+        tipo = Model.Filtro.Tipo,
+        fuente = Model.Filtro.Fuente,
+        estatus = string.Equals(Model.Filtro.Estatus, estatus, StringComparison.OrdinalIgnoreCase) ? null : estatus,
+        empalme = Model.Filtro.Empalme,
+        equipo = Model.Filtro.Equipo,
+        tamanoPagina = Model.Filtro.TamanoPagina,
+        pagina = 1
+    });
+
+    string UrlEmpalme(string nivel) => Url.Action("Index", new
+    {
+        universo = Model.Filtro.Universo,
+        busqueda = Model.Filtro.Busqueda,
+        origen = Model.Filtro.Origen,
+        etapa = Model.Filtro.Etapa,
+        region = Model.Filtro.Region,
+        tipo = Model.Filtro.Tipo,
+        fuente = Model.Filtro.Fuente,
+        estatus = Model.Filtro.Estatus,
+        empalme = string.Equals(Model.Filtro.Empalme, nivel, StringComparison.OrdinalIgnoreCase) ? null : nivel,
+        equipo = Model.Filtro.Equipo,
+        tamanoPagina = Model.Filtro.TamanoPagina,
+        pagina = 1
+    });
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 pam-dashboard">
+
+    <nav aria-label="Miga de pan" class="breadcrumb-shell mb-3">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item">
+                <a href="@Url.Action("Index", "Home")"><i class="bi bi-house-door me-1" aria-hidden="true"></i>Inicio</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a asp-controller="PamrntProyectos" asp-action="Index">PAM / PAMRNT</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">Proyectos identificados</li>
+        </ol>
+    </nav>
+
+    <!-- Hero plano con filo dorado -->
+    <section class="pam-hero mb-4">
+        <div>
+            <span class="pam-eyebrow">Repositorio maestro de transmisión</span>
+            <h2>Cartera PAM + PAMRNT</h2>
+            <p>Consulta consolidada de proyectos vigentes, cancelados, fuentes documentales, versiones y relaciones jerárquicas validadas.</p>
+        </div>
+        @if (Model.PuedeActualizarFuentes)
+        {
+            <div class="d-flex flex-wrap gap-2 align-self-start">
+                <a asp-action="NuevaActualizacion" class="btn btn-primary">
+                    <i class="fas fa-cloud-arrow-up me-2"></i>Nueva actualización
+                </a>
+            </div>
+        }
+    </section>
+
+    <!-- Analítica: KPIs + donut + gauge -->
+    <section class="pam-analitica mb-4" aria-label="Resumen de cartera">
+        <div class="pam-kpis">
+            <article class="pam-kpi">
+                <span class="pam-kpi__label">Cartera vigente</span>
+                <strong class="pam-kpi__valor">@Model.TotalVigentes.ToString("N0")</strong>
+                <small>@pamVigentes PAM + @Model.TotalPamrnt PAMRNT</small>
+            </article>
+            <article class="pam-kpi pam-kpi--dorado">
+                <span class="pam-kpi__label">Nuevos PAMRNT</span>
+                <strong class="pam-kpi__valor">@Model.TotalPamrnt.ToString("N0")</strong>
+                <small>Ejercicio 2026-2040</small>
+            </article>
+            <article class="pam-kpi pam-kpi--verde">
+                <span class="pam-kpi__label">Inversión PAMRNT</span>
+                <strong class="pam-kpi__valor">@Model.InversionTotalMdp.ToString("N0")</strong>
+                <small>Millones de pesos</small>
+            </article>
+            <article class="pam-kpi pam-kpi--gris">
+                <span class="pam-kpi__label">Cancelados</span>
+                <strong class="pam-kpi__valor">@Model.TotalCancelados.ToString("N0")</strong>
+                <small>Se conservan en histórico</small>
+            </article>
+            <article class="pam-kpi pam-kpi--tinta">
+                <span class="pam-kpi__label">Altas / cambios recientes</span>
+                <strong class="pam-kpi__valor">@Model.TotalRecientes.ToString("N0")</strong>
+                <small>Último corte @Model.VersionDatos</small>
+            </article>
+            <article class="pam-kpi pam-kpi--tinta">
+                <span class="pam-kpi__label">Identidades totales</span>
+                <strong class="pam-kpi__valor">@Model.TotalIdentidades.ToString("N0")</strong>
+                <small>Vigentes y canceladas</small>
+            </article>
+        </div>
+
+        <div class="pam-panel pam-panel--donut">
+            <h6 class="pam-panel__titulo">Composición de la cartera</h6>
+            <div class="pam-donut-wrap">
+                <svg viewBox="0 0 120 120" class="pam-donut" role="img" aria-label="Composición de la cartera por origen">
+                    <circle cx="60" cy="60" r="@donutRadio" class="pam-donut__pista" />
+                    @foreach (var seg in composicion.Where(s => s.Valor > 0))
+                    {
+                        var largo = donutCirc * seg.Valor / totalComposicion;
+                        <circle cx="60" cy="60" r="@donutRadio"
+                                class="pam-donut__seg pam-donut__seg--@seg.Clase"
+                                stroke-dasharray="@largo.ToString("F2", inv) @donutCirc.ToString("F2", inv)"
+                                stroke-dashoffset="@((-offsetAcumulado).ToString("F2", inv))" />
+                        offsetAcumulado += largo;
+                    }
+                    <text x="60" y="56" class="pam-donut__num">@Model.TotalIdentidades.ToString("N0")</text>
+                    <text x="60" y="72" class="pam-donut__sub">proyectos</text>
+                </svg>
+                <ul class="pam-leyenda">
+                    @foreach (var seg in composicion)
+                    {
+                        <li>
+                            <span class="pam-leyenda__swatch pam-leyenda__swatch--@seg.Clase"></span>
+                            <span class="pam-leyenda__nombre">@seg.Etiqueta</span>
+                            <strong>@seg.Valor.ToString("N0")</strong>
+                            <small>@((100.0 * seg.Valor / totalComposicion).ToString("N1"))%</small>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+
+        <div class="pam-panel pam-panel--gauge">
+            <h6 class="pam-panel__titulo">Renovación de cartera</h6>
+            <svg viewBox="0 0 120 72" class="pam-gauge" role="img" aria-label="Porcentaje de proyectos PAMRNT sobre la cartera vigente">
+                <path d="M 10 62 A @gaugeRadio @gaugeRadio 0 0 1 110 62" class="pam-gauge__pista" />
+                <path d="M 10 62 A @gaugeRadio @gaugeRadio 0 0 1 110 62" class="pam-gauge__valor"
+                      stroke-dasharray="@((gaugeLargo * pctRenovacion).ToString("F2", inv)) @gaugeLargo.ToString("F2", inv)" />
+                <text x="60" y="52" class="pam-gauge__num">@((pctRenovacion * 100).ToString("N1"))%</text>
+                <text x="60" y="66" class="pam-gauge__sub">PAMRNT / vigentes</text>
+            </svg>
+            <p class="pam-panel__nota">
+                @Model.TotalPamrnt.ToString("N0") de @Model.TotalVigentes.ToString("N0") proyectos vigentes provienen del nuevo ejercicio de planeación.
+            </p>
+        </div>
+    </section>
+
+    <!-- Resumen ejecutivo consolidado: metas físicas globales de la cartera vigente (minuta 2026-07-09) -->
+    <section class="pam-fisicas mb-4" aria-label="Metas físicas globales de la cartera vigente">
+        <div class="pam-fisicas__intro">
+            <span class="pam-eyebrow">Resumen ejecutivo consolidado</span>
+            <h3>Metas físicas globales de la cartera vigente</h3>
+            <p>Suma de la infraestructura comprometida en @Model.ProyectosConMetricas.ToString("N0") de @Model.TotalVigentes.ToString("N0") proyectos vigentes con metas registradas.</p>
+        </div>
+        <div class="pam-fisicas__grid">
+            <article class="pam-fisica pam-fisica--guinda">
+                <span class="pam-fisica__label">Transmisión</span>
+                <strong class="pam-fisica__valor">@Model.TotalKmC.ToString("N1")</strong>
+                <small>km-circuito</small>
+            </article>
+            <article class="pam-fisica pam-fisica--dorado">
+                <span class="pam-fisica__label">Transformación</span>
+                <strong class="pam-fisica__valor">@Model.TotalMva.ToString("N0")</strong>
+                <small>MVA</small>
+            </article>
+            <article class="pam-fisica pam-fisica--verde">
+                <span class="pam-fisica__label">Compensación</span>
+                <strong class="pam-fisica__valor">@Model.TotalMvar.ToString("N0")</strong>
+                <small>MVAr</small>
+            </article>
+            <article class="pam-fisica pam-fisica--tinta">
+                <span class="pam-fisica__label">Inversión vigente</span>
+                <strong class="pam-fisica__valor">@Model.TotalInversionVigente.ToString("N0")</strong>
+                <small>millones de pesos</small>
+            </article>
+        </div>
+    </section>
+
+    <section class="pam-card">
+        <div class="pam-tabs" role="tablist" aria-label="Universos de cartera">
+            <a class="@(Model.Filtro.Universo == "vigentes" ? "is-active" : "")" asp-action="Index" asp-route-universo="vigentes" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Cartera vigente <span>@Model.TotalVigentes</span></a>
+            <a class="@(Model.Filtro.Universo == "pam" ? "is-active" : "")" asp-action="Index" asp-route-universo="pam" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">PAM <span>@pamVigentes</span></a>
+            <a class="@(Model.Filtro.Universo == "pamrnt" ? "is-active" : "")" asp-action="Index" asp-route-universo="pamrnt" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Nuevos PAMRNT <span>@Model.TotalPamrnt</span></a>
+            <a class="@(Model.Filtro.Universo == "cancelados" ? "is-active" : "")" asp-action="Index" asp-route-universo="cancelados" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Cancelados <span>@Model.TotalCancelados</span></a>
+            <a class="@(Model.Filtro.Universo == "recientes" ? "is-active" : "")" asp-action="Index" asp-route-universo="recientes" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Altas/cambios recientes <span>@Model.TotalRecientes</span></a>
+        </div>
+
+        <nav class="pam-semaforo" aria-label="Semáforo de estatus de licitación">
+            <span class="pam-semaforo__titulo">Semáforo de licitación</span>
+            @foreach (var estatus in NSIE.Models.PamSemaforo.Orden)
+            {
+                var totalEstatus = Model.ConteosEstatus.TryGetValue(estatus, out var conteo) ? conteo : 0;
+                var activo = string.Equals(Model.Filtro.Estatus, estatus, StringComparison.OrdinalIgnoreCase);
+                <a class="pam-sem @NSIE.Models.PamSemaforo.Clase(estatus) @(activo ? "is-active" : null)"
+                   href="@UrlEstatus(estatus)"
+                   aria-pressed="@(activo ? "true" : "false")"
+                   title="@(activo ? $"Quitar filtro {estatus}" : $"Filtrar por {estatus}")">
+                    <i aria-hidden="true"></i><span>@estatus</span><strong>@totalEstatus.ToString("N0")</strong>
+                </a>
+            }
+        </nav>
+
+        <nav class="pam-empalme-resumen" aria-label="Filtrar por alineación de cronograma: red vigente contra fecha necesaria">
+            <span class="pam-empalme-resumen__titulo" title="Compara la fecha necesaria de cada proyecto con su FEO factible (cuándo la red está lista). Un retraso expone a la generación a vertimientos.">Alineación de cronograma</span>
+            @foreach (var (nivel, clase) in new[] { ("A tiempo", "is-ok"), ("Holgura ajustada", "is-warn"), ("Riesgo de desfasamiento", "is-critico"), ("Sin evaluar", "is-sindato") })
+            {
+                var activo = string.Equals(Model.Filtro.Empalme, nivel, StringComparison.OrdinalIgnoreCase);
+                <a class="pam-emp @clase @(activo ? "is-active" : null)" href="@UrlEmpalme(nivel)"
+                   aria-pressed="@(activo ? "true" : "false")" title="@(activo ? $"Quitar filtro {nivel}" : $"Filtrar por {nivel}")">
+                    <i aria-hidden="true"></i>@nivel <strong>@Model.EmpalmeConteo(nivel).ToString("N0")</strong>
+                </a>
+            }
+        </nav>
+
+        <form asp-action="Index" method="get" class="pam-filters" id="pam-filtros">
+            <input type="hidden" name="universo" value="@Model.Filtro.Universo" />
+            <input type="hidden" name="estatus" value="@Model.Filtro.Estatus" />
+            <input type="hidden" name="empalme" value="@Model.Filtro.Empalme" />
+            <input type="hidden" name="pagina" value="1" />
+            <label class="pam-search">
+                <i class="fas fa-magnifying-glass"></i>
+                <input name="busqueda" value="@Model.Filtro.Busqueda" type="search" placeholder="Buscar clave, proyecto, región o fuente" />
+            </label>
+            @* Origen (PAM/PAMRNT) ya vive en las pestañas superiores; etapa, tipo y fuente
+               se ocultan para simplificar. Se reactivan quitando el comentario. *@
+            @*
+            <select name="origen" aria-label="Filtrar por origen">
+                <option value="">Todos los orígenes</option>
+                <option value="PAM" selected="@(Model.Filtro.Origen == "PAM" ? "selected" : null)">PAM</option>
+                <option value="PAMRNT" selected="@(Model.Filtro.Origen == "PAMRNT" ? "selected" : null)">PAMRNT</option>
+            </select>
+            <select name="etapa" aria-label="Filtrar por etapa">
+                <option value="">Todas las etapas</option>
+                @foreach (var valor in Model.EtapasDisponibles) { <option value="@valor" selected="@(Model.Filtro.Etapa == valor ? "selected" : null)">@valor</option> }
+            </select>
+            <select name="tipo" aria-label="Filtrar por tipo">
+                <option value="">Todos los tipos</option>
+                @foreach (var valor in Model.TiposDisponibles) { <option value="@valor" selected="@(Model.Filtro.Tipo == valor ? "selected" : null)">@valor</option> }
+            </select>
+            <select name="fuente" aria-label="Filtrar por fuente">
+                <option value="">Todas las fuentes</option>
+                @foreach (var valor in Model.FuentesDisponibles) { <option value="@valor" selected="@(Model.Filtro.Fuente == valor ? "selected" : null)">@valor</option> }
+            </select>
+            *@
+            <select name="region" aria-label="Filtrar por región">
+                <option value="">Todas las regiones</option>
+                @foreach (var valor in Model.RegionesDisponibles) { <option value="@valor" selected="@(Model.Filtro.Region == valor ? "selected" : null)">@valor</option> }
+            </select>
+            <select name="equipo" aria-label="Filtrar por tipo de equipo">
+                <option value="">Todos los equipos</option>
+                <option value="lineas" selected="@(Model.Filtro.Equipo == "lineas" ? "selected" : null)">Líneas (km-C)</option>
+                <option value="transformacion" selected="@(Model.Filtro.Equipo == "transformacion" ? "selected" : null)">Transformación (MVA)</option>
+                <option value="compensacion" selected="@(Model.Filtro.Equipo == "compensacion" ? "selected" : null)">Compensación (MVAr)</option>
+            </select>
+            <select name="tamanoPagina" aria-label="Resultados por página">
+                @foreach (var valor in new[] { 10, 25, 50, 100 }) { <option value="@valor" selected="@(Model.Filtro.TamanoPagina == valor ? "selected" : null)">@valor por página</option> }
+            </select>
+            <button type="submit" class="btn btn-sm btn-primary">Aplicar</button>
+            <a asp-action="Index" asp-route-universo="@Model.Filtro.Universo" class="btn btn-sm btn-outline-secondary">Limpiar</a>
+        </form>
+
+        <div class="pam-table-meta">
+            <div>
+                <strong>@Model.RegistroDesde–@Model.RegistroHasta</strong> de @Model.TotalFiltrado proyectos
+                <span>· Corte más reciente @Model.VersionDatos</span>
+            </div>
+            <span>@Model.Fuente</span>
+        </div>
+
+        <div class="table-responsive pam-table-wrap">
+            <table class="table align-middle mb-0 pam-table" id="pam-tabla">
+                <thead>
+                    <tr>
+                        <th>Clave / origen</th>
+                        <th>Proyecto</th>
+                        <th>Etapa / vigencia</th>
+                        <th>Región / tipo</th>
+                        @* Jerarquía oculta mientras no haya relaciones padre-hijo cargadas; se reactiva quitando pam-col-jerarquia del CSS. *@
+                        <th class="pam-col-jerarquia">Jerarquía</th>
+                        <th>Fuente / corte</th>
+                        <th class="text-end">Inversión MDP</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Proyectos)
+                    {
+                        <tr>
+                            <td data-label="Clave">
+                                <code>@(string.IsNullOrWhiteSpace(item.ClavePem) ? "Sin clave" : item.ClavePem)</code>
+                                @if (!string.IsNullOrWhiteSpace(item.ClavesAlternas))
+                                {
+                                    <small class="d-block mt-1 text-wrap"><strong>Alternas:</strong> @item.ClavesAlternas.Replace("\r", "").Replace("\n", " · ")</small>
+                                }
+                                <div class="mt-1"><span class="pam-origin pam-origin--@item.OrigenPrograma.ToLowerInvariant()">@item.OrigenPrograma</span></div>
+                                <small>ID @item.ProyectoId · versión @item.NumeroVersion</small>
+                            </td>
+                            <td data-label="Proyecto" class="pam-td-proyecto">
+                                <div class="fw-semibold pam-project-name">@item.Proyecto</div>
+                                @if (!string.IsNullOrWhiteSpace(item.ZonaAtendida))
+                                {
+                                    <div class="small pam-texto-suave mt-1">@item.ZonaAtendida</div>
+                                }
+                            </td>
+                            <td data-label="Etapa">
+                                <div>@(string.IsNullOrWhiteSpace(item.EtapaProyecto) ? "Sin etapa" : item.EtapaProyecto)</div>
+                                <span class="pam-status @(item.EstadoVigenciaCartera == "Cancelado" ? "is-cancelled" : "")">@item.EstadoVigenciaCartera</span>
+                                <span class="pam-sem pam-sem--mini @item.EstatusSemaforoClase"><i aria-hidden="true"></i>@item.EstatusSemaforo</span>
+                            </td>
+                            <td data-label="Región / tipo">
+                                <div>@(string.IsNullOrWhiteSpace(item.Gcr) ? "Sin región" : item.Gcr)</div>
+                                <small>@item.TipoProyecto</small>
+                            </td>
+                            <td data-label="Jerarquía" class="pam-col-jerarquia">
+                                @if (!string.IsNullOrWhiteSpace(item.ClavePadre))
+                                {
+                                    <code>@item.ClavePadre</code>
+                                    <small class="d-block">@item.NombrePadre</small>
+                                }
+                                else
+                                {
+                                    <span class="pam-texto-suave small">Sin relación validada</span>
+                                }
+                            </td>
+                            <td data-label="Fuente">
+                                <div class="pam-source" title="@item.FuenteUbicacion">@item.FuenteDocumento</div>
+                                <small>@item.FechaCorte?.ToString("yyyy-MM-dd")</small>
+                            </td>
+                            <td data-label="Inversión MDP" class="text-end fw-semibold pam-td-inversion">@(item.InversionMdp?.ToString("N3") ?? "—")</td>
+                            <td data-label="Acciones" class="text-end pam-td-acciones">
+                                <div class="pam-action-botones">
+                                    <a class="pam-accion pam-accion--ver" asp-action="Detalle" asp-route-proyectoId="@item.ProyectoId" title="Ver detalle, historial, fuentes y relaciones">
+                                        <i class="fas fa-eye" aria-hidden="true"></i><span>Ver</span>
+                                    </a>
+                                    @if (item.FichaDisponible)
+                                    {
+                                        <a class="pam-accion pam-accion--ficha" asp-action="Ficha" asp-route-clavePem="@item.ClavePem" title="Abrir ficha ejecutiva">
+                                            <i class="fas fa-chart-column" aria-hidden="true"></i><span>Ficha</span>
+                                        </a>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (Model.Proyectos.Count == 0)
+        {
+            <div class="pam-empty">
+                <i class="fas fa-filter-circle-xmark"></i>
+                <strong>No hay proyectos con estos filtros.</strong>
+            </div>
+        }
+        else
+        {
+            <nav class="pam-pagination" aria-label="Paginación de proyectos">
+                <div>Mostrando @Model.RegistroDesde–@Model.RegistroHasta de @Model.TotalFiltrado</div>
+                <div class="pam-pages">
+                    <a class="@(Model.Filtro.Pagina <= 1 ? "disabled" : "")" href="@UrlPag(Math.Max(1, Model.Filtro.Pagina - 1))">Anterior</a>
+                    @for (var pagina = Math.Max(1, Model.Filtro.Pagina - 2); pagina <= Math.Min(Model.TotalPaginas, Model.Filtro.Pagina + 2); pagina++)
+                    {
+                        <a class="@(pagina == Model.Filtro.Pagina ? "is-active" : "")" href="@UrlPag(pagina)">@pagina</a>
+                    }
+                    <a class="@(Model.Filtro.Pagina >= Model.TotalPaginas ? "disabled" : "")" href="@UrlPag(Math.Min(Model.TotalPaginas, Model.Filtro.Pagina + 1))">Siguiente</a>
+                </div>
+            </nav>
+        }
+    </section>
+</div>
+
+<style>
+    /* ══════ Dashboard PAM/PAMRNT — mobile first, tokens shell ══════ */
+    /* Hereda el ancho estándar de .shell-page-container (min(100%,1380px) centrado),
+       igual que el resto de las vistas de la plataforma. */
+    .pam-dashboard {
+        --pam-surface: var(--shell-surface, #ffffff);
+        --pam-surface-2: var(--shell-surface-2, #f7f4f1);
+        --pam-line: var(--shell-line, rgba(138, 0, 49, 0.10));
+        --pam-ink: var(--shell-ink, #262220);
+        --pam-muted: var(--shell-muted, #746e69);
+        --pam-guinda: var(--shell-accent, #9b2247);
+        --pam-dorado: var(--shell-accent-2, #b38e5d);
+        --pam-verde: var(--shell-accent-3, #1e5b4f);
+    }
+
+    /* Hero plano con filo dorado (sin degradados) */
+    .pam-hero {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1.25rem 1.25rem 1.35rem;
+        border: 1px solid var(--pam-line);
+        border-left: 4px solid var(--pam-dorado);
+        border-radius: 14px;
+        background: var(--pam-surface);
+    }
+
+    .pam-eyebrow {
+        color: var(--pam-guinda);
+        font-weight: 800;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        font-size: .72rem;
+    }
+
+    .pam-hero h2 {
+        margin: .3rem 0 .4rem;
+        color: var(--pam-ink);
+        font-family: var(--font-display, "Patria", "Noto Serif", Georgia, serif);
+        font-weight: 700;
+        font-size: clamp(1.35rem, 4vw, 1.8rem);
+    }
+
+    .pam-hero p {
+        margin: 0;
+        color: var(--pam-muted);
+        max-width: 78ch;
+    }
+
+    /* Analítica: KPIs + paneles de gráficos */
+    .pam-analitica {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .pam-kpis {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .75rem;
+    }
+
+    .pam-kpi {
+        position: relative;
+        padding: .85rem .95rem .9rem 1.1rem;
+        border: 1px solid var(--pam-line);
+        border-radius: 14px;
+        background: var(--pam-surface);
+        overflow: hidden;
+    }
+
+    .pam-kpi::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px;
+        background: var(--pam-guinda);
+    }
+
+    .pam-kpi--dorado::before { background: var(--pam-dorado); }
+    .pam-kpi--verde::before { background: var(--pam-verde); }
+    .pam-kpi--gris::before { background: var(--pam-muted); }
+    .pam-kpi--tinta::before { background: var(--pam-ink); }
+
+    .pam-kpi__label {
+        display: block;
+        color: var(--pam-muted);
+        font-size: .7rem;
+        font-weight: 800;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+    }
+
+    .pam-kpi__valor {
+        display: block;
+        margin: .2rem 0 .1rem;
+        color: var(--pam-ink);
+        font-family: var(--font-display, "Patria", "Noto Serif", Georgia, serif);
+        font-size: clamp(1.4rem, 4.5vw, 1.85rem);
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pam-kpi small {
+        display: block;
+        color: var(--pam-muted);
+        font-size: .74rem;
+    }
+
+    /* Paneles de gráficos */
+    .pam-panel {
+        padding: 1rem 1.1rem 1.1rem;
+        border: 1px solid var(--pam-line);
+        border-radius: 14px;
+        background: var(--pam-surface);
+    }
+
+    .pam-panel__titulo {
+        margin: 0 0 .75rem;
+        color: var(--pam-dorado);
+        font-size: .68rem;
+        font-weight: 800;
+        letter-spacing: .13em;
+        text-transform: uppercase;
+    }
+
+    .pam-panel__nota {
+        margin: .6rem 0 0;
+        color: var(--pam-muted);
+        font-size: .8rem;
+        line-height: 1.5;
+        text-align: center;
+    }
+
+    /* Donut SVG */
+    .pam-donut-wrap {
+        display: flex;
+        align-items: center;
+        gap: 1.1rem;
+        flex-wrap: wrap;
+    }
+
+    .pam-donut {
+        width: 132px;
+        height: 132px;
+        flex: none;
+        transform: rotate(-90deg);
+    }
+
+    .pam-donut text {
+        transform: rotate(90deg);
+        transform-origin: 60px 60px;
+    }
+
+    .pam-donut circle {
+        fill: none;
+        stroke-width: 13;
+    }
+
+    .pam-donut__pista { stroke: var(--pam-surface-2); }
+    .pam-donut__seg--guinda { stroke: var(--pam-guinda); }
+    .pam-donut__seg--dorado { stroke: var(--pam-dorado); }
+    .pam-donut__seg--gris { stroke: var(--pam-muted); opacity: .55; }
+
+    .pam-donut__num {
+        fill: var(--pam-ink);
+        font-family: var(--font-display, "Patria", "Noto Serif", Georgia, serif);
+        font-size: 19px;
+        font-weight: 700;
+        text-anchor: middle;
+    }
+
+    .pam-donut__sub {
+        fill: var(--pam-muted);
+        font-size: 8.5px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        text-anchor: middle;
+    }
+
+    .pam-leyenda {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: .5rem;
+        flex: 1 1 180px;
+        min-width: 0;
+    }
+
+    .pam-leyenda li {
+        display: flex;
+        align-items: baseline;
+        gap: .5rem;
+        font-size: .82rem;
+        color: var(--pam-ink);
+    }
+
+    .pam-leyenda__swatch {
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+        flex: none;
+        align-self: center;
+    }
+
+    .pam-leyenda__swatch--guinda { background: var(--pam-guinda); }
+    .pam-leyenda__swatch--dorado { background: var(--pam-dorado); }
+    .pam-leyenda__swatch--gris { background: var(--pam-muted); opacity: .55; }
+
+    .pam-leyenda__nombre { flex: 1 1 auto; color: var(--pam-muted); }
+
+    .pam-leyenda strong {
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pam-leyenda small { color: var(--pam-muted); }
+
+    /* Gauge SVG */
+    .pam-gauge {
+        display: block;
+        width: min(240px, 100%);
+        margin-inline: auto;
+    }
+
+    .pam-gauge path {
+        fill: none;
+        stroke-width: 12;
+        stroke-linecap: round;
+    }
+
+    .pam-gauge__pista { stroke: var(--pam-surface-2); }
+    .pam-gauge__valor { stroke: var(--pam-dorado); }
+
+    .pam-gauge__num {
+        fill: var(--pam-ink);
+        font-family: var(--font-display, "Patria", "Noto Serif", Georgia, serif);
+        font-size: 17px;
+        font-weight: 700;
+        text-anchor: middle;
+    }
+
+    .pam-gauge__sub {
+        fill: var(--pam-muted);
+        font-size: 7.5px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        text-anchor: middle;
+    }
+
+    /* Card contenedora, tabs y filtros */
+    .pam-card {
+        border: 1px solid var(--pam-line);
+        border-radius: 14px;
+        background: var(--pam-surface);
+        overflow: hidden;
+    }
+
+    .pam-tabs {
+        display: flex;
+        gap: .25rem;
+        padding: .75rem .75rem 0;
+        border-bottom: 1px solid var(--pam-line);
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .pam-tabs::-webkit-scrollbar { display: none; }
+
+    .pam-tabs a {
+        border-bottom: 3px solid transparent;
+        padding: .7rem .85rem;
+        color: var(--pam-muted);
+        font-weight: 700;
+        font-size: .88rem;
+        white-space: nowrap;
+        text-decoration: none;
+    }
+
+    .pam-tabs a span {
+        display: inline-grid;
+        place-items: center;
+        min-width: 1.6rem;
+        height: 1.6rem;
+        margin-left: .3rem;
+        padding: 0 .4rem;
+        border-radius: 1rem;
+        background: var(--pam-surface-2);
+        font-size: .72rem;
+    }
+
+    .pam-tabs a.is-active {
+        color: var(--pam-guinda);
+        border-bottom-color: var(--pam-guinda);
+    }
+
+    .pam-tabs a.is-active span {
+        background: rgba(155, 34, 71, 0.12);
+    }
+
+    /* ── Metas físicas globales (resumen ejecutivo consolidado, minuta 2026-07-09) ── */
+    .pam-fisicas {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        padding: 1.1rem 1.25rem 1.25rem;
+        border: 1px solid var(--pam-line);
+        border-left: 4px solid var(--pam-verde);
+        border-radius: 14px;
+        background: var(--pam-surface);
+    }
+
+    .pam-fisicas__intro h3 {
+        margin: .3rem 0 .35rem;
+        color: var(--pam-ink);
+        font-family: var(--font-display, "Patria", "Noto Serif", Georgia, serif);
+        font-weight: 700;
+        font-size: clamp(1.1rem, 3vw, 1.35rem);
+    }
+
+    .pam-fisicas__intro p {
+        margin: 0;
+        color: var(--pam-muted);
+        font-size: .84rem;
+    }
+
+    .pam-fisicas__grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .75rem;
+    }
+
+    .pam-fisica {
+        position: relative;
+        padding: .9rem 1rem .95rem 1.15rem;
+        border: 1px solid var(--pam-line);
+        border-radius: 12px;
+        background: var(--pam-surface-2);
+        overflow: hidden;
+    }
+
+    .pam-fisica::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px;
+        background: var(--pam-guinda);
+    }
+
+    .pam-fisica--dorado::before { background: var(--pam-dorado); }
+    .pam-fisica--verde::before { background: var(--pam-verde); }
+    .pam-fisica--tinta::before { background: var(--pam-ink); }
+
+    .pam-fisica__label {
+        display: block;
+        color: var(--pam-muted);
+        font-size: .68rem;
+        font-weight: 800;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+    }
+
+    .pam-fisica__valor {
+        display: block;
+        margin: .2rem 0 .05rem;
+        color: var(--pam-ink);
+        font-family: var(--font-display, "Patria", "Noto Serif", Georgia, serif);
+        font-size: clamp(1.4rem, 4.5vw, 1.95rem);
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pam-fisica small {
+        display: block;
+        color: var(--pam-muted);
+        font-size: .72rem;
+    }
+
+    @@media (min-width: 768px) {
+        .pam-fisicas { grid-template-columns: minmax(0, .9fr) minmax(0, 2fr); align-items: center; }
+        .pam-fisicas__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+
+    /* ── Semáforo de licitación (minuta 2026-07-09) ── */
+    .pam-semaforo {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .4rem;
+        padding: .7rem .85rem;
+        border-bottom: 1px solid var(--pam-line);
+    }
+
+    .pam-semaforo__titulo {
+        margin-right: .35rem;
+        color: var(--pam-muted);
+        font-size: .68rem;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+
+    .pam-sem {
+        --sem-color: var(--pam-muted);
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        min-height: 34px;
+        padding: .3rem .6rem;
+        border: 1px solid var(--pam-line);
+        border-radius: 999px;
+        background: var(--pam-surface);
+        color: var(--pam-ink);
+        font-size: .74rem;
+        font-weight: 700;
+        text-decoration: none;
+        transition: border-color .15s ease, background .15s ease;
+    }
+
+    .pam-sem i {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--sem-color);
+        flex: none;
+    }
+
+    .pam-sem strong {
+        font-variant-numeric: tabular-nums;
+        color: var(--sem-color);
+    }
+
+    .pam-sem:hover { border-color: var(--sem-color); }
+
+    .pam-sem.is-active {
+        border-color: var(--sem-color);
+        box-shadow: inset 0 0 0 1px var(--sem-color);
+        background: color-mix(in srgb, var(--sem-color) 8%, var(--pam-surface));
+    }
+
+    .pam-sem:focus-visible { outline: 3px solid rgba(155, 34, 71, 0.24); outline-offset: 2px; }
+
+    .pam-sem.is-enoperacion { --sem-color: #1E9CB8; }
+    .pam-sem.is-ejecucion { --sem-color: #0E8A6E; }
+    .pam-sem.is-concursado { --sem-color: #58A27C; }
+    .pam-sem.is-enconcurso { --sem-color: #C8901E; }
+    .pam-sem.is-porconcursar { --sem-color: #C0552E; }
+    .pam-sem.is-sininiciar { --sem-color: #9B2247; }
+    .pam-sem.is-porclasificar { --sem-color: var(--pam-muted); }
+
+    .pam-sem--mini {
+        min-height: 0;
+        margin-top: .3rem;
+        padding: .14rem .45rem;
+        font-size: .64rem;
+        border-color: transparent;
+        background: color-mix(in srgb, var(--sem-color) 12%, var(--pam-surface));
+        color: var(--sem-color);
+    }
+
+    .pam-sem--mini i { width: 7px; height: 7px; }
+
+    /* ── Empalme de cronograma (Fase C, minuta 2026-07-09) ── */
+    .pam-empalme-resumen {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .4rem;
+        padding: 0 .85rem .7rem;
+        border-bottom: 1px solid var(--pam-line);
+    }
+
+    .pam-empalme-resumen__titulo {
+        margin-right: .35rem;
+        color: var(--pam-muted);
+        font-size: .68rem;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        cursor: help;
+    }
+
+    .pam-emp {
+        --emp-color: var(--pam-muted);
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        min-height: 30px;
+        padding: .25rem .6rem;
+        border: 1px solid var(--pam-line);
+        border-radius: 999px;
+        background: var(--pam-surface);
+        color: var(--pam-ink);
+        font-size: .74rem;
+        font-weight: 700;
+    }
+
+    .pam-emp i {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--emp-color);
+        flex: none;
+    }
+
+    .pam-emp strong {
+        color: var(--emp-color);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pam-emp { text-decoration: none; transition: border-color .15s ease, background .15s ease; }
+    .pam-emp:hover { border-color: var(--emp-color); }
+    .pam-emp.is-active {
+        border-color: var(--emp-color);
+        box-shadow: inset 0 0 0 1px var(--emp-color);
+        background: color-mix(in srgb, var(--emp-color) 8%, var(--pam-surface));
+    }
+    .pam-emp:focus-visible { outline: 3px solid rgba(155, 34, 71, 0.24); outline-offset: 2px; }
+
+    .pam-emp.is-ok { --emp-color: #0E8A6E; }
+    .pam-emp.is-warn { --emp-color: #C8901E; }
+    .pam-emp.is-critico { --emp-color: #9B2247; }
+    .pam-emp.is-sindato { --emp-color: var(--pam-muted); }
+
+    .pam-filters {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: .6rem;
+        padding: .85rem;
+        background: var(--pam-surface-2);
+        border-bottom: 1px solid var(--pam-line);
+    }
+
+    .pam-filters select,
+    .pam-search {
+        min-width: 0;
+        min-height: 42px;
+        border: 1px solid var(--pam-line);
+        border-radius: 10px;
+        background: var(--pam-surface);
+        padding: .5rem .7rem;
+        color: var(--pam-ink);
+        font-size: .88rem;
+    }
+
+    .pam-search {
+        display: flex;
+        align-items: center;
+        gap: .55rem;
+    }
+
+    .pam-search i { color: var(--pam-guinda); }
+
+    .pam-search input {
+        min-width: 0;
+        width: 100%;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--pam-ink);
+    }
+
+    .pam-table-meta {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: .5rem 1rem;
+        padding: .75rem .9rem;
+        color: var(--pam-muted);
+        font-size: .84rem;
+    }
+
+    .pam-table-meta strong { color: var(--pam-guinda); font-size: .95rem; }
+
+    /* Chips reutilizables */
+    .pam-origin {
+        display: inline-block;
+        padding: .16rem .5rem;
+        border-radius: 1rem;
+        font-size: .66rem;
+        font-weight: 800;
+        letter-spacing: .04em;
+        background: var(--pam-surface-2);
+        color: var(--pam-muted);
+    }
+
+    .pam-origin--pamrnt {
+        background: rgba(155, 34, 71, 0.12);
+        color: var(--pam-guinda);
+    }
+
+    .pam-status {
+        display: inline-block;
+        margin-top: .3rem;
+        padding: .16rem .5rem;
+        border-radius: 1rem;
+        background: rgba(30, 91, 79, 0.12);
+        color: var(--pam-verde);
+        font-size: .68rem;
+        font-weight: 800;
+    }
+
+    .pam-status.is-cancelled {
+        background: rgba(192, 34, 42, 0.10);
+        color: #c0552e;
+    }
+
+    .pam-texto-suave { color: var(--pam-muted); }
+
+    /* Columna Jerarquía oculta (0 relaciones cargadas); reversible quitando esta regla */
+    .pam-col-jerarquia { display: none !important; }
+
+    /* Acciones: 2 botones claros con texto en vez de 5 iconos crípticos */
+    .pam-action-botones {
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        flex-wrap: wrap;
+    }
+
+    .pam-accion {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        min-height: 2.1rem;
+        padding: .35rem .7rem;
+        border: 1px solid var(--pam-line);
+        border-radius: 8px;
+        background: var(--pam-surface);
+        color: var(--pam-ink);
+        font-size: .78rem;
+        font-weight: 700;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: border-color .15s ease, color .15s ease, background .15s ease;
+    }
+
+    .pam-accion i { font-size: .82rem; }
+
+    .pam-accion--ver:hover {
+        border-color: var(--pam-guinda);
+        color: var(--pam-guinda);
+        background: rgba(155, 34, 71, 0.06);
+    }
+
+    .pam-accion--ficha {
+        border-color: var(--pam-guinda);
+        background: var(--pam-guinda);
+        color: #fff;
+    }
+
+    .pam-accion--ficha:hover { background: #83183a; border-color: #83183a; }
+
+    .pam-tabs a:hover { color: var(--pam-guinda); }
+    .pam-pages a:hover:not(.is-active):not(.disabled) { border-color: var(--pam-guinda); }
+
+    .pam-tabs a:focus-visible,
+    .pam-pages a:focus-visible,
+    .pam-accion:focus-visible {
+        outline: 3px solid rgba(155, 34, 71, 0.24);
+        outline-offset: 2px;
+    }
+
+    .pam-table code { color: var(--pam-guinda); font-weight: 800; font-size: .84rem; }
+    .pam-table small { color: var(--pam-muted); }
+    .pam-source { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .pam-empty {
+        padding: 3rem 1.5rem;
+        text-align: center;
+        color: var(--pam-muted);
+    }
+
+    .pam-empty i, .pam-empty strong { display: block; }
+    .pam-empty i { margin-bottom: .7rem; font-size: 2rem; color: var(--pam-dorado); }
+
+    .pam-pagination {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        padding: .9rem;
+        border-top: 1px solid var(--pam-line);
+        color: var(--pam-muted);
+        font-size: .84rem;
+    }
+
+    .pam-pages { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+
+    .pam-pages a {
+        display: inline-grid;
+        place-items: center;
+        min-width: 2.4rem;
+        min-height: 2.4rem;
+        padding: .3rem .65rem;
+        border: 1px solid var(--pam-line);
+        border-radius: 10px;
+        color: var(--pam-guinda);
+        font-weight: 700;
+        text-decoration: none;
+        background: var(--pam-surface);
+    }
+
+    .pam-pages a.is-active {
+        border-color: var(--pam-guinda);
+        background: var(--pam-guinda);
+        color: #fff;
+    }
+
+    .pam-pages a.disabled { opacity: .42; pointer-events: none; }
+
+    /* ── MÓVIL: la tabla se vuelve tarjetas apiladas ── */
+    @@media (max-width: 991.98px) {
+        .pam-table-wrap { max-height: none; overflow: visible; }
+        .pam-table { min-width: 0; }
+        .pam-table thead { display: none; }
+
+        .pam-table tbody tr {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: .5rem .9rem;
+            margin: .7rem;
+            padding: .9rem;
+            border: 1px solid var(--pam-line);
+            border-radius: 14px;
+            background: var(--pam-surface);
+        }
+
+        .pam-table tbody td {
+            display: block;
+            padding: 0;
+            border: 0;
+            max-width: none;
+        }
+
+        .pam-table tbody td::before {
+            content: attr(data-label);
+            display: block;
+            margin-bottom: .15rem;
+            color: var(--pam-muted);
+            font-size: .64rem;
+            font-weight: 800;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+
+        .pam-td-proyecto { grid-column: 1 / -1; }
+        .pam-td-inversion { text-align: left !important; }
+
+        .pam-td-acciones {
+            grid-column: 1 / -1;
+            text-align: left !important;
+            padding-top: .5rem !important;
+            border-top: 1px dashed var(--pam-line) !important;
+        }
+
+        .pam-td-acciones::before { display: none !important; }
+    }
+
+    /* ── Escalado a tablet/escritorio ── */
+    @@media (min-width: 768px) {
+        .pam-hero { flex-direction: row; justify-content: space-between; align-items: end; padding: 1.6rem 1.75rem; }
+        .pam-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .pam-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .pam-search { grid-column: 1 / -1; }
+    }
+
+    @@media (min-width: 1200px) {
+        .pam-analitica { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr) minmax(260px, .8fr); align-items: stretch; }
+        .pam-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .pam-filters { grid-template-columns: minmax(260px, 2.4fr) repeat(3, minmax(150px, 1fr)) auto auto; }
+        .pam-search { grid-column: auto; }
+    }
+
+    /* Tabla de escritorio: encabezado pegajoso y columna de acciones fija */
+    @@media (min-width: 992px) {
+        .pam-table-wrap { max-height: 68vh; overflow: auto; scrollbar-gutter: stable; }
+        .pam-table { width: 100%; min-width: 1120px; }
+        .pam-table thead { position: sticky; top: 0; z-index: 2; }
+
+        .pam-table thead th {
+            background: var(--pam-surface-2);
+            color: var(--pam-muted);
+            font-size: .71rem;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--pam-line);
+        }
+
+        .pam-table td {
+            padding: .85rem .65rem;
+            border-color: var(--pam-line);
+            vertical-align: top;
+            max-width: 30rem;
+            color: var(--pam-ink);
+        }
+
+        .pam-table th:nth-child(1), .pam-table td:nth-child(1) { width: 150px; }
+        .pam-table th:nth-child(2), .pam-table td:nth-child(2) { width: 320px; }
+        .pam-table th:nth-child(3), .pam-table td:nth-child(3) { width: 175px; }
+        .pam-table th:nth-child(4), .pam-table td:nth-child(4) { width: 150px; }
+        /* nth-child(5) = Jerarquía, oculta */
+        .pam-table th:nth-child(6), .pam-table td:nth-child(6) { width: 230px; }
+        .pam-table th:nth-child(7), .pam-table td:nth-child(7) { width: 140px; }
+
+        .pam-table th:last-child, .pam-table td:last-child {
+            position: sticky;
+            right: 0;
+            width: 170px;
+            min-width: 170px;
+            background: var(--pam-surface);
+            border-left: 1px solid var(--pam-line);
+            z-index: 1;
+        }
+
+        .pam-table thead th:last-child { background: var(--pam-surface-2); z-index: 3; }
+        .pam-action-botones { justify-content: flex-end; flex-wrap: nowrap; }
+    }
+</style>
+
+@section scripts {
+    <script>
+        // Autofiltrar al cambiar cualquier select (misma UX de un clic que el resto de la plataforma)
+        document.querySelectorAll('#pam-filtros select').forEach(function (sel) {
+            sel.addEventListener('change', function () {
+                document.getElementById('pam-filtros').requestSubmit();
+            });
+        });
+    </script>
+}
