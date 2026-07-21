@@ -96,18 +96,18 @@ namespace NSIE.Models
         public string Nivel => !Evaluable ? "Sin evaluar"
             : DeltaMeses <= 0 ? "A tiempo"
             : DeltaMeses <= 6 ? "Holgura ajustada"
-            : "Riesgo de empalme";
+            : "Riesgo de desfasamiento";
 
         public string Clase => Nivel switch
         {
             "A tiempo" => "is-ok",
             "Holgura ajustada" => "is-warn",
-            "Riesgo de empalme" => "is-critico",
+            "Riesgo de desfasamiento" => "is-critico",
             _ => "is-sindato"
         };
 
         public string Resumen => !Evaluable
-            ? "No hay fechas comparables para evaluar el empalme."
+            ? "No hay fechas comparables para evaluar la alineación de cronograma."
             : DeltaMeses <= 0
                 ? $"La red estaría lista {Math.Abs(DeltaMeses)} mes(es) antes de necesitarse."
                 : $"La red entraría {DeltaMeses} mes(es) después de la fecha necesaria.";
