@@ -1,11 +1,16 @@
 @model List<NSIE.Controllers.ComiteSesionDto>
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+@using Microsoft.AspNetCore.Http
+
 @{
     ViewData["Title"] = "Comité Técnico CNE";
     var isAdmin = (bool)(ViewData["IsAdmin"] ?? false);
-    var sesionesJson = Newtonsoft.Json.JsonConvert.SerializeObject(Model);
+    var sesionesJson = JsonConvert.SerializeObject(Model);
 }
 
-@await Html.PartialAsync("_ViewHeader", ViewData["HeaderViewModel"] as NSIE.Models.HeaderViewModel)
+@await Html.PartialAsync("_ViewHeader", ViewData["HeaderViewModel"] as HeaderViewModel)
 
 @section Styles {
     <link rel="stylesheet" href="~/gestor/css/gestor.css" asp-append-version="true" />
@@ -25,619 +30,373 @@
         .comite-wrapper {
             font-family: 'Noto Sans', sans-serif;
             color: var(--color-gris-oscuro);
-        }
-
-        /* Contenedor tipo Glassmorphism */
-        .glass-card {
-            background: #ffffff;
-            border-radius: var(--border-radius-premium);
-            border: 1px solid rgba(0, 0, 0, 0.05);
-            box-shadow: var(--shadow-premium);
-            transition: var(--transition-smooth);
-            overflow: hidden;
-        }
-
-        /* Layout dividido */
-        .comite-grid {
             display: grid;
-            grid-template-columns: 350px 1fr;
+            grid-template-columns: 380px 1fr;
             gap: 1.5rem;
-            min-height: 700px;
+            min-height: calc(100vh - 200px);
+            margin: 20px;
         }
 
         @@media (max-width: 992px) {
-            .comite-grid {
+            .comite-wrapper {
                 grid-template-columns: 1fr;
             }
         }
 
-        /* Sidebar de sesiones */
-        .comite-sidebar {
+        /* Sidebar */
+        .sidebar-sesiones {
+            background: #ffffff;
+            border-radius: var(--border-radius-premium);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: var(--shadow-premium);
             display: flex;
             flex-direction: column;
-            gap: 1rem;
-            max-height: 800px;
-            overflow-y: auto;
-            padding-right: 0.5rem;
+            overflow: hidden;
+            max-height: calc(100vh - 150px);
         }
 
-        .comite-sidebar::-webkit-scrollbar {
-            width: 6px;
+        .sidebar-header {
+            padding: 1.2rem;
+            border-bottom: 1px solid #e2e8f0;
+            background: #fafafa;
         }
-        .comite-sidebar::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .comite-sidebar::-webkit-scrollbar-thumb {
-            background: #cbd5e0;
-            border-radius: 3px;
-        }        /* Caja de búsqueda */
+
         .search-box {
             position: relative;
-            margin-bottom: 0.75rem;
+            margin-bottom: 1rem;
         }
-        .search-box .form-control {
+
+        .search-box input {
+            width: 100%;
             padding: 0.6rem 1rem 0.6rem 2.2rem;
             border-radius: 8px;
             border: 1px solid #e2e8f0;
-            font-size: 0.88rem;
-            background-color: #f8fafc;
+            font-size: 0.9rem;
+            background-color: #ffffff;
             transition: all 0.2s;
         }
-        .search-box .form-control:focus {
-            background-color: #ffffff;
+
+        .search-box input:focus {
             border-color: var(--color-guinda);
+            outline: none;
             box-shadow: 0 0 0 3px rgba(155, 34, 71, 0.1);
         }
+
         .search-box .bi-search {
             position: absolute;
             left: 0.8rem;
             top: 50%;
             transform: translateY(-50%);
             color: var(--color-gris-medio);
-            font-size: 0.88rem;
         }
 
-        /* Tarjeta de sesión individual premium y minimalista */
+        /* Chips Filtro */
+        .status-chips {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .status-chip {
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #e2e8f0;
+            background: #ffffff;
+            color: var(--color-gris-medio);
+            transition: all 0.2s;
+        }
+
+        .status-chip:hover {
+            background: #f1f5f9;
+        }
+
+        .status-chip.active {
+            background: var(--color-guinda);
+            color: #ffffff;
+            border-color: var(--color-guinda);
+        }
+
+        /* Lista */
+        .sidebar-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
         .sesion-card {
             background-color: #ffffff;
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             padding: 14px 16px;
-            margin-bottom: 0.75rem;
             cursor: pointer;
-            border-left: 3px solid var(--color-verde);
             transition: all 0.2s ease;
             position: relative;
+            border-left: 4px solid #cbd5e0;
         }
-        .sesion-card.inactiva {
-            border-left-color: var(--color-gris-medio);
-        }
+
         .sesion-card:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
             border-color: #cbd5e0;
         }
+
         .sesion-card.active {
-            background-color: rgba(155, 34, 71, 0.02);
+            background-color: rgba(155, 34, 71, 0.03);
             border-color: var(--color-guinda);
-            border-left-color: var(--color-guinda) !important;
-            box-shadow: 0 4px 12px rgba(155, 34, 71, 0.02);
+            border-left-color: var(--color-guinda);
         }
+
+        .sesion-card.extraordinaria {
+            border-left-color: #E65100;
+        }
+        
+        .sesion-card.ordinaria {
+            border-left-color: var(--color-verde);
+        }
+
         .sesion-card h5 {
-            font-size: 0.92rem;
+            font-size: 0.95rem;
             font-weight: 600;
             margin: 0 0 8px 0;
             color: #1a202c;
-            line-height: 1.45;
-            transition: color 0.2s;
+            line-height: 1.4;
         }
-        .sesion-card.active h5 {
-            color: var(--color-guinda);
-        }
-        .sesion-card-meta {
+
+        .sesion-card .meta {
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-size: 0.75rem;
             color: var(--color-gris-medio);
         }
-        .badge-estatus {
-            padding: 2px 6px;
-            border-radius: 4px;
+
+        .badge-tipo {
+            padding: 3px 8px;
+            border-radius: 12px;
             font-weight: 700;
             text-transform: uppercase;
-            font-size: 0.62rem;
-            letter-spacing: 0.03em;
-        }
-        .badge-estatus.inactivo {
-            background-color: #edf2f7;
-            color: #4a5568;
-        }
-        .sesion-card__actions {
-            opacity: 0;
-            transition: all 0.2s;
-        }
-        .sesion-card:hover .sesion-card__actions {
-            opacity: 0.8;
+            font-size: 0.65rem;
         }
 
-        /* Panel de Detalle Derecho */
-        .detalle-pane {
+        .badge-tipo.ordinaria {
+            background: rgba(30, 91, 79, 0.1);
+            color: var(--color-verde);
+        }
+
+        .badge-tipo.extraordinaria {
+            background: rgba(230, 81, 0, 0.1);
+            color: #E65100;
+        }
+
+        /* Detail Panel */
+        .detail-panel {
+            background: #ffffff;
+            border-radius: var(--border-radius-premium);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: var(--shadow-premium);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-height: calc(100vh - 150px);
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--color-gris-medio);
+            text-align: center;
             padding: 2rem;
         }
-        .detalle-header {
-            border-bottom: 1px solid #edf2f7;
-            padding-bottom: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        .detalle-title {
-            font-family: var(--font-family-headings);
-            color: var(--color-guinda);
-            font-weight: 700;
-            margin-bottom: 0.35rem;
-            font-size: 1.6rem;
-            letter-spacing: -0.02em;
-        }
-        .detalle-meta {
-            display: flex;
-            align-items: center;
-            gap: 1.25rem;
-            font-size: 0.88rem;
-            color: var(--color-gris-medio);
+
+        .empty-state i {
+            font-size: 4rem;
+            color: #e2e8f0;
+            margin-bottom: 1rem;
         }
 
-        /* Entorno de Canva Embed 16:9 */
-        .canva-container {
-            position: relative;
-            width: 100%;
-            padding-top: 56.25%; /* 16:9 Aspect Ratio */
-            border-radius: 8px;
-            overflow: hidden;
-            border: 1px solid #edf2f7;
-            background: #1e1e1e;
-            margin-top: 1rem;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+        .detail-header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid #e2e8f0;
         }
-        .canva-container iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            right: 0;
+
+        .detail-header h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--color-guinda);
+            margin: 0 0 0.5rem 0;
+        }
+
+        .detail-meta {
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.85rem;
+            color: var(--color-gris-medio);
+            margin-bottom: 1rem;
+        }
+
+        .detail-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-pdf {
+            background: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
+            border: 1px solid rgba(220, 53, 69, 0.2);
+        }
+
+        .btn-pdf:hover {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-ppt {
+            background: rgba(253, 126, 20, 0.1);
+            color: #fd7e14;
+            border: 1px solid rgba(253, 126, 20, 0.2);
+        }
+
+        .btn-ppt:hover {
+            background: #fd7e14;
+            color: white;
+        }
+
+        .detail-content {
+            flex: 1;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            background: #f8fafc;
+        }
+
+        .iframe-container {
             width: 100%;
             height: 100%;
+            min-height: 500px;
             border: none;
-        }
-
-        /* Caja de Insumos / Archivos */
-        .insumo-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-        @@media (max-width: 768px) {
-            .insumo-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .insumo-card {
-            display: flex;
-            align-items: center;
-            padding: 0.85rem 1.1rem;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            background: #f8fafc;
-            text-decoration: none;
-            transition: all 0.2s ease;
-            color: var(--color-gris-oscuro);
-        }
-        .insumo-card:hover {
-            transform: translateY(-1px);
-            background: #ffffff;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-            color: var(--color-gris-oscuro);
-            border-color: #cbd5e0;
-        }
-        .insumo-card--pdf:hover {
-            border-color: var(--color-guinda);
-        }
-        .insumo-card--pdf i {
-            color: var(--color-guinda);
-            font-size: 1.35rem;
-            margin-right: 0.85rem;
-        }
-        .insumo-card--ppt:hover {
-            border-color: var(--color-dorado);
-        }
-        .insumo-card--ppt i {
-            color: var(--color-dorado);
-            font-size: 1.35rem;
-            margin-right: 0.85rem;
-        }
-        .insumo-card__title {
-            font-weight: 600;
-            font-size: 0.88rem;
-            margin-bottom: 0;
-        }
-
-        /* Modal styling y forzado de z-index */
-        .modal {
-            z-index: 12000 !important;
-        }
-        .modal-backdrop {
-            z-index: 11990 !important;
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-        }
-        .swal2-container {
-            z-index: 12100 !important;
-        }
-        #modalSesion .modal-dialog {
-            margin-top: 5.5rem;
-        }
-        .modal-content-premium {
-            border-top: 4px solid var(--color-guinda);
-            border-radius: var(--border-radius-premium);
-            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.1);
-        }
-
-        /* Estilo para placeholder vacío */
-        .placeholder-empty {
-            text-align: center;
-            padding: 5rem 2rem;
-            color: var(--color-gris-medio);
-        }
-        .placeholder-empty i {
-            font-size: 3.5rem;
-            color: #cbd5e0;
-            margin-bottom: 1rem;
-            display: block;
-        }
-
-        /* --- Modo oscuro --- */
-        [data-bs-theme="dark"] .glass-card {
-            background: var(--shell-surface, #1d1925);
-            border-color: var(--shell-line, rgba(255,255,255,0.09));
-        }
-
-        [data-bs-theme="dark"] .search-box .form-control {
-            background-color: var(--shell-surface-2, #241f2e);
-            border-color: var(--shell-line, rgba(255,255,255,0.09));
-            color: var(--shell-ink, #ece7e2);
-        }
-
-        [data-bs-theme="dark"] .search-box .form-control:focus {
-            background-color: var(--shell-surface, #1d1925);
-        }
-
-        [data-bs-theme="dark"] .sesion-card {
-            background-color: var(--shell-surface, #1d1925);
-            border-color: var(--shell-line, rgba(255,255,255,0.09));
-        }
-
-        [data-bs-theme="dark"] .badge-estatus.inactivo {
-            background-color: var(--shell-surface-2, #241f2e);
-            color: var(--shell-muted, #a39aa8);
-        }
-
-        [data-bs-theme="dark"] .insumo-card {
-            background: var(--shell-surface-2, #241f2e);
-            border-color: var(--shell-line, rgba(255,255,255,0.09));
-            color: var(--shell-ink, #ece7e2);
-        }
-
-        [data-bs-theme="dark"] .insumo-card:hover {
-            background: var(--shell-hover, rgba(212, 83, 126, 0.10));
-            color: var(--shell-ink, #ece7e2);
-            border-color: rgba(212, 83, 126, 0.35);
-        }
-
-        [data-bs-theme="dark"] .placeholder-empty i {
-            color: var(--shell-muted, #a39aa8);
         }
     </style>
 }
 
-<div class="container-fluid shell-page-container py-3 comite-wrapper">
-    <!-- Miga de Pan Homologada -->
-    <div class="gestor-breadcrumbs">
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
-                <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
-            </ol>
-        </nav>
-    </div>
-
-    @Html.AntiForgeryToken()
-
-    <div class="comite-grid">
-        
-        <!-- SIDEBAR DE SESIONES -->
-        <div class="comite-sidebar">
-            @if (isAdmin)
-            {
-                <button type="button" class="btn btn-primary w-100 py-2.5 fw-bold" style="background-color: var(--color-guinda); border-color: var(--color-guinda); border-radius: 10px;" onclick="abrirModalCrear()">
-                    <i class="bi bi-plus-circle-fill me-2"></i>Nueva Sesión del Comité
-                </button>
-            }
-
+<div class="comite-wrapper">
+    <!-- Panel Izquierdo: Lista de Sesiones -->
+    <aside class="sidebar-sesiones">
+        <div class="sidebar-header">
             <div class="search-box">
                 <i class="bi bi-search"></i>
-                <input type="text" id="buscadorSesiones" class="form-control shadow-none" placeholder="Buscar sesión por título o año..." onkeyup="filtrarSesiones()">
+                <input type="text" id="searchInput" placeholder="Buscar sesión por título..." onkeyup="filterSesiones()">
             </div>
-
-            <div id="listaSesiones" class="d-flex flex-column gap-2">
-                @if (Model != null && Model.Any())
-                {
-                    foreach (var sesion in Model)
-                    {
-                        var isActiva = sesion.Activo;
-                        <div class="sesion-card @(sesion == Model.First() ? "active" : "") @(isActiva ? "" : "inactiva")" 
-                             id="card-@sesion.SesionId" 
-                             onclick="seleccionarSesion(@sesion.SesionId)" 
-                             data-title="@sesion.Titulo"
-                             data-year="@(DateTime.TryParse(sesion.FechaTexto, out var d) ? d.Year.ToString() : "")">
-                            
-                            <h5>@sesion.Titulo</h5>
-                            
-                            <div class="sesion-card-meta">
-                                <span>
-                                    <i class="bi bi-calendar3 me-1"></i>@(DateTime.TryParse(sesion.FechaTexto, out var f) ? f.ToString("dd MMM yyyy") : sesion.FechaTexto)
-                                </span>
-                                @if (!isActiva)
-                                {
-                                    <span class="badge-estatus inactivo">Inactiva</span>
-                                }
-                            </div>
-                            
-                            @if (isAdmin)
-                            {
-                                <div class="sesion-card__actions mt-2 pt-2 border-top d-flex justify-content-end gap-2">
-                                    <button class="btn btn-sm btn-outline-primary p-1 px-2" title="Editar" onclick="event.stopPropagation(); abrirModalEditar(@sesion.SesionId)">
-                                        <i class="bi bi-pencil-fill" style="font-size: 0.82rem;"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger p-1 px-2" title="Eliminar" onclick="event.stopPropagation(); eliminarSesion(@sesion.SesionId, '@sesion.Titulo')">
-                                        <i class="bi bi-trash-fill" style="font-size: 0.82rem;"></i>
-                                    </button>
-                                </div>
-                            }
-                        </div>
-                    }
-                }
-                else
-                {
-                    <div class="text-center py-5 text-muted">No se encontraron sesiones registradas.</div>
-                }
+            <div class="status-chips">
+                <button class="status-chip active" data-type="todas" onclick="filterByType('todas')">Todas</button>
+                <button class="status-chip" data-type="ordinaria" onclick="filterByType('ordinaria')">Ordinarias</button>
+                <button class="status-chip" data-type="extraordinaria" onclick="filterByType('extraordinaria')">Extraordinarias</button>
             </div>
         </div>
 
-        <!-- PANEL DE DETALLE -->
-        <div class="glass-card detalle-pane" id="panelDetalle">
+        <div class="sidebar-list" id="sesionesList">
             @if (Model != null && Model.Any())
             {
-                var primera = Model.First();
-                <div id="detalleContenido">
-                    <div class="detalle-header">
-                        <h2 class="detalle-title" id="lblTitulo">@primera.Titulo</h2>
-                        <div class="detalle-meta">
-                            <span>
-                                <i class="bi bi-calendar2-check-fill me-1" style="color: var(--color-dorado);"></i>
-                                <span id="lblFecha">@(DateTime.TryParse(primera.FechaTexto, out var pF) ? pF.ToString("dd MMMM yyyy") : primera.FechaTexto)</span>
-                            </span>
-                            <span id="lblStatusWrap" class="d-none">
-                                <i class="bi bi-shield-fill-check me-1" style="color: var(--color-verde);"></i>
-                                <span id="lblStatus">Activa</span>
-                            </span>
+                foreach (var sesion in Model)
+                {
+                    var tipoClass = (sesion.TipoSesion?.ToLower() ?? "ordinaria") == "extraordinaria" ? "extraordinaria" : "ordinaria";
+                    <div class="sesion-card @tipoClass" data-id="@sesion.SesionId" data-title="@sesion.Titulo.ToLower()" data-type="@tipoClass" onclick="selectSesion(@sesion.SesionId)">
+                        <h5>@sesion.Titulo</h5>
+                        <div class="meta">
+                            <span><i class="bi bi-calendar3 me-1"></i>@sesion.FechaTexto</span>
+                            <span class="badge-tipo @tipoClass">@sesion.TipoSesion</span>
                         </div>
                     </div>
-
-                    <!-- Resumen / Acuerdos -->
-                    <div id="resumenCard" class="mb-4">
-                        <h5 class="fw-bold" style="color: var(--color-guinda); font-size: 1.1rem; letter-spacing: -0.01em;">Resumen y Acuerdos de la Sesión</h5>
-                        <p id="lblResumen" class="mt-3" style="font-size: 0.98rem; line-height: 1.75; text-align: justify; color: var(--color-gris-oscuro);">@Html.Raw(primera.Resumen)</p>
-                    </div>
-
-                    <!-- Grid de Descarga de Archivos -->
-                    <h5 class="fw-bold mt-4" style="color: var(--color-gris-oscuro); font-size: 1.1rem; letter-spacing: -0.01em;">Archivos Fuente y Minutas</h5>
-                    <div class="insumo-grid">
-                        <a href="@primera.PdfUrl" target="_blank" rel="noopener noreferrer" class="insumo-card insumo-card--pdf" id="lnkPdf" style="@(string.IsNullOrWhiteSpace(primera.PdfUrl) ? "display: none;" : "")">
-                            <i class="fa-solid fa-file-pdf"></i>
-                            <div>
-                                <div class="insumo-card__title">Resumen de Asuntos (PDF)</div>
-                            </div>
-                        </a>
-                        
-                        <a href="@primera.PptUrl" target="_blank" rel="noopener noreferrer" class="insumo-card insumo-card--ppt" id="lnkPpt" style="@(string.IsNullOrWhiteSpace(primera.PptUrl) ? "display: none;" : "")">
-                            <i class="fa-solid fa-file-powerpoint"></i>
-                            <div>
-                                <div class="insumo-card__title">Presentación Ejecutiva (PPTX)</div>
-                            </div>
-                        </a>
-                        
-                        <div id="noArchivosMsg" class="alert alert-light border text-muted py-3 px-4 w-100" style="@(!string.IsNullOrWhiteSpace(primera.PdfUrl) || !string.IsNullOrWhiteSpace(primera.PptUrl) ? "display: none;" : "")">
-                            <i class="bi bi-info-circle-fill me-2"></i>No se han cargado archivos fuente para esta sesión.
-                        </div>
-                    </div>
-
-                    <!-- Canva / HTML Presentation Embed -->
-                    <div id="canvaSeccion" style="@(string.IsNullOrWhiteSpace(primera.CanvaEmbedUrl) ? "display: none;" : "")">
-                        <div class="d-flex justify-content-between align-items-center mt-4 mb-2">
-                            <h5 class="fw-bold m-0" style="color: var(--color-gris-oscuro); font-size: 1.1rem; letter-spacing: -0.01em;">Presentación Interactiva</h5>
-                            <a id="btnAbrirCanvaNuevaPestana" href="@primera.CanvaEmbedUrl" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary" style="font-size: 0.8rem; border-radius: 6px;">
-                                <i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Abrir en pestaña nueva
-                            </a>
-                        </div>
-                        <div class="canva-container">
-                            <iframe id="iframeCanva" src="@primera.CanvaEmbedUrl" allowfullscreen="true" allow="fullscreen"></iframe>
-                        </div>
-                    </div>
-                </div>
+                }
             }
             else
             {
-                <div class="placeholder-empty">
-                    <i class="bi bi-folder-symlink"></i>
-                    <h3>Comité Técnico CNE</h3>
-                    <p>No hay sesiones registradas. Utiliza el botón "Nueva Sesión" para agregar el primer registro operativo.</p>
-                </div>
+                <div class="text-center p-4 text-muted">No hay sesiones registradas.</div>
             }
         </div>
+    </aside>
 
-    </div>
-</div>
+    <!-- Panel Derecho: Detalle de Sesión -->
+    <main class="detail-panel">
+        <div id="emptyState" class="empty-state">
+            <i class="bi bi-easel2"></i>
+            <h3>Selecciona una sesión</h3>
+            <p>Elige una sesión del panel lateral para ver sus detalles, acuerdos y presentación interactiva.</p>
+        </div>
 
-<!-- MODAL CRUD (CREAR / EDITAR SESIÓN) -->
-@if (isAdmin)
-{
-    <div class="modal fade" id="modalSesion" tabindex="-1" aria-labelledby="modalSesionTitle" aria-hidden="true" data-bs-backdrop="static">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content modal-content-premium">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold text-dark" id="modalSesionTitle"><i class="bi bi-calendar2-plus-fill text-danger me-2"></i>Detalle de la Sesión del Comité</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div id="detailState" style="display: none; height: 100%; flex-direction: column;">
+            <div class="detail-header">
+                <h2 id="detailTitle">--</h2>
+                <div class="detail-meta">
+                    <span><i class="bi bi-calendar3 me-1"></i><strong id="detailDate">--</strong></span>
+                    <span><i class="bi bi-tag-fill me-1"></i><strong id="detailType">--</strong></span>
                 </div>
-                <div class="modal-body p-4">
-                    <form id="formSesion">
-                        <input type="hidden" id="inputSesionId" name="SesionId" />
-                        
-                        <div class="row g-3">
-                            <div class="col-md-8">
-                                <label for="inputTitulo" class="form-label fw-bold small">Título de la Sesión *</label>
-                                <input type="text" class="form-control" id="inputTitulo" required placeholder="Ej. 11a Sesión Ordinaria" maxlength="300">
-                            </div>
-                            <div class="col-md-4">
-                                <label for="inputFecha" class="form-label fw-bold small">Fecha de la Sesión *</label>
-                                <input type="date" class="form-control" id="inputFecha" required>
-                            </div>
-                            <div class="col-12">
-                                <label for="inputResumen" class="form-label fw-bold small">Resumen y Acuerdos Principales</label>
-                                <textarea class="form-control" id="inputResumen" rows="6" placeholder="Detalla los puntos y acuerdos revisados durante la sesión del Comité..." maxlength="4000"></textarea>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="inputPdfUrl" class="form-label fw-bold small">URL de la Minuta (PDF) de Cloudflare</label>
-                                <input type="url" class="form-control" id="inputPdfUrl" placeholder="https://cdn.sassoapps.com/...pdf">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="inputPptUrl" class="form-label fw-bold small">URL del PowerPoint (PPTX) de Cloudflare</label>
-                                <input type="url" class="form-control" id="inputPptUrl" placeholder="https://cdn.sassoapps.com/...pptx">
-                            </div>
-                            <div class="col-12">
-                                <label for="inputCanva" class="form-label fw-bold small">Enlace para Embeber de Canva / Google Slides</label>
-                                <input type="text" class="form-control" id="inputCanva" placeholder="https://www.canva.com/design/... o código <iframe>">
-                            </div>
-                            <div class="col-12 mt-4">
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" id="inputActivo" checked>
-                                    <label class="form-check-label fw-bold" for="inputActivo">Sesión Activa (Visible en el dashboard)</label>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary px-4" style="background-color: var(--color-guinda); border-color: var(--color-guinda);" onclick="guardarSesion()">
-                        <i class="bi bi-save2-fill me-2"></i>Guardar Cambios
-                    </button>
+                <p id="detailResumen" class="text-muted mb-3" style="font-size: 0.9rem;"></p>
+                
+                <div class="detail-actions">
+                    <a href="#" id="btnDownloadPdf" class="btn-action btn-pdf" target="_blank" style="display:none;">
+                        <i class="bi bi-file-earmark-pdf-fill"></i> Acta PDF
+                    </a>
+                    <a href="#" id="btnDownloadPpt" class="btn-action btn-ppt" target="_blank" style="display:none;">
+                        <i class="bi bi-file-earmark-slides-fill"></i> Presentación PPTX
+                    </a>
                 </div>
             </div>
+
+            <div class="detail-content">
+                <iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"  id="canvaIframe" class="iframe-container" src="" allowfullscreen></iframe>
+            </div>
         </div>
-    </div>
-}
+    </main>
+</div>
 
 @section Scripts {
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
-        // Serializar las sesiones de Razor a un arreglo de JS
-        let sesiones = @Html.Raw(sesionesJson);
-        const isAdmin = @(isAdmin.ToString().ToLower());
+        const sesiones = @Html.Raw(sesionesJson);
+        let currentTypeFilter = 'todas';
 
-        $(document).ready(function () {
-            // Resolver bug de superposición de z-index y backdrop moviendo el modal al body
-            if (isAdmin && $('#modalSesion').length) {
-                $('#modalSesion').appendTo('body');
-            }
-        });
-
-        function seleccionarSesion(id) {
-            const sesion = sesiones.find(x => x.SesionId === id);
-            if (!sesion) return;
-
-            // Marcar activa en la lista
-            document.querySelectorAll('.sesion-card').forEach(c => c.classList.remove('active'));
-            const selectedCard = document.getElementById(`card-${id}`);
-            if (selectedCard) selectedCard.classList.add('active');
-
-            // Actualizar vista de detalle
-            document.getElementById('lblTitulo').textContent = sesion.Titulo;
+        function filterByType(type) {
+            currentTypeFilter = type;
             
-            // Formatear Fecha
-            if (sesion.FechaTexto) {
-                const dateObj = new Date(sesion.FechaTexto + 'T00:00:00');
-                const options = { day: '2-digit', month: 'long', year: 'numeric' };
-                document.getElementById('lblFecha').textContent = dateObj.toLocaleDateString('es-ES', options);
-            } else {
-                document.getElementById('lblFecha').textContent = '-';
-            }
-
-            // Resumen
-            document.getElementById('lblResumen').innerHTML = sesion.Resumen || 'Sin resumen registrado para esta sesión.';
-
-            // Descarga de archivos
-            let hasFiles = false;
-            const lnkPdf = document.getElementById('lnkPdf');
-            const lnkPpt = document.getElementById('lnkPpt');
-            const noArchivosMsg = document.getElementById('noArchivosMsg');
-
-            if (sesion.PdfUrl && sesion.PdfUrl.trim() !== '') {
-                lnkPdf.href = sesion.PdfUrl;
-                lnkPdf.style.display = 'flex';
-                hasFiles = true;
-            } else {
-                lnkPdf.style.display = 'none';
-            }
-
-            if (sesion.PptUrl && sesion.PptUrl.trim() !== '') {
-                lnkPpt.href = sesion.PptUrl;
-                lnkPpt.style.display = 'flex';
-                hasFiles = true;
-            } else {
-                lnkPpt.style.display = 'none';
-            }
-
-            noArchivosMsg.style.display = hasFiles ? 'none' : 'block';
-
-            // Canva / HTML Presentation Embed
-            const canvaSeccion = document.getElementById('canvaSeccion');
-            const iframeCanva = document.getElementById('iframeCanva');
-            const btnAbrirCanvaNuevaPestana = document.getElementById('btnAbrirCanvaNuevaPestana');
-
-            if (sesion.CanvaEmbedUrl && sesion.CanvaEmbedUrl.trim() !== '') {
-                iframeCanva.src = sesion.CanvaEmbedUrl;
-                if (btnAbrirCanvaNuevaPestana) btnAbrirCanvaNuevaPestana.href = sesion.CanvaEmbedUrl;
-                canvaSeccion.style.display = 'block';
-            } else {
-                iframeCanva.src = '';
-                canvaSeccion.style.display = 'none';
-            }
+            // Update chips
+            document.querySelectorAll('.status-chip').forEach(c => c.classList.remove('active'));
+            document.querySelector(`.status-chip[data-type="${type}"]`).classList.add('active');
+            
+            filterSesiones();
         }
 
-        function filtrarSesiones() {
-            const buscador = document.getElementById('buscadorSesiones');
-            const filtro = buscador.value.trim().toLowerCase();
+        function filterSesiones() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             const cards = document.querySelectorAll('.sesion-card');
 
             cards.forEach(card => {
-                const title = card.getAttribute('data-title').toLowerCase();
-                const year = card.getAttribute('data-year');
+                const title = card.getAttribute('data-title');
+                const type = card.getAttribute('data-type');
                 
-                if (title.includes(filtro) || year.includes(filtro)) {
+                const matchesSearch = title.includes(searchTerm);
+                const matchesType = currentTypeFilter === 'todas' || type === currentTypeFilter;
+
+                if (matchesSearch && matchesType) {
                     card.style.display = 'block';
                 } else {
                     card.style.display = 'none';
@@ -645,166 +404,51 @@
             });
         }
 
-        // --- FUNCIONES ADMINISTRATIVAS ---
-        @if (isAdmin)
-        {
-            <text>
-            function abrirModalCrear() {
-                document.getElementById('modalSesionTitle').innerHTML = '<i class="bi bi-calendar2-plus-fill text-danger me-2"></i>Nueva Sesión del Comité';
-                document.getElementById('inputSesionId').value = '';
-                document.getElementById('formSesion').reset();
-                document.getElementById('inputActivo').checked = true;
+        function selectSesion(id) {
+            // Update active state in list
+            document.querySelectorAll('.sesion-card').forEach(c => c.classList.remove('active'));
+            const card = document.querySelector(`.sesion-card[data-id="${id}"]`);
+            if (card) card.classList.add('active');
 
-                // Establecer fecha de hoy como default
-                const hoy = new Date().toISOString().split('T')[0];
-                document.getElementById('inputFecha').value = hoy;
+            const sesion = sesiones.find(s => s.SesionId === id);
+            if (!sesion) return;
 
-                const modal = new bootstrap.Modal(document.getElementById('modalSesion'));
-                modal.show();
+            // Switch views
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('detailState').style.display = 'flex';
+
+            // Populate data
+            document.getElementById('detailTitle').textContent = sesion.Titulo;
+            document.getElementById('detailDate').textContent = sesion.FechaTexto;
+            document.getElementById('detailType').textContent = sesion.TipoSesion || 'Ordinaria';
+            document.getElementById('detailResumen').textContent = sesion.Resumen || 'Sin resumen disponible.';
+
+            // Setup buttons
+            const btnPdf = document.getElementById('btnDownloadPdf');
+            if (sesion.PdfUrl) {
+                btnPdf.href = sesion.PdfUrl;
+                btnPdf.style.display = 'inline-flex';
+            } else {
+                btnPdf.style.display = 'none';
             }
 
-            function abrirModalEditar(id) {
-                const sesion = sesiones.find(x => x.SesionId === id);
-                if (!sesion) return;
-
-                document.getElementById('modalSesionTitle').innerHTML = '<i class="bi bi-pencil-square text-danger me-2"></i>Editar Sesión del Comité';
-                document.getElementById('inputSesionId').value = sesion.SesionId;
-                document.getElementById('inputTitulo').value = sesion.Titulo;
-                document.getElementById('inputFecha').value = sesion.FechaTexto;
-                document.getElementById('inputResumen').value = sesion.Resumen || '';
-                document.getElementById('inputPdfUrl').value = sesion.PdfUrl || '';
-                document.getElementById('inputPptUrl').value = sesion.PptUrl || '';
-                document.getElementById('inputCanva').value = sesion.CanvaEmbedUrl || '';
-                document.getElementById('inputActivo').checked = sesion.Activo;
-
-                const modal = new bootstrap.Modal(document.getElementById('modalSesion'));
-                modal.show();
+            const btnPpt = document.getElementById('btnDownloadPpt');
+            if (sesion.PptUrl) {
+                btnPpt.href = sesion.PptUrl;
+                btnPpt.style.display = 'inline-flex';
+            } else {
+                btnPpt.style.display = 'none';
             }
 
-            function guardarSesion() {
-                const titulo = document.getElementById('inputTitulo').value.trim();
-                const fechaVal = document.getElementById('inputFecha').value;
-
-                if (!titulo || !fechaVal) {
-                    Swal.fire({
-                        icon: 'warning',
-                        title: 'Campos requeridos',
-                        text: 'Por favor completa el título y la fecha de la sesión.',
-                        confirmButtonColor: '#9B2247'
-                    });
-                    return;
-                }
-
-                const sesionIdVal = document.getElementById('inputSesionId').value;
-                const formPayload = {
-                    SesionId: sesionIdVal ? parseInt(sesionIdVal) : null,
-                    Titulo: titulo,
-                    Fecha: fechaVal,
-                    Resumen: document.getElementById('inputResumen').value.trim(),
-                    PdfUrl: document.getElementById('inputPdfUrl').value.trim(),
-                    PptUrl: document.getElementById('inputPptUrl').value.trim(),
-                    CanvaEmbedUrl: document.getElementById('inputCanva').value.trim(),
-                    Activo: document.getElementById('inputActivo').checked
-                };
-
-                const verificationToken = $('input[name="__RequestVerificationToken"]').val();
-
-                Swal.fire({
-                    title: 'Guardando sesión...',
-                    allowOutsideClick: false,
-                    didOpen: () => {
-                        Swal.showLoading();
-                    }
-                });
-
-                $.ajax({
-                    url: '/AsuntosComite/Api/Guardar',
-                    type: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify(formPayload),
-                    headers: {
-                        "RequestVerificationToken": verificationToken
-                    },
-                    success: function (response) {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Éxito',
-                            text: response.mensaje,
-                            confirmButtonColor: '#9B2247'
-                        }).then(() => {
-                            location.reload();
-                        });
-                    },
-                    error: function (xhr) {
-                        let errorMsg = "Ocurrió un error al procesar tu solicitud.";
-                        if (xhr.responseJSON && xhr.responseJSON.error) {
-                            errorMsg = xhr.responseJSON.error;
-                        }
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Error',
-                            text: errorMsg,
-                            confirmButtonColor: '#9B2247'
-                        });
-                    }
-                });
+            // Load iframe
+            const iframe = document.getElementById('canvaIframe');
+            if (sesion.CanvaEmbedUrl) {
+                iframe.src = sesion.CanvaEmbedUrl;
+                iframe.style.display = 'block';
+            } else {
+                iframe.style.display = 'none';
             }
-
-            function eliminarSesion(id, titulo) {
-                Swal.fire({
-                    title: '¿Estás seguro?',
-                    text: `La sesión "${titulo}" se dará de baja en el sistema.`,
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#9B2247',
-                    cancelButtonColor: '#718096',
-                    confirmButtonText: 'Sí, eliminar',
-                    cancelButtonText: 'Cancelar'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        const verificationToken = $('input[name="__RequestVerificationToken"]').val();
-                        
-                        Swal.fire({
-                            title: 'Eliminando sesión...',
-                            allowOutsideClick: false,
-                            didOpen: () => {
-                                Swal.showLoading();
-                            }
-                        });
-
-                        $.ajax({
-                            url: `/AsuntosComite/Api/Eliminar/${id}`,
-                            type: 'POST',
-                            headers: {
-                                "RequestVerificationToken": verificationToken
-                            },
-                            success: function (response) {
-                                Swal.fire({
-                                    icon: 'success',
-                                    title: 'Eliminada',
-                                    text: response.mensaje,
-                                    confirmButtonColor: '#9B2247'
-                                }).then(() => {
-                                    location.reload();
-                                });
-                            },
-                            error: function (xhr) {
-                                let errorMsg = "No fue posible eliminar la sesión.";
-                                if (xhr.responseJSON && xhr.responseJSON.error) {
-                                    errorMsg = xhr.responseJSON.error;
-                                }
-                                Swal.fire({
-                                    icon: 'error',
-                                    title: 'Error',
-                                    text: errorMsg,
-                                    confirmButtonColor: '#9B2247'
-                                });
-                            }
-                        });
-                    }
-                });
-            }
-            </text>
         }
     </script>
 }
+

@@ -47,6 +47,7 @@ namespace NSIE.Controllers
                             SELECT 
                                 SesionId, 
                                 Titulo, 
+                                TipoSesion,
                                 CONVERT(VARCHAR(10), Fecha, 120) AS FechaTexto, 
                                 Resumen, 
                                 PdfUrl, 
@@ -62,6 +63,7 @@ namespace NSIE.Controllers
                             SELECT 
                                 SesionId, 
                                 Titulo, 
+                                TipoSesion,
                                 CONVERT(VARCHAR(10), Fecha, 120) AS FechaTexto, 
                                 Resumen, 
                                 PdfUrl, 
@@ -98,6 +100,7 @@ namespace NSIE.Controllers
                         SELECT 
                             SesionId, 
                             Titulo, 
+                            TipoSesion,
                             CONVERT(VARCHAR(10), Fecha, 120) AS FechaTexto, 
                             Resumen, 
                             PdfUrl, 
@@ -156,6 +159,7 @@ namespace NSIE.Controllers
                         string queryUpdate = @"
                             UPDATE dgmesnie.ComiteSesion
                             SET Titulo = @Titulo,
+                                TipoSesion = @TipoSesion,
                                 Fecha = @Fecha,
                                 Resumen = @Resumen,
                                 PdfUrl = @PdfUrl,
@@ -170,6 +174,7 @@ namespace NSIE.Controllers
                         {
                             SesionId = form.SesionId.Value,
                             form.Titulo,
+                            form.TipoSesion,
                             Fecha = form.Fecha,
                             form.Resumen,
                             PdfUrl = pdfUrl,
@@ -186,13 +191,14 @@ namespace NSIE.Controllers
                         // INSERT
                         string queryInsert = @"
                             INSERT INTO dgmesnie.ComiteSesion 
-                            (Titulo, Fecha, Resumen, PdfUrl, PptUrl, CanvaEmbedUrl, Activo, CreadoEn, CreadoPor)
+                            (Titulo, TipoSesion, Fecha, Resumen, PdfUrl, PptUrl, CanvaEmbedUrl, Activo, CreadoEn, CreadoPor)
                             VALUES 
-                            (@Titulo, @Fecha, @Resumen, @PdfUrl, @PptUrl, @CanvaEmbedUrl, @Activo, SYSUTCDATETIME(), @UserId)";
+                            (@Titulo, @TipoSesion, @Fecha, @Resumen, @PdfUrl, @PptUrl, @CanvaEmbedUrl, @Activo, SYSUTCDATETIME(), @UserId)";
 
                         await connection.ExecuteAsync(queryInsert, new
                         {
                             form.Titulo,
+                            form.TipoSesion,
                             Fecha = form.Fecha,
                             form.Resumen,
                             PdfUrl = pdfUrl,
@@ -371,6 +377,7 @@ namespace NSIE.Controllers
     {
         public int SesionId { get; set; }
         public string Titulo { get; set; }
+        public string TipoSesion { get; set; }
         public string FechaTexto { get; set; }
         public string Resumen { get; set; }
         public string PdfUrl { get; set; }
@@ -385,6 +392,8 @@ namespace NSIE.Controllers
         
         [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "El título es obligatorio.")]
         public string Titulo { get; set; }
+
+        public string TipoSesion { get; set; } = "Ordinaria";
         
         [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "La fecha es obligatoria.")]
         public DateTime Fecha { get; set; }
