@@ -51,7 +51,9 @@
             padding-left: 0 !important;
             padding-right: 0 !important;
             padding-bottom: 0 !important;
-            height: 100vh !important;
+            height: calc(100vh - 65px) !important;
+            min-height: calc(100vh - 65px) !important;
+            max-height: calc(100vh - 65px) !important;
             box-sizing: border-box !important;
             display: flex !important;
             flex-direction: column !important;
@@ -66,6 +68,7 @@
             position: relative;
             width: 100% !important;
             height: 100% !important;
+            min-height: 0 !important;
             overflow: hidden;
             display: flex !important;
             flex-direction: column !important;
@@ -77,13 +80,24 @@
             flex-direction: column !important;
             width: 100% !important;
             height: 100% !important;
+            min-height: 0 !important;
             flex: 1 1 auto !important;
         }
 
-        /* Forzar a que el root de React y sus contenedores ocupen todo el alto disponible sin colapsar */
+        /* Forzar a que el root de React/Custom Element ocupe todo el alto disponible sin colapsar */
         #dc-root {
             width: 100% !important;
             height: 100% !important;
+            min-height: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            flex: 1 1 auto !important;
+        }
+
+        .dg-root {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
             display: flex !important;
             flex-direction: column !important;
             flex: 1 1 auto !important;
@@ -93,6 +107,7 @@
         .leaflet-container {
             width: 100% !important;
             height: 100% !important;
+            min-height: 0 !important;
             font-family: 'Noto Sans', sans-serif !important;
         }
     </style>
@@ -324,7 +339,7 @@
 </header>
 
   <div ref="{{ mainRef }}" style="position:relative;flex:1;overflow:hidden">
-    <div ref="{{ mapRef }}" style="position:absolute;inset:0;z-index:0"></div>
+    <div id="dg-map-container" ref="{{ mapRef }}" style="position:absolute;inset:0;z-index:0"></div>
 
     <!-- PRELOADER institucional (arranque + capas pesadas, bloqueante) -->
     <sc-if value="{{ showPreloader }}" hint-placeholder-val="{{ true }}">
@@ -1147,7 +1162,8 @@ class Component extends DCLogic {
     // arrastrar el mapa fuera de estos límites.
     const MEXICO_BOUNDS = L.latLngBounds([[14.0, -118.5], [33.5, -86.0]]);
     this.MEXICO_BOUNDS = MEXICO_BOUNDS;
-    const map = L.map(this.mapRef.current, {
+    const mapElement = (this.mapRef && this.mapRef.current) || (this.refs && this.refs.mapRef) || document.getElementById('dg-map-container') || document.querySelector('.leaflet-container');
+    const map = L.map(mapElement, {
       zoomControl:false,
       preferCanvas:true,
       attributionControl:false,
@@ -1165,11 +1181,11 @@ class Component extends DCLogic {
 
     // Mapas base
     this.bases = {
-      // Mapa base colorido SIN etiquetas ni división política (CartoDB Voyager nolabels) — por defecto
-      color:    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:20, crossOrigin:'anonymous' }),
-      claro:    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19, crossOrigin:'anonymous' }),
-      satelite: L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { subdomains:['0','1','2','3'], maxZoom:19 }),
-      oscuro:   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19, crossOrigin:'anonymous' }),
+      // Mapa base colorido (CartoDB Voyager) — por defecto
+      color:    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', { subdomains:'abcd', maxZoom:19, attribution:'&copy; OpenStreetMap &copy; CARTO' }),
+      claro:    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', { subdomains:'abcd', maxZoom:19, attribution:'&copy; OpenStreetMap &copy; CARTO' }),
+      satelite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:18, attribution:'Esri, Maxar, Earthstar Geographics' }),
+      oscuro:   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', { subdomains:'abcd', maxZoom:19, attribution:'&copy; OpenStreetMap &copy; CARTO' }),
     };
     this.bases[this.state.basemap].addTo(map);
 
@@ -1196,6 +1212,9 @@ class Component extends DCLogic {
     map.createPane('hl'); map.getPane('hl').style.zIndex = '640'; map.getPane('hl').style.pointerEvents = 'none';
     // Selección de municipio por clic en el mapa (point-in-polygon) — robusto ante el hit-test de canvas
     map.on('click', (e) => this._onMapClick(e));
+    if (window.ResizeObserver && mapElement) {
+      new ResizeObserver(() => { if (this.map) this.map.invalidateSize(); }).observe(mapElement);
+    }
     window.__dgMap = map; window.__dg = this; // referencia de depuración
     // Blindaje: bug conocido de Leaflet — un L.Marker arrastrable + animación de zoom puede lanzar
     // una excepción interna (async, sin stack útil) en _animateZoom. No rompe nada visible, pero
@@ -1222,10 +1241,10 @@ class Component extends DCLogic {
     this.setState({ bootMsg:'Descargando capas GeoJSON oficiales…' });
     try {
       const [est, lt, sub, ger] = await Promise.all([
-        this._mockFetchGeo(this.SRC.estados),
-        this._mockFetchGeo(this.SRC.lineas),
-        this._mockFetchGeo(this.SRC.subestaciones),
-        this._mockFetchGeo(this.SRC.gerencias).catch(() => null),
+        this._mockFetchGeo(this.SRC.estados).catch(err => { console.warn('Estados fallback', err); return { type:'FeatureCollection', features:[] }; }),
+        this._mockFetchGeo(this.SRC.lineas).catch(err => { console.warn('Lineas fallback', err); return { type:'FeatureCollection', features:[] }; }),
+        this._mockFetchGeo(this.SRC.subestaciones).catch(err => { console.warn('Subestaciones fallback', err); return { type:'FeatureCollection', features:[] }; }),
+        this._mockFetchGeo(this.SRC.gerencias).catch(err => { console.warn('Gerencias fallback', err); return null; }),
       ]);
       this.geo = { estados:est, lineas:lt, subestaciones:sub, gerencias:ger };
 
@@ -1322,7 +1341,12 @@ class Component extends DCLogic {
       // Añade al mapa sólo las capas activas inicialmente
       Object.keys(this.groups).forEach(k => { if (this.state.layers[k].on) this.groups[k].addTo(this.map); });
 
-      this.setState({ ready:true, booting:false, loading:false, layers, entidades:ents }, () => { this.map.invalidateSize(); this._recompute(); });
+      this.setState({ ready:true, booting:false, loading:false, layers, entidades:ents }, () => {
+        this.map.invalidateSize();
+        setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 200);
+        setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 600);
+        this._recompute();
+      });
       this._toast('Geometrías oficiales cargadas · '+this.subFeatures.length+' subestaciones, '+this.lineFeatures.length+' líneas');
     } catch (e) {
       this.setState({ booting:false, loading:false, toast:'Error al cargar geometrías: '+(e.message||e) });
@@ -3187,7 +3211,7 @@ class Component extends DCLogic {
 
   // Compone el mapa (tiles + capas vectoriales) en un canvas a alta resolución
   _captureMap(scale, overlays){
-    const mapEl = this.mapRef.current; const w=mapEl.clientWidth, h=mapEl.clientHeight;
+    const mapEl = (this.mapRef && this.mapRef.current) || (this.refs && this.refs.mapRef) || document.getElementById('dg-map-container') || document.querySelector('.leaflet-container'); const w=mapEl.clientWidth, h=mapEl.clientHeight;
     const cv=document.createElement('canvas'); cv.width=Math.round(w*scale); cv.height=Math.round(h*scale);
     const ctx=cv.getContext('2d'); ctx.scale(scale,scale);
     ctx.fillStyle='#e8e4de'; ctx.fillRect(0,0,w,h);
