@@ -760,7 +760,7 @@ namespace NSIE.Controllers
     {extra}
     <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
       Encontrará la ficha adjunta en formato <strong>{formato.ToUpperInvariant()}</strong>, con el diagnóstico, las metas físicas,
-      el análisis de riesgos, el empalme de cronograma y la trazabilidad del proyecto, generada directamente desde la base vigente.
+      el análisis de riesgos, la alineación de cronograma y la trazabilidad del proyecto, generada directamente desde la base vigente.
     </p>
     <div style=""margin:20px 0;padding:14px 18px;border-left:4px solid #E0A12E;background:#faf8f5;color:#5f5954;font-size:13px"">
       Documento informativo. Los datos provienen del Informe Pormenorizado vigente y pueden actualizarse en cada corte.

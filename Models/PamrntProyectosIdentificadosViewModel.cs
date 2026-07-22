@@ -298,7 +298,7 @@ namespace NSIE.Models
             Universo = universos.Contains(Universo?.ToLowerInvariant()) ? Universo.ToLowerInvariant() : "vigentes";
             var estatusValidos = new[] { "En operación", "En ejecución", "Concursado", "En concurso", "Por concursar", "Sin iniciar", "Por clasificar" };
             Estatus = estatusValidos.FirstOrDefault(e => string.Equals(e, Estatus?.Trim(), StringComparison.OrdinalIgnoreCase));
-            var empalmeValidos = new[] { "A tiempo", "Holgura ajustada", "Riesgo de empalme", "Sin evaluar" };
+            var empalmeValidos = new[] { "A tiempo", "Holgura ajustada", "Riesgo de desfasamiento", "Sin evaluar" };
             Empalme = empalmeValidos.FirstOrDefault(e => string.Equals(e, Empalme?.Trim(), StringComparison.OrdinalIgnoreCase));
             var equipoValidos = new[] { "lineas", "transformacion", "compensacion" };
             Equipo = equipoValidos.FirstOrDefault(e => string.Equals(e, Equipo?.Trim().ToLowerInvariant()));

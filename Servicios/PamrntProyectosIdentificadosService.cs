@@ -736,7 +736,7 @@ END;";
                 var meses = (factible.Value.Year - necesaria.Value.Year) * 12 + factible.Value.Month - necesaria.Value.Month;
                 riesgos.Add(new PamrntRiesgoProyecto
                 {
-                    Riesgo = "Empalme con la fecha necesaria",
+                    Riesgo = "Desfasamiento con la fecha necesaria",
                     Impacto = $"La red entraría {meses} mes(es) después de cuando se requiere, exponiendo a la generación asociada de la región a vertimientos.",
                     Mitigacion = "Priorizar el proceso de licitación y sincronizar el cronograma con la generación de la GCR."
                 });
