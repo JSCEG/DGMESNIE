@@ -34,6 +34,7 @@
 }
 
 @section Styles {
+  <link rel="stylesheet" href="~/css/pam-ficha-presentacion.css" asp-append-version="true" />
     <style>
         /* Ocultar el footer de la plataforma */
         footer.footer-snier {
@@ -103,6 +104,15 @@
             width: 100% !important;
             height: 100% !important;
             font-family: 'Noto Sans', sans-serif !important;
+        }
+
+        [data-screen-label="Reporte territorial"] {
+          font-family: 'Noto Sans PAM', 'Noto Sans', sans-serif !important;
+        }
+
+        [data-screen-label="Reporte territorial"] .dg-title,
+        [data-screen-label="Reporte territorial"] [style*="Patria"] {
+          font-family: 'Patria', Georgia, serif !important;
         }
     </style>
 }
@@ -3104,6 +3114,15 @@ class Component extends DCLogic {
       finally { this.setState({ blocking:null }); }
     }, 250);
   };
+  exportReportPDFPresent = () => {
+    const R = this._report; if (!R) return;
+    this.setState({ blocking:{ label:'Componiendo reporte 16:9…' } });
+    setTimeout(() => {
+      try { this._writeReportPDFPresent(R); }
+      catch(e) { this._toast('Error al generar el PDF 16:9: '+(e.message||e)); }
+      finally { this.setState({ blocking:null }); }
+    }, 250);
+  };
   _writeReportPDF(R){
     const J = window.jspdf && window.jspdf.jsPDF; if (!J) { this._toast('Preparando módulo PDF…'); return; }
     const doc = new J({ unit:'pt', format:'letter' });
@@ -3119,9 +3138,12 @@ class Component extends DCLogic {
     doc.setDrawColor(224,161,46); doc.setLineWidth(1.4); doc.line(M,y,M+150,y); y+=26;
     const toc = [['01','Zona evaluada y mapa del análisis'],['02','Indicadores del radio analizado']]
       .concat(R.sections.map((s,i)=>[String(i+3).padStart(2,'0'), s.title]));
+    const tocRows = [];
     toc.forEach(t=>{
+      const rowY = y;
       doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(t[0], M, y);
       doc.setTextColor(28,27,26); doc.setFont('helvetica','normal'); doc.setFontSize(12); doc.text(t[1], M+34, y);
+      tocRows.push({ key:t[0], y:rowY, title:t[1] });
       doc.setDrawColor(236,232,226); doc.setLineWidth(.8); doc.line(M, y+8, W-M, y+8);
       y+=26;
     });
@@ -3166,8 +3188,10 @@ class Component extends DCLogic {
     y += Math.ceil(Math.min(R.metrics.length,6)/cols)*46+16;
     // Secciones
     const hexRgb = (h) => { const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(h||'#9B2247'); return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[155,34,71]; };
+    const secStartPageByKey = {};
     R.sections.forEach(sec => {
       guard(90);
+      secStartPageByKey[sec.key] = doc.getNumberOfPages();
       const [cr,cg,cb] = hexRgb(sec.color);
       doc.setFillColor(cr,cg,cb); doc.roundedRect(M, y-8.5, 11, 11, 2.5, 2.5, 'F');
       doc.setTextColor(cr,cg,cb); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text(String(sec.kicker).toUpperCase(), M+17, y); y+=15;
@@ -3194,12 +3218,159 @@ class Component extends DCLogic {
       if (sec.hasChips) { guard(24); doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.splitTextToSize('Identificados: '+sec.chips.join(' · '), W-M*2).forEach(t=>{ guard(11); doc.text(t, M, y); y+=11; }); }
       y+=14;
     });
+
+    // Completa el índice con navegación interna (click en título y número de página).
+    const tocPageMap = { '01': 3, '02': 3 };
+    R.sections.forEach((s, i) => { tocPageMap[String(i+3).padStart(2,'0')] = secStartPageByKey[s.key] || 3; });
+    doc.setPage(2);
+    tocRows.forEach(row => {
+      const pg = tocPageMap[row.key] || 3;
+      doc.setTextColor(111,107,102);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(11);
+      doc.text(String(pg), W - M, row.y, { align:'right' });
+      doc.link(M+32, row.y-12, (W-M) - (M+32), 16, { pageNumber: pg });
+      doc.link(W - M - 20, row.y-12, 20, 16, { pageNumber: pg });
+    });
+
+    doc.setPage(doc.getNumberOfPages());
     doc.setTextColor(154,149,142); doc.setFontSize(7.5); doc.text('gob.mx/sener · DGMESNIE · CENACE · CFE · Cifras sujetas a verificación en campo', M, H-30);
     // ── CONTRAPORTADA institucional ──
     doc.addPage('letter','portrait'); this._pdfBack(doc, W, H, false);
     doc.save('DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.pdf');
     this._toast('Reporte PDF exportado');
   };
+  _writeReportPDFPresent(R){
+    const J = window.jspdf && window.jspdf.jsPDF; if (!J) { this._toast('Preparando módulo PDF…'); return; }
+    const doc = new J({ unit:'pt', format:[960,540], orientation:'landscape' });
+    const W=960, H=540, M=40;
+
+    // Portada institucional
+    this._pdfCover(doc, W, H, true);
+
+    // Índice navegable
+    doc.addPage([960,540],'landscape');
+    let y=62;
+    doc.setFillColor(155,34,71); doc.rect(0,0,W,7,'F');
+    doc.setFillColor(224,161,46); doc.rect(W*0.62,0,W*0.38,7,'F');
+    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('REPORTE TERRITORIAL · ÍNDICE', M, y);
+    y+=24;
+    doc.setTextColor(28,27,26); doc.setFont('times','normal'); doc.setFontSize(28); doc.text('Contenido', M, y);
+    y+=18; doc.setDrawColor(224,161,46); doc.setLineWidth(1.2); doc.line(M,y,M+180,y); y+=20;
+    const toc = [['01','Zona evaluada y mapa del análisis'],['02','Indicadores del radio analizado']]
+      .concat(R.sections.map((s,i)=>[String(i+3).padStart(2,'0'), s.title]));
+    const tocRows = [];
+    toc.forEach(t => {
+      const rowY = y;
+      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(t[0], M, y);
+      doc.setTextColor(28,27,26); doc.setFont('helvetica','normal'); doc.setFontSize(12.5); doc.text(t[1], M+40, y);
+      doc.setDrawColor(236,232,226); doc.setLineWidth(.8); doc.line(M, y+8, W-M, y+8);
+      tocRows.push({ key:t[0], y:rowY });
+      y+=24;
+    });
+
+    // Página de resumen (mapa + metadatos + métricas)
+    doc.addPage([960,540],'landscape');
+    const summaryPage = doc.getNumberOfPages();
+    y=40;
+    doc.setFillColor(155,34,71); doc.rect(0,0,W,7,'F');
+    doc.setFillColor(224,161,46); doc.rect(W*0.62,0,W*0.38,7,'F');
+    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.text('DIRECCIÓN GENERAL DE METODOLOGÍA Y ESTADÍSTICAS DEL SNIE (DGMESNIE)', M, y);
+    y+=24;
+    doc.setTextColor(28,27,26); doc.setFont('times','normal'); doc.setFontSize(24); doc.text('Reporte de análisis territorial', M, y);
+    y+=14;
+    doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.text('Evaluación de sitio estratégico · '+R.date, M, y);
+
+    const usedMh = this._fitMap(doc, M, 92, 560, 300);
+    if(!usedMh){ doc.setTextColor(155,34,71); doc.setFontSize(10); doc.text('(Mapa no exportable con base Satélite — usa Color/Claro/Oscuro)', M, 120); }
+
+    const rx=620, rw=W-rx-M;
+    let ry=98;
+    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen de zona', rx, ry);
+    ry+=14;
+    (R.meta||[]).slice(0,6).forEach(r => {
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8.8); doc.text(String(r[0]), rx, ry);
+      doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.text(String(r[1]), rx+130, ry);
+      ry+=14;
+    });
+    ry+=6;
+    (R.metrics||[]).slice(0,6).forEach((m,i) => {
+      doc.setFillColor(250,248,245); doc.rect(rx, ry-11, rw, 30, 'F');
+      const c = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(m.color||'#9B2247');
+      const rr = c ? parseInt(c[1],16) : 155, gg = c ? parseInt(c[2],16) : 34, bb = c ? parseInt(c[3],16) : 71;
+      doc.setFillColor(rr,gg,bb); doc.rect(rx, ry-11, 3, 30, 'F');
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.text(String(m.label).toUpperCase().slice(0,34), rx+8, ry);
+      doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(String(m.value), rx+8, ry+14);
+      ry+=34;
+    });
+
+    // Secciones como láminas
+    const secStartPageByKey = {};
+    const split = (txt, max) => doc.splitTextToSize(String(txt||''), max);
+    (R.sections||[]).forEach((sec) => {
+      doc.addPage([960,540],'landscape');
+      const p = doc.getNumberOfPages();
+      secStartPageByKey[sec.key] = p;
+      let sy=44;
+      doc.setFillColor(155,34,71); doc.rect(0,0,W,7,'F');
+      doc.setFillColor(224,161,46); doc.rect(W*0.62,0,W*0.38,7,'F');
+      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text(String(sec.kicker||'SECCIÓN').toUpperCase(), M, sy);
+      sy+=20;
+      doc.setTextColor(28,27,26); doc.setFont('times','normal'); doc.setFontSize(24); doc.text(sec.title||'Sección', M, sy);
+      sy+=14; doc.setDrawColor(224,161,46); doc.setLineWidth(1.2); doc.line(M,sy,M+180,sy); sy+=14;
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(10);
+      split(sec.intro||'', W - M*2).slice(0,4).forEach(t => { doc.text(t, M, sy); sy+=13; });
+      sy+=8;
+
+      if (sec.hasTable && sec.table) {
+        const head = sec.table.head || [];
+        const rows = sec.table.rows || [];
+        const n = Math.max(1, head.length);
+        const tw = W - M*2;
+        const first = n >= 5 ? 0.34 : 0.42;
+        const xs = [M];
+        for(let i=1;i<n;i++) xs.push(M + tw*(first + (1-first)*(i-1)/(n-1)));
+        doc.setFillColor(155,34,71); doc.rect(M, sy-10, tw, 15, 'F');
+        doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8);
+        head.forEach((h,i)=>doc.text(String(h).slice(0,22), xs[i]+4, sy));
+        sy+=16;
+        rows.slice(0,14).forEach((r,ri)=>{
+          if(ri%2===1){ doc.setFillColor(250,248,245); doc.rect(M, sy-10, tw, 14, 'F'); }
+          doc.setTextColor(28,27,26); doc.setFont('helvetica','normal'); doc.setFontSize(8);
+          r.forEach((c,i)=>doc.text(String(c).slice(0, n>=5 ? (i===0?34:16) : (i===0?42:20)), xs[i]+4, sy));
+          sy+=14;
+        });
+      }
+
+      if (sec.hasRows && sec.rows) {
+        sy+=4;
+        sec.rows.slice(0,12).forEach(r => {
+          doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.text(String(r[0]), M, sy);
+          doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.text(String(r[1]), M+250, sy);
+          sy+=13;
+        });
+      }
+    });
+
+    // Contraportada
+    doc.addPage([960,540],'landscape');
+    this._pdfBack(doc, W, H, true);
+
+    // Completa índice con páginas y links internos
+    const tocMap = { '01': summaryPage, '02': summaryPage };
+    (R.sections||[]).forEach((s,i)=>{ tocMap[String(i+3).padStart(2,'0')] = secStartPageByKey[s.key] || summaryPage; });
+    doc.setPage(2);
+    tocRows.forEach(row => {
+      const pg = tocMap[row.key] || summaryPage;
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(10.5);
+      doc.text(String(pg), W - M, row.y, { align:'right' });
+      doc.link(M+36, row.y-12, (W-M) - (M+36), 16, { pageNumber: pg });
+      doc.link(W-M-18, row.y-12, 18, 16, { pageNumber: pg });
+    });
+
+    doc.save('DGMESNIE_reporte_territorial_16x9_'+new Date().toISOString().slice(0,10)+'.pdf');
+    this._toast('Reporte PDF 16:9 exportado');
+  }
   // Filas del análisis de zona (si se ejecutó) — alimentan Excel, PDF y PNG
   _anaRows(){
     const A=this.state.analysis;
@@ -3837,7 +4008,7 @@ class Component extends DCLogic {
       reportOpen: !!S.reportOpen,
       onCloseReport: this.onCloseReport, onReportPDF: this.exportReportPDF, onOpenReport: this.onOpenReport,
       // Exportaciones adicionales desde el reporte + marca de agua opcional (logo SENER + fecha)
-      onReportPdfPpt: () => this.exportPDF('present'),
+      onReportPdfPpt: this.exportReportPDFPresent,
       onReportXLSX: this.exportXLSX,
       onReportPNG: () => this.doExportPNG(),
       onWmToggle: () => { const wmOn = !S.wmOn; this.setState({ wmOn }); this._toast(wmOn ? 'Marca de agua activada: logo SENER + fecha en el mapa exportado' : 'Marca de agua desactivada'); },
