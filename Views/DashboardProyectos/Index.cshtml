@@ -3443,30 +3443,32 @@ class Component extends DCLogic {
         p.areaOficialHa != null ? Number(p.areaOficialHa).toLocaleString('es-MX', { maximumFractionDigits: 2 }) + ' ha' : '—',
       ]);
 
-      const sec = {
-        key: 'podecobi', kicker: 'Planeación institucional', color: '#9B2247',
-        icon: 'M3 21h18 M5 21V10l7-5 7 5v11 M9 21v-6h6v6',
-        title: 'PODECOBI · 14 polos con declaratoria',
-        intro: inRadius.length
-          ? `${inRadius.length} polo(s) PODECOBI intersecta(n) el radio de análisis (${A.radiusKm} km).`
-          : 'Universo institucional de Polos de Desarrollo Económico para el Bienestar con declaratoria vigente al corte de la BD.',
-        hasRows: true, rows, hasChips: chipsNacional.length > 0, chips: chipsNacional,
-        hasTable: true, hasTable2: false,
-        table: { head: ['Núm.', 'Polo', 'Entidad', 'Municipio', 'Etapa', 'Superficie (DOF)'], rows: tablaNacional },
-      };
+      // Solo emitimos la sección cuando el radio toca algún polo. Si no hay
+      // intersección, la sección no aparece en el reporte — el universo completo
+      // vive en el informe PODECOBI vigente, no en cada territorial.
+      if (!inRadius.length) return null;
 
-      if (inRadius.length) {
-        sec.table2 = {
-          head: ['Núm.', 'Polo intersectado', 'Etapa', 'Superficie (DOF)'],
+      const sec = {
+        key: 'podecobi', kicker: 'PODECOBI en la zona', color: '#9B2247',
+        icon: 'M3 21h18 M5 21V10l7-5 7 5v11 M9 21v-6h6v6',
+        title: inRadius.length === 1
+          ? `PODECOBI intersectado: ${inRadius[0].nombreOficial || 'polo ' + inRadius[0].numero}`
+          : `${inRadius.length} polos PODECOBI intersectados por el radio de ${A.radiusKm} km`,
+        intro: 'Polo(s) con declaratoria vigente en DOF/SIDOF cuyo centroide cae dentro del radio de análisis. Detalle completo disponible en el Informe PODECOBI institucional.',
+        hasRows: true, rows, hasChips: false, chips: [],
+        hasTable: true, hasTable2: false,
+        table: {
+          head: ['Núm.', 'Polo', 'Entidad', 'Municipio', 'Etapa', 'Superficie (DOF)'],
           rows: inRadius.map(p => [
             p.numero || '—',
             p.nombreOficial || '—',
+            p.estado || '—',
+            p.municipio || '—',
             p.etapa || '—',
             p.areaOficialHa != null ? Number(p.areaOficialHa).toLocaleString('es-MX', { maximumFractionDigits: 2 }) + ' ha' : '—',
           ])
-        };
-        sec.hasTable2 = true;
-      }
+        },
+      };
       return sec;
     });
   }
