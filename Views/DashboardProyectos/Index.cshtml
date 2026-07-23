@@ -862,7 +862,12 @@
             <sc-for list="{{ detalleRows }}" as="row" hint-placeholder-count="8">
               <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px solid #F6F3EF">
                 <span style="font-size:11px;color:#9A958E;font-weight:600;letter-spacing:.02em;flex:none">{{ row.label }}</span>
-                <span style="font-size:12.5px;color:#1c1b1a;font-weight:600;text-align:right;line-height:1.3">{{ row.value }}</span>
+                <sc-if value="{{ row.hasUrl }}" hint-placeholder-val="{{ false }}">
+                <a href="{{ row.url }}" target="_blank" rel="noopener noreferrer" title="{{ row.url }}" style="font-size:12px;color:#9B2247;font-weight:600;text-align:right;line-height:1.3;word-break:break-all;max-width:62%;text-decoration:underline;text-decoration-color:rgba(155,34,71,.35);text-underline-offset:2px">{{ row.value }} ↗</a>
+                </sc-if>
+                <sc-if value="{{ !row.hasUrl }}" hint-placeholder-val="{{ true }}">
+                <span style="font-size:12.5px;color:#1c1b1a;font-weight:600;text-align:right;line-height:1.3;word-break:break-word">{{ row.value }}</span>
+                </sc-if>
               </div>
             </sc-for>
           </div>
@@ -1330,7 +1335,7 @@ class Component extends DCLogic {
     { key:'presas',        cat:'Gas y ductos',           label:'Presas',                     code:'PR', color:'#1E9CB8', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/Electricidad/presas.geojson' },
     { key:'anp',           cat:'Áreas naturales',        label:'ANP 2025',                   code:'AN', color:'#0E8A6E', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/ANP2025.geojson' },
     { key:'anp_est',       cat:'Áreas naturales',        label:'ANP estatales',              code:'AE', color:'#3BA98C', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Gabvy/anp_estatal.geojson' },
-    { key:'podecobi',      cat:'PODECOBI',               label:'Polos de Desarrollo (PODECOBI)', code:'PO', color:'#9B2247', type:'podecobi', src:'/api/podecobi/geojson' },
+    { key:'podecobi',      cat:'PODECOBI',               label:'Polos de Desarrollo (PODECOBI)', code:'PO', color:'#9B2247', type:'podecobi', lazy:true, src:'/api/podecobi/geojson' },
     { key:'conserv',       cat:'Áreas naturales',        label:'Conservación voluntaria',    code:'CV', color:'#5B9A43', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/areas_destinadas_voluntariamentea_la_conservaci%C3%B3n.geojson' },
     { key:'ramsar',        cat:'Áreas naturales',        label:'Humedales RAMSAR',           code:'RA', color:'#1E9CB8', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Gabvy/ramsar.geojson' },
     { key:'atlas_pi',      cat:'Pueblos indígenas',      label:'Atlas pueblos indígenas',    code:'PI', color:'#9B2247', type:'geo', analysis:true, lazy:true, heavy:'36 mil puntos', src:'https://cdn.sassoapps.com/Gabvy/atlaspueblosindigenas.geojson' },
@@ -2509,8 +2514,23 @@ class Component extends DCLogic {
     return L.divIcon({ className:'', iconSize:[14,14], iconAnchor:[7,7], popupAnchor:[0,-7],
       html:'<svg width="14" height="14" viewBox="0 0 14 14" style="filter:drop-shadow(0 1px 2.5px rgba(0,0,0,.4))"><circle cx="7" cy="7" r="6" fill="'+color+'" stroke="#fff" stroke-width="2"/></svg>' });
   }
+  // Acorta una URL para mostrar en el panel de detalle (sin perder el destino).
+  // - Quita protocolo, www., query y hash cuando ya hay un dominio limpio.
+  // - Trunca el path si excede N caracteres (conserva inicio/fin).
+  _urlLabel(u, maxLen = 36){
+    if (!u) return '';
+    let s = String(u);
+    s = s.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    try { const uo = new URL(String(u)); s = uo.host.replace(/^www\./i,'') + (uo.pathname && uo.pathname !== '/' ? uo.pathname : ''); } catch(_) {}
+    if (s.length > maxLen) {
+      const head = Math.ceil((maxLen - 1) / 2);
+      const tail = Math.floor((maxLen - 1) / 2);
+      s = s.slice(0, head) + '…' + s.slice(s.length - tail);
+    }
+    return s;
+  }
+
   _featName(p){
-    if(!p) return '';
     // Caso lenguas/localidades indígenas: VARIANTE (nombre de la lengua) + NOM_LOC (localidad)
     const va = p.VARIANTE || p.variante || p.Variante;
     if (va && String(va).trim()) { const loc = p.NOM_LOC || p.nom_loc; return String(va).trim() + (loc ? ' · ' + String(loc).trim() : ''); }
@@ -5200,7 +5220,11 @@ class Component extends DCLogic {
       onDragDetalle:(e)=>this._startDrag('detalle',e), onCollapseDetalle:()=>this._collapse('detalle'),
       hasSelection: !!S.selected, noSelection: !S.selected,
       selKicker: S.selected?S.selected.kicker:'', selName: S.selected?S.selected.name:'', selColor: S.selected?S.selected.color:'#9B2247',
-      detalleRows: S.selected? S.selected.rows.map(r=>({ label:r[0], value:r[1] })) : [],
+      detalleRows: S.selected? S.selected.rows.map(r=>{
+        const v = r[1] || '—';
+        const isUrl = typeof v === 'string' && /^(https?:\/\/|www\.)/i.test(v) && v !== '—';
+        return { label:r[0], value: isUrl ? this._urlLabel(v) : v, hasUrl: isUrl, url: isUrl ? v : '' };
+      }) : [],
 
       // métricas — contextuales al elemento seleccionado; si no hay selección con métricas,
       // muestra el resumen del ámbito visible / área dibujada.
