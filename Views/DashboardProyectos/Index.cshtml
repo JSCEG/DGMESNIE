@@ -2022,7 +2022,13 @@ class Component extends DCLogic {
       // Espera a que el canvas pinte realmente antes de liberar el preloader (setTimeout: robusto aun en 2º plano)
       setTimeout(() => {
         try { this._forceVectorRedraw(key); } catch(e){}
-        const cnt = (key==='municipios') ? (this.muniFeatures?this.muniFeatures.length:0) : (this._genericCount && this._genericCount[key]!=null ? this._genericCount[key] : (geo.features||[]).length);
+        // Para PODECOBI el contador muestra polos únicos (algunos tienen 2 features)
+        let cnt = (key==='municipios') ? (this.muniFeatures?this.muniFeatures.length:0) : (this._genericCount && this._genericCount[key]!=null ? this._genericCount[key] : (geo.features||[]).length);
+        if (key === 'podecobi') {
+          const polosUnicos = new Set();
+          (geo.features||[]).forEach(f => { const n = f.properties && (f.properties.Numero || f.properties.numero); if (n) polosUnicos.add(n); });
+          cnt = polosUnicos.size || cnt;
+        }
         const l2 = { ...this.state.layers }; l2[key] = { ...l2[key], loading:false, count:cnt };
         this._invalidateSearch(); // el índice del buscador debe reconstruirse CON los features recién cargados
         this._hideBar();
