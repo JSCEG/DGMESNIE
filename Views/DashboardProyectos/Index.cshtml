@@ -4086,9 +4086,14 @@ class Component extends DCLogic {
 
     const doc=new J({unit:'pt',format:'letter',orientation:'portrait'});
     doc._lastFont = null;
-    // Carga Patria antes de continuar (no bloqueante: si falla, usa helvetica)
-    const fontsLoaded = await this._loadReportFonts(doc);
-    const F = fontsLoaded || { title:'helvetica', kicker:'helvetica', body:'helvetica', bodyBold:'helvetica', light:'helvetica' };
+    // Carga Patria antes de continuar solo si ENABLE_PATRIA_IN_PDF está activo.
+    // jsPDF embebe TODAS las fuentes registradas en el output aunque no se usen,
+    // así que por defecto no las cargamos (mantiene el PDF ligero para SMTP).
+    // Activar cuando se reemplacen setFont('helvetica',...) por setFont(F.X,...).
+    const ENABLE_PATRIA_IN_PDF = false;
+    const F = ENABLE_PATRIA_IN_PDF
+      ? ((await this._loadReportFonts(doc)) || { title:'helvetica', kicker:'helvetica', body:'helvetica', bodyBold:'helvetica', light:'helvetica' })
+      : { title:'helvetica', kicker:'helvetica', body:'helvetica', bodyBold:'helvetica', light:'helvetica' };
     const W=612,H=792,M=46,MAX_Y=H-58,indexPage=2;
     const sections=Array.isArray(R&&R.sections)?R.sections:[];
     const metrics=Array.isArray(R&&R.metrics)?R.metrics:[];
@@ -4098,8 +4103,10 @@ class Component extends DCLogic {
       return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:(fallback||[155,34,71]);
     };
     // Tipografía institucional Patria (regular/bold) + Noto Sans (light/regular)
-    // cargadas como base64 desde wwwroot. Si fallan, jsPDF cae a helvetica por defecto.
-    const _fontLoaded = this._loadReportFonts(doc);
+    // están disponibles vía _loadReportFonts(doc) pero NO se cargan por defecto
+    // (jsPDF embebe las fuentes registradas aunque no se usen e infla el PDF
+    // hasta superar el límite SMTP). Activar cuando se aplique setFont(F.X,...)
+    // sistemáticamente. Por ahora seguimos con helvetica.
     const addReportPage=(kicker,title,aside,folio)=>{
       doc.addPage('letter','portrait');
       const page=doc.getNumberOfPages();
