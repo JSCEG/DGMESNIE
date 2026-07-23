@@ -2294,6 +2294,8 @@ class Component extends DCLogic {
       this._anaSummary = anaSelected; // se conserva para poder VOLVER al resumen tras ver otro elemento
       this.setState({ layers, blocking:null, anaOpen:false, menuOpen:null, selected:anaSelected, collapsed:{ ...this.state.collapsed, detalle:false }, analysis: { ...this.state.analysis, running:false, stale:false, ranKeys:okKeys } }, () => this._recompute());
       try { this.map.fitBounds(this._anaCircle.getBounds().pad(0.25), { animate:true }); } catch(e){}
+      // Refresca el KPI de PODECOBI con la nueva zona/radio del análisis
+      this._updatePolosKpi();
       const total = okKeys.reduce((s,k) => s+(layers[k].count||0), 0) + dsParts.reduce((s,p)=>s+p.inR,0);
       this._toast('Análisis listo · '+total.toLocaleString('es-MX')+' elementos en '+A.radiusKm+' km'+(failedKeys.length?' · '+failedKeys.length+' capa(s) sin fuente disponible':''));
     }).catch(e => {
@@ -3591,7 +3593,12 @@ class Component extends DCLogic {
     pri.forEach(k => pushK(pool.find(p => p.key===k)));
     pool.filter(p => p.ct>0).sort((a,b) => b.ct-a.ct).forEach(pushK);
     pool.filter(p => p.ct===0).sort((a,b) => a.nr-b.nr).forEach(pushK);
-    const kpiLayers = ordered.slice(0,7);
+    const kpiLayers = ordered.slice(0,6);
+
+    // KPI PODECOBI: lectura síncrona del cache poblado por _polosKpiCache.
+    // Si el cache aún no está listo, lo pedimos en línea y bloqueamos.
+    const polosKpi = this._polosKpiCache || null;
+
     return {
       date: new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long', day:'numeric' }),
       meta: [
@@ -3599,6 +3606,7 @@ class Component extends DCLogic {
         ['Coordenadas', A.lat.toFixed(5)+', '+A.lng.toFixed(5)], ['Radio de análisis', A.radiusKm+' km'], ['Capas analizadas', String(A.ranKeys.length)],
       ],
       metrics: [{ label:'Elementos totales', value:this._nf(totalEl), color:'#9B2247', dim:false, sub:'en '+A.radiusKm+' km' }]
+        .concat(polosKpi ? [polosKpi] : [])
         .concat(kpiLayers.map(it => {
           const nrTxt = Number.isFinite(it.nr) ? ('más cercano a '+Math.round(it.nr)+' km') : 'sin presencia en el radio';
           return {
@@ -3613,10 +3621,47 @@ class Component extends DCLogic {
       sections,
     };
   }
+
+  // Cache de polos para KPIs: descarga una sola vez y reutiliza.
+  // El KPI se recalcula contra el estado de análisis actual cuando se invoca
+  // updatePolosKpi() tras cada corrida.
+  _fetchPolosCache(){
+    if (this._polosCachePromise) return this._polosCachePromise;
+    this._polosCachePromise = fetch('/api/podecobi/polos', { credentials:'same-origin' })
+      .then(r => r.ok ? r.json() : [])
+      .catch(() => []);
+    return this._polosCachePromise;
+  }
+  _updatePolosKpi(){
+    const A = this.state.analysis || {};
+    if (!A.lat || !A.radiusKm) return;
+    this._fetchPolosCache().then(polos => {
+      if (!Array.isArray(polos) || !polos.length) { this._polosKpiCache = null; return; }
+      const inR = polos.filter(p =>
+        p.centroidLon != null && p.centroidLat != null &&
+        this._haversine(A.lat, A.lng, p.centroidLat, p.centroidLon) <= A.radiusKm
+      );
+      if (inR.length === 0) {
+        this._polosKpiCache = { label:'PODECOBI en la zona', value:'0', color:'#9B2247', dim:true, sub:'fuera del radio' };
+      } else if (inR.length === 1) {
+        this._polosKpiCache = { label:'PODECOBI intersectado', value:'1', color:'#9B2247', dim:false, sub:inR[0].nombreOficial };
+      } else {
+        this._polosKpiCache = { label:'PODECOBI en la zona', value:String(inR.length), color:'#9B2247', dim:false, sub:'polos con declaratoria' };
+      }
+      // Si el reporte está abierto, reconstruirlo para reflejar el KPI actualizado
+      if (this.state.reportOpen && this._report) {
+        const updated = this._buildReport();
+        if (updated) this._report = updated;
+        this.setState({});
+      }
+    });
+  }
   onOpenReport = () => {
     const rep = this._buildReport();
     if (!rep) { this._toast('Ejecuta primero un análisis de zona'); return; }
     this._report = rep;
+    // Asegura que el KPI PODECOBI esté poblado antes de mostrar el reporte
+    this._updatePolosKpi();
     this.setState({ reportOpen:true });
   };
   onCloseReport = () => this.setState({ reportOpen:false, reportSendOpen:false, reportSendBusy:false });
