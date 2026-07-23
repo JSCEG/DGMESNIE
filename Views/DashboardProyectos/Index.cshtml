@@ -3446,6 +3446,42 @@ class Component extends DCLogic {
   }
   // Construye la sección PODECOBI para el reporte territorial. Solo aparece
   // cuando el radio toca algún polo. Por cada polo intersectado trae el detalle
+  // Carga fuentes institucionales (Patria + Noto Sans) en el documento jsPDF.
+  // Devuelve un mapa con los nombres registrados para usar en setFont().
+  // Si la carga falla (red, formato no soportado), devuelve null y el caller
+  // cae a helvetica estándar.
+  async _loadReportFonts(doc){
+    const fonts = [
+      { url:'/tablero/fonts/patria/Patria-Regular.otf', name:'Patria',       style:'normal' },
+      { url:'/tablero/fonts/patria/Patria-Bold.otf',    name:'Patria',       style:'bold'   },
+      { url:'/tablero/fonts/patria/Patria-Light.otf',   name:'Patria-Light', style:'normal' },
+    ];
+    try {
+      for (const f of fonts) {
+        const resp = await fetch(f.url);
+        if (!resp.ok) return null;
+        const buf = await resp.arrayBuffer();
+        const b64 = btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+        doc.addFileToVFS(f.name + '-' + f.style + '.otf', b64);
+        doc.addFont(f.name + '-' + f.style + '.otf', f.name, f.style);
+      }
+      return { title:'Patria', kicker:'Patria', body:'helvetica', bodyBold:'helvetica', light:'helvetica' };
+    } catch (e) {
+      console.warn('No se pudieron cargar fuentes Patria:', e);
+      return null;
+    }
+  }
+
+  // Helper que aplica la fuente al doc y la guarda para restaurarla después.
+  // jsPDF persiste el font entre llamadas, así que solo cambiamos cuando es
+  // distinto del actual.
+  _setFont(doc, name, style){
+    if (doc._lastFont !== name + ':' + style) {
+      doc.setFont(name, style);
+      doc._lastFont = name + ':' + style;
+    }
+  }
+
   // completo desde el backend (vocaciones, contactos, fuentes) y lo presenta
   // como sub-bloques (rows + tabla de contactos).
   _buildPolosSection(A){
@@ -3878,7 +3914,7 @@ class Component extends DCLogic {
     this.setState({ reportSendBusy:true });
     this._setReportSendFeedback('Generando reporte para adjuntar…', 'info');
     try {
-      const archivo = fmt==='pdf16x9' ? this._writeReportPDFPresent(R, { returnData:true }) : this._writeReportPDF(R, { returnData:true });
+      const archivo = fmt==='pdf16x9' ? await this._writeReportPDFPresent(R, { returnData:true }) : await this._writeReportPDF(R, { returnData:true });
       if (!archivo || !archivo.base64) throw new Error('No fue posible generar el archivo.');
       this._setReportSendFeedback('Enviando correo…', 'info');
       const res = await fetch('/DashboardProyectos/EnviarReporte', {
@@ -3917,8 +3953,8 @@ class Component extends DCLogic {
     const pending = this._pendingPolosSection || Promise.resolve();
     pending.finally(() => {
       const Rnow = this._report || R;
-      setTimeout(() => {
-        try { this._writeReportPDF(Rnow); }
+      setTimeout(async () => {
+        try { await this._writeReportPDF(Rnow); }
         catch(e) { this._toast('Error al generar el PDF: '+(e.message||e)); }
         finally { this.setState({ blocking:null }); }
       }, 250);
@@ -3931,7 +3967,7 @@ class Component extends DCLogic {
     pending.finally(() => {
       const Rnow = this._report || R;
       setTimeout(() => {
-      try { this._writeReportPDFPresent(Rnow); }
+      try { await this._writeReportPDFPresent(Rnow); }
       catch(e) { this._toast('Error al generar el PDF 16:9: '+(e.message||e)); }
       finally { this.setState({ blocking:null }); }
     }, 250);
@@ -4043,12 +4079,16 @@ class Component extends DCLogic {
     });
     return y+8;
   }
-  _writeReportPDF(R, opts){
+  async _writeReportPDF(R, opts){
     const O=opts||{};
     const J=window.jspdf&&window.jspdf.jsPDF;
     if(!J){ this._toast('Preparando módulo PDF…'); return; }
 
     const doc=new J({unit:'pt',format:'letter',orientation:'portrait'});
+    doc._lastFont = null;
+    // Carga Patria antes de continuar (no bloqueante: si falla, usa helvetica)
+    const fontsLoaded = await this._loadReportFonts(doc);
+    const F = fontsLoaded || { title:'helvetica', kicker:'helvetica', body:'helvetica', bodyBold:'helvetica', light:'helvetica' };
     const W=612,H=792,M=46,MAX_Y=H-58,indexPage=2;
     const sections=Array.isArray(R&&R.sections)?R.sections:[];
     const metrics=Array.isArray(R&&R.metrics)?R.metrics:[];
@@ -4057,6 +4097,9 @@ class Component extends DCLogic {
       const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex||''));
       return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:(fallback||[155,34,71]);
     };
+    // Tipografía institucional Patria (regular/bold) + Noto Sans (light/regular)
+    // cargadas como base64 desde wwwroot. Si fallan, jsPDF cae a helvetica por defecto.
+    const _fontLoaded = this._loadReportFonts(doc);
     const addReportPage=(kicker,title,aside,folio)=>{
       doc.addPage('letter','portrait');
       const page=doc.getNumberOfPages();
@@ -4259,7 +4302,7 @@ class Component extends DCLogic {
     doc.save('DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.pdf');
     this._toast('Reporte PDF exportado');
   }
-  _writeReportPDFPresent(R, opts){
+  async _writeReportPDFPresent(R, opts){
     const O=opts||{};
     const J=window.jspdf&&window.jspdf.jsPDF;
     if(!J){ this._toast('Preparando módulo PDF…'); return; }
