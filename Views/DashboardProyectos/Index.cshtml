@@ -1201,6 +1201,37 @@
                 </sc-for>
               </div>
             </sc-if>
+            <sc-if value="{{ sec.hasSubSections }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:18px;display:flex;flex-direction:column;gap:18px">
+                <sc-for list="{{ sec.subSections }}" as="sub" hint-placeholder-count="1">
+                  <div style="border:1px solid #ECE8E2;border-radius:10px;padding:14px 16px;background:#fff">
+                    <div style="font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:{{ sub.color }};margin-bottom:6px">{{ sub.kicker }}</div>
+                    <div style="font-size:15px;font-weight:700;color:#1c1b1a;margin-bottom:4px">{{ sub.title }}</div>
+                    <div style="font-size:11.5px;color:#6F6B66;margin-bottom:12px">{{ sub.intro }}</div>
+                    <div style="display:flex;flex-direction:column">
+                      <sc-for list="{{ sub.rowItems }}" as="rw" hint-placeholder-count="4">
+                        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid #F6F3EF">
+                          <span style="font-size:11.5px;color:#6F6B66;font-weight:600">{{ rw.label }}</span>
+                          <span style="font-size:12px;color:#1c1b1a;font-weight:600;text-align:right;word-break:break-word;max-width:62%">{{ rw.value }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <sc-if value="{{ sub.hasTable }}" hint-placeholder-val="{{ false }}">
+                      <div class="dg-report-table-wrap" style="margin-top:12px"><table class="dg-report-table">
+                        <thead><tr>
+                          <sc-for list="{{ sub.table.head }}" as="th" hint-placeholder-count="5"><th>{{ th }}</th></sc-for>
+                        </tr></thead>
+                        <tbody>
+                          <sc-for list="{{ sub.table.rows }}" as="tr" hint-placeholder-count="2"><tr>
+                            <sc-for list="{{ tr }}" as="td" hint-placeholder-count="5"><td>{{ td }}</td></sc-for>
+                          </tr></sc-for>
+                        </tbody>
+                      </table></div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
           </section>
         </sc-for>
         <div style="text-align:center;font-size:11px;color:#9A958E;padding-top:6px">Dirección General de Metodología y Estadísticas del SNIE (DGMESNIE) · SENER · CENACE · CFE · Cifras sujetas a verificación en campo</div>
@@ -3407,9 +3438,10 @@ class Component extends DCLogic {
     });
     return out.sort((a,b) => a.dist-b.dist).slice(0, n||5);
   }
-  // Construye la sección PODECOBI para el reporte territorial. Hace dos fetches
-  // (polos + resumen) al backend y arma una sección con tabla nacional completa
-  // y, si la zona de análisis intersecta algún polo, un bloque destacado.
+  // Construye la sección PODECOBI para el reporte territorial. Solo aparece
+  // cuando el radio toca algún polo. Por cada polo intersectado trae el detalle
+  // completo desde el backend (vocaciones, contactos, fuentes) y lo presenta
+  // como sub-bloques (rows + tabla de contactos).
   _buildPolosSection(A){
     return Promise.all([
       fetch('/api/podecobi/polos', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : []),
@@ -3422,56 +3454,104 @@ class Component extends DCLogic {
         this._haversine(A.lat, A.lng, p.centroidLat, p.centroidLon) <= A.radiusKm
       );
 
-      const totalHa = resumen
-        ? Number(resumen.superficieTotalHa || 0).toLocaleString('es-MX', { maximumFractionDigits: 2 })
-        : '—';
-
-      const rows = [
-        ['Universo PODECOBI declarado', `${this._nf(resumen?.totalPolos || polos.length)} polos · 13 entidades`],
-        ['Superficie agregada (DOF/SIDOF)', totalHa + ' ha'],
-        ['En ejecución', this._nf(resumen?.enEjecucion ?? '—') + ' polos'],
-        ['En preinversión', this._nf(resumen?.enPreinversion ?? '—') + ' polos'],
-        ['Corte vigente', resumen?.ultimoCorte || '—'],
-      ];
-
-      const chipsNacional = polos.slice(0, 14).map(p => p.nombreOficial).filter(Boolean);
-
-      const tablaNacional = polos.map(p => [
-        p.numero || '—',
-        p.nombreOficial || '—',
-        p.estado || '—',
-        p.municipio || '—',
-        p.etapa || '—',
-        p.areaOficialHa != null ? Number(p.areaOficialHa).toLocaleString('es-MX', { maximumFractionDigits: 2 }) + ' ha' : '—',
-      ]);
-
-      // Solo emitimos la sección cuando el radio toca algún polo. Si no hay
-      // intersección, la sección no aparece en el reporte — el universo completo
-      // vive en el informe PODECOBI vigente, no en cada territorial.
+      // Sin intersección: la sección no aparece en el reporte territorial
       if (!inRadius.length) return null;
 
-      const sec = {
-        key: 'podecobi', kicker: 'PODECOBI en la zona', color: '#9B2247',
-        icon: 'M3 21h18 M5 21V10l7-5 7 5v11 M9 21v-6h6v6',
-        title: inRadius.length === 1
-          ? `PODECOBI intersectado: ${inRadius[0].nombreOficial || 'polo ' + inRadius[0].numero}`
-          : `${inRadius.length} polos PODECOBI intersectados por el radio de ${A.radiusKm} km`,
-        intro: 'Polo(s) con declaratoria vigente en DOF/SIDOF cuyo centroide cae dentro del radio de análisis. Detalle completo disponible en el Informe PODECOBI institucional.',
-        hasRows: true, rows, hasChips: false, chips: [],
-        hasTable: true, hasTable2: false,
-        table: {
-          head: ['Núm.', 'Polo', 'Entidad', 'Municipio', 'Etapa', 'Superficie (DOF)'],
-          rows: inRadius.map(p => [
-            p.numero || '—',
-            p.nombreOficial || '—',
-            p.estado || '—',
-            p.municipio || '—',
-            p.etapa || '—',
-            p.areaOficialHa != null ? Number(p.areaOficialHa).toLocaleString('es-MX', { maximumFractionDigits: 2 }) + ' ha' : '—',
-          ])
-        },
-      };
-      return sec;
+      // Trae el detalle de cada polo intersectado en paralelo
+      const detallePromises = inRadius.map(p =>
+        fetch('/api/podecobi/polos/' + encodeURIComponent(p.numero), { credentials: 'same-origin' })
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null)
+      );
+
+      return Promise.all(detallePromises).then(detalles => {
+        const totalHa = resumen
+          ? Number(resumen.superficieTotalHa || 0).toLocaleString('es-MX', { maximumFractionDigits: 2 })
+          : '—';
+
+        // KPIs del universo institucional (4 líneas cortas)
+        const rows = [
+          ['Universo PODECOBI declarado', `${this._nf(resumen?.totalPolos || polos.length)} polos · 13 entidades · ${totalHa} ha agregadas`],
+          ['En ejecución', this._nf(resumen?.enEjecucion ?? '—') + ' polos'],
+          ['En preinversión', this._nf(resumen?.enPreinversion ?? '—') + ' polos'],
+          ['Corte vigente de la base', resumen?.ultimoCorte || '—'],
+        ];
+
+        // Tabla resumen de los intersectados (mismo formato que el reporte nacional)
+        const tablaResumen = inRadius.map(p => [
+          p.numero || '—',
+          p.nombreOficial || '—',
+          p.estado || '—',
+          p.municipio || '—',
+          p.etapa || '—',
+          p.areaOficialHa != null ? Number(p.areaOficialHa).toLocaleString('es-MX', { maximumFractionDigits: 2 }) + ' ha' : '—',
+        ]);
+
+        // Detalle por polo: una sub-sección con rows + tabla de contactos.
+        // Se aplana al formato del reporte: cada polo genera un bloque hasRows=true
+        // con sus campos clave y hasTable=true con los contactos.
+        const polosDetalle = [];
+        detalles.forEach((d, i) => {
+          if (!d || !d.polo) return;
+          const pol = d.polo;
+          const voc = (d.vocaciones || []).map(v => v.vocacion).filter(Boolean);
+          const cf  = (d.contactos || []).find(c => c.ambito === 'FEDERAL');
+          const ce  = (d.contactos || []).find(c => c.ambito === 'ESTATAL');
+          const fDOF = (d.fuentes || []).find(f => f.tipo === 'DOF' || f.tipo === 'SIDOF');
+          const fPM  = (d.fuentes || []).find(f => f.tipo === 'PROYECTOS_MX');
+
+          const rowsPolo = [
+            ['Polo', pol.nombreOficial + ' · Núm. ' + pol.numero],
+            ['Entidad · Municipio', (pol.estado || '—') + ' · ' + (pol.municipio || '—')],
+            ['Etapa · Subetapa', [pol.etapa, pol.subetapa].filter(Boolean).join(' · ') || '—'],
+            ['Declaratoria (DOF/SIDOF)', pol.fechaDeclaracion ? new Date(pol.fechaDeclaracion).toLocaleDateString('es-MX') : '—'],
+            ['Superficie jurídica', pol.areaOficialHa != null ? Number(pol.areaOficialHa).toLocaleString('es-MX', { maximumFractionDigits: 4 }) + ' ha' : '—'],
+            ['Superficie GeoJSON', pol.areaGeojsonHa != null ? Number(pol.areaGeojsonHa).toLocaleString('es-MX', { maximumFractionDigits: 4 }) + ' ha' + (pol.geojsonDeltaPct != null ? ' · Δ ' + Number(pol.geojsonDeltaPct).toFixed(2) + ' %' : '') : '—'],
+            ['Demanda eléctrica', pol.demandaElectrica ? pol.demandaElectrica + (pol.demandaElectricaNota ? ' · ' + pol.demandaElectricaNota : '') : '—'],
+            ['Demanda máxima', pol.demandaMaxima ? pol.demandaMaxima + (pol.demandaMaximaNota ? ' · ' + pol.demandaMaximaNota : '') : '—'],
+            ['Tensión', pol.tension || '—'],
+            ['Conexión a red', pol.conexion || '—'],
+            ['Gas natural', pol.gasDisponibilidad ? pol.gasDisponibilidad + (pol.gasNota ? ' · ' + pol.gasNota : '') : '—'],
+            ['Vocaciones productivas', voc.length ? voc.join(' · ') : '—'],
+            ['Inversión', pol.inversion || '—'],
+            ['Empleos', pol.empleos || '—'],
+            ['Avance manual', pol.avanceManualPct != null ? Number(pol.avanceManualPct) + ' %' : '—'],
+            ['Ficha Proyectos México', pol.urlProyectosMexico || '—'],
+            ['Fuente DOF/SIDOF', fDOF ? (fDOF.url || '—') : '—'],
+            ['Verificación', pol.verificacion || '—'],
+          ];
+
+          // Tabla de contactos del polo
+          const contactosRows = [];
+          if (cf) contactosRows.push(['Federal', cf.nombre || '—', cf.cargo || '—', cf.correo || '—', cf.telefono || '—']);
+          if (ce) contactosRows.push(['Estatal', ce.nombre || '—', ce.cargo || '—', ce.correo || '—', ce.telefono || '—']);
+          if (!contactosRows.length) contactosRows.push(['—', 'Sin contactos registrados', '—', '—', '—']);
+
+          polosDetalle.push({
+            kicker: `Polo ${pol.numero} · detalle`,
+            color: '#9B2247',
+            title: pol.nombreOficial,
+            intro: fPM ? `Ficha Proyectos México revisada el ${pol.fechaRevisionPublica ? new Date(pol.fechaRevisionPublica).toLocaleDateString('es-MX') : 's/f'}.` : 'Detalle institucional del polo.',
+            hasRows: true, rows: rowsPolo, hasChips: false, chips: [],
+            hasTable: true, hasTable2: false,
+            table: { head: ['Ámbito', 'Contacto', 'Cargo', 'Correo', 'Teléfono'], rows: contactosRows },
+          });
+        });
+
+        return {
+          key: 'podecobi', kicker: 'PODECOBI en la zona', color: '#9B2247',
+          icon: 'M3 21h18 M5 21V10l7-5 7 5v11 M9 21v-6h6v6',
+          title: inRadius.length === 1
+            ? `PODECOBI intersectado: ${inRadius[0].nombreOficial || 'polo ' + inRadius[0].numero}`
+            : `${inRadius.length} polos PODECOBI intersectados por el radio de ${A.radiusKm} km`,
+          intro: 'Polo(s) con declaratoria vigente en DOF/SIDOF cuyo centroide cae dentro del radio de análisis. Detalle completo contra la base institucional dgmesnie.PODECOBI.',
+          hasRows: true, rows, hasChips: false, chips: [],
+          hasTable: true, hasTable2: false,
+          table: { head: ['Núm.', 'Polo', 'Entidad', 'Municipio', 'Etapa', 'Superficie (DOF)'], rows: tablaResumen },
+          // Sub-secciones de detalle (se renderizan como bloques "rows + tabla" apilados)
+          subSections: polosDetalle,
+        };
+      });
     });
   }
 
@@ -3601,10 +3681,37 @@ class Component extends DCLogic {
 
     return {
       date: new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long', day:'numeric' }),
-      meta: [
-        ['Estado', A.estado||'—'], ['Municipio', muni], ['Gerencia de control', 'GCR '+(this.GCR_NOMBRE[gerKey]||'—')],
-        ['Coordenadas', A.lat.toFixed(5)+', '+A.lng.toFixed(5)], ['Radio de análisis', A.radiusKm+' km'], ['Capas analizadas', String(A.ranKeys.length)],
-      ],
+      // Entidades, municipios y gerencias que el círculo toca (no solo el centroide).
+      // Cualquier geometría del estado (entidades) cuyo bounding box o cuyo
+      // punto-de-prueba intersecte el radio se lista. Para municipios, sólo si
+      // están cargados; lo mismo para gerencias.
+      const intersectedEntidades = this._entitiesInRadius(A.lat, A.lng, A.radiusKm);
+      const intersectedMunicipios = this._municipiosInRadius(A.lat, A.lng, A.radiusKm);
+      const intersectedGerencias = this._gerenciasInRadius(A.lat, A.lng, A.radiusKm);
+      const geoLink = `https://www.google.com/maps/search/?api=1&query=${A.lat.toFixed(5)}%2C${A.lng.toFixed(5)}`;
+      const osmLink = `https://www.openstreetmap.org/?mlat=${A.lat.toFixed(5)}&mlon=${A.lng.toFixed(5)}#map=12/${A.lat.toFixed(5)}/${A.lng.toFixed(5)}`;
+      const meta = [
+        ['Coordenadas del centro', `${A.lat.toFixed(5)}, ${A.lng.toFixed(5)}`],
+        ['Radio de análisis', A.radiusKm + ' km · ' + ((Math.PI * A.radiusKm * A.radiusKm).toFixed(1)) + ' km²'],
+        ['Estado (centroide)', A.estado || '—'],
+        ['Municipio (centroide)', muni],
+        ['Gerencia (centroide)', 'GCR ' + (this.GCR_NOMBRE[gerKey] || '—')],
+      ];
+      if (intersectedEntidades.length) {
+        meta.push(['Entidades intersectadas', intersectedEntidades.join(', ')]);
+      }
+      if (intersectedMunicipios.length) {
+        meta.push(['Municipios intersectados', intersectedMunicipios.slice(0, 8).join(', ') + (intersectedMunicipios.length > 8 ? ' +' + (intersectedMunicipios.length - 8) : '')]);
+      }
+      if (intersectedGerencias.length) {
+        meta.push(['Gerencias intersectadas', intersectedGerencias.map(g => 'GCR ' + (this.GCR_NOMBRE[g] || g)).join(', ')]);
+      }
+      meta.push(['Mapa (Google Maps)', geoLink]);
+      meta.push(['Mapa (OpenStreetMap)', osmLink]);
+      meta.push(['Capas analizadas', String(A.ranKeys.length)]);
+      return {
+      date: new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long', day:'numeric' }),
+      meta,
       metrics: [{ label:'Elementos totales', value:this._nf(totalEl), color:'#9B2247', dim:false, sub:'en '+A.radiusKm+' km' }]
         .concat(polosKpi ? [polosKpi] : [])
         .concat(kpiLayers.map(it => {
@@ -3620,6 +3727,76 @@ class Component extends DCLogic {
         .concat(dsAct.map(d => { let inR=0; d.rows.forEach(r=>{ const ll=this._placeRow(r,d); if(ll && this._haversine(A.lat,A.lng,ll[0],ll[1])<=A.radiusKm) inR++; }); return { label:d.name, value:this._nf(inR), color:d.color||'#1E9CB8', dim:inR===0, sub: inR>0 ? 'registros en el radio' : 'sin registros en el radio' }; })),
       sections,
     };
+  }
+
+  // Entidades federativas cuyo polígono intersecta el radio. Usa el bbox del
+  // polígono como prueba rápida (precisa para radios ≥10 km).
+  _entitiesInRadius(lat, lng, radiusKm){
+    const out = [];
+    if (!this.geo || !this.geo.estados) return out;
+    const seen = new Set();
+    const dKm = radiusKm / 111; // aprox grados
+    this.geo.estados.features.forEach(f => {
+      const bb = this._featureBBox(f.geometry); if (!bb) return;
+      // Candidato: bbox expandido por el radio intersecta el círculo
+      if (bb.maxLon < lng - dKm || bb.minLon > lng + dKm) return;
+      if (bb.maxLat < lat - dKm || bb.minLat > lat + dKm) return;
+      // Verificación precisa: el centro del estado cae dentro del radio O
+      // el centroide del estado está cerca del círculo
+      const cn = this.estCentroid[this._norm(this._propEnt(f.properties)||'')] || this._centroid(f.geometry);
+      if (cn) {
+        const d = this._haversine(lat, lng, cn[0], cn[1]);
+        if (d <= radiusKm + Math.max(bb.maxLon-bb.minLon, bb.maxLat-bb.minLat) * 50) {
+          const nom = this._propEnt(f.properties);
+          if (nom && !seen.has(nom)) { seen.add(nom); out.push(nom); }
+        }
+      }
+    });
+    return out;
+  }
+
+  _municipiosInRadius(lat, lng, radiusKm){
+    const out = [];
+    if (!this._muniGeo) return out;
+    const seen = new Set();
+    const feats = this._muniGeo.features || [];
+    feats.forEach(f => {
+      const nom = (f.properties && (f.properties.NOMGEO || f.properties.nombre)) || '';
+      const cn = this._centroid(f.geometry);
+      if (!cn) return;
+      if (this._haversine(lat, lng, cn[0], cn[1]) <= radiusKm) {
+        if (nom && !seen.has(nom)) { seen.add(nom); out.push(nom); }
+      }
+    });
+    return out;
+  }
+
+  _gerenciasInRadius(lat, lng, radiusKm){
+    // GCR se calcula por estado intersectado; devuelve las keys
+    const ents = this._entitiesInRadius(lat, lng, radiusKm);
+    const gcrs = new Set();
+    ents.forEach(ent => {
+      const k = this._gerenciaOf(ent);
+      if (k) gcrs.add(k);
+    });
+    return Array.from(gcrs);
+  }
+
+  _featureBBox(geom){
+    if (!geom) return null;
+    let minLon=Infinity, minLat=Infinity, maxLon=-Infinity, maxLat=-Infinity;
+    const visit = (c) => {
+      if (!Array.isArray(c)) return;
+      if (typeof c[0] === 'number' && typeof c[1] === 'number') {
+        if (c[0]<minLon) minLon=c[0]; if (c[0]>maxLon) maxLon=c[0];
+        if (c[1]<minLat) minLat=c[1]; if (c[1]>maxLat) maxLat=c[1];
+        return;
+      }
+      c.forEach(visit);
+    };
+    visit(geom.coordinates || geom.geometries || []);
+    if (!isFinite(minLon)) return null;
+    return { minLon, minLat, maxLon, maxLat };
   }
 
   // Cache de polos para KPIs: descarga una sola vez y reutiliza.
