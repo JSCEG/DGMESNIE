@@ -81,6 +81,7 @@ builder.Services.AddTransient<IRepositorioUsuarios, RepositorioUsuarios>();
 builder.Services.AddTransient<IRepositorioSecciones, RepositorioSecciones>();
 builder.Services.AddTransient<IRepositorioAcceso, RepositorioAcceso>();
 builder.Services.AddTransient<IRepositorioPODECOBIS, RepositorioPODECOBIS>();
+builder.Services.AddTransient<IRepositorioPODECOBIPolos, RepositorioPODECOBIPolos>();
 builder.Services.AddTransient<IRepositorioInformePormenorizado, RepositorioInformePormenorizado>();
 builder.Services.AddTransient<IPamrntProyectosIdentificadosService, PamrntProyectosIdentificadosService>();
 builder.Services.AddTransient<IPamActualizacionService, PamActualizacionService>();
