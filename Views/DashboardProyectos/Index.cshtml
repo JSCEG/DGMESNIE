@@ -1,5 +1,6 @@
 @using NSIE.Models
 @inject IHttpContextAccessor HttpContextAccessor
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
 @using Microsoft.AspNetCore.Http
 @using Newtonsoft.Json
 
@@ -12,6 +13,8 @@
     ViewData["NombreUsuario"] = perfilUsuario?.Nombre ?? "Invitado";
     ViewData["RolUsuario"] = perfilUsuario?.Rol ?? "Público";
     ViewData["IDUsuario"] = perfilUsuario?.IdUsuario ?? "0";
+    var reportDestinatariosJson = (ViewData["ReportDestinatariosJson"] as string) ?? "[]";
+    var antiForgeryToken = Antiforgery.GetAndStoreTokens(Context).RequestToken ?? string.Empty;
 
     var header = new HeaderViewModel
     {
@@ -34,6 +37,7 @@
 }
 
 @section Styles {
+  <link rel="stylesheet" href="~/css/pam-ficha-presentacion.css" asp-append-version="true" />
     <style>
         /* Ocultar el footer de la plataforma */
         footer.footer-snier {
@@ -51,9 +55,7 @@
             padding-left: 0 !important;
             padding-right: 0 !important;
             padding-bottom: 0 !important;
-            height: calc(100vh - 65px) !important;
-            min-height: calc(100vh - 65px) !important;
-            max-height: calc(100vh - 65px) !important;
+            height: 100vh !important;
             box-sizing: border-box !important;
             display: flex !important;
             flex-direction: column !important;
@@ -68,7 +70,6 @@
             position: relative;
             width: 100% !important;
             height: 100% !important;
-            min-height: 0 !important;
             overflow: hidden;
             display: flex !important;
             flex-direction: column !important;
@@ -80,11 +81,10 @@
             flex-direction: column !important;
             width: 100% !important;
             height: 100% !important;
-            min-height: 0 !important;
             flex: 1 1 auto !important;
         }
 
-        /* Forzar a que el root de React/Custom Element ocupe todo el alto disponible sin colapsar */
+        /* Forzar a que el root de React y sus contenedores ocupen todo el alto disponible sin colapsar */
         #dc-root {
             width: 100% !important;
             height: 100% !important;
@@ -94,21 +94,223 @@
             flex: 1 1 auto !important;
         }
 
-        .dg-root {
+        /* El runtime reemplaza x-dc por .sc-host. Tanto el host como el árbol React
+           deben participar en el flex; de otro modo Leaflet termina con height: 0. */
+        #dc-root > .sc-host,
+        #dc-root > .sc-host > :first-child {
             width: 100% !important;
             height: 100% !important;
             min-height: 0 !important;
             display: flex !important;
             flex-direction: column !important;
-            flex: 1 1 auto !important;
+            flex: 1 1 0% !important;
         }
         
         /* Asegurar que Leaflet se dibuje bien sin cortes y con fuentes institucionales */
+        #dg-map-container,
         .leaflet-container {
             width: 100% !important;
             height: 100% !important;
             min-height: 0 !important;
             font-family: 'Noto Sans', sans-serif !important;
+        }
+
+        .dg-report {
+          --report-guinda: #9B2247;
+          --report-guinda-dark: #8E1F40;
+          --report-dorado: #E0A12E;
+          --report-verde: #0E8A6E;
+          --report-tinta: #1c1b1a;
+          --report-gris: #6F6B66;
+          --report-gris-claro: #9A958E;
+          --report-papel: #FAF8F5;
+          --report-linea: #ECE8E2;
+          font-family: 'Noto Sans PAM', 'Noto Sans', sans-serif !important;
+          color: var(--report-tinta);
+          background: var(--report-papel);
+        }
+
+        .dg-report [style*="Patria"],
+        .dg-report__title,
+        .dg-report-section__title,
+        .dg-report-kpi__value {
+          font-family: 'Patria', Georgia, serif !important;
+        }
+
+        .dg-report-toolbar {
+          position: sticky;
+          top: 0;
+          z-index: 280;
+          min-height: 64px;
+          display: grid;
+          grid-template-columns: minmax(190px, auto) minmax(180px, 1fr) auto;
+          align-items: center;
+          gap: 14px;
+          padding: 10px 20px;
+          border-bottom: 1px solid var(--report-linea);
+          background: rgba(255,255,255,.97);
+          box-shadow: 0 8px 24px rgba(28,27,26,.08);
+          backdrop-filter: blur(12px);
+        }
+
+        .dg-report-back,
+        .dg-report-action,
+        .dg-report-close {
+          min-height: 40px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border-radius: 7px;
+          padding: 0 14px;
+          font: 700 12px/1 'Noto Sans PAM', 'Noto Sans', sans-serif;
+          cursor: pointer;
+          transition: border-color .18s ease, color .18s ease, background .18s ease, transform .18s ease;
+        }
+
+        .dg-report-back {
+          justify-self: start;
+          border: 1px solid var(--report-guinda);
+          background: var(--report-guinda);
+          color: #fff;
+          box-shadow: 0 5px 14px rgba(155,34,71,.2);
+        }
+
+        .dg-report-back:hover { background: var(--report-guinda-dark); transform: translateY(-1px); }
+        .dg-report-back kbd {
+          padding: 2px 6px;
+          border: 1px solid rgba(255,255,255,.45);
+          border-radius: 4px;
+          background: transparent;
+          color: inherit;
+          font: 600 9px/1 'Noto Sans PAM', sans-serif;
+        }
+
+        .dg-report-toolbar__identity { min-width: 0; }
+        .dg-report-toolbar__identity strong {
+          display: block;
+          overflow: hidden;
+          color: var(--report-guinda);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: .14em;
+          text-overflow: ellipsis;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+        .dg-report-toolbar__identity span { display:block;margin-top:3px;color:var(--report-gris);font-size:11px; }
+        .dg-report-toolbar__actions { display:flex;align-items:center;justify-content:flex-end;gap:7px; }
+        .dg-report-action { border:1px solid #D8D1CA;background:#fff;color:#3c4859; }
+        .dg-report-action:hover { border-color:var(--report-guinda);color:var(--report-guinda);transform:translateY(-1px); }
+        .dg-report-action--primary { border-color:var(--report-guinda);background:var(--report-guinda);color:#fff; }
+        .dg-report-action--primary:hover { background:var(--report-guinda-dark);color:#fff; }
+        .dg-report-close { border:1px solid #D8D1CA;background:#fff;color:var(--report-guinda); }
+        .dg-report-close:hover { border-color:var(--report-guinda);background:#F9EEF2; }
+
+        .dg-report-fab {
+          position: fixed;
+          right: 18px;
+          bottom: 18px;
+          z-index: 340;
+          min-height: 46px;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0 16px;
+          border: 1px solid var(--report-guinda);
+          border-radius: 999px;
+          background: var(--report-guinda);
+          color: #fff;
+          font: 800 12px/1 'Noto Sans PAM', 'Noto Sans', sans-serif;
+          letter-spacing: .02em;
+          box-shadow: 0 12px 28px rgba(35, 32, 30, .24);
+          cursor: pointer;
+          transition: transform .18s ease, background .18s ease;
+        }
+
+        .dg-report-fab:hover {
+          background: var(--report-guinda-dark);
+          transform: translateY(-1px);
+        }
+
+        .dg-report-hero { position:relative;overflow:hidden;background:#fff;border-bottom:1px solid var(--report-linea); }
+        .dg-report-hero__logos { display:flex;align-items:center;gap:17px;margin-bottom:22px; }
+        .dg-report-hero__logos img:first-child { height:34px;width:auto; }
+        .dg-report-hero__logos img:last-child { height:28px;width:auto; }
+        .dg-report-hero__logos i { width:1px;height:30px;background:#E0DCD4; }
+        .dg-report__title { max-width:19ch;font-weight:700 !important;letter-spacing:-.015em !important; }
+
+        .dg-report-content { max-width:1080px !important;padding-top:30px !important; }
+        .dg-report-metrics { gap:14px !important; }
+        .dg-report-kpi {
+          min-height:132px;
+          padding:19px 20px 16px !important;
+          border:1px solid var(--report-linea) !important;
+          border-top:5px solid var(--report-dorado) !important;
+          border-radius:0 !important;
+          background:#fff;
+          box-shadow:none !important;
+        }
+        .dg-report-kpi__label { color:var(--report-gris) !important;font-size:10px !important;letter-spacing:.10em !important; }
+        .dg-report-kpi__value {
+          color:var(--report-guinda) !important;
+          font-size:34px !important;
+          font-weight:700 !important;
+          font-family:"IBM Plex Mono",Consolas,"Courier New",monospace !important;
+        }
+
+        .dg-report-section {
+          padding:28px 30px !important;
+          border:1px solid var(--report-linea) !important;
+          border-radius:0 !important;
+          background:#fff;
+          box-shadow:none !important;
+        }
+        .dg-report-section__head {
+          padding-bottom:10px;
+          border-bottom:1px solid var(--report-linea);
+        }
+        .dg-report-section__marker { width:8px !important;height:8px !important;border-radius:50% !important; }
+        .dg-report-section__kicker { color:var(--report-guinda) !important;font-size:11px !important;letter-spacing:.14em !important; }
+        .dg-report-section__title { margin-top:15px;font-size:29px !important;font-weight:700 !important;line-height:1.08 !important; }
+        .dg-report-section__intro { max-width:90ch;font-size:13.5px !important;line-height:1.55 !important; }
+
+        .dg-report-table-wrap { overflow-x:auto;margin:15px 0 18px; }
+        .dg-report-table { width:100%;min-width:560px;border-collapse:collapse;color:var(--report-tinta);font-size:12px;font-weight:500; }
+        .dg-report-table th,
+        .dg-report-table td { padding:10px 12px;text-align:left;vertical-align:middle;border-bottom:1px solid #F0ECE6; }
+        .dg-report-table thead th {
+          border-bottom:3px solid var(--report-guinda);
+          background:#fff;
+          color:var(--report-guinda);
+          font-size:10px;
+          font-weight:800;
+          letter-spacing:.07em;
+          text-transform:uppercase;
+          white-space:nowrap;
+        }
+        .dg-report-table--gold thead th { border-bottom-color:var(--report-dorado);color:#A06C00; }
+        .dg-report-table tbody tr:nth-child(even) { background:rgba(250,248,245,.65); }
+        .dg-report-table tbody tr:hover { background:rgba(155,34,71,.05); }
+        .dg-report-table td:not(:first-child) {
+          font-variant-numeric:tabular-nums;
+          font-family:"IBM Plex Mono",Consolas,"Courier New",monospace;
+        }
+
+        .dg-report-footnote { border-top:1px solid var(--report-linea);padding-top:14px !important; }
+
+        @@media (max-width: 900px) {
+          .dg-report-toolbar { grid-template-columns:auto 1fr;gap:8px;padding:9px 10px; }
+          .dg-report-toolbar__identity { display:none; }
+          .dg-report-toolbar__actions { min-width:0;overflow-x:auto;justify-content:flex-start; }
+          .dg-report-action { min-width:40px;padding:0 11px; }
+          .dg-report-action span { display:none; }
+          .dg-report-close span { display:none; }
+          .dg-report-back { padding:0 12px;white-space:nowrap; }
+          .dg-report-back kbd { display:none; }
+          .dg-report-section { padding:22px 18px !important; }
+          .dg-report-section__title { font-size:24px !important; }
+          .dg-report-fab { right: 12px; bottom: 72px; min-height: 44px; padding: 0 14px; font-size: 11.5px; }
         }
     </style>
 }
@@ -335,11 +537,16 @@
         </div>
       </sc-if>
     </div>
+
+    <button onClick="{{ onOpenReportSend }}" disabled="{{ reportSendDisabled }}" title="{{ reportSendTitle }}" style="{{ reportSendTopBtnStyle }}">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
+      <span class="dg-utxt">Enviar</span>
+    </button>
   </div>
 </header>
 
   <div ref="{{ mainRef }}" style="position:relative;flex:1;overflow:hidden">
-    <div id="dg-map-container" ref="{{ mapRef }}" style="position:absolute;inset:0;z-index:0"></div>
+    <div ref="{{ mapRef }}" style="position:absolute;inset:0;z-index:0"></div>
 
     <!-- PRELOADER institucional (arranque + capas pesadas, bloqueante) -->
     <sc-if value="{{ showPreloader }}" hint-placeholder-val="{{ true }}">
@@ -843,93 +1050,105 @@
     </div>
     </sc-if>
 
-    <!-- REPORTE TERRITORIAL: vista completa (resumen + secciones tipo lámina) -->
+    <!-- REPORTE TERRITORIAL: vista completa alineada al sistema de fichas PAM -->
     <sc-if value="{{ reportOpen }}" hint-placeholder-val="{{ false }}">
-    <div data-screen-label="Reporte territorial" style="position:fixed;inset:0;z-index:200;background:#FAF8F5;overflow-y:auto">
-      <!-- Barra de acciones (oscura, fija al hacer scroll) -->
-      <div style="position:sticky;top:0;z-index:5;background:rgba(28,27,26,.94);backdrop-filter:blur(10px);display:flex;align-items:center;gap:12px;padding:10px 18px">
-        <div style="display:flex;align-items:center;gap:10px;flex:none"><img src="/tablero/assets/logo_gob.png" alt="Gobierno de México" style="height:22px;width:auto;filter:brightness(0) invert(1)"><div style="width:1px;height:16px;background:rgba(255,255,255,.24)"></div><img src="/tablero/assets/logo_sener.png" alt="SENER" style="height:22px;width:auto;filter:brightness(0) invert(1)"></div>
-        <div style="min-width:0;flex:1">
-          <div style="font-size:8px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#E0A12E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">DGMESNIE · Reporte de análisis territorial</div>
-          <div style="font-size:11px;color:rgba(255,255,255,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ reportDate }}</div>
+    <div class="dg-report" data-screen-label="Reporte territorial" role="dialog" aria-modal="true" aria-label="Reporte de análisis territorial" style="position:fixed;top:65px;left:0;right:0;bottom:0;z-index:1200;overflow-y:auto">
+      <div class="dg-report-toolbar" aria-label="Acciones del reporte territorial">
+        <button class="dg-report-back" onClick="{{ onCloseReport }}" title="Cerrar reporte y regresar al mapa">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          <span>Regresar al mapa</span><kbd>Esc</kbd>
+        </button>
+        <div class="dg-report-toolbar__identity">
+          <strong>DGMESNIE · Reporte de análisis territorial</strong>
+          <span>{{ reportDate }}</span>
         </div>
-        <button onClick="{{ onWmToggle }}" title="Marca de agua: logo SENER + fecha en el mapa exportado" style="{{ wmBtnStyle }}">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-4.35-6-9.9a6 6 0 0 1 12 0c0 5.55-6 9.9-6 9.9z" transform="rotate(180 12 12)"/></svg><span class="dg-wmtxt">Marca de agua</span></button>
-        <button onClick="{{ onReportPDF }}" style="display:flex;align-items:center;gap:6px;padding:9px 12px;border:none;background:#9B2247;color:#fff;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex:none" style-hover="background:#B24C6C">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>PDF</button>
-        <button onClick="{{ onReportPdfPpt }}" title="PDF horizontal 16:9 (tipo presentación)" style="display:flex;align-items:center;gap:6px;padding:9px 11px;border:1px solid rgba(255,255,255,.28);background:none;color:rgba(255,255,255,.9);border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex:none" style-hover="background:rgba(255,255,255,.12)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="dg-wmtxt">16:9</span></button>
-        <button onClick="{{ onReportXLSX }}" title="Excel con métricas, análisis y datasets" style="display:flex;align-items:center;gap:6px;padding:9px 11px;border:1px solid rgba(255,255,255,.28);background:none;color:rgba(255,255,255,.9);border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex:none" style-hover="background:rgba(255,255,255,.12)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg><span class="dg-wmtxt">Excel</span></button>
-        <button onClick="{{ onReportPNG }}" title="Sólo la imagen del mapa (PNG alta resolución)" style="display:flex;align-items:center;gap:6px;padding:9px 11px;border:1px solid rgba(255,255,255,.28);background:none;color:rgba(255,255,255,.9);border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex:none" style-hover="background:rgba(255,255,255,.12)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L6 21"/></svg><span class="dg-wmtxt">PNG</span></button>
-        <button onClick="{{ onCloseReport }}" title="Cerrar reporte" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid rgba(255,255,255,.28);background:none;color:rgba(255,255,255,.85);border-radius:9px;cursor:pointer;flex:none" style-hover="background:rgba(255,255,255,.12)">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        <div class="dg-report-toolbar__actions">
+          <button class="dg-report-action" onClick="{{ onWmToggle }}" title="Marca de agua: logo SENER + fecha en el mapa exportado">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-4.35-6-9.9a6 6 0 0 1 12 0c0 5.55-6 9.9-6 9.9z" transform="rotate(180 12 12)"/></svg><span>Marca de agua</span>
+          </button>
+          <button class="dg-report-action dg-report-action--primary" onClick="{{ onReportPDF }}" title="Descargar reporte en PDF">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg><span>PDF</span>
+          </button>
+          <button class="dg-report-action" onClick="{{ onReportPdfPpt }}" title="PDF horizontal 16:9 (tipo presentación)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>16:9</span>
+          </button>
+          <button class="dg-report-action" onClick="{{ onReportXLSX }}" title="Excel con métricas, análisis y datasets">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg><span>Excel</span>
+          </button>
+          <button class="dg-report-action" onClick="{{ onReportPNG }}" title="Sólo la imagen del mapa (PNG alta resolución)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L6 21"/></svg><span>PNG</span>
+          </button>
+          <button class="dg-report-close" onClick="{{ onCloseReport }}" title="Cerrar reporte y regresar al mapa" aria-label="Cerrar reporte y regresar al mapa">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg><span>Cerrar</span>
+          </button>
+        </div>
       </div>
-      <!-- HERO editorial: imagen a sangre + degradado guinda/tinta + metadatos como chips -->
-      <div style="position:relative;overflow:hidden">
-        <img src="/tablero/assets/portada_energia.png" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">
-        <div style="position:absolute;inset:0;background:linear-gradient(105deg, rgba(28,27,26,.90) 0%, rgba(122,27,56,.74) 52%, rgba(28,27,26,.38) 100%)"></div>
-        <div style="position:relative;max-width:940px;margin:0 auto;padding:52px 18px 30px">
-          <div style="height:4px;width:64px;background:#E0A12E;margin-bottom:18px"></div>
-          <div style="font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#E0A12E;margin-bottom:9px">Evaluación de sitio estratégico</div>
-          <div style="font-family:'Patria',Georgia,serif;font-size:clamp(28px,5vw,42px);font-weight:600;letter-spacing:-.015em;line-height:1.05;color:#fff;text-wrap:balance">Reporte de análisis territorial</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:22px">
+      <!-- Portada editorial basada en las fichas PAM -->
+      <div class="dg-report-hero">
+        <img src="/tablero/assets/portada_energia.png" alt="Infraestructura energética" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">
+        <div style="position:absolute;inset:0;background:linear-gradient(100deg,rgba(255,255,255,.98) 0%,rgba(255,255,255,.94) 50%,rgba(255,255,255,.15) 100%)"></div>
+        <div style="position:relative;max-width:1080px;margin:0 auto;padding:34px 22px 38px">
+          <div class="dg-report-hero__logos">
+            <img src="/img/pamrnt/logo_gob.png" alt="Gobierno de México">
+            <i></i>
+            <img src="/img/pamrnt/logo_sener.png" alt="Secretaría de Energía">
+          </div>
+          <div style="font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#9B2247;margin-bottom:10px">Evaluación de sitio estratégico</div>
+          <div class="dg-report__title" style="font-size:clamp(32px,5vw,48px);line-height:1.03;color:#1c1b1a;text-wrap:balance">Reporte de análisis territorial</div>
+          <div style="height:3px;width:92px;background:#E0A12E;margin:18px 0"></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;max-width:780px">
             <sc-for list="{{ reportMeta }}" as="mt" hint-placeholder-count="6">
-              <span style="display:flex;align-items:baseline;gap:7px;padding:7px 13px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.24);border-radius:24px;backdrop-filter:blur(4px)">
-                <span style="font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#E9CE9E">{{ mt.label }}</span>
-                <span style="font-size:12.5px;font-weight:700;color:#fff">{{ mt.value }}</span>
+              <span style="display:flex;align-items:baseline;gap:7px;padding:7px 12px;background:#fff;border:1px solid #ECE8E2">
+                <span style="font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#9B2247">{{ mt.label }}</span>
+                <span style="font-size:12px;font-weight:700;color:#1c1b1a">{{ mt.value }}</span>
               </span>
             </sc-for>
           </div>
         </div>
       </div>
-      <div style="max-width:940px;margin:0 auto;padding:24px 16px 70px;display:flex;flex-direction:column;gap:22px">
-        <!-- Métricas hero -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+      <div class="dg-report-content" style="margin:0 auto;padding:24px 16px 70px;display:flex;flex-direction:column;gap:22px">
+        <!-- KPIs: patrón de fichas PAM, borde superior dorado y cifra Patria -->
+        <div class="dg-report-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
           <sc-for list="{{ reportMetrics }}" as="rm" hint-placeholder-count="4">
-            <div style="background:#fff;border:1px solid #ECE8E2;border-left:4px solid {{ rm.color }};border-radius:12px;padding:15px 16px 13px;box-shadow:0 6px 18px rgba(0,0,0,.04);opacity:{{ rm.op }};display:flex;flex-direction:column;gap:2px">
+            <div class="dg-report-kpi" style="opacity:{{ rm.op }};display:flex;flex-direction:column;gap:2px">
               <div style="display:flex;align-items:center;gap:7px">
-                <span style="width:9px;height:9px;border-radius:3px;flex:none;background:{{ rm.color }}"></span>
-                <span style="font-size:9.5px;color:#6F6B66;font-weight:800;letter-spacing:.07em;text-transform:uppercase;line-height:1.2">{{ rm.label }}</span>
+                <span style="width:8px;height:8px;border-radius:50%;flex:none;background:{{ rm.color }}"></span>
+                <span class="dg-report-kpi__label" style="font-weight:800;text-transform:uppercase;line-height:1.2">{{ rm.label }}</span>
               </div>
-              <div style="font-family:'Patria',Georgia,serif;font-size:36px;font-weight:600;line-height:1.05;letter-spacing:-.015em;color:{{ rm.vcolor }};margin-top:4px">{{ rm.value }}</div>
-              <div style="font-size:10px;color:#9A958E;font-weight:600;line-height:1.3">{{ rm.sub }}</div>
+              <div class="dg-report-kpi__value" style="line-height:1.05;letter-spacing:-.015em;margin-top:6px">{{ rm.value }}</div>
+              <div style="font-size:10.5px;color:#9A958E;font-weight:600;line-height:1.3">{{ rm.sub }}</div>
             </div>
           </sc-for>
         </div>
-        <!-- Secciones -->
+        <!-- Secciones de contenido -->
         <sc-for list="{{ reportSections }}" as="sec" hint-placeholder-count="4">
-          <section data-screen-label="{{ sec.title }}" style="background:#fff;border:1px solid #ECE8E2;border-radius:16px;padding:24px;box-shadow:0 8px 22px rgba(0,0,0,.045)">
-            <div style="display:flex;align-items:center;gap:11px;margin-bottom:7px">
-              <span style="width:32px;height:32px;border-radius:9px;background:{{ sec.color }};display:flex;align-items:center;justify-content:center;flex:none">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ sec.icon }}"/></svg>
-              </span>
-              <span style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:{{ sec.color }}">{{ sec.kicker }}</span>
+          <section class="dg-report-section" data-screen-label="{{ sec.title }}">
+            <div class="dg-report-section__head" style="display:flex;align-items:center;gap:10px">
+              <span class="dg-report-section__marker" style="background:{{ sec.color }};display:block;flex:none"></span>
+              <span class="dg-report-section__kicker" style="font-weight:800;text-transform:uppercase">{{ sec.kicker }}</span>
             </div>
-            <div style="font-family:'Patria',Georgia,serif;font-size:23px;font-weight:600;letter-spacing:-.01em;line-height:1.15">{{ sec.title }}</div>
-            <div style="height:3px;width:72px;background:linear-gradient(90deg,#9B2247,#E0A12E);margin:8px 0 12px;border-radius:2px"></div>
-            <div style="font-size:12.5px;color:#6F6B66;line-height:1.5;margin:7px 0 14px;text-wrap:pretty">{{ sec.intro }}</div>
+            <div class="dg-report-section__title" style="letter-spacing:-.01em">{{ sec.title }}</div>
+            <div class="dg-report-section__intro" style="color:#6F6B66;margin:9px 0 14px;text-wrap:pretty">{{ sec.intro }}</div>
             <sc-if value="{{ sec.hasTable }}" hint-placeholder-val="{{ false }}">
-              <div style="overflow-x:auto;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:430px">
+              <div class="dg-report-table-wrap"><table class="dg-report-table">
                 <thead><tr>
-                  <sc-for list="{{ sec.table.head }}" as="th" hint-placeholder-count="4"><th style="text-align:left;padding:8px 10px;background:#9B2247;color:#fff;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap">{{ th }}</th></sc-for>
+                  <sc-for list="{{ sec.table.head }}" as="th" hint-placeholder-count="4"><th>{{ th }}</th></sc-for>
                 </tr></thead>
                 <tbody>
                   <sc-for list="{{ sec.table.rows }}" as="tr" hint-placeholder-count="5"><tr>
-                    <sc-for list="{{ tr }}" as="td" hint-placeholder-count="4"><td style="padding:8px 10px;border-bottom:1px solid #F0ECE6;color:#1c1b1a;font-weight:600">{{ td }}</td></sc-for>
+                    <sc-for list="{{ tr }}" as="td" hint-placeholder-count="4"><td>{{ td }}</td></sc-for>
                   </tr></sc-for>
                 </tbody>
               </table></div>
             </sc-if>
             <sc-if value="{{ sec.hasTable2 }}" hint-placeholder-val="{{ false }}">
-              <div style="overflow-x:auto;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:430px">
+              <div class="dg-report-table-wrap"><table class="dg-report-table dg-report-table--gold">
                 <thead><tr>
-                  <sc-for list="{{ sec.table2.head }}" as="th2" hint-placeholder-count="4"><th style="text-align:left;padding:8px 10px;background:#E0A12E;color:#fff;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap">{{ th2 }}</th></sc-for>
+                  <sc-for list="{{ sec.table2.head }}" as="th2" hint-placeholder-count="4"><th>{{ th2 }}</th></sc-for>
                 </tr></thead>
                 <tbody>
                   <sc-for list="{{ sec.table2.rows }}" as="tr2" hint-placeholder-count="5"><tr>
-                    <sc-for list="{{ tr2 }}" as="td2" hint-placeholder-count="4"><td style="padding:8px 10px;border-bottom:1px solid #F0ECE6;color:#1c1b1a;font-weight:600">{{ td2 }}</td></sc-for>
+                    <sc-for list="{{ tr2 }}" as="td2" hint-placeholder-count="4"><td>{{ td2 }}</td></sc-for>
                   </tr></sc-for>
                 </tbody>
               </table></div>
@@ -953,12 +1172,67 @@
             </sc-if>
           </section>
         </sc-for>
-        <div style="background:#fff;border:1px solid #ECE8E2;border-top:3px solid #9B2247;border-radius:14px;padding:18px 24px;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.03);display:flex;flex-direction:column;align-items:center;gap:8px">
-          <div style="font-size:11.5px;font-weight:700;color:#1c1b1a">Dirección General de Metodología y Estadísticas del SNIE (DGMESNIE)</div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:10.5px;color:#6F6B66;font-weight:600">
-            <span>SENER</span><span style="width:4px;height:4px;border-radius:50%;background:#E0A12E"></span><span>CENACE</span><span style="width:4px;height:4px;border-radius:50%;background:#E0A12E"></span><span>CFE</span><span style="width:4px;height:4px;border-radius:50%;background:#E0A12E"></span><span>CRE</span>
+        <div style="text-align:center;font-size:11px;color:#9A958E;padding-top:6px">Dirección General de Metodología y Estadísticas del SNIE (DGMESNIE) · SENER · CENACE · CFE · Cifras sujetas a verificación en campo</div>
+      </div>
+      <button class="dg-report-fab" onClick="{{ onCloseReport }}" title="Volver al mapa" aria-label="Volver al mapa">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        <span>Volver al mapa</span>
+      </button>
+
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ reportSendOpen }}" hint-placeholder-val="{{ false }}">
+    <div class="pam-envio-modal" style="position:fixed;inset:0;z-index:1300">
+      <div class="pam-envio-backdrop" onClick="{{ onCloseReportSend }}"></div>
+      <div class="pam-envio-dialog" role="dialog" aria-modal="true" aria-labelledby="pam-envio-titulo-dg">
+        <div class="pam-envio-head">
+          <div>
+            <h3 id="pam-envio-titulo-dg">Enviar reporte por correo</h3>
+            <p>Reporte territorial DGMESNIE · se genera y se adjunta al correo.</p>
           </div>
-          <div style="font-size:10px;color:#9A958E">Sistema de Información Censo y Cartera Energética Nacional · Cifras sujetas a verificación en campo</div>
+          <button type="button" class="pam-envio-x" onClick="{{ onCloseReportSend }}" aria-label="Cerrar"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div style="padding:14px 16px 0">
+          <label class="pam-envio-label">Formato del archivo</label>
+          <div class="pam-envio-formato">
+            <label><input type="radio" checked="{{ reportSendFmtPdf }}" onChange="{{ onSendFmtPdf }}" /><span><i class="fas fa-file-pdf"></i> PDF</span></label>
+            <label><input type="radio" checked="{{ reportSendFmtPpt }}" onChange="{{ onSendFmtPpt }}" /><span><i class="fas fa-file-powerpoint"></i> PDF 16:9</span></label>
+          </div>
+
+          <label class="pam-envio-label" for="dg-envio-buscar">Destinatarios <span>(uno o más)</span></label>
+          <input type="search" id="dg-envio-buscar" class="pam-envio-buscar" value="{{ reportSendQuery }}" onInput="{{ onSendQueryInput }}" placeholder="Buscar por nombre o correo…" autocomplete="off" />
+          <div class="pam-envio-lista" id="dg-envio-lista" role="listbox" aria-multiselectable="true">
+            <sc-if value="{{ reportSendNoRecipients }}" hint-placeholder-val="{{ false }}">
+              <div class="pam-envio-vacio">No hay usuarios con correo registrado.</div>
+            </sc-if>
+            <sc-if value="{{ reportSendHasRecipients }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ reportSendRecipients }}" as="u" hint-placeholder-count="6">
+                <label class="pam-envio-item">
+                  <input type="checkbox" checked="{{ u.on }}" onChange="{{ u.onToggle }}" />
+                  <span class="pam-envio-item__ini">{{ u.ini }}</span>
+                  <span class="pam-envio-item__info">
+                    <strong>{{ u.nombre }}</strong>
+                    <small>{{ u.detalle }}</small>
+                  </span>
+                </label>
+              </sc-for>
+            </sc-if>
+          </div>
+
+          <label class="pam-envio-label" for="dg-envio-msg">Mensaje adicional <span>(opcional)</span></label>
+          <textarea id="dg-envio-msg" rows="2" class="pam-envio-mensaje" value="{{ reportSendMsg }}" onInput="{{ onSendMsgInput }}" placeholder="Ej. Se comparte para la reunión de seguimiento."></textarea>
+
+          <sc-if value="{{ reportSendFeedbackOn }}" hint-placeholder-val="{{ false }}">
+            <div class="pam-envio-feedback {{ reportSendFeedbackClass }}">{{ reportSendFeedback }}</div>
+          </sc-if>
+
+          <div class="pam-envio-actions">
+            <button type="button" class="pam-envio-btn pam-envio-btn--cancel" onClick="{{ onCloseReportSend }}">Cancelar</button>
+            <button type="button" class="pam-envio-btn pam-envio-btn--send" onClick="{{ onSubmitReportSend }}" disabled="{{ reportSendBusy }}">
+              <i class="fas fa-paper-plane" aria-hidden="true"></i> {{ reportSendBtnLabel }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -999,6 +1273,8 @@
 class Component extends DCLogic {
   mapRef = React.createRef();
   mainRef = React.createRef();
+  REPORT_RECIPIENTS = Array.isArray(window.__reportDestinatarios) ? window.__reportDestinatarios : [];
+  REPORT_CSRF = window.__reportCsrf || '';
 
   // Fuentes oficiales (CORS-open) del sistema de diseño SENER
   SRC = {
@@ -1141,13 +1417,31 @@ class Component extends DCLogic {
       metricas: { left:'372px', right:'16px', bottom:'14px' },
     },
     collapsed: { capas:false, datasets:false, detalle:true, metricas:false },
+    reportSendOpen: false,
+    reportSendQuery: '',
+    reportSendMsg: '',
+    reportSendFmt: 'pdf',
+    reportSendBusy: false,
+    reportSendFeedback: '',
+    reportSendFeedbackType: '',
+    reportSendSel: {},
   };
 
   // ════════════════════ ciclo de vida ════════════════════
   componentDidMount() {
     this._loadCatalog();
     this._preloadLogos();
+    window.addEventListener('keydown', this.onGlobalKeyDown);
     this._waitFor(() => window.L && window.L.Control && window.L.Control.Draw, () => this._initMap());
+  }
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this.onGlobalKeyDown);
+  }
+  onGlobalKeyDown = (e) => {
+    if ((e.key === 'Escape' || e.key === 'Esc') && this.state.reportOpen) {
+      e.preventDefault();
+      this.onCloseReport();
+    }
   }
   _waitFor(cond, cb, n = 0) {
     if (cond()) return cb();
@@ -1162,8 +1456,7 @@ class Component extends DCLogic {
     // arrastrar el mapa fuera de estos límites.
     const MEXICO_BOUNDS = L.latLngBounds([[14.0, -118.5], [33.5, -86.0]]);
     this.MEXICO_BOUNDS = MEXICO_BOUNDS;
-    const mapElement = (this.mapRef && this.mapRef.current) || (this.refs && this.refs.mapRef) || document.getElementById('dg-map-container') || document.querySelector('.leaflet-container');
-    const map = L.map(mapElement, {
+    const map = L.map(this.mapRef.current, {
       zoomControl:false,
       preferCanvas:true,
       attributionControl:false,
@@ -1181,11 +1474,11 @@ class Component extends DCLogic {
 
     // Mapas base
     this.bases = {
-      // Mapa base colorido (CartoDB Voyager) — por defecto
-      color:    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', { subdomains:'abcd', maxZoom:19, attribution:'&copy; OpenStreetMap &copy; CARTO' }),
-      claro:    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', { subdomains:'abcd', maxZoom:19, attribution:'&copy; OpenStreetMap &copy; CARTO' }),
-      satelite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:18, attribution:'Esri, Maxar, Earthstar Geographics' }),
-      oscuro:   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', { subdomains:'abcd', maxZoom:19, attribution:'&copy; OpenStreetMap &copy; CARTO' }),
+      // Mapa base colorido SIN etiquetas ni división política (CartoDB Voyager nolabels) — por defecto
+      color:    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:20, crossOrigin:'anonymous' }),
+      claro:    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19, crossOrigin:'anonymous' }),
+      satelite: L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { subdomains:['0','1','2','3'], maxZoom:19 }),
+      oscuro:   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19, crossOrigin:'anonymous' }),
     };
     this.bases[this.state.basemap].addTo(map);
 
@@ -1212,9 +1505,6 @@ class Component extends DCLogic {
     map.createPane('hl'); map.getPane('hl').style.zIndex = '640'; map.getPane('hl').style.pointerEvents = 'none';
     // Selección de municipio por clic en el mapa (point-in-polygon) — robusto ante el hit-test de canvas
     map.on('click', (e) => this._onMapClick(e));
-    if (window.ResizeObserver && mapElement) {
-      new ResizeObserver(() => { if (this.map) this.map.invalidateSize(); }).observe(mapElement);
-    }
     window.__dgMap = map; window.__dg = this; // referencia de depuración
     // Blindaje: bug conocido de Leaflet — un L.Marker arrastrable + animación de zoom puede lanzar
     // una excepción interna (async, sin stack útil) en _animateZoom. No rompe nada visible, pero
@@ -1241,10 +1531,10 @@ class Component extends DCLogic {
     this.setState({ bootMsg:'Descargando capas GeoJSON oficiales…' });
     try {
       const [est, lt, sub, ger] = await Promise.all([
-        this._mockFetchGeo(this.SRC.estados).catch(err => { console.warn('Estados fallback', err); return { type:'FeatureCollection', features:[] }; }),
-        this._mockFetchGeo(this.SRC.lineas).catch(err => { console.warn('Lineas fallback', err); return { type:'FeatureCollection', features:[] }; }),
-        this._mockFetchGeo(this.SRC.subestaciones).catch(err => { console.warn('Subestaciones fallback', err); return { type:'FeatureCollection', features:[] }; }),
-        this._mockFetchGeo(this.SRC.gerencias).catch(err => { console.warn('Gerencias fallback', err); return null; }),
+        this._mockFetchGeo(this.SRC.estados),
+        this._mockFetchGeo(this.SRC.lineas),
+        this._mockFetchGeo(this.SRC.subestaciones),
+        this._mockFetchGeo(this.SRC.gerencias).catch(() => null),
       ]);
       this.geo = { estados:est, lineas:lt, subestaciones:sub, gerencias:ger };
 
@@ -1341,12 +1631,7 @@ class Component extends DCLogic {
       // Añade al mapa sólo las capas activas inicialmente
       Object.keys(this.groups).forEach(k => { if (this.state.layers[k].on) this.groups[k].addTo(this.map); });
 
-      this.setState({ ready:true, booting:false, loading:false, layers, entidades:ents }, () => {
-        this.map.invalidateSize();
-        setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 200);
-        setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 600);
-        this._recompute();
-      });
+      this.setState({ ready:true, booting:false, loading:false, layers, entidades:ents }, () => { this.map.invalidateSize(); this._recompute(); });
       this._toast('Geometrías oficiales cargadas · '+this.subFeatures.length+' subestaciones, '+this.lineFeatures.length+' líneas');
     } catch (e) {
       this.setState({ booting:false, loading:false, toast:'Error al cargar geometrías: '+(e.message||e) });
@@ -3074,6 +3359,23 @@ class Component extends DCLogic {
         hasTable:tRows.length>0, table:{ head:['Registro','Dataset','Tecnología','Capacidad','Entidad'], rows:tRows }, hasTable2:false });
     }
     const totalEl = A.ranKeys.reduce((s,k)=>s+cnt(k),0);
+    // KPIs dinámicos: primero capas con datos dentro del radio; después capas en cero por cercanía.
+    // Se mantienen subestaciones y líneas si están seleccionadas para preservar contexto de red.
+    const pri = ['subestaciones','lineas'];
+    const pool = A.ranKeys.map(k => ({
+      key: k,
+      ct: cnt(k),
+      nr: (L[k] && Number.isFinite(L[k].nearest)) ? L[k].nearest : Number.POSITIVE_INFINITY,
+      label: (L[k] && L[k].label) || k,
+      color: (L[k] && L[k].color) || '#9B2247'
+    }));
+    const used = new Set();
+    const ordered = [];
+    const pushK = it => { if (!it || used.has(it.key)) return; used.add(it.key); ordered.push(it); };
+    pri.forEach(k => pushK(pool.find(p => p.key===k)));
+    pool.filter(p => p.ct>0).sort((a,b) => b.ct-a.ct).forEach(pushK);
+    pool.filter(p => p.ct===0).sort((a,b) => a.nr-b.nr).forEach(pushK);
+    const kpiLayers = ordered.slice(0,7);
     return {
       date: new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long', day:'numeric' }),
       meta: [
@@ -3081,7 +3383,16 @@ class Component extends DCLogic {
         ['Coordenadas', A.lat.toFixed(5)+', '+A.lng.toFixed(5)], ['Radio de análisis', A.radiusKm+' km'], ['Capas analizadas', String(A.ranKeys.length)],
       ],
       metrics: [{ label:'Elementos totales', value:this._nf(totalEl), color:'#9B2247', dim:false, sub:'en '+A.radiusKm+' km' }]
-        .concat(A.ranKeys.slice(0,7).map(k => { const ct=cnt(k), nr=L[k].nearest; return { label:L[k].label, value:this._nf(ct), color:L[k].color, dim:ct===0, sub: ct>0 ? 'en el radio' : (nr ? 'más cercano a '+Math.round(nr)+' km' : 'sin presencia en el radio') }; }))
+        .concat(kpiLayers.map(it => {
+          const nrTxt = Number.isFinite(it.nr) ? ('más cercano a '+Math.round(it.nr)+' km') : 'sin presencia en el radio';
+          return {
+            label: it.label,
+            value: this._nf(it.ct),
+            color: it.color,
+            dim: it.ct===0,
+            sub: it.ct>0 ? 'en el radio' : nrTxt
+          };
+        }))
         .concat(dsAct.map(d => { let inR=0; d.rows.forEach(r=>{ const ll=this._placeRow(r,d); if(ll && this._haversine(A.lat,A.lng,ll[0],ll[1])<=A.radiusKm) inR++; }); return { label:d.name, value:this._nf(inR), color:d.color||'#1E9CB8', dim:inR===0, sub: inR>0 ? 'registros en el radio' : 'sin registros en el radio' }; })),
       sections,
     };
@@ -3092,7 +3403,64 @@ class Component extends DCLogic {
     this._report = rep;
     this.setState({ reportOpen:true });
   };
-  onCloseReport = () => this.setState({ reportOpen:false });
+  onCloseReport = () => this.setState({ reportOpen:false, reportSendOpen:false, reportSendBusy:false });
+  onOpenReportSend = () => {
+    const A = this.state.analysis || {};
+    const hasRun = !!(A.lat!=null && A.ranKeys && A.ranKeys.length && !A.stale);
+    if (!hasRun) { this._toast('Primero ejecuta una corrida de análisis para habilitar el envío'); return; }
+    if (!this._report) {
+      const rep = this._buildReport();
+      if (!rep) { this._toast('No se pudo preparar el reporte para envío'); return; }
+      this._report = rep;
+    }
+    this.setState({ reportSendOpen:true, reportSendFeedback:'', reportSendFeedbackType:'' });
+  }
+  onCloseReportSend = () => this.setState({ reportSendOpen:false, reportSendBusy:false, reportSendFeedback:'', reportSendFeedbackType:'' });
+  _setReportSendFeedback(msg, type){ this.setState({ reportSendFeedback: msg||'', reportSendFeedbackType: type||'' }); }
+  _reportFileName(fmt){
+    const f = fmt==='pptx' ? 'pptx' : 'pdf';
+    const base = f==='pptx' ? 'DGMESNIE_reporte_territorial_16x9_' : 'DGMESNIE_reporte_territorial_';
+    return base + new Date().toISOString().slice(0,10) + '.' + f;
+  }
+  onSubmitReportSend = async () => {
+    if (this.state.reportSendBusy) return;
+    const ids = Object.keys(this.state.reportSendSel).filter(k => this.state.reportSendSel[k]).map(k => +k).filter(n => Number.isFinite(n));
+    if (!ids.length) { this._setReportSendFeedback('Selecciona al menos un destinatario.', 'error'); return; }
+    const fmt = this.state.reportSendFmt==='pptx' ? 'pptx' : 'pdf';
+    const R = this._report;
+    if (!R) { this._setReportSendFeedback('No hay reporte generado para enviar.', 'error'); return; }
+    this.setState({ reportSendBusy:true });
+    this._setReportSendFeedback('Generando reporte para adjuntar…', 'info');
+    try {
+      const archivo = fmt==='pptx' ? this._writeReportPDFPresent(R, { returnData:true }) : this._writeReportPDF(R, { returnData:true });
+      if (!archivo || !archivo.base64) throw new Error('No fue posible generar el archivo.');
+      this._setReportSendFeedback('Enviando correo…', 'info');
+      const res = await fetch('/DashboardProyectos/EnviarReporte', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'RequestVerificationToken': this.REPORT_CSRF },
+        body: JSON.stringify({
+          clavePem: 'ReporteTerritorial',
+          formato: fmt,
+          archivoBase64: archivo.base64,
+          nombreArchivo: this._reportFileName(fmt),
+          usuarioIds: ids,
+          mensajeAdicional: this.state.reportSendMsg || ''
+        })
+      });
+      let data = {}; try { data = await res.json(); } catch(_e){}
+      if (res.ok && data.ok) {
+        this._setReportSendFeedback(data.mensaje || 'Reporte enviado.', 'ok');
+        this.setState({ reportSendSel:{} });
+        setTimeout(() => this.onCloseReportSend(), 1800);
+      } else {
+        this._setReportSendFeedback(data.mensaje || 'No fue posible enviar el reporte.', 'error');
+      }
+    } catch (e) {
+      this._setReportSendFeedback('Ocurrió un error al enviar. Intenta nuevamente.', 'error');
+    } finally {
+      this.setState({ reportSendBusy:false });
+    }
+  }
   exportReportPDF = () => {
     const R = this._report; if (!R) return;
     // El mapa se captura con el ENCUADRE ACTIVO del usuario (su zoom y posición actuales),
@@ -3104,7 +3472,17 @@ class Component extends DCLogic {
       finally { this.setState({ blocking:null }); }
     }, 250);
   };
-  _writeReportPDF(R){
+  exportReportPDFPresent = () => {
+    const R = this._report; if (!R) return;
+    this.setState({ blocking:{ label:'Componiendo reporte 16:9…' } });
+    setTimeout(() => {
+      try { this._writeReportPDFPresent(R); }
+      catch(e) { this._toast('Error al generar el PDF 16:9: '+(e.message||e)); }
+      finally { this.setState({ blocking:null }); }
+    }, 250);
+  };
+  _writeReportPDF(R, opts){
+    const O = opts || {};
     const J = window.jspdf && window.jspdf.jsPDF; if (!J) { this._toast('Preparando módulo PDF…'); return; }
     const doc = new J({ unit:'pt', format:'letter' });
     const W=612, H=792, M=46; let y=56;
@@ -3119,9 +3497,12 @@ class Component extends DCLogic {
     doc.setDrawColor(224,161,46); doc.setLineWidth(1.4); doc.line(M,y,M+150,y); y+=26;
     const toc = [['01','Zona evaluada y mapa del análisis'],['02','Indicadores del radio analizado']]
       .concat(R.sections.map((s,i)=>[String(i+3).padStart(2,'0'), s.title]));
+    const tocRows = [];
     toc.forEach(t=>{
+      const rowY = y;
       doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(t[0], M, y);
       doc.setTextColor(28,27,26); doc.setFont('helvetica','normal'); doc.setFontSize(12); doc.text(t[1], M+34, y);
+      tocRows.push({ key:t[0], y:rowY, title:t[1] });
       doc.setDrawColor(236,232,226); doc.setLineWidth(.8); doc.line(M, y+8, W-M, y+8);
       y+=26;
     });
@@ -3159,15 +3540,21 @@ class Component extends DCLogic {
     y+=8;
     // Métricas
     const cols=3, cw=(W-M*2-16)/cols;
-    R.metrics.slice(0,6).forEach((mt,i)=>{ const cx=M+(i%cols)*(cw+8), cy=y+Math.floor(i/cols)*46;
-      doc.setFillColor(250,248,245); doc.rect(cx,cy,cw,38,'F'); doc.setFillColor(155,34,71); doc.rect(cx,cy,3,38,'F');
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(6.8); doc.text(String(mt.label).toUpperCase().slice(0,34), cx+9, cy+13);
-      doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.text(String(mt.value), cx+9, cy+31); });
-    y += Math.ceil(Math.min(R.metrics.length,6)/cols)*46+16;
+    R.metrics.slice(0,6).forEach((mt,i)=>{ const cx=M+(i%cols)*(cw+8), cy=y+Math.floor(i/cols)*58;
+      doc.setFillColor(255,255,255); doc.rect(cx,cy,cw,50,'F');
+      doc.setDrawColor(236,232,226); doc.setLineWidth(.9); doc.rect(cx,cy,cw,50);
+      doc.setFillColor(224,161,46); doc.rect(cx,cy,cw,3,'F');
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(6.9); doc.text(String(mt.label).toUpperCase().slice(0,34), cx+9, cy+15);
+      doc.setTextColor(155,34,71); doc.setFont('times','bold'); doc.setFontSize(17); doc.text(String(mt.value), cx+9, cy+34);
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(6.8); doc.text(this._clipText(doc, String(mt.sub||''), cw-18), cx+9, cy+45);
+    });
+    y += Math.ceil(Math.min(R.metrics.length,6)/cols)*58+14;
     // Secciones
     const hexRgb = (h) => { const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(h||'#9B2247'); return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[155,34,71]; };
+    const secStartPageByKey = {};
     R.sections.forEach(sec => {
       guard(90);
+      secStartPageByKey[sec.key] = doc.getNumberOfPages();
       const [cr,cg,cb] = hexRgb(sec.color);
       doc.setFillColor(cr,cg,cb); doc.roundedRect(M, y-8.5, 11, 11, 2.5, 2.5, 'F');
       doc.setTextColor(cr,cg,cb); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text(String(sec.kicker).toUpperCase(), M+17, y); y+=15;
@@ -3175,31 +3562,233 @@ class Component extends DCLogic {
       doc.setDrawColor(224,161,46); doc.setLineWidth(1.2); doc.line(M,y,M+150,y); y+=13;
       doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
       doc.splitTextToSize(sec.intro, W-M*2).forEach(t => { doc.text(t, M, y); y+=11; }); y+=4;
-      const drawTable = (tb) => {
+      const drawTable = (tb, isGold) => {
         guard(40);
         // Posiciones de columna genéricas: la 1ª columna es ancha (nombre), el resto equidistantes
         const n=tb.head.length, tw=W-M*2, first=(n>=5?0.30:0.42);
         const xs=[M]; for(let i=1;i<n;i++) xs.push(M + tw*(first + (1-first)*(i-1)/(n-1)));
-        doc.setFillColor(155,34,71); doc.rect(M,y-9,W-M*2,14,'F');
-        doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
-        tb.head.forEach((h,i)=>doc.text(String(h), xs[i]+4, y+1)); y+=14;
+        const isNumLike = (v) => {
+          const s = String(v==null?'':v).trim();
+          return /^[\d\s.,%+-]+(?:\s?(?:MW|MVA|kV|km|m2|ha|USD|MXN))?$/i.test(s);
+        };
+        const hr = isGold ? [224,161,46] : [155,34,71];
+        doc.setDrawColor(hr[0],hr[1],hr[2]); doc.setLineWidth(2.1); doc.line(M, y+2, W-M, y+2);
+        doc.setTextColor(hr[0],hr[1],hr[2]); doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setCharSpace(.35);
+        tb.head.forEach((h,i)=>{
+          const right = i<n-1 ? xs[i+1]-6 : (W-M);
+          const maxW = Math.max(18, right - (xs[i]+4));
+          doc.text(this._clipText(doc, String(h), maxW), xs[i]+4, y-2);
+        });
+        doc.setCharSpace(0);
+        y+=12;
         tb.rows.forEach((r,ri)=>{ guard(14); if(ri%2===1){ doc.setFillColor(250,248,245); doc.rect(M,y-9,W-M*2,13,'F'); }
-          doc.setTextColor(28,27,26); doc.setFont('helvetica','normal'); doc.setFontSize(8);
-          r.forEach((c,i)=>doc.text(String(c).slice(0, i===0?(n>=5?36:44):(n>=5?16:20)), xs[i]+4, y)); y+=13; });
+          doc.setTextColor(28,27,26); doc.setFontSize(8);
+          r.forEach((c,i)=>{
+            const right = i<n-1 ? xs[i+1]-6 : (W-M);
+            const maxW = Math.max(16, right - (xs[i]+4));
+            const isNum = i>0 && isNumLike(c);
+            doc.setFont(isNum ? 'courier' : 'helvetica', isNum ? 'bold' : 'normal');
+            if (isNum) doc.text(this._clipText(doc, String(c), maxW), right-2, y, { align:'right' });
+            else doc.text(this._clipText(doc, String(c), maxW), xs[i]+4, y);
+          });
+          y+=13;
+          doc.setDrawColor(240,236,230); doc.setLineWidth(.6); doc.line(M, y-8, W-M, y-8);
+        });
         y+=8;
       };
-      if (sec.hasTable) drawTable(sec.table);
-      if (sec.hasTable2) drawTable(sec.table2);
+      if (sec.hasTable) drawTable(sec.table, false);
+      if (sec.hasTable2) drawTable(sec.table2, true);
       if (sec.hasRows) sec.rows.forEach(r => { guard(14); doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.text(String(r[0]), M, y); doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.text(String(r[1]), M+190, y); y+=13; });
       if (sec.hasChips) { guard(24); doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.splitTextToSize('Identificados: '+sec.chips.join(' · '), W-M*2).forEach(t=>{ guard(11); doc.text(t, M, y); y+=11; }); }
       y+=14;
     });
-    doc.setTextColor(154,149,142); doc.setFontSize(7.5); doc.text('gob.mx/sener · DGMESNIE · CENACE · CFE · Cifras sujetas a verificación en campo', M, H-30);
+
+    // Completa el índice con navegación interna (click en título y número de página).
+    const tocPageMap = { '01': 3, '02': 3 };
+    R.sections.forEach((s, i) => { tocPageMap[String(i+3).padStart(2,'0')] = secStartPageByKey[s.key] || 3; });
+    doc.setPage(2);
+    tocRows.forEach(row => {
+      const pg = tocPageMap[row.key] || 3;
+      doc.setTextColor(111,107,102);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(11);
+      doc.text(String(pg), W - M, row.y, { align:'right' });
+      doc.link(M+32, row.y-12, (W-M) - (M+32), 16, { pageNumber: pg });
+      doc.link(W - M - 20, row.y-12, 20, 16, { pageNumber: pg });
+    });
+
     // ── CONTRAPORTADA institucional ──
     doc.addPage('letter','portrait'); this._pdfBack(doc, W, H, false);
+    this._pdfApplyFooters(doc, W, H, false, [1, doc.getNumberOfPages()]);
+    if (O.returnData) return { base64: doc.output('datauristring') };
     doc.save('DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.pdf');
     this._toast('Reporte PDF exportado');
   };
+  _writeReportPDFPresent(R, opts){
+    const O = opts || {};
+    const J = window.jspdf && window.jspdf.jsPDF; if (!J) { this._toast('Preparando módulo PDF…'); return; }
+    const doc = new J({ unit:'pt', format:[960,540], orientation:'landscape' });
+    const W=960, H=540, M=40;
+
+    // Portada institucional
+    this._pdfCover(doc, W, H, true);
+
+    // Índice navegable
+    doc.addPage([960,540],'landscape');
+    let y=62;
+    doc.setFillColor(155,34,71); doc.rect(0,0,W,7,'F');
+    doc.setFillColor(224,161,46); doc.rect(W*0.62,0,W*0.38,7,'F');
+    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('REPORTE TERRITORIAL · ÍNDICE', M, y);
+    y+=24;
+    doc.setTextColor(28,27,26); doc.setFont('times','normal'); doc.setFontSize(28); doc.text('Contenido', M, y);
+    y+=18; doc.setDrawColor(224,161,46); doc.setLineWidth(1.2); doc.line(M,y,M+180,y); y+=20;
+    const toc = [['01','Zona evaluada y mapa del análisis'],['02','Indicadores del radio analizado']]
+      .concat(R.sections.map((s,i)=>[String(i+3).padStart(2,'0'), s.title]));
+    const tocRows = [];
+    toc.forEach(t => {
+      const rowY = y;
+      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(t[0], M, y);
+      doc.setTextColor(28,27,26); doc.setFont('helvetica','normal'); doc.setFontSize(12.5); doc.text(t[1], M+40, y);
+      doc.setDrawColor(236,232,226); doc.setLineWidth(.8); doc.line(M, y+8, W-M, y+8);
+      tocRows.push({ key:t[0], y:rowY });
+      y+=24;
+    });
+
+    // Página de resumen (mapa + metadatos + métricas)
+    doc.addPage([960,540],'landscape');
+    const summaryPage = doc.getNumberOfPages();
+    y=40;
+    doc.setFillColor(155,34,71); doc.rect(0,0,W,7,'F');
+    doc.setFillColor(224,161,46); doc.rect(W*0.62,0,W*0.38,7,'F');
+    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.text('DIRECCIÓN GENERAL DE METODOLOGÍA Y ESTADÍSTICAS DEL SNIE (DGMESNIE)', M, y);
+    y+=24;
+    doc.setTextColor(28,27,26); doc.setFont('times','normal'); doc.setFontSize(24); doc.text('Reporte de análisis territorial', M, y);
+    y+=14;
+    doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.text('Evaluación de sitio estratégico · '+R.date, M, y);
+
+    const usedMh = this._fitMap(doc, M, 92, 560, 300);
+    if(!usedMh){ doc.setTextColor(155,34,71); doc.setFontSize(10); doc.text('(Mapa no exportable con base Satélite — usa Color/Claro/Oscuro)', M, 120); }
+
+    const rx=620, rw=W-rx-M;
+    let ry=98;
+    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen de zona', rx, ry);
+    ry+=14;
+    (R.meta||[]).slice(0,6).forEach(r => {
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8.8); doc.text(String(r[0]), rx, ry);
+      doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.text(String(r[1]), rx+130, ry);
+      ry+=14;
+    });
+    ry+=6;
+    (R.metrics||[]).slice(0,6).forEach((m,i) => {
+      doc.setFillColor(255,255,255); doc.rect(rx, ry-11, rw, 42, 'F');
+      doc.setDrawColor(236,232,226); doc.setLineWidth(.9); doc.rect(rx, ry-11, rw, 42);
+      doc.setFillColor(224,161,46); doc.rect(rx, ry-11, rw, 3, 'F');
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.text(String(m.label).toUpperCase().slice(0,34), rx+8, ry+2);
+      doc.setTextColor(155,34,71); doc.setFont('times','bold'); doc.setFontSize(16); doc.text(String(m.value), rx+8, ry+19);
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(7.2); doc.text(this._clipText(doc, String(m.sub||''), rw-16), rx+8, ry+31);
+      ry+=46;
+    });
+
+    // Secciones como láminas
+    const secStartPageByKey = {};
+    const split = (txt, max) => doc.splitTextToSize(String(txt||''), max);
+    (R.sections||[]).forEach((sec) => {
+      doc.addPage([960,540],'landscape');
+      const p = doc.getNumberOfPages();
+      secStartPageByKey[sec.key] = p;
+      let sy=44;
+      doc.setFillColor(155,34,71); doc.rect(0,0,W,7,'F');
+      doc.setFillColor(224,161,46); doc.rect(W*0.62,0,W*0.38,7,'F');
+      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text(String(sec.kicker||'SECCIÓN').toUpperCase(), M, sy);
+      sy+=20;
+      doc.setTextColor(28,27,26); doc.setFont('times','normal'); doc.setFontSize(24); doc.text(sec.title||'Sección', M, sy);
+      sy+=14; doc.setDrawColor(224,161,46); doc.setLineWidth(1.2); doc.line(M,sy,M+180,sy); sy+=14;
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(10);
+      split(sec.intro||'', W - M*2).slice(0,4).forEach(t => { doc.text(t, M, sy); sy+=13; });
+      sy+=8;
+
+      const drawPamSectionTable = (tb, isGold) => {
+        const head = (tb && tb.head) || [];
+        const rows = (tb && tb.rows) || [];
+        const n = Math.max(1, head.length);
+        const tw = W - M*2;
+        const first = n >= 5 ? 0.34 : 0.42;
+        const xs = [M];
+        for(let i=1;i<n;i++) xs.push(M + tw*(first + (1-first)*(i-1)/(n-1)));
+        const isNumLike = (v) => {
+          const s = String(v==null?'':v).trim();
+          return /^[\d\s.,%+-]+(?:\s?(?:MW|MVA|kV|km|m2|ha|USD|MXN))?$/i.test(s);
+        };
+        const hr = isGold ? [224,161,46] : [155,34,71];
+        doc.setDrawColor(hr[0],hr[1],hr[2]); doc.setLineWidth(2); doc.line(M, sy+2, M+tw, sy+2);
+        doc.setTextColor(hr[0],hr[1],hr[2]); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setCharSpace(.35);
+        head.forEach((h,i)=>{
+          const right = i<n-1 ? xs[i+1]-6 : (M+tw);
+          const maxW = Math.max(20, right - (xs[i]+4));
+          doc.text(this._clipText(doc, String(h), maxW), xs[i]+4, sy-2);
+        });
+        doc.setCharSpace(0);
+        sy+=14;
+        rows.slice(0,14).forEach((r,ri)=>{
+          if(ri%2===1){ doc.setFillColor(250,248,245); doc.rect(M, sy-10, tw, 14, 'F'); }
+          doc.setTextColor(28,27,26); doc.setFontSize(8);
+          r.forEach((c,i)=>{
+            const right = i<n-1 ? xs[i+1]-6 : (M+tw);
+            const maxW = Math.max(18, right - (xs[i]+4));
+            const isNum = i>0 && isNumLike(c);
+            doc.setFont(isNum ? 'courier' : 'helvetica', isNum ? 'bold' : 'normal');
+            if (isNum) doc.text(this._clipText(doc, String(c), maxW), right-2, sy, { align:'right' });
+            else doc.text(this._clipText(doc, String(c), maxW), xs[i]+4, sy);
+          });
+          doc.setDrawColor(240,236,230); doc.setLineWidth(.6); doc.line(M, sy+4, M+tw, sy+4);
+          sy+=14;
+        });
+      };
+
+      if (sec.hasTable && sec.table) {
+        const head = sec.table.head || [];
+        const rows = sec.table.rows || [];
+        drawPamSectionTable({ head, rows }, false);
+      }
+
+      if (sec.hasTable2 && sec.table2) {
+        const head = sec.table2.head || [];
+        const rows = sec.table2.rows || [];
+        sy += 4;
+        drawPamSectionTable({ head, rows }, true);
+      }
+
+      if (sec.hasRows && sec.rows) {
+        sy+=4;
+        sec.rows.slice(0,12).forEach(r => {
+          doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.text(String(r[0]), M, sy);
+          doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.text(String(r[1]), M+250, sy);
+          sy+=13;
+        });
+      }
+    });
+
+    // Contraportada
+    doc.addPage([960,540],'landscape');
+    this._pdfBack(doc, W, H, true);
+    this._pdfApplyFooters(doc, W, H, true, [1, doc.getNumberOfPages()]);
+
+    // Completa índice con páginas y links internos
+    const tocMap = { '01': summaryPage, '02': summaryPage };
+    (R.sections||[]).forEach((s,i)=>{ tocMap[String(i+3).padStart(2,'0')] = secStartPageByKey[s.key] || summaryPage; });
+    doc.setPage(2);
+    tocRows.forEach(row => {
+      const pg = tocMap[row.key] || summaryPage;
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(10.5);
+      doc.text(String(pg), W - M, row.y, { align:'right' });
+      doc.link(M+36, row.y-12, (W-M) - (M+36), 16, { pageNumber: pg });
+      doc.link(W-M-18, row.y-12, 18, 16, { pageNumber: pg });
+    });
+
+    if (O.returnData) return { base64: doc.output('datauristring') };
+    doc.save('DGMESNIE_reporte_territorial_16x9_'+new Date().toISOString().slice(0,10)+'.pdf');
+    this._toast('Reporte PDF 16:9 exportado');
+  }
   // Filas del análisis de zona (si se ejecutó) — alimentan Excel, PDF y PNG
   _anaRows(){
     const A=this.state.analysis;
@@ -3211,7 +3800,7 @@ class Component extends DCLogic {
 
   // Compone el mapa (tiles + capas vectoriales) en un canvas a alta resolución
   _captureMap(scale, overlays){
-    const mapEl = (this.mapRef && this.mapRef.current) || (this.refs && this.refs.mapRef) || document.getElementById('dg-map-container') || document.querySelector('.leaflet-container'); const w=mapEl.clientWidth, h=mapEl.clientHeight;
+    const mapEl = this.mapRef.current; const w=mapEl.clientWidth, h=mapEl.clientHeight;
     const cv=document.createElement('canvas'); cv.width=Math.round(w*scale); cv.height=Math.round(h*scale);
     const ctx=cv.getContext('2d'); ctx.scale(scale,scale);
     ctx.fillStyle='#e8e4de'; ctx.fillRect(0,0,w,h);
@@ -3379,6 +3968,25 @@ class Component extends DCLogic {
     return this._pdfLetter(jsPDF);
   };
   _clipText(doc,t,maxW){ t=String(t); if(doc.getTextWidth(t)<=maxW) return t; while(t.length>1 && doc.getTextWidth(t+'…')>maxW) t=t.slice(0,-1); return t+'…'; }
+  _pdfFooter(doc, W, H, landscape, page, total){
+    const pad = landscape ? 40 : 46;
+    const fy = H - (landscape ? 16 : 18);
+    const lineY = fy - (landscape ? 10 : 11);
+    doc.setDrawColor(236,232,226); doc.setLineWidth(.9); doc.line(pad, lineY, W-pad, lineY);
+    doc.setTextColor(154,149,142); doc.setFont('helvetica','normal'); doc.setFontSize(landscape ? 7.5 : 7.2);
+    doc.text('gob.mx/sener · DGMESNIE · CENACE · CFE · Cifras sujetas a verificación en campo', pad, fy);
+    doc.setFont('helvetica','bold');
+    doc.text('Página '+page+' de '+total, W-pad, fy, { align:'right' });
+  }
+  _pdfApplyFooters(doc, W, H, landscape, skipPages){
+    const total = doc.getNumberOfPages();
+    const skip = new Set(skipPages || []);
+    for(let p=1; p<=total; p++){
+      if (skip.has(p)) continue;
+      doc.setPage(p);
+      this._pdfFooter(doc, W, H, landscape, p, total);
+    }
+  }
 
   // Precarga logos institucionales como dataURL (para portada/contraportada del PDF)
   _preloadLogos = () => {
@@ -3837,9 +4445,12 @@ class Component extends DCLogic {
       reportOpen: !!S.reportOpen,
       onCloseReport: this.onCloseReport, onReportPDF: this.exportReportPDF, onOpenReport: this.onOpenReport,
       // Exportaciones adicionales desde el reporte + marca de agua opcional (logo SENER + fecha)
-      onReportPdfPpt: () => this.exportPDF('present'),
+      onReportPdfPpt: this.exportReportPDFPresent,
       onReportXLSX: this.exportXLSX,
       onReportPNG: () => this.doExportPNG(),
+      onOpenReportSend: this.onOpenReportSend,
+      onCloseReportSend: this.onCloseReportSend,
+      onSubmitReportSend: this.onSubmitReportSend,
       onWmToggle: () => { const wmOn = !S.wmOn; this.setState({ wmOn }); this._toast(wmOn ? 'Marca de agua activada: logo SENER + fecha en el mapa exportado' : 'Marca de agua desactivada'); },
       wmBtnStyle: 'display:flex;align-items:center;gap:6px;padding:9px 11px;border:1px solid '+(S.wmOn?'#E0A12E':'rgba(255,255,255,.28)')+';background:'+(S.wmOn?'rgba(224,161,46,.22)':'none')+';color:'+(S.wmOn?'#E0A12E':'rgba(255,255,255,.9)')+';border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;flex:none;white-space:nowrap',
       reportBtnVisible: !!(S.selected && S.selected.isAnaSummary && S.analysis.ranKeys.length),
@@ -3848,6 +4459,44 @@ class Component extends DCLogic {
       reportMetrics: ((this._report||{}).metrics || []).map(m => ({ ...m, op: m.dim ? '.62' : '1', vcolor: m.dim ? '#9A958E' : '#1c1b1a', sub: m.sub||'' })),
       reportSections: ((this._report||{}).sections||[]).map(sec => ({ ...sec,
         rowItems: (sec.rows||[]).map(r => ({ label:r[0], value:r[1], color: r[1]==='no analizada' ? '#9A958E' : '#1c1b1a' })) })),
+      reportSendOpen: !!S.reportSendOpen,
+      reportSendFmtPdf: S.reportSendFmt!=='pptx',
+      reportSendFmtPpt: S.reportSendFmt==='pptx',
+      reportSendReady: !!(S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale),
+      reportSendDisabled: !(S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale),
+      reportSendTitle: (S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale)
+        ? 'Enviar reporte por correo'
+        : 'Ejecuta una corrida de análisis para habilitar el envío',
+      reportSendTopBtnStyle: (() => {
+        const on = !!(S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale);
+        return 'display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid '+(on?'#9B2247':'#D8D3CC')+';background:'+(on?'#fff':'#F2F0ED')+';color:'+(on?'#9B2247':'#9A958E')+';border-radius:8px;font-size:11.5px;font-weight:700;cursor:'+(on?'pointer':'not-allowed')+';font-family:inherit';
+      })(),
+      onSendFmtPdf: () => this.setState({ reportSendFmt:'pdf' }),
+      onSendFmtPpt: () => this.setState({ reportSendFmt:'pptx' }),
+      reportSendQuery: S.reportSendQuery||'',
+      onSendQueryInput: (e) => this.setState({ reportSendQuery:e.target.value||'' }),
+      reportSendMsg: S.reportSendMsg||'',
+      onSendMsgInput: (e) => this.setState({ reportSendMsg:e.target.value||'' }),
+      reportSendBusy: !!S.reportSendBusy,
+      reportSendBtnLabel: S.reportSendBusy ? 'Enviando…' : 'Enviar reporte',
+      reportSendFeedbackOn: !!S.reportSendFeedback,
+      reportSendFeedback: S.reportSendFeedback || '',
+      reportSendFeedbackClass: S.reportSendFeedbackType==='ok' ? 'is-ok' : (S.reportSendFeedbackType==='error' ? 'is-error' : 'is-info'),
+      reportSendRecipients: (() => {
+        const q = (S.reportSendQuery||'').trim().toLowerCase();
+        return this.REPORT_RECIPIENTS
+          .filter(u => !q || String(u.Nombre||'').toLowerCase().includes(q) || String(u.Correo||'').toLowerCase().includes(q))
+          .map(u => ({
+            id:u.IdUsuario,
+            nombre:u.Nombre||'Sin nombre',
+            detalle:(u.Correo||'') + (u.Cargo ? (' · '+u.Cargo) : ''),
+            ini: (String(u.Nombre||'?').trim().charAt(0) || '?').toUpperCase(),
+            on: !!S.reportSendSel[u.IdUsuario],
+            onToggle: () => this.setState({ reportSendSel:{ ...this.state.reportSendSel, [u.IdUsuario]: !this.state.reportSendSel[u.IdUsuario] } })
+          }));
+      })(),
+      reportSendHasRecipients: this.REPORT_RECIPIENTS.length>0,
+      reportSendNoRecipients: this.REPORT_RECIPIENTS.length===0,
       // "Volver al resumen del análisis": visible cuando hay un resumen guardado y se está viendo otro elemento
       anaBackVisible: !!(this._anaSummary && S.selected && !S.selected.isAnaSummary),
       onAnaBack: () => { this._clearHighlight(); this.setState({ selected:this._anaSummary }); if (this._anaCircle) { try { this.map.fitBounds(this._anaCircle.getBounds().pad(0.25), { animate:true }); } catch(e){} } },
@@ -3913,6 +4562,8 @@ class Component extends DCLogic {
     <script>
         // Definir la ruta base para assets y recursos estáticos
         window.__tableroBaseUrl = "@Url.Content("~/tablero")";
+    window.__reportDestinatarios = @Html.Raw(reportDestinatariosJson);
+    window.__reportCsrf = "@antiForgeryToken";
     </script>
     <script src="~/tablero/support.js"></script>
 }

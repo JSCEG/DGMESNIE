@@ -3,7 +3,6 @@ using NSIE.Models;
 using NSIE.Servicios;
 using Newtonsoft.Json;
 using Microsoft.Data.SqlClient;
-using System.Security.Claims;
 
 namespace NSIE.Controllers
 {
@@ -35,126 +34,6 @@ namespace NSIE.Controllers
         public async Task<IActionResult> Seguimiento()
         {
             return View(await BuildSeguimientoViewModelAsync());
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> CrearAsunto(ReunionesCrearAsuntoInput input)
-        {
-            if (!ModelState.IsValid)
-            {
-                TempData["ReunionesError"] = "No fue posible crear el asunto. Revisa los campos obligatorios.";
-                return RedirectToAction(nameof(Seguimiento));
-            }
-
-            try
-            {
-                await _repositorioReuniones.CrearAsuntoAsync(input, GetCurrentUserId(), GetCurrentUserName());
-                TempData["ReunionesSuccess"] = "Asunto creado correctamente.";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al crear asunto de reuniones.");
-                TempData["ReunionesError"] = "No fue posible crear el asunto.";
-            }
-
-            return RedirectToAction(nameof(Seguimiento));
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ActualizarEstatus(ReunionesActualizarEstatusInput input)
-        {
-            if (!ModelState.IsValid)
-            {
-                TempData["ReunionesError"] = "No fue posible actualizar el estatus del asunto.";
-                return RedirectToAction(nameof(Seguimiento));
-            }
-
-            try
-            {
-                await _repositorioReuniones.ActualizarEstatusAsync(input, GetCurrentUserId(), GetCurrentUserName());
-                TempData["ReunionesSuccess"] = "Seguimiento actualizado correctamente.";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al actualizar estatus de asunto de reuniones.");
-                TempData["ReunionesError"] = "No fue posible actualizar el asunto.";
-            }
-
-            return RedirectToAction(nameof(Seguimiento));
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> AgregarComentario(ReunionesAgregarComentarioInput input)
-        {
-            if (!ModelState.IsValid)
-            {
-                TempData["ReunionesError"] = "No fue posible agregar el comentario.";
-                return RedirectToAction(nameof(Seguimiento));
-            }
-
-            try
-            {
-                await _repositorioReuniones.AgregarComentarioAsync(input, GetCurrentUserId(), GetCurrentUserName());
-                TempData["ReunionesSuccess"] = "Comentario agregado correctamente.";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al agregar comentario de asunto de reuniones.");
-                TempData["ReunionesError"] = "No fue posible agregar el comentario.";
-            }
-
-            return RedirectToAction(nameof(Seguimiento));
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> MarcarEnvioMonica(ReunionesMarcarEnvioMonicaInput input)
-        {
-            if (!ModelState.IsValid)
-            {
-                TempData["ReunionesError"] = "No fue posible marcar el envío a Mónica.";
-                return RedirectToAction(nameof(Seguimiento));
-            }
-
-            try
-            {
-                await _repositorioReuniones.MarcarEnvioMonicaAsync(input, GetCurrentUserId(), GetCurrentUserName());
-                TempData["ReunionesSuccess"] = "Se marcó el envío a Mónica correctamente.";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al marcar envío a Mónica en reuniones.");
-                TempData["ReunionesError"] = "No fue posible marcar el envío a Mónica.";
-            }
-
-            return RedirectToAction(nameof(Seguimiento));
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> DesactivarAsunto(ReunionesDesactivarAsuntoInput input)
-        {
-            if (!ModelState.IsValid)
-            {
-                TempData["ReunionesError"] = "No fue posible desactivar el asunto.";
-                return RedirectToAction(nameof(Seguimiento));
-            }
-
-            try
-            {
-                await _repositorioReuniones.DesactivarAsuntoAsync(input.AsuntoId, GetCurrentUserId(), GetCurrentUserName());
-                TempData["ReunionesSuccess"] = "Asunto desactivado correctamente.";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al desactivar asunto de reuniones.");
-                TempData["ReunionesError"] = "No fue posible desactivar el asunto.";
-            }
-
-            return RedirectToAction(nameof(Seguimiento));
         }
 
         [HttpGet]
@@ -239,16 +118,15 @@ namespace NSIE.Controllers
                     Header = BuildSeguimientoHeader(),
                     Asuntos = asuntos,
                     TotalAsuntos = asuntos.Count,
-                    TotalAtendidos = asuntos.Count(EsAtendido),
-                    TotalPendientes = asuntos.Count(x => !EsAtendido(x)),
+                    TotalAtendidos = asuntos.Count(x => string.Equals(x.Semaforo, "Verde", StringComparison.OrdinalIgnoreCase)),
+                    TotalPendientes = asuntos.Count(x => string.Equals(x.Estatus, "Pendiente", StringComparison.OrdinalIgnoreCase)),
                     TotalPorVencer = asuntos.Count(x => string.Equals(x.Semaforo, "Amarillo", StringComparison.OrdinalIgnoreCase)),
                     TotalVencidos = asuntos.Count(x => string.Equals(x.Semaforo, "Rojo", StringComparison.OrdinalIgnoreCase)),
                     TotalPendientesEnvioMonica = asuntos.Count(x => string.Equals(x.AlertaEnvioMonica, "Pendiente de envío a Mónica", StringComparison.OrdinalIgnoreCase)),
                     Notes = new List<string>
                     {
                         "El tablero ya consume la vista y el procedimiento del esquema dgmesnie para mostrar seguimiento real.",
-                        "Cuando la carpeta proviene como clave histórica, el vínculo se construye automáticamente con la ruta base de SharePoint.",
-                        "Si existe semáforo manual en la tabla, el dashboard lo respeta por encima del cálculo automático por fechas."
+                        "Cuando la carpeta proviene como clave histórica, el vínculo se construye automáticamente con la ruta base de SharePoint."
                     }
                 };
             }
@@ -299,55 +177,9 @@ namespace NSIE.Controllers
                     },
                     order = new { step = 1, description = "Control operativo del seguimiento" },
                     context = "El objetivo es que el dashboard viva en el portal y SharePoint quede como repositorio documental vinculado por liga.",
-                    manualUrl = string.Empty
+                    manualUrl = "#"
                 })
             };
-        }
-
-        private static bool EsAtendido(ReunionesSeguimientoItem asunto)
-        {
-            if (string.Equals(asunto.Semaforo, "Verde", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            if (string.Equals(asunto.Estatus, "Atendido", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return !string.IsNullOrWhiteSpace(asunto.EstadoActual)
-                && asunto.EstadoActual.Contains("finalizado", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private int? GetCurrentUserId()
-        {
-            var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
-            if (string.IsNullOrEmpty(perfilJson)) return null;
-            try
-            {
-                var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
-                return perfil != null && int.TryParse(perfil.IdUsuario, out var id) ? id : null;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private string GetCurrentUserName()
-        {
-            var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
-            if (string.IsNullOrEmpty(perfilJson)) return "Usuario portal";
-            try
-            {
-                var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
-                return perfil?.Nombre ?? "Usuario portal";
-            }
-            catch
-            {
-                return "Usuario portal";
-            }
         }
     }
 }
