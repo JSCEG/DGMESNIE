@@ -60,7 +60,8 @@ namespace NSIE.Controllers
             if (input == null || string.IsNullOrWhiteSpace(input.ArchivoBase64) || input.UsuarioIds is not { Count: > 0 })
                 return BadRequest(new { ok = false, mensaje = "Selecciona al menos un destinatario y genera primero el archivo." });
 
-            var formato = string.Equals(input.Formato, "pptx", StringComparison.OrdinalIgnoreCase) ? "pptx" : "pdf";
+            var formato = string.Equals(input.Formato, "pdf16x9", StringComparison.OrdinalIgnoreCase) ? "pdf16x9" : "pdf";
+            var descripcionFormato = formato == "pdf16x9" ? "PDF horizontal 16:9" : "PDF tamaño carta";
             var clave = string.IsNullOrWhiteSpace(input.ClavePem) ? "ReporteTerritorial" : input.ClavePem.Trim();
 
             byte[] adjunto;
@@ -80,8 +81,8 @@ namespace NSIE.Controllers
                 return BadRequest(new { ok = false, mensaje = "El archivo está vacío o supera el límite de 25 MB." });
 
             var nombreArchivo = string.IsNullOrWhiteSpace(input.NombreArchivo)
-                ? $"DGMESNIE_reporte_territorial_{DateTime.Now:yyyy-MM-dd}.{formato}"
-                : (input.NombreArchivo.EndsWith($".{formato}", StringComparison.OrdinalIgnoreCase) ? input.NombreArchivo : $"{input.NombreArchivo}.{formato}");
+                ? $"DGMESNIE_reporte_territorial{(formato == "pdf16x9" ? "_16x9" : string.Empty)}_{DateTime.Now:yyyy-MM-dd}.pdf"
+                : (input.NombreArchivo.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? input.NombreArchivo : $"{input.NombreArchivo}.pdf");
 
             var destinatarios = await _pamService.ObtenerDestinatariosAsync();
             var seleccionados = destinatarios.Where(d => input.UsuarioIds.Contains(d.IdUsuario)).ToList();
@@ -102,7 +103,7 @@ namespace NSIE.Controllers
             {
                 try
                 {
-                    var cuerpo = ConstruirCorreoReporte(destino.Nombre, formato, remitente, remitenteCargo, input.MensajeAdicional);
+                    var cuerpo = ConstruirCorreoReporte(destino.Nombre, descripcionFormato, remitente, remitenteCargo, input.MensajeAdicional);
                     await _emailService.EnviarCorreo(
                         destino.Correo,
                         "Reporte territorial DGMESNIE",
@@ -126,7 +127,7 @@ namespace NSIE.Controllers
             return Ok(new { ok = true, mensaje });
         }
 
-        private static string ConstruirCorreoReporte(string nombreDestino, string formato, string remitente, string remitenteCargo, string mensajeAdicional)
+        private static string ConstruirCorreoReporte(string nombreDestino, string descripcionFormato, string remitente, string remitenteCargo, string mensajeAdicional)
         {
             var cargo = string.IsNullOrWhiteSpace(remitenteCargo) ? "Secretaría de Energía · DGMESNIE" : System.Net.WebUtility.HtmlEncode(remitenteCargo);
             var saludo = string.IsNullOrWhiteSpace(nombreDestino) ? "Estimada(o)" : $"Estimada(o) {System.Net.WebUtility.HtmlEncode(nombreDestino)}";
@@ -148,7 +149,7 @@ namespace NSIE.Controllers
     </p>
     {extra}
     <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
-      Encontrará el reporte adjunto en formato <strong>{formato.ToUpperInvariant()}</strong>, con índice navegable,
+      Encontrará el reporte adjunto en formato <strong>{System.Net.WebUtility.HtmlEncode(descripcionFormato)}</strong>, con índice navegable,
       métricas territoriales y trazabilidad de las capas analizadas.
     </p>
     <div style=""margin:20px 0;padding:14px 18px;border-left:4px solid #E0A12E;background:#faf8f5;color:#5f5954;font-size:13px"">

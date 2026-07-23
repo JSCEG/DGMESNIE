@@ -299,6 +299,25 @@
 
         .dg-report-footnote { border-top:1px solid var(--report-linea);padding-top:14px !important; }
 
+        /* Homologación del modal de envío (pam-envio-*): esta vista no tiene la clase
+           .pam-ficha-page, así que los tokens --pam-* de pam-ficha-presentacion.css no
+           existen aquí. Se declaran localmente para que el modal luzca consistente con
+           el sistema de diseño (antes el botón "Enviar" quedaba transparente por variables
+           sin resolver y sólo se veía al pasar el hover, que usa un color fijo). */
+        .pam-envio-modal {
+          --pam-guinda: #9B2247;
+          --pam-guinda-dark: #8E1F40;
+          --pam-dorado: #E0A12E;
+          --pam-tinta: #1c1b1a;
+          --pam-gris: #6F6B66;
+          --pam-gris-claro: #9A958E;
+          --pam-crema: #FAF8F5;
+          --pam-linea: #ECE8E2;
+          --pam-linea-suave: #F0ECE6;
+          --pam-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+          font-family: 'Noto Sans PAM', 'Noto Sans', sans-serif;
+        }
+
         @@media (max-width: 900px) {
           .dg-report-toolbar { grid-template-columns:auto 1fr;gap:8px;padding:9px 10px; }
           .dg-report-toolbar__identity { display:none; }
@@ -641,7 +660,7 @@
         <button onClick="{{ onDatasetsMenuToggle }}" style="display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;border:1px solid #1E9CB8;background:rgba(30,156,184,.06);color:#1E9CB8;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;justify-content:center;margin-bottom:2px" style-hover="background:rgba(30,156,184,.14)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"></path><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"></path></svg>
           Vincular Dataset Externo (BD)
-        </button>>
+        </button>
             <sc-if value="{{ anaNoMarker }}" hint-placeholder-val="{{ false }}">
               <div style="font-size:12px;color:#6F6B66;line-height:1.45;text-align:center;padding:2px 6px 0">Ubica un punto y consulta las capas territoriales alrededor (áreas naturales, pueblos indígenas, patrimonio, ductos…).</div>
             </sc-if>
@@ -1196,8 +1215,8 @@
         <div style="padding:14px 16px 0">
           <label class="pam-envio-label">Formato del archivo</label>
           <div class="pam-envio-formato">
-            <label><input type="radio" checked="{{ reportSendFmtPdf }}" onChange="{{ onSendFmtPdf }}" /><span><i class="fas fa-file-pdf"></i> PDF</span></label>
-            <label><input type="radio" checked="{{ reportSendFmtPpt }}" onChange="{{ onSendFmtPpt }}" /><span><i class="fas fa-file-powerpoint"></i> PDF 16:9</span></label>
+            <label><input type="radio" checked="{{ reportSendFmtPdf }}" onChange="{{ onSendFmtPdf }}" /><span><i class="fas fa-file-pdf"></i> PDF carta</span></label>
+            <label><input type="radio" checked="{{ reportSendFmtPpt }}" onChange="{{ onSendFmtPpt }}" /><span><i class="fas fa-file-pdf"></i> PDF 16:9</span></label>
           </div>
 
           <label class="pam-envio-label" for="dg-envio-buscar">Destinatarios <span>(uno o más)</span></label>
@@ -2462,8 +2481,10 @@ class Component extends DCLogic {
   }
   _dotIcon(color){
     const L = window.L;
+    // SVG (no CSS puro): _captureMap sólo puede reconstruir íconos con contenido vectorial;
+    // un <span> con border-radius no deja rastro capturable y desaparecía en PDF/PNG.
     return L.divIcon({ className:'', iconSize:[14,14], iconAnchor:[7,7], popupAnchor:[0,-7],
-      html:'<span style="display:block;width:14px;height:14px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)"></span>' });
+      html:'<svg width="14" height="14" viewBox="0 0 14 14" style="filter:drop-shadow(0 1px 2.5px rgba(0,0,0,.4))"><circle cx="7" cy="7" r="6" fill="'+color+'" stroke="#fff" stroke-width="2"/></svg>' });
   }
   _featName(p){
     if(!p) return '';
@@ -3418,21 +3439,21 @@ class Component extends DCLogic {
   onCloseReportSend = () => this.setState({ reportSendOpen:false, reportSendBusy:false, reportSendFeedback:'', reportSendFeedbackType:'' });
   _setReportSendFeedback(msg, type){ this.setState({ reportSendFeedback: msg||'', reportSendFeedbackType: type||'' }); }
   _reportFileName(fmt){
-    const f = fmt==='pptx' ? 'pptx' : 'pdf';
-    const base = f==='pptx' ? 'DGMESNIE_reporte_territorial_16x9_' : 'DGMESNIE_reporte_territorial_';
-    return base + new Date().toISOString().slice(0,10) + '.' + f;
+    const f = fmt==='pdf16x9' ? 'pdf16x9' : 'pdf';
+    const base = f==='pdf16x9' ? 'DGMESNIE_reporte_territorial_16x9_' : 'DGMESNIE_reporte_territorial_';
+    return base + new Date().toISOString().slice(0,10) + '.pdf';
   }
   onSubmitReportSend = async () => {
     if (this.state.reportSendBusy) return;
     const ids = Object.keys(this.state.reportSendSel).filter(k => this.state.reportSendSel[k]).map(k => +k).filter(n => Number.isFinite(n));
     if (!ids.length) { this._setReportSendFeedback('Selecciona al menos un destinatario.', 'error'); return; }
-    const fmt = this.state.reportSendFmt==='pptx' ? 'pptx' : 'pdf';
+    const fmt = this.state.reportSendFmt==='pdf16x9' ? 'pdf16x9' : 'pdf';
     const R = this._report;
     if (!R) { this._setReportSendFeedback('No hay reporte generado para enviar.', 'error'); return; }
     this.setState({ reportSendBusy:true });
     this._setReportSendFeedback('Generando reporte para adjuntar…', 'info');
     try {
-      const archivo = fmt==='pptx' ? this._writeReportPDFPresent(R, { returnData:true }) : this._writeReportPDF(R, { returnData:true });
+      const archivo = fmt==='pdf16x9' ? this._writeReportPDFPresent(R, { returnData:true }) : this._writeReportPDF(R, { returnData:true });
       if (!archivo || !archivo.base64) throw new Error('No fue posible generar el archivo.');
       this._setReportSendFeedback('Enviando correo…', 'info');
       const res = await fetch('/DashboardProyectos/EnviarReporte', {
@@ -3481,311 +3502,570 @@ class Component extends DCLogic {
       finally { this.setState({ blocking:null }); }
     }, 250);
   };
-  _writeReportPDF(R, opts){
-    const O = opts || {};
-    const J = window.jspdf && window.jspdf.jsPDF; if (!J) { this._toast('Preparando módulo PDF…'); return; }
-    const doc = new J({ unit:'pt', format:'letter' });
-    const W=612, H=792, M=46; let y=56;
-    const guard = (need) => { if (y > H-64-(need||0)) { doc.addPage(); y=56; } };
-    // ── PORTADA institucional ──
-    this._pdfCover(doc, W, H, false);
-    // ── ÍNDICE ──
-    doc.addPage('letter','portrait'); y=64;
-    doc.setFillColor(155,34,71); doc.rect(0,0,W,6,'F');
-    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.text('REPORTE DE ANÁLISIS TERRITORIAL · DGMESNIE', M, y); y+=24;
-    doc.setTextColor(28,27,26); doc.setFontSize(22); doc.text('Contenido', M, y); y+=10;
-    doc.setDrawColor(224,161,46); doc.setLineWidth(1.4); doc.line(M,y,M+150,y); y+=26;
-    const toc = [['01','Zona evaluada y mapa del análisis'],['02','Indicadores del radio analizado']]
-      .concat(R.sections.map((s,i)=>[String(i+3).padStart(2,'0'), s.title]));
-    const tocRows = [];
-    toc.forEach(t=>{
-      const rowY = y;
-      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(t[0], M, y);
-      doc.setTextColor(28,27,26); doc.setFont('helvetica','normal'); doc.setFontSize(12); doc.text(t[1], M+34, y);
-      tocRows.push({ key:t[0], y:rowY, title:t[1] });
-      doc.setDrawColor(236,232,226); doc.setLineWidth(.8); doc.line(M, y+8, W-M, y+8);
-      y+=26;
+  _reportMetaValue(R, label){
+    const row = ((R&&R.meta)||[]).find(r => String(r[0]).toLowerCase()===String(label).toLowerCase());
+    return row ? String(row[1]) : '—';
+  }
+  _pdfReportCover(doc, R, W, H, landscape){
+    const estado=this._reportMetaValue(R,'Estado'), municipio=this._reportMetaValue(R,'Municipio');
+    const radio=this._reportMetaValue(R,'Radio de análisis'), gcr=this._reportMetaValue(R,'Gerencia de control');
+    this._pdfTitlePage(doc, W, H, landscape, {
+      kicker:'SUBSECRETARÍA DE PLANEACIÓN Y TRANSICIÓN ENERGÉTICA',
+      title:'Reporte de análisis territorial',
+      idText:radio,
+      subtitle:'Evaluación de sitio estratégico · '+municipio+', '+estado+'.',
+      imgKey:'portada',
+      cols:[['Corte',R.date],['Ámbito',gcr],['Fuente','DGMESNIE · SENER · CENACE · CFE']],
     });
-    doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text('Generado el '+R.date, M, y+8);
-    // ── CONTENIDO ──
-    doc.addPage('letter','portrait'); y=56;
-    doc.setFillColor(155,34,71); doc.rect(0,0,W,6,'F');
-    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
-    doc.text('DIRECCIÓN GENERAL DE METODOLOGÍA Y ESTADÍSTICAS DEL SNIE (DGMESNIE) · SENER', M, y); y+=22;
-    doc.setTextColor(28,27,26); doc.setFontSize(21); doc.text('Reporte de análisis territorial', M, y); y+=17;
-    doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.text('Evaluación de sitio estratégico · '+R.date, M, y); y+=20;
-    // Mapa con marcador, radio y capas seleccionadas (encuadre actual del usuario)
-    const mh = this._fitMap(doc, M, y, W-M*2, 250);
-    if (mh) { y+=mh+8; }
-    else { doc.setTextColor(155,34,71); doc.setFontSize(8.5); doc.text('(Mapa no exportable con base Satélite — usa Color/Claro/Oscuro)', M, y); y+=16; }
-    // ── Leyenda del mapa: qué significa cada color/símbolo ──
-    if (mh) {
-      const hexRgb0 = (h) => { const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(h||'#9B2247'); return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[155,34,71]; };
-      const items = this.LAYERS.filter(c => this.state.layers[c.key].on).map(c => ({ color:c.color, label:this.state.layers[c.key].label }))
-        .concat(this.state.datasets.filter(d=>d.active).map(d => ({ color:d.color||'#1E9CB8', label:'Dataset · '+d.name })));
-      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.text('LEYENDA DEL MAPA', M, y); y+=11;
-      const colW2=(W-M*2)/3;
-      items.slice(0,12).forEach((it,i)=>{
-        const cx=M+(i%3)*colW2, cy=y+Math.floor(i/3)*13;
-        const [r0,g0,b0]=hexRgb0(it.color);
-        doc.setFillColor(r0,g0,b0); doc.rect(cx, cy-6, 7, 7, 'F');
-        doc.setTextColor(58,58,58); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.text(String(it.label).slice(0,34), cx+11, cy);
+  }
+  _pdfReportPageHead(doc, W, landscape, kicker, title, aside){
+    const M=landscape?40:46, top=landscape?42:48;
+    doc.setFillColor(155,34,71); doc.rect(0,0,W,landscape?7:6,'F');
+    doc.setFillColor(224,161,46); doc.rect(W*.62,0,W*.38,landscape?7:6,'F');
+    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(landscape?9:8);
+    doc.setCharSpace(.75); doc.text(String(kicker||'REPORTE TERRITORIAL').toUpperCase(),M,top); doc.setCharSpace(0);
+    if(aside){ doc.setTextColor(154,149,142); doc.setFont('helvetica','normal'); doc.text(String(aside).toUpperCase(),W-M,top,{align:'right'}); }
+    doc.setDrawColor(236,232,226); doc.setLineWidth(.8); doc.line(M,top+10,W-M,top+10);
+    doc.setTextColor(28,27,26); doc.setFont('times','bold'); doc.setFontSize(landscape?25:20);
+    const lines=doc.splitTextToSize(String(title||''),W-M*2); doc.text(lines,M,top+(landscape?39:35));
+    const y=top+(landscape?39:35)+lines.length*(landscape?25:20);
+    doc.setDrawColor(224,161,46); doc.setLineWidth(1.4); doc.line(M,y-8,M+(landscape?180:145),y-8);
+    return y+5;
+  }
+  _pdfReportIndex(doc, W, H, landscape, entries, indexPage){
+    const M=landscape?52:46;
+    doc.setPage(indexPage||2); doc.setFillColor(255,255,255); doc.rect(0,0,W,H,'F');
+    let top=this._pdfReportPageHead(doc,W,landscape,'Contenido','Índice','Índice navegable')+(landscape?10:12);
+    const cols=landscape?2:1, gap=landscape?56:0, cw=(W-M*2-gap*(cols-1))/cols;
+    const chunks=[]; if(cols===1) chunks.push(entries); else { const cut=Math.ceil(entries.length/2); chunks.push(entries.slice(0,cut),entries.slice(cut)); }
+    const links=[];
+    chunks.forEach((chunk,ci)=>{
+      const x=M+ci*(cw+gap); let y=top, lastGroup='';
+      chunk.forEach(e=>{
+        if(e.group!==lastGroup){
+          if(lastGroup) y+=landscape?8:10;
+          doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(landscape?9:8);
+          doc.setCharSpace(.8); doc.text(String(e.group).toUpperCase(),x,y); doc.setCharSpace(0); y+=landscape?22:23; lastGroup=e.group;
+        }
+        doc.setTextColor(155,34,71); doc.setFont('courier','bold'); doc.setFontSize(landscape?11:10); doc.text(e.folio,x,y);
+        doc.setTextColor(28,27,26); doc.setFont('helvetica','normal'); doc.setFontSize(landscape?11:10.5);
+        const tx=x+(landscape?38:34), pageX=x+cw;
+        const title=this._clipText(doc,e.title,cw-(landscape?80:76)); doc.text(title,tx,y);
+        const start=tx+doc.getTextWidth(title)+8, end=pageX-26;
+        if(end>start){ doc.setDrawColor(190,184,176); doc.setLineWidth(.6); if(doc.setLineDashPattern) doc.setLineDashPattern([1.2,2.2],0); doc.line(start,y-2,end,y-2); if(doc.setLineDashPattern) doc.setLineDashPattern([],0); }
+        doc.setTextColor(111,107,102); doc.setFont('courier','bold'); doc.text(String(e.page),pageX,y,{align:'right'});
+        links.push({x,y:y-(landscape?13:12),w:cw,h:landscape?18:17,page:e.page});
+        y+=landscape?28:27;
       });
-      y += Math.ceil(Math.min(items.length,12)/3)*13 + 4;
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(7.5);
-      doc.text('Pin guinda: punto evaluado · Círculo punteado guinda: radio de análisis ('+this.state.analysis.radiusKm+' km) · Encuadre: vista activa al exportar.', M, y); y+=16;
+    });
+    links.forEach(l=>doc.link(l.x,l.y,l.w,l.h,{pageNumber:l.page}));
+    doc.setTextColor(154,149,142); doc.setFont('helvetica','normal'); doc.setFontSize(landscape?8:7.5);
+    doc.text('Seleccione cualquier entrada para ir a la sección correspondiente.',M,H-(landscape?34:42));
+  }
+  _pdfApplyReportFooters(doc,W,H,landscape,indexPage,backPage,folios){
+    const total=doc.getNumberOfPages(), M=landscape?40:46, fy=H-(landscape?18:19);
+    for(let p=2;p<=total;p++){
+      if(p===backPage) continue;
+      doc.setPage(p); doc.setDrawColor(236,232,226); doc.setLineWidth(.8); doc.line(M,fy-11,W-M,fy-11);
+      doc.setTextColor(154,149,142); doc.setFont('helvetica','normal'); doc.setFontSize(landscape?7.4:7.1);
+      doc.text('Fuente: DGMESNIE · SENER · CENACE · CFE · Cifras sujetas a verificación',M,fy);
+      const folio=(folios&&folios[p])||(p===indexPage?'ÍNDICE':'ANÁLISIS');
+      doc.setFont('courier','bold'); doc.setTextColor(111,107,102); doc.text(folio+'  ·  '+p+'/'+total,W-M,fy,{align:'right'});
+      if(p!==indexPage){
+        const hx=W-M-(landscape?126:118); doc.setTextColor(155,34,71); doc.setFont('helvetica','bold');
+        doc.text('⌂  ÍNDICE',hx,fy); doc.link(hx-4,fy-11,landscape?62:58,15,{pageNumber:indexPage});
+      }
     }
-    // Meta
-    R.meta.forEach(r => { doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.text(String(r[0]), M, y); doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.text(String(r[1]), M+150, y); y+=14; });
-    y+=8;
-    // Métricas
-    const cols=3, cw=(W-M*2-16)/cols;
-    R.metrics.slice(0,6).forEach((mt,i)=>{ const cx=M+(i%cols)*(cw+8), cy=y+Math.floor(i/cols)*58;
-      doc.setFillColor(255,255,255); doc.rect(cx,cy,cw,50,'F');
-      doc.setDrawColor(236,232,226); doc.setLineWidth(.9); doc.rect(cx,cy,cw,50);
-      doc.setFillColor(224,161,46); doc.rect(cx,cy,cw,3,'F');
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(6.9); doc.text(String(mt.label).toUpperCase().slice(0,34), cx+9, cy+15);
-      doc.setTextColor(155,34,71); doc.setFont('times','bold'); doc.setFontSize(17); doc.text(String(mt.value), cx+9, cy+34);
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(6.8); doc.text(this._clipText(doc, String(mt.sub||''), cw-18), cx+9, cy+45);
+    doc.setPage(backPage); doc.link(M,H-(landscape?62:76),landscape?115:100,28,{pageNumber:indexPage});
+  }
+  _pdfReportTable(doc,tb,cfg){
+    const head=(tb&&tb.head)||[], rows=(tb&&tb.rows)||[]; if(!head.length) return cfg.y;
+    const n=head.length, x=cfg.x, width=cfg.width, first=n>=5?.30:(n===2?.56:.42);
+    const widths=[width*first]; for(let i=1;i<n;i++) widths.push(width*(1-first)/(n-1));
+    const xs=[x]; for(let i=1;i<n;i++) xs.push(xs[i-1]+widths[i-1]);
+    const pad=5, fs=cfg.landscape?8.2:7.7, lh=cfg.landscape?10:9.5, accent=cfg.gold?[224,161,46]:[155,34,71];
+    const numeric=v=>/^[\d\s.,%+\-]+(?:\s?(?:MW|MVA|kV|km|m2|ha|USD|MXN))?$/i.test(String(v==null?'':v).trim());
+    let y=cfg.y;
+    const drawHead=()=>{
+      const cells=head.map((h,i)=>doc.splitTextToSize(String(h),Math.max(14,widths[i]-pad*2)));
+      const hh=Math.max(cfg.landscape?22:21,...cells.map(c=>c.length*lh+9));
+      doc.setFillColor(accent[0],accent[1],accent[2]); doc.rect(x,y,width,hh,'F');
+      doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(fs); doc.setCharSpace(.25);
+      cells.forEach((c,i)=>doc.text(c,xs[i]+pad,y+12)); doc.setCharSpace(0); y+=hh;
+    };
+    drawHead();
+    rows.forEach((row,ri)=>{
+      const cells=head.map((_,i)=>doc.splitTextToSize(String((row||[])[i]==null?'':row[i]),Math.max(14,widths[i]-pad*2)));
+      const rh=Math.max(cfg.landscape?19:18,...cells.map(c=>c.length*lh+8));
+      if(y+rh>cfg.maxY){ y=cfg.newPage(); drawHead(); }
+      if(ri%2===1){ doc.setFillColor(250,248,245); doc.rect(x,y,width,rh,'F'); }
+      doc.setDrawColor(240,236,230); doc.setLineWidth(.55); doc.line(x,y+rh,x+width,y+rh);
+      cells.forEach((c,i)=>{
+        const isNum=i>0&&numeric((row||[])[i]); doc.setTextColor(28,27,26); doc.setFont(isNum?'courier':'helvetica',isNum?'bold':'normal'); doc.setFontSize(fs);
+        if(isNum&&c.length===1) doc.text(c[0],xs[i]+widths[i]-pad,y+12,{align:'right'}); else doc.text(c,xs[i]+pad,y+12);
+      });
+      y+=rh;
     });
-    y += Math.ceil(Math.min(R.metrics.length,6)/cols)*58+14;
-    // Secciones
-    const hexRgb = (h) => { const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(h||'#9B2247'); return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[155,34,71]; };
-    const secStartPageByKey = {};
-    R.sections.forEach(sec => {
-      guard(90);
-      secStartPageByKey[sec.key] = doc.getNumberOfPages();
-      const [cr,cg,cb] = hexRgb(sec.color);
-      doc.setFillColor(cr,cg,cb); doc.roundedRect(M, y-8.5, 11, 11, 2.5, 2.5, 'F');
-      doc.setTextColor(cr,cg,cb); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text(String(sec.kicker).toUpperCase(), M+17, y); y+=15;
-      doc.setTextColor(28,27,26); doc.setFontSize(13); doc.text(sec.title, M, y); y+=7;
-      doc.setDrawColor(224,161,46); doc.setLineWidth(1.2); doc.line(M,y,M+150,y); y+=13;
+    return y+8;
+  }
+  _writeReportPDF(R, opts){
+    const O=opts||{};
+    const J=window.jspdf&&window.jspdf.jsPDF;
+    if(!J){ this._toast('Preparando módulo PDF…'); return; }
+
+    const doc=new J({unit:'pt',format:'letter',orientation:'portrait'});
+    const W=612,H=792,M=46,MAX_Y=H-58,indexPage=2;
+    const sections=Array.isArray(R&&R.sections)?R.sections:[];
+    const metrics=Array.isArray(R&&R.metrics)?R.metrics:[];
+    const folios={};
+    const rgb=(hex,fallback)=>{
+      const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex||''));
+      return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:(fallback||[155,34,71]);
+    };
+    const addReportPage=(kicker,title,aside,folio)=>{
+      doc.addPage('letter','portrait');
+      const page=doc.getNumberOfPages();
+      if(folio) folios[page]=folio;
+      const y=this._pdfReportPageHead(doc,W,false,kicker,title,aside);
+      return {page,y:y+12};
+    };
+
+    // 1 · Portada institucional y 2 · reserva del índice navegable.
+    this._pdfReportCover(doc,R,W,H,false);
+    doc.addPage('letter','portrait');
+    folios[indexPage]='ÍNDICE';
+
+    // 3 · Zona evaluada y mapa del análisis.
+    let pageInfo=addReportPage('Zona evaluada','Mapa del análisis','Encuadre activo al exportar','01');
+    const zonePage=pageInfo.page;
+    let y=pageInfo.y;
+    const meta=Array.isArray(R&&R.meta)?R.meta:[];
+    const metaCols=2,metaGap=10,metaW=(W-M*2-metaGap)/metaCols,metaH=42;
+    const metaRows=Math.ceil(meta.length/metaCols);
+    const mapMaxH=Math.max(175,Math.min(340,MAX_Y-y-(metaRows*metaH+58)));
+    const mapH=this._fitMap(doc,M,y,W-M*2,mapMaxH);
+    if(mapH){
+      y+=mapH+13;
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(7.7);
+      const radius=this._reportMetaValue(R,'Radio de análisis');
+      doc.text(this._clipText(doc,'Pin guinda: sitio evaluado · Círculo guinda: '+radius+' · El mapa conserva el encuadre activo.',W-M*2),M,y);
+      y+=17;
+    }else{
+      doc.setFillColor(250,248,245); doc.setDrawColor(236,232,226); doc.roundedRect(M,y,W-M*2,76,4,4,'FD');
+      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(10);
+      doc.text('Mapa no disponible para exportación',M+14,y+29);
       doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
-      doc.splitTextToSize(sec.intro, W-M*2).forEach(t => { doc.text(t, M, y); y+=11; }); y+=4;
-      const drawTable = (tb, isGold) => {
-        guard(40);
-        // Posiciones de columna genéricas: la 1ª columna es ancha (nombre), el resto equidistantes
-        const n=tb.head.length, tw=W-M*2, first=(n>=5?0.30:0.42);
-        const xs=[M]; for(let i=1;i<n;i++) xs.push(M + tw*(first + (1-first)*(i-1)/(n-1)));
-        const isNumLike = (v) => {
-          const s = String(v==null?'':v).trim();
-          return /^[\d\s.,%+-]+(?:\s?(?:MW|MVA|kV|km|m2|ha|USD|MXN))?$/i.test(s);
-        };
-        const hr = isGold ? [224,161,46] : [155,34,71];
-        doc.setDrawColor(hr[0],hr[1],hr[2]); doc.setLineWidth(2.1); doc.line(M, y+2, W-M, y+2);
-        doc.setTextColor(hr[0],hr[1],hr[2]); doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.setCharSpace(.35);
-        tb.head.forEach((h,i)=>{
-          const right = i<n-1 ? xs[i+1]-6 : (W-M);
-          const maxW = Math.max(18, right - (xs[i]+4));
-          doc.text(this._clipText(doc, String(h), maxW), xs[i]+4, y-2);
-        });
-        doc.setCharSpace(0);
-        y+=12;
-        tb.rows.forEach((r,ri)=>{ guard(14); if(ri%2===1){ doc.setFillColor(250,248,245); doc.rect(M,y-9,W-M*2,13,'F'); }
-          doc.setTextColor(28,27,26); doc.setFontSize(8);
-          r.forEach((c,i)=>{
-            const right = i<n-1 ? xs[i+1]-6 : (W-M);
-            const maxW = Math.max(16, right - (xs[i]+4));
-            const isNum = i>0 && isNumLike(c);
-            doc.setFont(isNum ? 'courier' : 'helvetica', isNum ? 'bold' : 'normal');
-            if (isNum) doc.text(this._clipText(doc, String(c), maxW), right-2, y, { align:'right' });
-            else doc.text(this._clipText(doc, String(c), maxW), xs[i]+4, y);
-          });
-          y+=13;
-          doc.setDrawColor(240,236,230); doc.setLineWidth(.6); doc.line(M, y-8, W-M, y-8);
-        });
-        y+=8;
+      doc.text('Cambie la base Satélite por Color, Claro u Oscuro y vuelva a generar el reporte.',M+14,y+48);
+      y+=91;
+    }
+    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setCharSpace(.7);
+    doc.text('FICHA DE LA ZONA',M,y); doc.setCharSpace(0); y+=11;
+    meta.forEach((row,i)=>{
+      const cx=M+(i%metaCols)*(metaW+metaGap),cy=y+Math.floor(i/metaCols)*metaH;
+      doc.setFillColor(i%2?250:255,i%2?248:255,i%2?245:255); doc.setDrawColor(236,232,226); doc.roundedRect(cx,cy,metaW,metaH-6,3,3,'FD');
+      doc.setTextColor(154,149,142); doc.setFont('helvetica','bold'); doc.setFontSize(6.8);
+      doc.text(this._clipText(doc,String((row||[])[0]||'').toUpperCase(),metaW-16),cx+8,cy+12);
+      doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.text(this._clipText(doc,String((row||[])[1]==null?'—':row[1]),metaW-16),cx+8,cy+27);
+    });
+
+    // 4 · Todos los indicadores. Las tarjetas continúan en páginas adicionales sin recortes.
+    const addMetricsPage=(continuation)=>addReportPage('Indicadores del radio',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R.date||'Reporte territorial','02');
+    pageInfo=addMetricsPage(false);
+    const metricsPage=pageInfo.page;
+    y=pageInfo.y;
+    const metricGap=11,metricW=(W-M*2-metricGap)/2;
+    const measureMetric=(mt)=>{
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.4);
+      const label=doc.splitTextToSize(String((mt&&mt.label)||'Indicador').toUpperCase(),metricW-26);
+      doc.setFont('times','bold'); doc.setFontSize(18);
+      const value=doc.splitTextToSize(String(mt&&mt.value!=null?mt.value:'—'),metricW-26);
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.4);
+      const sub=doc.splitTextToSize(String((mt&&mt.sub)||''),metricW-26);
+      return {label,value,sub,h:Math.max(70,18+label.length*8.5+value.length*18+sub.length*9)};
+    };
+    const drawMetric=(mt,box,cx,cy,rowH)=>{
+      const accent=rgb(mt&&mt.color,mt&&mt.dim?[154,149,142]:[155,34,71]);
+      doc.setFillColor(mt&&mt.dim?250:255,mt&&mt.dim?248:255,mt&&mt.dim?245:255);
+      doc.setDrawColor(236,232,226); doc.roundedRect(cx,cy,metricW,rowH-7,4,4,'FD');
+      doc.setFillColor(accent[0],accent[1],accent[2]); doc.rect(cx,cy,4,rowH-7,'F');
+      let ty=cy+15;
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(7.4); doc.text(box.label,cx+13,ty); ty+=box.label.length*8.5+3;
+      doc.setTextColor(mt&&mt.dim?111:155,mt&&mt.dim?107:34,mt&&mt.dim?102:71); doc.setFont('times','bold'); doc.setFontSize(18); doc.text(box.value,cx+13,ty+12); ty+=box.value.length*18+3;
+      if(box.sub.length){ doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(7.4); doc.text(box.sub,cx+13,ty+7); }
+    };
+    for(let i=0;i<metrics.length;i+=2){
+      const left=measureMetric(metrics[i]),right=i+1<metrics.length?measureMetric(metrics[i+1]):null;
+      const rowH=Math.max(left.h,right?right.h:0);
+      if(y+rowH>MAX_Y){ pageInfo=addMetricsPage(true); y=pageInfo.y; }
+      drawMetric(metrics[i],left,M,y,rowH);
+      if(right) drawMetric(metrics[i+1],right,M+metricW+metricGap,y,rowH);
+      y+=rowH+5;
+    }
+    if(!metrics.length){
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(9);
+      doc.text('No se registraron indicadores para esta corrida.',M,y+8);
+    }
+
+    // Secciones analíticas: cada una inicia en página propia y puede continuar tantas veces como sea necesario.
+    const indexEntries=[
+      {group:'Panorama general',folio:'01',title:'Zona evaluada y mapa del análisis',page:zonePage},
+      {group:'Panorama general',folio:'02',title:'Indicadores del radio analizado',page:metricsPage},
+    ];
+    sections.forEach((sec,sectionIndex)=>{
+      const folio=String(sectionIndex+3).padStart(2,'0');
+      const addSectionPage=(continuation)=>{
+        const info=addReportPage(sec.kicker||'Análisis territorial',continuation?String(sec.title||'Sección')+' · continuación':sec.title||'Sección',folio,folio);
+        return info;
       };
-      if (sec.hasTable) drawTable(sec.table, false);
-      if (sec.hasTable2) drawTable(sec.table2, true);
-      if (sec.hasRows) sec.rows.forEach(r => { guard(14); doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.text(String(r[0]), M, y); doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.text(String(r[1]), M+190, y); y+=13; });
-      if (sec.hasChips) { guard(24); doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.splitTextToSize('Identificados: '+sec.chips.join(' · '), W-M*2).forEach(t=>{ guard(11); doc.text(t, M, y); y+=11; }); }
-      y+=14;
+      let sectionPage=addSectionPage(false);
+      indexEntries.push({group:'Secciones de análisis',folio,title:String(sec.title||'Sección'),page:sectionPage.page});
+      y=sectionPage.y;
+      const nextSectionPage=()=>{ sectionPage=addSectionPage(true); y=sectionPage.y; return y; };
+
+      const intro=doc.splitTextToSize(String(sec.intro||''),W-M*2);
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      intro.forEach(line=>{
+        if(y+12>MAX_Y) nextSectionPage();
+        doc.text(line,M,y); y+=12;
+      });
+      if(intro.length) y+=7;
+
+      const drawTable=(table,gold)=>{
+        if(!table||!Array.isArray(table.head)||!table.head.length) return;
+        if(y+54>MAX_Y) nextSectionPage();
+        y=this._pdfReportTable(doc,table,{
+          x:M,y,width:W-M*2,maxY:MAX_Y,landscape:false,gold:!!gold,
+          newPage:()=>nextSectionPage(),
+        });
+      };
+      if(sec.hasTable) drawTable(sec.table,false);
+      if(sec.hasTable2) drawTable(sec.table2,true);
+
+      const rows=sec.hasRows&&Array.isArray(sec.rows)?sec.rows:[];
+      if(rows.length){
+        if(y+30>MAX_Y) nextSectionPage();
+        doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setCharSpace(.65);
+        doc.text('RESUMEN DE HALLAZGOS',M,y); doc.setCharSpace(0); y+=13;
+        const labelW=190,valueX=M+labelW+12,valueW=W-M-valueX,lh=10;
+        rows.forEach((row,ri)=>{
+          doc.setFont('helvetica','normal'); doc.setFontSize(8.2);
+          const labels=doc.splitTextToSize(String((row||[])[0]==null?'':row[0]),labelW-12);
+          doc.setFont('helvetica','bold');
+          const values=doc.splitTextToSize(String((row||[])[1]==null?'':row[1]),valueW-10);
+          const lineCount=Math.max(labels.length,values.length,1);
+          let offset=0;
+          while(offset<lineCount){
+            let available=Math.floor((MAX_Y-y-10)/lh);
+            if(available<1){ nextSectionPage(); available=Math.max(1,Math.floor((MAX_Y-y-10)/lh)); }
+            const take=Math.min(lineCount-offset,available),rh=take*lh+9;
+            if(ri%2===1){ doc.setFillColor(250,248,245); doc.rect(M,y,W-M*2,rh,'F'); }
+            doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8.2);
+            const labelChunk=labels.slice(offset,offset+take); if(labelChunk.length) doc.text(labelChunk,M+6,y+11);
+            doc.setTextColor(28,27,26); doc.setFont('helvetica','bold');
+            const valueChunk=values.slice(offset,offset+take); if(valueChunk.length) doc.text(valueChunk,valueX,y+11);
+            doc.setDrawColor(240,236,230); doc.setLineWidth(.55); doc.line(M,y+rh,W-M,y+rh);
+            y+=rh; offset+=take;
+          }
+        });
+        y+=9;
+      }
+
+      const chips=sec.hasChips&&Array.isArray(sec.chips)?sec.chips:[];
+      if(chips.length){
+        if(y+32>MAX_Y) nextSectionPage();
+        doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setCharSpace(.65);
+        doc.text('ELEMENTOS IDENTIFICADOS',M,y); doc.setCharSpace(0); y+=13;
+        const chipGap=9,chipW=(W-M*2-chipGap)/2;
+        for(let i=0;i<chips.length;i+=2){
+          doc.setFont('helvetica','normal'); doc.setFontSize(8);
+          const left=doc.splitTextToSize(String(chips[i]),chipW-18);
+          const right=i+1<chips.length?doc.splitTextToSize(String(chips[i+1]),chipW-18):null;
+          const chipH=Math.max(24,10+Math.max(left.length,right?right.length:0)*10);
+          if(y+chipH>MAX_Y) nextSectionPage();
+          const drawChip=(lines,cx)=>{
+            doc.setFillColor(250,248,245); doc.setDrawColor(224,220,212); doc.roundedRect(cx,y,chipW,chipH-5,7,7,'FD');
+            doc.setTextColor(58,58,58); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text(lines,cx+9,y+13);
+          };
+          drawChip(left,M); if(right) drawChip(right,M+chipW+chipGap);
+          y+=chipH;
+        }
+      }
     });
 
-    // Completa el índice con navegación interna (click en título y número de página).
-    const tocPageMap = { '01': 3, '02': 3 };
-    R.sections.forEach((s, i) => { tocPageMap[String(i+3).padStart(2,'0')] = secStartPageByKey[s.key] || 3; });
-    doc.setPage(2);
-    tocRows.forEach(row => {
-      const pg = tocPageMap[row.key] || 3;
-      doc.setTextColor(111,107,102);
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(11);
-      doc.text(String(pg), W - M, row.y, { align:'right' });
-      doc.link(M+32, row.y-12, (W-M) - (M+32), 16, { pageNumber: pg });
-      doc.link(W - M - 20, row.y-12, 20, 16, { pageNumber: pg });
-    });
+    // Contraportada, índice y navegación interna.
+    doc.addPage('letter','portrait');
+    const backPage=doc.getNumberOfPages();
+    this._pdfBack(doc,W,H,false);
+    this._pdfReportIndex(doc,W,H,false,indexEntries,indexPage);
+    this._pdfApplyReportFooters(doc,W,H,false,indexPage,backPage,folios);
 
-    // ── CONTRAPORTADA institucional ──
-    doc.addPage('letter','portrait'); this._pdfBack(doc, W, H, false);
-    this._pdfApplyFooters(doc, W, H, false, [1, doc.getNumberOfPages()]);
-    if (O.returnData) return { base64: doc.output('datauristring') };
+    if(O.returnData) return {base64:doc.output('datauristring')};
     doc.save('DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.pdf');
     this._toast('Reporte PDF exportado');
-  };
+  }
   _writeReportPDFPresent(R, opts){
-    const O = opts || {};
-    const J = window.jspdf && window.jspdf.jsPDF; if (!J) { this._toast('Preparando módulo PDF…'); return; }
-    const doc = new J({ unit:'pt', format:[960,540], orientation:'landscape' });
-    const W=960, H=540, M=40;
+    const O=opts||{};
+    const J=window.jspdf&&window.jspdf.jsPDF;
+    if(!J){ this._toast('Preparando módulo PDF…'); return; }
 
-    // Portada institucional
-    this._pdfCover(doc, W, H, true);
-
-    // Índice navegable
-    doc.addPage([960,540],'landscape');
-    let y=62;
-    doc.setFillColor(155,34,71); doc.rect(0,0,W,7,'F');
-    doc.setFillColor(224,161,46); doc.rect(W*0.62,0,W*0.38,7,'F');
-    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text('REPORTE TERRITORIAL · ÍNDICE', M, y);
-    y+=24;
-    doc.setTextColor(28,27,26); doc.setFont('times','normal'); doc.setFontSize(28); doc.text('Contenido', M, y);
-    y+=18; doc.setDrawColor(224,161,46); doc.setLineWidth(1.2); doc.line(M,y,M+180,y); y+=20;
-    const toc = [['01','Zona evaluada y mapa del análisis'],['02','Indicadores del radio analizado']]
-      .concat(R.sections.map((s,i)=>[String(i+3).padStart(2,'0'), s.title]));
-    const tocRows = [];
-    toc.forEach(t => {
-      const rowY = y;
-      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.text(t[0], M, y);
-      doc.setTextColor(28,27,26); doc.setFont('helvetica','normal'); doc.setFontSize(12.5); doc.text(t[1], M+40, y);
-      doc.setDrawColor(236,232,226); doc.setLineWidth(.8); doc.line(M, y+8, W-M, y+8);
-      tocRows.push({ key:t[0], y:rowY });
-      y+=24;
-    });
-
-    // Página de resumen (mapa + metadatos + métricas)
-    doc.addPage([960,540],'landscape');
-    const summaryPage = doc.getNumberOfPages();
-    y=40;
-    doc.setFillColor(155,34,71); doc.rect(0,0,W,7,'F');
-    doc.setFillColor(224,161,46); doc.rect(W*0.62,0,W*0.38,7,'F');
-    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.text('DIRECCIÓN GENERAL DE METODOLOGÍA Y ESTADÍSTICAS DEL SNIE (DGMESNIE)', M, y);
-    y+=24;
-    doc.setTextColor(28,27,26); doc.setFont('times','normal'); doc.setFontSize(24); doc.text('Reporte de análisis territorial', M, y);
-    y+=14;
-    doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.text('Evaluación de sitio estratégico · '+R.date, M, y);
-
-    const usedMh = this._fitMap(doc, M, 92, 560, 300);
-    if(!usedMh){ doc.setTextColor(155,34,71); doc.setFontSize(10); doc.text('(Mapa no exportable con base Satélite — usa Color/Claro/Oscuro)', M, 120); }
-
-    const rx=620, rw=W-rx-M;
-    let ry=98;
-    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('Resumen de zona', rx, ry);
-    ry+=14;
-    (R.meta||[]).slice(0,6).forEach(r => {
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8.8); doc.text(String(r[0]), rx, ry);
-      doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.text(String(r[1]), rx+130, ry);
-      ry+=14;
-    });
-    ry+=6;
-    (R.metrics||[]).slice(0,6).forEach((m,i) => {
-      doc.setFillColor(255,255,255); doc.rect(rx, ry-11, rw, 42, 'F');
-      doc.setDrawColor(236,232,226); doc.setLineWidth(.9); doc.rect(rx, ry-11, rw, 42);
-      doc.setFillColor(224,161,46); doc.rect(rx, ry-11, rw, 3, 'F');
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.text(String(m.label).toUpperCase().slice(0,34), rx+8, ry+2);
-      doc.setTextColor(155,34,71); doc.setFont('times','bold'); doc.setFontSize(16); doc.text(String(m.value), rx+8, ry+19);
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(7.2); doc.text(this._clipText(doc, String(m.sub||''), rw-16), rx+8, ry+31);
-      ry+=46;
-    });
-
-    // Secciones como láminas
-    const secStartPageByKey = {};
-    const split = (txt, max) => doc.splitTextToSize(String(txt||''), max);
-    (R.sections||[]).forEach((sec) => {
+    const doc=new J({unit:'pt',format:[960,540],orientation:'landscape'});
+    const W=960,H=540,M=40,MAX_Y=494,indexPage=2;
+    const sections=Array.isArray(R&&R.sections)?R.sections:[];
+    const metrics=Array.isArray(R&&R.metrics)?R.metrics:[];
+    const meta=Array.isArray(R&&R.meta)?R.meta:[];
+    const folios={};
+    const indexEntries=[];
+    const rgb=(hex,fallback)=>{
+      const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex||''));
+      return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:(fallback||[155,34,71]);
+    };
+    const addReportPage=(kicker,title,aside,folio)=>{
       doc.addPage([960,540],'landscape');
-      const p = doc.getNumberOfPages();
-      secStartPageByKey[sec.key] = p;
-      let sy=44;
-      doc.setFillColor(155,34,71); doc.rect(0,0,W,7,'F');
-      doc.setFillColor(224,161,46); doc.rect(W*0.62,0,W*0.38,7,'F');
-      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text(String(sec.kicker||'SECCIÓN').toUpperCase(), M, sy);
-      sy+=20;
-      doc.setTextColor(28,27,26); doc.setFont('times','normal'); doc.setFontSize(24); doc.text(sec.title||'Sección', M, sy);
-      sy+=14; doc.setDrawColor(224,161,46); doc.setLineWidth(1.2); doc.line(M,sy,M+180,sy); sy+=14;
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(10);
-      split(sec.intro||'', W - M*2).slice(0,4).forEach(t => { doc.text(t, M, sy); sy+=13; });
-      sy+=8;
+      const page=doc.getNumberOfPages();
+      if(folio) folios[page]=folio;
+      return {page,y:this._pdfReportPageHead(doc,W,true,kicker,title,aside)+8};
+    };
 
-      const drawPamSectionTable = (tb, isGold) => {
-        const head = (tb && tb.head) || [];
-        const rows = (tb && tb.rows) || [];
-        const n = Math.max(1, head.length);
-        const tw = W - M*2;
-        const first = n >= 5 ? 0.34 : 0.42;
-        const xs = [M];
-        for(let i=1;i<n;i++) xs.push(M + tw*(first + (1-first)*(i-1)/(n-1)));
-        const isNumLike = (v) => {
-          const s = String(v==null?'':v).trim();
-          return /^[\d\s.,%+-]+(?:\s?(?:MW|MVA|kV|km|m2|ha|USD|MXN))?$/i.test(s);
-        };
-        const hr = isGold ? [224,161,46] : [155,34,71];
-        doc.setDrawColor(hr[0],hr[1],hr[2]); doc.setLineWidth(2); doc.line(M, sy+2, M+tw, sy+2);
-        doc.setTextColor(hr[0],hr[1],hr[2]); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setCharSpace(.35);
-        head.forEach((h,i)=>{
-          const right = i<n-1 ? xs[i+1]-6 : (M+tw);
-          const maxW = Math.max(20, right - (xs[i]+4));
-          doc.text(this._clipText(doc, String(h), maxW), xs[i]+4, sy-2);
+    // 1 · Portada territorial PAM y 2 · reserva para el índice navegable a dos columnas.
+    this._pdfReportCover(doc,R,W,H,true);
+    doc.addPage([960,540],'landscape');
+    folios[indexPage]='ÍNDICE';
+
+    // 3 · Zona evaluada: mapa activo y ficha territorial completa.
+    let pageInfo=addReportPage('Zona evaluada','Mapa del análisis','Encuadre activo al exportar','01');
+    const zonePage=pageInfo.page;
+    indexEntries.push({group:'Panorama general',folio:'01',title:'Zona evaluada y mapa del análisis',page:zonePage});
+    let y=pageInfo.y;
+    const mapW=552,mapMaxH=Math.min(292,MAX_Y-y-34);
+    const mapH=this._fitMap(doc,M,y,mapW,mapMaxH);
+    if(mapH){
+      const radius=this._reportMetaValue(R,'Radio de análisis');
+      const caption='Pin guinda: sitio evaluado · Círculo guinda: '+radius+' · El mapa conserva el encuadre activo.';
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(8);
+      doc.text(this._clipText(doc,caption,mapW),M,y+mapH+14);
+    }else{
+      doc.setFillColor(250,248,245); doc.setDrawColor(236,232,226); doc.roundedRect(M,y,mapW,110,5,5,'FD');
+      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.text('Mapa no disponible para exportación',M+18,y+40);
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      doc.text('Cambie la base Satélite por Color, Claro u Oscuro y vuelva a generar el reporte.',M+18,y+62);
+    }
+
+    const metaX=M+mapW+28,metaW=W-M-metaX;
+    let metaY=y;
+    doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setCharSpace(.7);
+    doc.text('FICHA TERRITORIAL',metaX,metaY); doc.setCharSpace(0); metaY+=13;
+    const measureMeta=(row,width)=>{
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.2);
+      const label=doc.splitTextToSize(String((row||[])[0]||'').toUpperCase(),width-20);
+      doc.setFont('helvetica','bold'); doc.setFontSize(10);
+      const value=doc.splitTextToSize(String((row||[])[1]==null?'—':row[1]),width-20);
+      return {label,value,h:Math.max(43,18+label.length*8+value.length*11)};
+    };
+    const drawMeta=(box,x,top,width)=>{
+      doc.setFillColor(250,248,245); doc.setDrawColor(236,232,226); doc.roundedRect(x,top,width,box.h-5,4,4,'FD');
+      doc.setTextColor(154,149,142); doc.setFont('helvetica','bold'); doc.setFontSize(7.2); doc.text(box.label,x+10,top+12);
+      doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text(box.value,x+10,top+13+box.label.length*8);
+    };
+    let metaIndex=0;
+    while(metaIndex<meta.length){
+      const box=measureMeta(meta[metaIndex],metaW);
+      if(metaY+box.h>MAX_Y) break;
+      drawMeta(box,metaX,metaY,metaW); metaY+=box.h; metaIndex++;
+    }
+    while(metaIndex<meta.length){
+      pageInfo=addReportPage('Zona evaluada','Ficha territorial · continuación','Datos del sitio','01');
+      let cy=pageInfo.y;
+      const gap=14,cardW=(W-M*2-gap)/2;
+      while(metaIndex<meta.length){
+        const left=measureMeta(meta[metaIndex],cardW);
+        const right=metaIndex+1<meta.length?measureMeta(meta[metaIndex+1],cardW):null;
+        const rowH=Math.max(left.h,right?right.h:0);
+        if(cy+rowH>MAX_Y) break;
+        drawMeta(left,M,cy,cardW);
+        if(right) drawMeta(right,M+cardW+gap,cy,cardW);
+        cy+=rowH; metaIndex+=right?2:1;
+      }
+      if(cy===pageInfo.y){
+        const box=measureMeta(meta[metaIndex],W-M*2);
+        drawMeta(box,M,cy,W-M*2); metaIndex++;
+      }
+    }
+
+    // Indicadores: todas las tarjetas continúan en las láminas necesarias, sin cortes por cantidad.
+    const addMetricsPage=(continuation)=>addReportPage('Indicadores del radio',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R&&R.date?R.date:'Reporte territorial','02');
+    pageInfo=addMetricsPage(false);
+    const metricsPage=pageInfo.page;
+    indexEntries.push({group:'Panorama general',folio:'02',title:'Indicadores del radio analizado',page:metricsPage});
+    y=pageInfo.y;
+    const metricGap=12,metricW=(W-M*2-metricGap*2)/3;
+    const measureMetric=(metric,width)=>{
+      doc.setFont('helvetica','bold'); doc.setFontSize(8);
+      const label=doc.splitTextToSize(String((metric&&metric.label)||'Indicador').toUpperCase(),width-28);
+      doc.setFont('times','bold'); doc.setFontSize(20);
+      const value=doc.splitTextToSize(String(metric&&metric.value!=null?metric.value:'—'),width-28);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      const sub=doc.splitTextToSize(String((metric&&metric.sub)||''),width-28);
+      return {label,value,sub,h:Math.max(80,21+label.length*9+value.length*21+sub.length*10)};
+    };
+    const drawMetric=(metric,box,x,top,width,height)=>{
+      const accent=rgb(metric&&metric.color,metric&&metric.dim?[154,149,142]:[155,34,71]);
+      doc.setFillColor(metric&&metric.dim?250:255,metric&&metric.dim?248:255,metric&&metric.dim?245:255);
+      doc.setDrawColor(236,232,226); doc.roundedRect(x,top,width,height-6,5,5,'FD');
+      doc.setFillColor(accent[0],accent[1],accent[2]); doc.rect(x,top,5,height-6,'F');
+      let ty=top+16;
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text(box.label,x+15,ty);
+      ty+=box.label.length*9+4;
+      doc.setTextColor(metric&&metric.dim?111:155,metric&&metric.dim?107:34,metric&&metric.dim?102:71);
+      doc.setFont('times','bold'); doc.setFontSize(20); doc.text(box.value,x+15,ty+14);
+      ty+=box.value.length*21+3;
+      if(box.sub.length){ doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text(box.sub,x+15,ty+7); }
+    };
+    for(let i=0;i<metrics.length;i+=3){
+      const group=metrics.slice(i,i+3);
+      let boxes=group.map(metric=>measureMetric(metric,metricW));
+      let rowH=Math.max.apply(null,boxes.map(box=>box.h));
+      if(rowH>MAX_Y-pageInfo.y){
+        group.forEach(metric=>{
+          const fullBox=measureMetric(metric,W-M*2);
+          if(y+fullBox.h>MAX_Y){ pageInfo=addMetricsPage(true); y=pageInfo.y; }
+          drawMetric(metric,fullBox,M,y,W-M*2,fullBox.h); y+=fullBox.h+5;
         });
-        doc.setCharSpace(0);
-        sy+=14;
-        rows.slice(0,14).forEach((r,ri)=>{
-          if(ri%2===1){ doc.setFillColor(250,248,245); doc.rect(M, sy-10, tw, 14, 'F'); }
-          doc.setTextColor(28,27,26); doc.setFontSize(8);
-          r.forEach((c,i)=>{
-            const right = i<n-1 ? xs[i+1]-6 : (M+tw);
-            const maxW = Math.max(18, right - (xs[i]+4));
-            const isNum = i>0 && isNumLike(c);
-            doc.setFont(isNum ? 'courier' : 'helvetica', isNum ? 'bold' : 'normal');
-            if (isNum) doc.text(this._clipText(doc, String(c), maxW), right-2, sy, { align:'right' });
-            else doc.text(this._clipText(doc, String(c), maxW), xs[i]+4, sy);
-          });
-          doc.setDrawColor(240,236,230); doc.setLineWidth(.6); doc.line(M, sy+4, M+tw, sy+4);
-          sy+=14;
-        });
+        continue;
+      }
+      if(y+rowH>MAX_Y){ pageInfo=addMetricsPage(true); y=pageInfo.y; }
+      group.forEach((metric,ci)=>drawMetric(metric,boxes[ci],M+ci*(metricW+metricGap),y,metricW,rowH));
+      y+=rowH+6;
+    }
+    if(!metrics.length){
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(10);
+      doc.text('No se registraron indicadores para esta corrida.',M,y+10);
+    }
+
+    // Secciones analíticas PAM: introducciones, tablas, hallazgos y chips continúan sin truncarse.
+    sections.forEach((sec,sectionIndex)=>{
+      const folio=String(sectionIndex+3).padStart(2,'0');
+      const sectionTitle=String(sec&&sec.title||'Sección');
+      const addSectionPage=(continuation)=>addReportPage(sec&&sec.kicker||'Análisis territorial',continuation?sectionTitle+' · continuación':sectionTitle,folio,folio);
+      let sectionPage=addSectionPage(false);
+      indexEntries.push({group:'Secciones de análisis',folio,title:sectionTitle,page:sectionPage.page});
+      y=sectionPage.y;
+      const nextSectionPage=()=>{ sectionPage=addSectionPage(true); y=sectionPage.y; return y; };
+      const ensureSpace=(height)=>{ if(y+height>MAX_Y) nextSectionPage(); };
+      const drawSectionLabel=(text)=>{
+        ensureSpace(24);
+        doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setCharSpace(.65);
+        doc.text(String(text).toUpperCase(),M,y); doc.setCharSpace(0); y+=15;
       };
 
-      if (sec.hasTable && sec.table) {
-        const head = sec.table.head || [];
-        const rows = sec.table.rows || [];
-        drawPamSectionTable({ head, rows }, false);
-      }
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+      const intro=doc.splitTextToSize(String(sec&&sec.intro||''),W-M*2);
+      intro.forEach(line=>{
+        if(y+13>MAX_Y) nextSectionPage();
+        doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.text(line,M,y); y+=13;
+      });
+      if(intro.length) y+=8;
 
-      if (sec.hasTable2 && sec.table2) {
-        const head = sec.table2.head || [];
-        const rows = sec.table2.rows || [];
-        sy += 4;
-        drawPamSectionTable({ head, rows }, true);
-      }
-
-      if (sec.hasRows && sec.rows) {
-        sy+=4;
-        sec.rows.slice(0,12).forEach(r => {
-          doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.text(String(r[0]), M, sy);
-          doc.setTextColor(28,27,26); doc.setFont('helvetica','bold'); doc.text(String(r[1]), M+250, sy);
-          sy+=13;
+      const normalizeTable=(table)=>{
+        const head=Array.isArray(table&&table.head)?table.head:[];
+        const rows=Array.isArray(table&&table.rows)?table.rows:[];
+        if(!head.length) return {head:[],rows:[]};
+        const n=head.length,width=W-M*2,first=n>=5?.30:(n===2?.56:.42);
+        const widths=[width*first]; for(let i=1;i<n;i++) widths.push(width*(1-first)/(n-1));
+        const out=[];
+        rows.forEach(row=>{
+          doc.setFont('helvetica','normal'); doc.setFontSize(8.2);
+          const cells=head.map((_,i)=>doc.splitTextToSize(String((row||[])[i]==null?'':row[i]),Math.max(14,widths[i]-10)));
+          const lineCount=Math.max(1,...cells.map(lines=>lines.length));
+          for(let offset=0;offset<lineCount;offset+=25){
+            out.push(cells.map((lines,i)=>{
+              const chunk=lines.slice(offset,offset+25);
+              if(chunk.length) return chunk.join('\n');
+              return offset&&i===0?'(continuación)':'';
+            }));
+          }
         });
+        return {head,rows:out};
+      };
+      const drawTable=(table,gold,label)=>{
+        const normalized=normalizeTable(table);
+        if(!normalized.head.length) return;
+        drawSectionLabel(label);
+        if(y+52>MAX_Y) nextSectionPage();
+        y=this._pdfReportTable(doc,normalized,{
+          x:M,y,width:W-M*2,maxY:MAX_Y,landscape:true,gold:!!gold,
+          newPage:()=>nextSectionPage(),
+        });
+      };
+      const table1=sec&&sec.table;
+      const table2=sec&&sec.table2;
+      if((sec&&sec.hasTable)||(table1&&Array.isArray(table1.head)&&table1.head.length)) drawTable(table1,false,'Detalle de infraestructura');
+      if((sec&&sec.hasTable2)||(table2&&Array.isArray(table2.head)&&table2.head.length)) drawTable(table2,true,'Detalle complementario');
+
+      const rows=Array.isArray(sec&&sec.rows)?sec.rows:[];
+      if((sec&&sec.hasRows)||rows.length){
+        drawSectionLabel('Resumen de hallazgos');
+        const labelW=330,valueX=M+labelW+18,valueW=W-M-valueX,lh=11;
+        rows.forEach((row,ri)=>{
+          doc.setFont('helvetica','normal'); doc.setFontSize(9);
+          const labels=doc.splitTextToSize(String((row||[])[0]==null?'':row[0]),labelW-14);
+          doc.setFont('helvetica','bold');
+          const values=doc.splitTextToSize(String((row||[])[1]==null?'':row[1]),valueW-14);
+          const lineCount=Math.max(labels.length,values.length,1);
+          let offset=0;
+          while(offset<lineCount){
+            let available=Math.floor((MAX_Y-y-10)/lh);
+            if(available<1){ nextSectionPage(); available=Math.max(1,Math.floor((MAX_Y-y-10)/lh)); }
+            const take=Math.min(lineCount-offset,available),rowH=take*lh+10;
+            if(ri%2===1){ doc.setFillColor(250,248,245); doc.rect(M,y,W-M*2,rowH,'F'); }
+            const labelChunk=labels.slice(offset,offset+take);
+            const valueChunk=values.slice(offset,offset+take);
+            doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9);
+            if(labelChunk.length) doc.text(labelChunk,M+7,y+12);
+            doc.setTextColor(28,27,26); doc.setFont('helvetica','bold');
+            if(valueChunk.length) doc.text(valueChunk,valueX,y+12);
+            doc.setDrawColor(240,236,230); doc.setLineWidth(.6); doc.line(M,y+rowH,W-M,y+rowH);
+            y+=rowH; offset+=take;
+          }
+        });
+        y+=8;
+      }
+
+      const chips=Array.isArray(sec&&sec.chips)?sec.chips:[];
+      if((sec&&sec.hasChips)||chips.length){
+        drawSectionLabel('Elementos identificados');
+        const chipGap=12,chipW=(W-M*2-chipGap)/2,lh=10.5;
+        for(let i=0;i<chips.length;i+=2){
+          const left=doc.splitTextToSize(String(chips[i]==null?'':chips[i]),chipW-22);
+          const right=i+1<chips.length?doc.splitTextToSize(String(chips[i+1]==null?'':chips[i+1]),chipW-22):[];
+          let lo=0,ro=0;
+          while(lo<left.length||ro<right.length){
+            let available=Math.floor((MAX_Y-y-13)/lh);
+            if(available<1){ nextSectionPage(); available=Math.max(1,Math.floor((MAX_Y-y-13)/lh)); }
+            const take=Math.min(Math.max(left.length-lo,right.length-ro),available);
+            const leftChunk=left.slice(lo,lo+take),rightChunk=right.slice(ro,ro+take);
+            const chipH=Math.max(29,14+Math.max(leftChunk.length,rightChunk.length,1)*lh);
+            const drawChip=(lines,x)=>{
+              doc.setFillColor(250,248,245); doc.setDrawColor(224,220,212); doc.roundedRect(x,y,chipW,chipH-5,8,8,'FD');
+              doc.setTextColor(58,58,58); doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.text(lines,x+11,y+14);
+            };
+            drawChip(leftChunk,M);
+            if(right.length) drawChip(rightChunk,M+chipW+chipGap);
+            y+=chipH; lo+=leftChunk.length; ro+=rightChunk.length;
+          }
+        }
       }
     });
 
-    // Contraportada
+    // Contraportada, índice de la página 2 y navegación interna en todos los folios.
     doc.addPage([960,540],'landscape');
-    this._pdfBack(doc, W, H, true);
-    this._pdfApplyFooters(doc, W, H, true, [1, doc.getNumberOfPages()]);
+    const backPage=doc.getNumberOfPages();
+    this._pdfBack(doc,W,H,true);
+    this._pdfReportIndex(doc,W,H,true,indexEntries,indexPage);
+    this._pdfApplyReportFooters(doc,W,H,true,indexPage,backPage,folios);
 
-    // Completa índice con páginas y links internos
-    const tocMap = { '01': summaryPage, '02': summaryPage };
-    (R.sections||[]).forEach((s,i)=>{ tocMap[String(i+3).padStart(2,'0')] = secStartPageByKey[s.key] || summaryPage; });
-    doc.setPage(2);
-    tocRows.forEach(row => {
-      const pg = tocMap[row.key] || summaryPage;
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(10.5);
-      doc.text(String(pg), W - M, row.y, { align:'right' });
-      doc.link(M+36, row.y-12, (W-M) - (M+36), 16, { pageNumber: pg });
-      doc.link(W-M-18, row.y-12, 18, 16, { pageNumber: pg });
-    });
-
-    if (O.returnData) return { base64: doc.output('datauristring') };
+    if(O.returnData) return {base64:doc.output('datauristring')};
     doc.save('DGMESNIE_reporte_territorial_16x9_'+new Date().toISOString().slice(0,10)+'.pdf');
     this._toast('Reporte PDF 16:9 exportado');
   }
@@ -3805,11 +4085,11 @@ class Component extends DCLogic {
     const ctx=cv.getContext('2d'); ctx.scale(scale,scale);
     ctx.fillStyle='#e8e4de'; ctx.fillRect(0,0,w,h);
     const base=mapEl.getBoundingClientRect();
-    mapEl.querySelectorAll('.leaflet-tile-pane img').forEach(img=>{ if(!img.complete||!img.naturalWidth) return; const r=img.getBoundingClientRect(); try{ ctx.drawImage(img, r.left-base.left, r.top-base.top, r.width, r.height); }catch(e){} });
-    // TODOS los canvas de los panes (overlay por defecto + panes propios: data/muni/nubes de puntos)
-    mapEl.querySelectorAll('.leaflet-map-pane canvas').forEach(c=>{ const r=c.getBoundingClientRect(); try{ ctx.drawImage(c, r.left-base.left, r.top-base.top, r.width, r.height); }catch(e){} });
-    // Panes SVG (capas vectoriales del inventario + círculo del análisis): se redibujan vía Path2D
-    mapEl.querySelectorAll('.leaflet-map-pane svg').forEach(svg=>{
+
+    const drawImgEl = (img) => { if(!img.complete||!img.naturalWidth) return; const r=img.getBoundingClientRect(); try{ ctx.drawImage(img, r.left-base.left, r.top-base.top, r.width, r.height); }catch(e){} };
+    const drawCanvasEl = (c) => { const r=c.getBoundingClientRect(); try{ ctx.drawImage(c, r.left-base.left, r.top-base.top, r.width, r.height); }catch(e){} };
+    // Renderer vectorial (SVG) propio de un pane: hijo DIRECTO del pane, con viewBox de todo el mapa.
+    const drawRendererSvg = (svg) => {
       const vb = svg.viewBox && svg.viewBox.baseVal; if(!vb || !vb.width) return;
       const r = svg.getBoundingClientRect();
       ctx.save(); ctx.translate(r.left-base.left - vb.x, r.top-base.top - vb.y);
@@ -3827,21 +4107,10 @@ class Component extends DCLogic {
         ctx.globalAlpha=1;
       });
       ctx.restore();
-    });
-    // Pin de la zona de análisis (divIcon HTML — se dibuja a mano)
-    const A=this.state.analysis;
-    if(A && A.lat && this._anaMarker){
-      try{
-        const p=this.map.latLngToContainerPoint([A.lat, A.lng]);
-        ctx.beginPath(); ctx.fillStyle='#9B2247'; ctx.strokeStyle='#fff'; ctx.lineWidth=2;
-        ctx.moveTo(p.x-7,p.y-14); ctx.lineTo(p.x+7,p.y-14); ctx.lineTo(p.x,p.y); ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.arc(p.x,p.y-20,9,0,7); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.fillStyle='#fff'; ctx.arc(p.x,p.y-20,3.5,0,7); ctx.fill();
-      }catch(e){}
-    }
-    // Marcadores divIcon (datasets, pines con glifo): se redibuja su SVG completo vía Path2D
-    // para conservar la forma del ícono; si algo falla, cae al punto de color.
-    mapEl.querySelectorAll('.leaflet-marker-pane svg').forEach(svg=>{
+    };
+    // Marcadores divIcon (datasets, pines con glifo): SVG anidado dentro del ícono del marcador.
+    // Se redibuja su contenido completo vía Path2D para conservar la forma; si algo falla, cae al punto de color.
+    const drawMarkerSvg = (svg) => {
       const r=svg.getBoundingClientRect();
       let drawn=false;
       try{
@@ -3871,7 +4140,39 @@ class Component extends DCLogic {
         ctx.restore();
       }catch(e){ try{ ctx.restore(); }catch(e2){} }
       if(!drawn){ const fill=(svg.querySelector('[fill]')||{}).getAttribute && svg.querySelector('[fill]').getAttribute('fill'); ctx.beginPath(); ctx.fillStyle=fill||'#9B2247'; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.arc(r.left-base.left+r.width/2, r.top-base.top+r.height/2, 6, 0, 7); ctx.fill(); ctx.stroke(); }
+    };
+
+    // Recorre TODOS los panes de Leaflet respetando su z-index REAL (no el orden del DOM):
+    // gerencias/estados/líneas comparten el pane por defecto (overlayPane, z-index 400) mientras
+    // que municipios (410), subestaciones/datasets (data, 430) y otras capas del inventario (genvec,
+    // 449) viven en panes propios. Dibujar por orden de documento hacía que los polígonos (con
+    // relleno) tapa­ran los puntos/líneas al rasterizar, aunque en pantalla sí se veían por encima.
+    const mapPane = mapEl.querySelector('.leaflet-map-pane');
+    const panes = mapPane
+      ? Array.from(mapPane.children).filter(el => el.classList && el.classList.contains('leaflet-pane'))
+      : [];
+    panes.sort((a,b) => (parseFloat(getComputedStyle(a).zIndex)||0) - (parseFloat(getComputedStyle(b).zIndex)||0));
+    panes.forEach(pane => {
+      pane.querySelectorAll('img').forEach(drawImgEl);
+      pane.querySelectorAll('canvas').forEach(drawCanvasEl);
+      pane.querySelectorAll('svg').forEach(svg => {
+        // El renderer vectorial del pane es su hijo DIRECTO; los íconos de marcador (divIcon)
+        // quedan anidados un nivel más adentro, dentro del wrapper del marcador.
+        if (svg.parentElement === pane) drawRendererSvg(svg); else drawMarkerSvg(svg);
+      });
     });
+
+    // Pin de la zona de análisis (divIcon HTML — se dibuja a mano, siempre encima de las capas de datos)
+    const A=this.state.analysis;
+    if(A && A.lat && this._anaMarker){
+      try{
+        const p=this.map.latLngToContainerPoint([A.lat, A.lng]);
+        ctx.beginPath(); ctx.fillStyle='#9B2247'; ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+        ctx.moveTo(p.x-7,p.y-14); ctx.lineTo(p.x+7,p.y-14); ctx.lineTo(p.x,p.y); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.x,p.y-20,9,0,7); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.fillStyle='#fff'; ctx.arc(p.x,p.y-20,3.5,0,7); ctx.fill();
+      }catch(e){}
+    }
     if(overlays) this._drawOverlays(ctx, w, h, overlays);
     // Marca de agua opcional: logo SENER + fecha (esquina inferior izquierda, translúcida)
     if (this.state.wmOn) {
@@ -4171,6 +4472,267 @@ class Component extends DCLogic {
     this._toast('PDF tamaño carta exportado');
   };
 
+  exportReportXLSX = () => {
+    const R=this._report;
+    if(!R){ this._toast('No hay un reporte territorial generado'); return; }
+    const X=window.XLSX;
+    if(!X){ this._toast('Preparando módulo Excel…'); return; }
+
+    const wb=X.utils.book_new();
+    wb.Props={
+      Title:'Reporte institucional de análisis territorial',
+      Subject:'Evaluación territorial DGMESNIE',
+      Author:'Secretaría de Energía · DGMESNIE',
+      Company:'Secretaría de Energía',
+      CreatedDate:new Date()
+    };
+
+    const C={ guinda:'9B2247', gold:'E0A12E', cream:'FAF8F5', white:'FFFFFF', ink:'1C1B1A', gray:'6F6B66', line:'E6E1DA' };
+    const bd={ style:'thin', color:{rgb:C.line} };
+    const border={ top:bd, bottom:bd, left:bd, right:bd };
+    const ST={
+      title:{ font:{bold:true,color:{rgb:C.white},sz:18}, fill:{fgColor:{rgb:C.guinda}}, alignment:{horizontal:'left',vertical:'center',wrapText:true}, border },
+      kicker:{ font:{bold:true,color:{rgb:C.guinda},sz:10}, fill:{fgColor:{rgb:C.cream}}, alignment:{vertical:'center',wrapText:true}, border },
+      gold:{ font:{bold:true,color:{rgb:C.ink},sz:11}, fill:{fgColor:{rgb:C.gold}}, alignment:{vertical:'center',wrapText:true}, border },
+      head:{ font:{bold:true,color:{rgb:C.white},sz:10}, fill:{fgColor:{rgb:C.guinda}}, alignment:{vertical:'center',wrapText:true}, border },
+      cell:{ font:{color:{rgb:C.ink},sz:10}, alignment:{vertical:'top',wrapText:true}, border },
+      alt:{ font:{color:{rgb:C.ink},sz:10}, fill:{fgColor:{rgb:C.cream}}, alignment:{vertical:'top',wrapText:true}, border },
+      note:{ font:{italic:true,color:{rgb:C.gray},sz:9}, alignment:{vertical:'top',wrapText:true}, border },
+      link:{ font:{bold:true,underline:true,color:{rgb:C.guinda},sz:10}, fill:{fgColor:{rgb:C.cream}}, alignment:{vertical:'center'}, border }
+    };
+    const usedNames=new Set();
+    const sheetName=(raw)=>{
+      let base=String(raw==null?'Hoja':raw).replace(/[\\/?*\[\]:]/g,' ').replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().replace(/^'+|'+$/g,'');
+      if(!base) base='Hoja';
+      base=base.slice(0,31);
+      let name=base, n=2;
+      while(usedNames.has(name.toLocaleLowerCase('es-MX'))){
+        const suffix=' ('+(n++)+')';
+        name=base.slice(0,31-suffix.length)+suffix;
+      }
+      usedNames.add(name.toLocaleLowerCase('es-MX'));
+      return name;
+    };
+    // Se reservan primero los nombres contractuales para conservarlos exactamente.
+    const N={
+      cover:sheetName('Portada'), index:sheetName('Índice'), zone:sheetName('Zona evaluada'),
+      metrics:sheetName('Indicadores'), sources:sheetName('Fuentes y notas')
+    };
+    const sections=Array.isArray(R.sections)?R.sections:[];
+    const activeDatasets=(Array.isArray(this.state.datasets)?this.state.datasets:[]).filter(d=>d&&d.active);
+    const sectionPlans=sections.map((sec,i)=>({ sec, name:sheetName(sec&&sec.title?sec.title:'Sección '+(i+1)), order:i+1 }));
+    const datasetPlans=activeDatasets.map((dataset,i)=>({ dataset, name:sheetName('Datos · '+(dataset.name||('Dataset '+(i+1)))) }));
+    const quoteName=(name)=>String(name).replace(/'/g,"''");
+    const touch=(ws,r,c)=>{
+      const point={r,c};
+      if(!ws['!ref']) ws['!ref']=X.utils.encode_range({s:point,e:point});
+      else {
+        const range=X.utils.decode_range(ws['!ref']);
+        range.s.r=Math.min(range.s.r,r); range.s.c=Math.min(range.s.c,c);
+        range.e.r=Math.max(range.e.r,r); range.e.c=Math.max(range.e.c,c);
+        ws['!ref']=X.utils.encode_range(range);
+      }
+    };
+    const ensure=(ws,r,c)=>{
+      touch(ws,r,c);
+      const a=X.utils.encode_cell({r,c});
+      if(!ws[a]) ws[a]={t:'s',v:''};
+      return ws[a];
+    };
+    const put=(ws,r,c,value,style)=>{
+      touch(ws,r,c);
+      const a=X.utils.encode_cell({r,c});
+      ws[a]={t:typeof value==='number'?'n':typeof value==='boolean'?'b':'s',v:value==null?'':value};
+      if(style) ws[a].s=style;
+      return ws[a];
+    };
+    const link=(ws,r,c,label,target)=>{
+      const cell=put(ws,r,c,label,ST.link);
+      cell.l={Target:"#'"+quoteName(target)+"'!A1",Tooltip:'Ir a '+target};
+    };
+    const backLink=(ws)=>link(ws,0,0,'← Volver al Índice',N.index);
+    const merge=(ws,sr,sc,er,ec)=>{
+      ws['!merges']=ws['!merges']||[];
+      ws['!merges'].push({s:{r:sr,c:sc},e:{r:er,c:ec}});
+      const anchor=ensure(ws,sr,sc), style=anchor.s;
+      for(let r=sr;r<=er;r++) for(let c=sc;c<=ec;c++){
+        const cell=ensure(ws,r,c);
+        if(style) cell.s=style;
+      }
+    };
+    const asNumber=(value,hint)=>{
+      if(typeof value==='number' || typeof value==='boolean' || value instanceof Date || value==null) return value;
+      const s=String(value).trim();
+      const numericHint=/(^|_)(mw|mva|kv|capacidad|tension|distancia|longitud|inversion|anio|año|conteo|cantidad|total|valor)(_|$)|^(valor|total|conteo|cantidad)$/i.test(String(hint||''));
+      if(numericHint && /^[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(s)){
+        const n=Number(s.replace(/,/g,''));
+        if(Number.isFinite(n)) return n;
+      }
+      return value;
+    };
+    const numberStyle=(base,cell)=>cell&&cell.t==='n'?{...base,numFmt:Number.isInteger(cell.v)?'#,##0;[Red]-#,##0':'#,##0.00;[Red]-#,##0.00'}:base;
+    const paintTable=(ws,headerRow,lastRow,colCount,setFilter)=>{
+      for(let c=0;c<colCount;c++) ensure(ws,headerRow,c).s=ST.head;
+      for(let r=headerRow+1;r<=lastRow;r++) for(let c=0;c<colCount;c++){
+        const cell=ensure(ws,r,c), base=(r-headerRow)%2===0?ST.alt:ST.cell;
+        cell.s=numberStyle(base,cell);
+      }
+      ws['!rows']=ws['!rows']||[];
+      ws['!rows'][headerRow]={hpt:28};
+      if(setFilter && lastRow>=headerRow) ws['!autofilter']={ref:X.utils.encode_range({s:{r:headerRow,c:0},e:{r:lastRow,c:Math.max(0,colCount-1)}})};
+    };
+    const widths=(values,minimums)=>{
+      const cols=Math.max(minimums?minimums.length:0,...values.map(r=>Array.isArray(r)?r.length:0),1);
+      return Array.from({length:cols},(_,c)=>{
+        let w=(minimums&&minimums[c])||10;
+        for(let r=0;r<Math.min(values.length,1000);r++) w=Math.max(w,Math.min(48,String((values[r]||[])[c]??'').length+2));
+        return {wch:Math.min(48,w)};
+      });
+    };
+    const finish=(ws,cols,freezeRow)=>{
+      ws['!cols']=cols;
+      if(freezeRow) ws['!freeze']={xSplit:0,ySplit:freezeRow,topLeftCell:'A'+(freezeRow+1),activePane:'bottomLeft',state:'frozen'};
+      return ws;
+    };
+    const titleBlock=(ws,title,subtitle,lastCol)=>{
+      backLink(ws);
+      put(ws,2,0,title,ST.title); merge(ws,2,0,3,lastCol);
+      put(ws,4,0,subtitle||'',ST.kicker); merge(ws,4,0,4,lastCol);
+      ws['!rows']=ws['!rows']||[]; ws['!rows'][2]={hpt:30}; ws['!rows'][3]={hpt:30}; ws['!rows'][4]={hpt:24};
+    };
+
+    const coverRows=Array.from({length:17},()=>[]);
+    const cover=X.utils.aoa_to_sheet(coverRows);
+    backLink(cover);
+    put(cover,2,0,'SUBSECRETARÍA DE PLANEACIÓN Y TRANSICIÓN ENERGÉTICA',ST.kicker); merge(cover,2,0,2,7);
+    put(cover,3,0,'Reporte de análisis territorial',ST.title); merge(cover,3,0,5,7);
+    put(cover,6,0,'Evaluación institucional de una zona estratégica',ST.gold); merge(cover,6,0,6,7);
+    put(cover,8,0,'Fecha de corte',ST.head); put(cover,8,1,R.date||this._stamp(),ST.cell);
+    put(cover,9,0,'Ámbito territorial',ST.head); put(cover,9,1,this._reportMetaValue(R,'Municipio')+', '+this._reportMetaValue(R,'Estado'),ST.cell);
+    put(cover,10,0,'Radio de análisis',ST.head); put(cover,10,1,this._reportMetaValue(R,'Radio de análisis'),ST.cell);
+    put(cover,11,0,'Gerencia de control',ST.head); put(cover,11,1,this._reportMetaValue(R,'Gerencia de control'),ST.cell);
+    put(cover,13,0,'Contenido',ST.gold); merge(cover,13,0,13,7);
+    put(cover,14,0,'El libro integra la ficha territorial, todos los indicadores, cada sección analítica, las fuentes activas completas y notas metodológicas.',ST.note); merge(cover,14,0,15,7);
+    cover['!rows']=[{hpt:22},{hpt:8},{hpt:24},{hpt:31},{hpt:31},{hpt:31},{hpt:26}];
+    finish(cover,[{wch:25},{wch:31},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14}],1);
+
+    const allEntries=[
+      {name:N.cover,type:'Presentación',description:'Portada institucional'},
+      {name:N.index,type:'Navegación',description:'Índice con vínculos internos'},
+      {name:N.zone,type:'Panorama general',description:'Ficha completa de la zona evaluada'},
+      {name:N.metrics,type:'Panorama general',description:'Indicadores del reporte territorial'},
+      ...sectionPlans.map(p=>({name:p.name,type:'Sección de análisis',description:p.sec&&p.sec.title?p.sec.title:'Sección '+p.order})),
+      ...datasetPlans.map(p=>({name:p.name,type:'Dataset fuente completo',description:p.dataset.name||'Dataset activo'})),
+      {name:N.sources,type:'Trazabilidad',description:'Fuentes, cobertura y notas metodológicas'}
+    ];
+    const indexRows=[['ÍNDICE DEL LIBRO'],['Seleccione una hoja para navegar dentro del archivo.'],[],['Hoja','Tipo','Contenido'],...allEntries.map(e=>[e.name,e.type,e.description])];
+    const index=X.utils.aoa_to_sheet(indexRows);
+    index['A1'].s=ST.title; merge(index,0,0,0,2);
+    index['A2'].s=ST.kicker; merge(index,1,0,1,2);
+    paintTable(index,3,indexRows.length-1,3,true);
+    allEntries.forEach((e,i)=>link(index,4+i,0,e.name,e.name));
+    index['!rows']=index['!rows']||[]; index['!rows'][0]={hpt:30}; index['!rows'][1]={hpt:24};
+    finish(index,[{wch:31},{wch:24},{wch:58}],4);
+
+    const meta=Array.isArray(R.meta)?R.meta:[];
+    const zoneRows=[[],[],[],[],[],['Campo','Valor'],...meta.map(row=>[row&&row[0]!=null?row[0]:'',row&&row[1]!=null?row[1]:''])];
+    const zone=X.utils.aoa_to_sheet(zoneRows);
+    titleBlock(zone,'Zona evaluada','Ficha territorial completa · '+(R.date||this._stamp()),3);
+    paintTable(zone,5,zoneRows.length-1,2,true);
+    finish(zone,[{wch:31},{wch:58},{wch:16},{wch:16}],6);
+
+    const metrics=Array.isArray(R.metrics)?R.metrics:[];
+    const metricRows=metrics.map(m=>[m&&m.label!=null?m.label:'',asNumber(m&&m.value,'valor'),m&&m.sub!=null?m.sub:'',m&&m.color!=null?m.color:'',m&&m.dim?'Sí':'No']);
+    const metricsRows=[[],[],[],[],[],['Indicador','Valor','Detalle','Color de referencia','Atenuado'],...metricRows];
+    const metricSheet=X.utils.aoa_to_sheet(metricsRows);
+    titleBlock(metricSheet,'Indicadores','Métricas completas del radio analizado',4);
+    paintTable(metricSheet,5,metricsRows.length-1,5,true);
+    finish(metricSheet,widths(metricsRows,[31,18,48,20,12]),6);
+
+    const buildSection=(plan)=>{
+      const sec=plan.sec||{}, rows=[[],[],[],[],[],['Introducción'],[sec.intro==null?'':sec.intro],[]];
+      const blocks=[], merges=[];
+      let maxCols=2;
+      const tableKeys=Object.keys(sec).filter(k=>/^table\d*$/.test(k) && sec[k] && Array.isArray(sec[k].head) && Array.isArray(sec[k].rows));
+      const tableOrder=k=>k==='table'?1:Number(k.replace('table','')||1);
+      tableKeys.sort((a,b)=>tableOrder(a)-tableOrder(b));
+      tableKeys.forEach((key,ti)=>{
+        const table=sec[key], sourceRows=table.rows, n=Math.max(table.head.length,...sourceRows.map(r=>Array.isArray(r)?r.length:0),1);
+        const head=Array.from({length:n},(_,i)=>table.head[i]!=null?table.head[i]:'Campo '+(i+1));
+        maxCols=Math.max(maxCols,n);
+        const labelRow=rows.length; rows.push([ti===0?'Detalle de la sección':'Detalle complementario']); merges.push({r:labelRow});
+        const hr=rows.length; rows.push(head);
+        sourceRows.forEach(row=>rows.push(Array.from({length:n},(_,i)=>asNumber((row||[])[i],head[i]))));
+        blocks.push({header:hr,last:rows.length-1,cols:n}); rows.push([]);
+      });
+      const findingRows=Array.isArray(sec.rows)?sec.rows:[];
+      if(findingRows.length || sec.hasRows){
+        const labelRow=rows.length; rows.push(['Resumen de hallazgos']); merges.push({r:labelRow});
+        const n=Math.max(2,...findingRows.map(r=>Array.isArray(r)?r.length:0));
+        const head=Array.from({length:n},(_,i)=>i===0?'Concepto':i===1?'Valor':'Dato '+(i+1));
+        const hr=rows.length; rows.push(head);
+        findingRows.forEach(row=>rows.push(Array.from({length:n},(_,i)=>asNumber((row||[])[i],head[i]))));
+        blocks.push({header:hr,last:rows.length-1,cols:n}); maxCols=Math.max(maxCols,n); rows.push([]);
+      }
+      const chips=Array.isArray(sec.chips)?sec.chips:[];
+      if(chips.length || sec.hasChips){
+        const labelRow=rows.length; rows.push(['Elementos identificados']); merges.push({r:labelRow});
+        const hr=rows.length; rows.push(['No.','Elemento']);
+        chips.forEach((chip,i)=>rows.push([i+1,chip==null?'':chip]));
+        blocks.push({header:hr,last:rows.length-1,cols:2}); rows.push([]);
+      }
+      const ws=X.utils.aoa_to_sheet(rows);
+      titleBlock(ws,String(sec.title||plan.name),String(sec.kicker||'Análisis territorial')+(sec.key?' · Clave '+sec.key:''),maxCols-1);
+      ensure(ws,5,0).s=ST.gold; merge(ws,5,0,5,maxCols-1);
+      ensure(ws,6,0).s=ST.note; merge(ws,6,0,6,maxCols-1);
+      merges.forEach(m=>{ ensure(ws,m.r,0).s=ST.gold; merge(ws,m.r,0,m.r,maxCols-1); });
+      blocks.forEach((b,i)=>paintTable(ws,b.header,b.last,b.cols,i===0));
+      ws['!rows']=ws['!rows']||[]; ws['!rows'][6]={hpt:42};
+      return finish(ws,widths(rows,Array.from({length:maxCols},(_,i)=>i===0?28:22)),6);
+    };
+    const sectionSheets=sectionPlans.map(p=>({name:p.name,ws:buildSection(p)}));
+
+    const datasetSheets=datasetPlans.map(plan=>{
+      const d=plan.dataset, fields=Array.isArray(d.fields)?d.fields:[], sourceRows=Array.isArray(d.rows)?d.rows:[];
+      const data=sourceRows.map(row=>fields.map(field=>asNumber(row&&row[field],field)));
+      const rows=[[],[],[],[],[],['Fuente',d.url||'Fuente conectada'],['Registros',sourceRows.length,'Campos',fields.length],fields,...data];
+      const ws=X.utils.aoa_to_sheet(rows);
+      titleBlock(ws,'Dataset fuente completo',String(d.name||plan.name)+' · sin truncamiento de filas ni campos',Math.max(fields.length-1,3));
+      ensure(ws,5,0).s=ST.gold; ensure(ws,5,1).s=ST.note;
+      ensure(ws,6,0).s=ST.gold; ensure(ws,6,1).s=numberStyle(ST.cell,ensure(ws,6,1)); ensure(ws,6,2).s=ST.gold; ensure(ws,6,3).s=numberStyle(ST.cell,ensure(ws,6,3));
+      paintTable(ws,7,rows.length-1,Math.max(fields.length,1),true);
+      const sample=[fields,...data.slice(0,999)];
+      return {name:plan.name,ws:finish(ws,widths(sample,fields.map(()=>12)),8)};
+    });
+
+    const sourceRows=[
+      [],[],[],[],[],
+      ['Fuente o nota','Detalle','Registros','Campos'],
+      ['Sistema institucional','DGMESNIE · Secretaría de Energía · CENACE · CFE','',''],
+      ['Fecha de corte',R.date||this._stamp(),'',''],
+      ['Cobertura territorial',this._reportMetaValue(R,'Municipio')+', '+this._reportMetaValue(R,'Estado')+' · '+this._reportMetaValue(R,'Radio de análisis'),'',''],
+      ['Integridad del reporte','Las secciones, tablas, hallazgos y elementos identificados se incorporan completos conforme a this._report.','',''],
+      ['Criterio geográfico','Los registros ubicados por centroide de entidad o gerencia representan una aproximación territorial.','',''],
+      ['Validación','Las cifras están sujetas a actualización y verificación en campo.','',''],
+      ...activeDatasets.map(d=>[d.name||'Dataset activo',d.url||'Fuente conectada',Array.isArray(d.rows)?d.rows.length:0,Array.isArray(d.fields)?d.fields.length:0])
+    ];
+    const sources=X.utils.aoa_to_sheet(sourceRows);
+    titleBlock(sources,'Fuentes y notas','Trazabilidad, cobertura y criterios de lectura',3);
+    paintTable(sources,5,sourceRows.length-1,4,true);
+    finish(sources,[{wch:31},{wch:76},{wch:14},{wch:12}],6);
+
+    X.utils.book_append_sheet(wb,cover,N.cover);
+    X.utils.book_append_sheet(wb,index,N.index);
+    X.utils.book_append_sheet(wb,zone,N.zone);
+    X.utils.book_append_sheet(wb,metricSheet,N.metrics);
+    sectionSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
+    datasetSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
+    X.utils.book_append_sheet(wb,sources,N.sources);
+
+    X.writeFile(wb,'DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.xlsx',{cellStyles:true,bookSST:true});
+    this._toast('Excel territorial exportado · '+wb.SheetNames.length+' hojas');
+  };
+
   exportXLSX = () => {
     this.closeExport();
     const X=window.XLSX; if(!X){ this._toast('Preparando módulo Excel…'); return; }
@@ -4446,7 +5008,7 @@ class Component extends DCLogic {
       onCloseReport: this.onCloseReport, onReportPDF: this.exportReportPDF, onOpenReport: this.onOpenReport,
       // Exportaciones adicionales desde el reporte + marca de agua opcional (logo SENER + fecha)
       onReportPdfPpt: this.exportReportPDFPresent,
-      onReportXLSX: this.exportXLSX,
+      onReportXLSX: this.exportReportXLSX,
       onReportPNG: () => this.doExportPNG(),
       onOpenReportSend: this.onOpenReportSend,
       onCloseReportSend: this.onCloseReportSend,
@@ -4460,8 +5022,8 @@ class Component extends DCLogic {
       reportSections: ((this._report||{}).sections||[]).map(sec => ({ ...sec,
         rowItems: (sec.rows||[]).map(r => ({ label:r[0], value:r[1], color: r[1]==='no analizada' ? '#9A958E' : '#1c1b1a' })) })),
       reportSendOpen: !!S.reportSendOpen,
-      reportSendFmtPdf: S.reportSendFmt!=='pptx',
-      reportSendFmtPpt: S.reportSendFmt==='pptx',
+      reportSendFmtPdf: S.reportSendFmt!=='pdf16x9',
+      reportSendFmtPpt: S.reportSendFmt==='pdf16x9',
       reportSendReady: !!(S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale),
       reportSendDisabled: !(S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale),
       reportSendTitle: (S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale)
@@ -4472,7 +5034,7 @@ class Component extends DCLogic {
         return 'display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid '+(on?'#9B2247':'#D8D3CC')+';background:'+(on?'#fff':'#F2F0ED')+';color:'+(on?'#9B2247':'#9A958E')+';border-radius:8px;font-size:11.5px;font-weight:700;cursor:'+(on?'pointer':'not-allowed')+';font-family:inherit';
       })(),
       onSendFmtPdf: () => this.setState({ reportSendFmt:'pdf' }),
-      onSendFmtPpt: () => this.setState({ reportSendFmt:'pptx' }),
+      onSendFmtPpt: () => this.setState({ reportSendFmt:'pdf16x9' }),
       reportSendQuery: S.reportSendQuery||'',
       onSendQueryInput: (e) => this.setState({ reportSendQuery:e.target.value||'' }),
       reportSendMsg: S.reportSendMsg||'',
