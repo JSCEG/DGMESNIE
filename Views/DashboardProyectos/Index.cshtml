@@ -3405,6 +3405,72 @@ class Component extends DCLogic {
     });
     return out.sort((a,b) => a.dist-b.dist).slice(0, n||5);
   }
+  // Construye la sección PODECOBI para el reporte territorial. Hace dos fetches
+  // (polos + resumen) al backend y arma una sección con tabla nacional completa
+  // y, si la zona de análisis intersecta algún polo, un bloque destacado.
+  _buildPolosSection(A){
+    return Promise.all([
+      fetch('/api/podecobi/polos', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : []),
+      fetch('/api/podecobi/resumen', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null),
+    ]).then(([polos, resumen]) => {
+      if (!Array.isArray(polos) || !polos.length) return null;
+
+      const inRadius = polos.filter(p =>
+        p.centroidLon != null && p.centroidLat != null &&
+        this._haversine(A.lat, A.lng, p.centroidLat, p.centroidLon) <= A.radiusKm
+      );
+
+      const totalHa = resumen
+        ? Number(resumen.superficieTotalHa || 0).toLocaleString('es-MX', { maximumFractionDigits: 2 })
+        : '—';
+
+      const rows = [
+        ['Universo PODECOBI declarado', `${this._nf(resumen?.totalPolos || polos.length)} polos · 13 entidades`],
+        ['Superficie agregada (DOF/SIDOF)', totalHa + ' ha'],
+        ['En ejecución', this._nf(resumen?.enEjecucion ?? '—') + ' polos'],
+        ['En preinversión', this._nf(resumen?.enPreinversion ?? '—') + ' polos'],
+        ['Corte vigente', resumen?.ultimoCorte || '—'],
+      ];
+
+      const chipsNacional = polos.slice(0, 14).map(p => p.nombreOficial).filter(Boolean);
+
+      const tablaNacional = polos.map(p => [
+        p.numero || '—',
+        p.nombreOficial || '—',
+        p.estado || '—',
+        p.municipio || '—',
+        p.etapa || '—',
+        p.areaOficialHa != null ? Number(p.areaOficialHa).toLocaleString('es-MX', { maximumFractionDigits: 2 }) + ' ha' : '—',
+      ]);
+
+      const sec = {
+        key: 'podecobi', kicker: 'Planeación institucional', color: '#9B2247',
+        icon: 'M3 21h18 M5 21V10l7-5 7 5v11 M9 21v-6h6v6',
+        title: 'PODECOBI · 14 polos con declaratoria',
+        intro: inRadius.length
+          ? `${inRadius.length} polo(s) PODECOBI intersecta(n) el radio de análisis (${A.radiusKm} km).`
+          : 'Universo institucional de Polos de Desarrollo Económico para el Bienestar con declaratoria vigente al corte de la BD.',
+        hasRows: true, rows, hasChips: chipsNacional.length > 0, chips: chipsNacional,
+        hasTable: true, hasTable2: false,
+        table: { head: ['Núm.', 'Polo', 'Entidad', 'Municipio', 'Etapa', 'Superficie (DOF)'], rows: tablaNacional },
+      };
+
+      if (inRadius.length) {
+        sec.table2 = {
+          head: ['Núm.', 'Polo intersectado', 'Etapa', 'Superficie (DOF)'],
+          rows: inRadius.map(p => [
+            p.numero || '—',
+            p.nombreOficial || '—',
+            p.etapa || '—',
+            p.areaOficialHa != null ? Number(p.areaOficialHa).toLocaleString('es-MX', { maximumFractionDigits: 2 }) + ' ha' : '—',
+          ])
+        };
+        sec.hasTable2 = true;
+      }
+      return sec;
+    });
+  }
+
   _buildReport(){
     const A = this.state.analysis;
     if (!A.lat || !A.ranKeys.length) return null;
@@ -3421,6 +3487,20 @@ class Component extends DCLogic {
     const subs = this._nearestSubs(A.lat, A.lng, 5);
     const lines = this._nearestLines(A.lat, A.lng, 5);
     const sections = [];
+    // 0 · PODECOBI nacionales — se inyecta de forma asíncrona después del render inicial
+    // (los KPIs y secciones se renderizan sincrónicamente; esta sección aparece al resolver
+    // la consulta al backend).
+    this._pendingPolosSection = this._buildPolosSection(A).then(sec => {
+      if (!sec) return;
+      // Evita duplicar si ya existe (re-renders durante análisis)
+      const idx = sections.findIndex(s => s.key === 'podecobi');
+      if (idx >= 0) sections[idx] = sec; else sections.push(sec);
+      if (this._report) {
+        this._report = { ...this._report, sections: this._report.sections.map(s => s.key==='podecobi' ? sec : s).filter((s,i,a)=>a.findIndex(x=>x.key===s.key)===i) };
+        if (this.state.reportOpen) this.setState({});
+      }
+    }).catch(()=>{});
+
     // 1 · Conexión eléctrica estratégica (siempre: subestaciones/líneas se cargan al arranque)
     sections.push({ key:'elec', kicker:'Infraestructura eléctrica', color:'#9B2247', icon:'M13 2 3 14h7l-1 8 10-12h-7z', title:'Conexión estratégica a la red',
       intro:'Puntos de interconexión más cercanos al sitio: determinan el costo y la viabilidad técnica del proyecto.',
@@ -3600,20 +3680,29 @@ class Component extends DCLogic {
     // El mapa se captura con el ENCUADRE ACTIVO del usuario (su zoom y posición actuales),
     // tal como se ve en pantalla al momento de exportar.
     this.setState({ blocking:{ label:'Componiendo reporte PDF…' } });
-    setTimeout(() => {
-      try { this._writeReportPDF(R); }
-      catch(e) { this._toast('Error al generar el PDF: '+(e.message||e)); }
-      finally { this.setState({ blocking:null }); }
-    }, 250);
+    // Espera a la sección PODECOBI si aún está pendiente (inyección asíncrona)
+    const pending = this._pendingPolosSection || Promise.resolve();
+    pending.finally(() => {
+      const Rnow = this._report || R;
+      setTimeout(() => {
+        try { this._writeReportPDF(Rnow); }
+        catch(e) { this._toast('Error al generar el PDF: '+(e.message||e)); }
+        finally { this.setState({ blocking:null }); }
+      }, 250);
+    });
   };
   exportReportPDFPresent = () => {
     const R = this._report; if (!R) return;
     this.setState({ blocking:{ label:'Componiendo reporte 16:9…' } });
-    setTimeout(() => {
-      try { this._writeReportPDFPresent(R); }
+    const pending = this._pendingPolosSection || Promise.resolve();
+    pending.finally(() => {
+      const Rnow = this._report || R;
+      setTimeout(() => {
+      try { this._writeReportPDFPresent(Rnow); }
       catch(e) { this._toast('Error al generar el PDF 16:9: '+(e.message||e)); }
       finally { this.setState({ blocking:null }); }
     }, 250);
+    });
   };
   _reportMetaValue(R, label){
     const row = ((R&&R.meta)||[]).find(r => String(r[0]).toLowerCase()===String(label).toLowerCase());
