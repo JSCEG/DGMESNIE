@@ -3679,38 +3679,28 @@ class Component extends DCLogic {
     // Si el cache aún no está listo, lo pedimos en línea y bloqueamos.
     const polosKpi = this._polosKpiCache || null;
 
+    // Entidades, municipios y gerencias que el círculo toca (no solo el centroide).
+    const intersectedEntidades = this._entitiesInRadius(A.lat, A.lng, A.radiusKm);
+    const intersectedMunicipios = this._municipiosInRadius(A.lat, A.lng, A.radiusKm);
+    const intersectedGerencias = this._gerenciasInRadius(A.lat, A.lng, A.radiusKm);
+    const geoLink = `https://www.google.com/maps/search/?api=1&query=${A.lat.toFixed(5)}%2C${A.lng.toFixed(5)}`;
+    const osmLink = `https://www.openstreetmap.org/?mlat=${A.lat.toFixed(5)}&mlon=${A.lng.toFixed(5)}#map=12/${A.lat.toFixed(5)}/${A.lng.toFixed(5)}`;
+    const metaRows = [
+      ['Coordenadas del centro', `${A.lat.toFixed(5)}, ${A.lng.toFixed(5)}`],
+      ['Radio de análisis', A.radiusKm + ' km · ' + ((Math.PI * A.radiusKm * A.radiusKm).toFixed(1)) + ' km²'],
+      ['Estado (centroide)', A.estado || '—'],
+      ['Municipio (centroide)', muni],
+      ['Gerencia (centroide)', 'GCR ' + (this.GCR_NOMBRE[gerKey] || '—')],
+    ];
+    if (intersectedEntidades.length) metaRows.push(['Entidades intersectadas', intersectedEntidades.join(', ')]);
+    if (intersectedMunicipios.length) metaRows.push(['Municipios intersectados', intersectedMunicipios.slice(0, 8).join(', ') + (intersectedMunicipios.length > 8 ? ' +' + (intersectedMunicipios.length - 8) : '')]);
+    if (intersectedGerencias.length) metaRows.push(['Gerencias intersectadas', intersectedGerencias.map(g => 'GCR ' + (this.GCR_NOMBRE[g] || g)).join(', ')]);
+    metaRows.push(['Mapa (Google Maps)', geoLink]);
+    metaRows.push(['Mapa (OpenStreetMap)', osmLink]);
+    metaRows.push(['Capas analizadas', String(A.ranKeys.length)]);
     return {
       date: new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long', day:'numeric' }),
-      // Entidades, municipios y gerencias que el círculo toca (no solo el centroide).
-      // Cualquier geometría del estado (entidades) cuyo bounding box o cuyo
-      // punto-de-prueba intersecte el radio se lista. Para municipios, sólo si
-      // están cargados; lo mismo para gerencias.
-      const intersectedEntidades = this._entitiesInRadius(A.lat, A.lng, A.radiusKm);
-      const intersectedMunicipios = this._municipiosInRadius(A.lat, A.lng, A.radiusKm);
-      const intersectedGerencias = this._gerenciasInRadius(A.lat, A.lng, A.radiusKm);
-      const geoLink = `https://www.google.com/maps/search/?api=1&query=${A.lat.toFixed(5)}%2C${A.lng.toFixed(5)}`;
-      const osmLink = `https://www.openstreetmap.org/?mlat=${A.lat.toFixed(5)}&mlon=${A.lng.toFixed(5)}#map=12/${A.lat.toFixed(5)}/${A.lng.toFixed(5)}`;
-      const meta = [
-        ['Coordenadas del centro', `${A.lat.toFixed(5)}, ${A.lng.toFixed(5)}`],
-        ['Radio de análisis', A.radiusKm + ' km · ' + ((Math.PI * A.radiusKm * A.radiusKm).toFixed(1)) + ' km²'],
-        ['Estado (centroide)', A.estado || '—'],
-        ['Municipio (centroide)', muni],
-        ['Gerencia (centroide)', 'GCR ' + (this.GCR_NOMBRE[gerKey] || '—')],
-      ];
-      if (intersectedEntidades.length) {
-        meta.push(['Entidades intersectadas', intersectedEntidades.join(', ')]);
-      }
-      if (intersectedMunicipios.length) {
-        meta.push(['Municipios intersectados', intersectedMunicipios.slice(0, 8).join(', ') + (intersectedMunicipios.length > 8 ? ' +' + (intersectedMunicipios.length - 8) : '')]);
-      }
-      if (intersectedGerencias.length) {
-        meta.push(['Gerencias intersectadas', intersectedGerencias.map(g => 'GCR ' + (this.GCR_NOMBRE[g] || g)).join(', ')]);
-      }
-      meta.push(['Mapa (Google Maps)', geoLink]);
-      meta.push(['Mapa (OpenStreetMap)', osmLink]);
-      meta.push(['Capas analizadas', String(A.ranKeys.length)]);
-      return {
-      date: new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long', day:'numeric' }),
+      meta: metaRows,
       meta,
       metrics: [{ label:'Elementos totales', value:this._nf(totalEl), color:'#9B2247', dim:false, sub:'en '+A.radiusKm+' km' }]
         .concat(polosKpi ? [polosKpi] : [])
