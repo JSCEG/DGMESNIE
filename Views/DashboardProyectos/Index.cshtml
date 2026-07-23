@@ -439,7 +439,14 @@
     }
   </style>
 </helmet>
-<div style="display:flex;flex-direction:column;height:100%;width:100%;overflow:hidden;background:#FAF8F5;font-family:'Noto Sans',sans-serif;color:#1c1b1a">
+<div class="dg-boot" style="display:flex;flex-direction:column;height:100%;width:100%;overflow:hidden;background:#FAF8F5;font-family:'Noto Sans',sans-serif;color:#1c1b1a;visibility:hidden">
+  <!-- Cubre TODA la app durante el render server-side (incluye placeholders de sc-if,
+       legendOn, capasOpen, modales, etc.) y se destapa cuando el componente confirma
+       booting:false. Sin parpadeo de esqueletos ni leyenda antes del preloader. -->
+  <style>
+    .dg-boot { visibility: hidden !important; }
+    html.dg-boot-ready .dg-boot, body.dg-boot-ready .dg-boot { visibility: visible !important; }
+  </style>
 
   <header class="dg-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px;background:#fff;border-bottom:1px solid #ECE8E2;box-shadow:0 1px 0 rgba(0,0,0,.02);z-index:30;flex:none;flex-wrap:wrap">
   <!-- Left Side: Title (Without redundant logo) -->
@@ -1452,9 +1459,24 @@ class Component extends DCLogic {
     this._preloadLogos();
     window.addEventListener('keydown', this.onGlobalKeyDown);
     this._waitFor(() => window.L && window.L.Control && window.L.Control.Draw, () => this._initMap());
+    // Mientras el componente termina de inicializar, todo el árbol está oculto
+    // (visibility:hidden en .dg-boot) para evitar el flash de placeholders/skeletons
+    // del render server-side (legendOn, capasOpen, modales, etc.). Se destapa al
+    // confirmar que el mapa está listo y el preloader desaparece.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const r = !this.state.booting && this.state.ready;
+      if (r) document.documentElement.classList.add('dg-boot-ready');
+      else this._bootReadyPoll = setInterval(() => {
+        if (!this.state.booting && this.state.ready) {
+          document.documentElement.classList.add('dg-boot-ready');
+          clearInterval(this._bootReadyPoll); this._bootReadyPoll = null;
+        }
+      }, 60);
+    }));
   }
   componentWillUnmount() {
     window.removeEventListener('keydown', this.onGlobalKeyDown);
+    if (this._bootReadyPoll) { clearInterval(this._bootReadyPoll); this._bootReadyPoll = null; }
   }
   onGlobalKeyDown = (e) => {
     if ((e.key === 'Escape' || e.key === 'Esc') && this.state.reportOpen) {
