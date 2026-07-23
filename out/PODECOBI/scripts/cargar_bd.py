@@ -341,7 +341,7 @@ def cargar_geometria(conn, geo_path: Path, source_url: str):
     matched = unmatched = 0
     with conn.cursor() as cur:
         for idx, feat in enumerate(features):
-            num_ = match_feature_numero(feat, mapa)
+            num_ = match_feature_numero(feat, mapa, idx)
             if not num_:
                 unmatched += 1
                 continue
@@ -379,73 +379,97 @@ def norm(s):
 
 
 # ── Mapeo explícito CDN sassoapps → Numero PODECOBI ────────────────────────
-# El GeoJSON del CDN usa nombres de proyecto / anuncio, no siempre los jurídicos.
-# Esta tabla es la ÚNICA fuente de verdad para la asignación de features a polos.
-# Mantener alineada con la columna "Correspondencia entre el anuncio y los nombres
-# jurídicos" del informe PODECOBI vigente.
+# El GeoJSON del CDN publica features con un id KML (ID_00000..ID_00014) que NO
+# corresponde necesariamente con su posición en el array (el KML original fue
+# reordenado al exportar). La única fuente estable de correspondencia es la
+# POSICIÓN 0-based del feature en el FeatureCollection, validada contra las
+# coordenadas y el nombre de cada feature.
 MAPEO_CDN = {
-    # id del feature en CDN (ID_00000..ID_00014) → Numero del polo
-    "ID_00000": "11",   # Centro Logístico e Industrial de Durango (CLID) → Durango
-    "ID_00001": "05",   # Puerta Logística del Bajío → Guanajuato
-    "ID_00002": "11",   # Chetumal I → Chetumal, Quintana Roo
-    "ID_00003": "07",   # San José Chiapa & Nopalucan (Cd. Audi) → Puebla (Futura Capital)
-    "ID_00004": "13",   # Topolobampo → Sinaloa
-    "ID_00005": "14",   # Xicotencatl II → Altamira, Tamaulipas (mismo complejo)
-    "ID_00006": "03",   # Reserva Zapotlán/AIFA → Hidalgo
-    "ID_00007": "02",   # San Jerónimo → Chihuahua
-    "ID_00008": "10",   # Parque Industrial Bajío → Michoacán
-    "ID_00009": "01",   # Seybaplaya I → Campeche
-    "ID_00010": "09",   # Tuxpan → Veracruz
-    "ID_00011": "04",   # CLAT Neza Bicentenario → Nezahualcóyotl, EdoMéx
-    "ID_00012": "12",   # Hermosillo (parte 1, Sonora) → Hermosillo
-    "ID_00013": "12",   # Hermosillo (parte 2) → Hermosillo (representación en dos entidades)
-    "ID_00014": "14",   # Altamira → Tamaulipas
-    # Por nombre (respaldo si el id cambia entre cortes del CDN)
-    "centro logistico e industrial de durango": "11",
-    "puerta logistica del bajio": "05",
-    "chetumal i": "11",
-    "chetumal": "11",
-    "san jose chiapa": "04",
-    "futura capital": "04",
-    "topolobampo": "14",
-    "xicotencatl ii": "09",
-    "reserva zapotlan": "03",
-    "san jeronimo": "02",
-    "parque industrial bajio": "06",
-    "seybaplaya i": "01",
-    "tuxpan": "09",
-    "clat neza bicentenario": "08",
-    "nezahualcoyotl": "08",
-    "hermosillo": "13",
-    "altamira": "07",
+    # posición 0-based en el FeatureCollection → Numero del polo (01..14)
+    0:  "03",   # Centro Logístico e Industrial de Durango (CLID), Durango  (-104.56, 24.09)
+    1:  "05",   # Puerta Logística del Bajío, Celaya, Guanajuato               (-100.76, 20.46)
+    2:  "11",   # Chetumal I, Othón P. Blanco, Quintana Roo                    (-88.35, 18.49)
+    3:  "07",   # San José Chiapa & Nopalucan (Cd. Audi), Puebla              (-97.77, 19.21)
+    4:  "13",   # Topolobampo, Ahome, Sinaloa                                 (-109.05, 25.65)
+    5:  "14",   # Xicotencatl II, Tamaulipas (complejo Altamira)              (-97.94, 19.36)
+    6:  "06",   # Reserva Zapotlán/AIFA, Zapotlán de Juárez, Hidalgo          (-98.81, 19.97)
+    7:  "02",   # San Jerónimo, Juárez, Chihuahua                             (-106.64, 31.78)
+    8:  "10",   # Parque Industrial Bajío, Zinapécuaro, Michoacán              (-100.95, 19.89)
+    9:  "01",   # Seybaplaya I, Seybaplaya, Campeche                          (-90.67, 19.66)
+    10: "09",   # Tuxpan, Veracruz                                            (-97.40, 20.90)
+    11: "04",   # CLAT Neza Bicentenario, Nezahualcóyotl, EdoMéx              (-99.00, 19.42)
+    12: "12",   # Hermosillo (parte 1), Sonora                                (-110.92, 29.20)
+    13: "12",   # Hermosillo (parte 2, otra entidad), Sonora                  (-110.93, 29.19)
+    14: "14",   # Altamira, Tamaulipas                                        (-97.86, 22.48)
+    # Respaldo por id del feature KML (si el CDN rota los ids entre cortes, la
+    # posición sigue siendo estable y es la que manda).
+    "ID_00000": "03",
+    "ID_00001": "05",
+    "ID_00002": "11",
+    "ID_00003": "07",
+    "ID_00004": "13",
+    "ID_00005": "14",
+    "ID_00006": "06",
+    "ID_00007": "02",
+    "ID_00008": "10",
+    "ID_00009": "01",
+    "ID_00010": "09",
+    "ID_00011": "04",
+    "ID_00012": "12",
+    "ID_00013": "12",
+    "ID_00014": "14",
 }
 
 
-def match_feature_numero(feat, mapa):
-    """Mapea un feature del CDN a su Numero PODECOBI. Prioriza id del feature;
-    si no hay match, intenta por nombre normalizado."""
+def match_feature_numero(feat, mapa, idx=None):
+    """Mapea un feature del CDN a su Numero PODECOBI. Prioriza posición en el
+    FeatureCollection; si no hay match, intenta por id KML y luego por nombre."""
+    if idx is not None and idx in MAPEO_CDN:
+        return MAPEO_CDN[idx]
     props = feat.get("properties") or {}
-
-    # 1) Match por id del feature (CDN usa 'ID_00000'..'ID_00014')
     fid = str(props.get("id") or props.get("Id") or props.get("ID") or "").strip()
     if fid and fid in MAPEO_CDN:
         return MAPEO_CDN[fid]
-
-    # 2) Match por nombre normalizado (con fallback de caracteres mal codificados)
     for key in ("nombre", "Nombre", "NOMBRE", "name", "Name", "polo", "PODECOBI"):
         v = props.get(key)
         if v:
-            # Intento 1: normal tal cual
             n = mapa.get(norm(v))
             if n: return n
-            # Intento 2: reparar mojibake latin1→utf8 (común cuando se sirve CP1252)
             try:
                 repaired = v.encode("latin1").decode("utf-8")
                 n = mapa.get(norm(repaired))
                 if n: return n
             except (UnicodeEncodeError, UnicodeDecodeError):
                 pass
-            # Intento 3: coincidencia parcial por tokens clave
+            tokens = set(re.findall(r"[a-záéíóúñ]+", norm(v)))
+            for polo_nombre, num in mapa.items():
+                polo_tokens = set(re.findall(r"[a-záéíóúñ]+", polo_nombre))
+                if polo_tokens and tokens and polo_tokens.issubset(tokens):
+                    return num
+    return None
+
+
+def match_feature_numero(feat, mapa, idx=None):
+    """Mapea un feature del CDN a su Numero PODECOBI. Prioriza posición 0-based
+    en el FeatureCollection; si no hay match, intenta por id KML y luego por
+    nombre normalizado."""
+    if idx is not None and idx in MAPEO_CDN:
+        return MAPEO_CDN[idx]
+    props = feat.get("properties") or {}
+    fid = str(props.get("id") or props.get("Id") or props.get("ID") or "").strip()
+    if fid and fid in MAPEO_CDN:
+        return MAPEO_CDN[fid]
+    for key in ("nombre", "Nombre", "NOMBRE", "name", "Name", "polo", "PODECOBI"):
+        v = props.get(key)
+        if v:
+            n = mapa.get(norm(v))
+            if n: return n
+            try:
+                repaired = v.encode("latin1").decode("utf-8")
+                n = mapa.get(norm(repaired))
+                if n: return n
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                pass
             tokens = set(re.findall(r"[a-záéíóúñ]+", norm(v)))
             for polo_nombre, num in mapa.items():
                 polo_tokens = set(re.findall(r"[a-záéíóúñ]+", polo_nombre))
