@@ -3655,7 +3655,7 @@ class Component extends DCLogic {
       doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(10);
       doc.text('Mapa no disponible para exportación',M+14,y+29);
       doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
-      doc.text('Cambie la base Satélite por Color, Claro u Oscuro y vuelva a generar el reporte.',M+14,y+48);
+      doc.text('El encuadre actual no permite capturar el mapa. Pruebe con la base Color, Claro u Oscuro y genere el reporte de nuevo.',M+14,y+48);
       y+=91;
     }
     doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setCharSpace(.7);
@@ -3669,51 +3669,68 @@ class Component extends DCLogic {
       doc.text(this._clipText(doc,String((row||[])[1]==null?'—':row[1]),metaW-16),cx+8,cy+27);
     });
 
-    // 4 · Todos los indicadores. Las tarjetas continúan en páginas adicionales sin recortes.
-    const addMetricsPage=(continuation)=>addReportPage('Indicadores del radio',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R.date||'Reporte territorial','02');
-    pageInfo=addMetricsPage(false);
-    const metricsPage=pageInfo.page;
-    y=pageInfo.y;
-    const metricGap=11,metricW=(W-M*2-metricGap)/2;
-    const measureMetric=(mt)=>{
-      doc.setFont('helvetica','bold'); doc.setFontSize(7.4);
-      const label=doc.splitTextToSize(String((mt&&mt.label)||'Indicador').toUpperCase(),metricW-26);
-      doc.setFont('times','bold'); doc.setFontSize(18);
-      const value=doc.splitTextToSize(String(mt&&mt.value!=null?mt.value:'—'),metricW-26);
-      doc.setFont('helvetica','normal'); doc.setFontSize(7.4);
-      const sub=doc.splitTextToSize(String((mt&&mt.sub)||''),metricW-26);
-      return {label,value,sub,h:Math.max(70,18+label.length*8.5+value.length*18+sub.length*9)};
-    };
-    const drawMetric=(mt,box,cx,cy,rowH)=>{
-      const accent=rgb(mt&&mt.color,mt&&mt.dim?[154,149,142]:[155,34,71]);
-      doc.setFillColor(mt&&mt.dim?250:255,mt&&mt.dim?248:255,mt&&mt.dim?245:255);
-      doc.setDrawColor(236,232,226); doc.roundedRect(cx,cy,metricW,rowH-7,4,4,'FD');
-      doc.setFillColor(accent[0],accent[1],accent[2]); doc.rect(cx,cy,4,rowH-7,'F');
-      let ty=cy+15;
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(7.4); doc.text(box.label,cx+13,ty); ty+=box.label.length*8.5+3;
-      doc.setTextColor(mt&&mt.dim?111:155,mt&&mt.dim?107:34,mt&&mt.dim?102:71); doc.setFont('times','bold'); doc.setFontSize(18); doc.text(box.value,cx+13,ty+12); ty+=box.value.length*18+3;
-      if(box.sub.length){ doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(7.4); doc.text(box.sub,cx+13,ty+7); }
-    };
-    for(let i=0;i<metrics.length;i+=2){
-      const left=measureMetric(metrics[i]),right=i+1<metrics.length?measureMetric(metrics[i+1]):null;
-      const rowH=Math.max(left.h,right?right.h:0);
-      if(y+rowH>MAX_Y){ pageInfo=addMetricsPage(true); y=pageInfo.y; }
-      drawMetric(metrics[i],left,M,y,rowH);
-      if(right) drawMetric(metrics[i+1],right,M+metricW+metricGap,y,rowH);
-      y+=rowH+5;
+    // 4 · Indicadores. Se omite si todas las métricas están en cero.
+    let metricsPage=null;
+    if(!allDim){
+      const addMetricsPage=(continuation)=>addReportPage('Indicadores del radio',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R.date||'Reporte territorial','02');
+      pageInfo=addMetricsPage(false);
+      metricsPage=pageInfo.page;
+      y=pageInfo.y;
+      const metricGap=11,metricW=(W-M*2-metricGap)/2;
+      const measureMetric=(mt)=>{
+        doc.setFont('helvetica','bold'); doc.setFontSize(7.4);
+        const label=doc.splitTextToSize(String((mt&&mt.label)||'Indicador').toUpperCase(),metricW-26);
+        doc.setFont('times','bold'); doc.setFontSize(18);
+        const value=doc.splitTextToSize(String(mt&&mt.value!=null?mt.value:'—'),metricW-26);
+        doc.setFont('helvetica','normal'); doc.setFontSize(7.4);
+        const sub=doc.splitTextToSize(String((mt&&mt.sub)||''),metricW-26);
+        return {label,value,sub,h:Math.max(70,18+label.length*8.5+value.length*18+sub.length*9)};
+      };
+      const drawMetric=(mt,box,cx,cy,rowH)=>{
+        const accent=rgb(mt&&mt.color,mt&&mt.dim?[154,149,142]:[155,34,71]);
+        doc.setFillColor(mt&&mt.dim?250:255,mt&&mt.dim?248:255,mt&&mt.dim?245:255);
+        doc.setDrawColor(236,232,226); doc.roundedRect(cx,cy,metricW,rowH-7,4,4,'FD');
+        doc.setFillColor(accent[0],accent[1],accent[2]); doc.rect(cx,cy,4,rowH-7,'F');
+        let ty=cy+15;
+        doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(7.4); doc.text(box.label,cx+13,ty); ty+=box.label.length*8.5+3;
+        doc.setTextColor(mt&&mt.dim?111:155,mt&&mt.dim?107:34,mt&&mt.dim?102:71); doc.setFont('times','bold'); doc.setFontSize(18); doc.text(box.value,cx+13,ty+12); ty+=box.value.length*18+3;
+        if(box.sub.length){ doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(7.4); doc.text(box.sub,cx+13,ty+7); }
+      };
+      for(let i=0;i<metrics.length;i+=2){
+        const left=measureMetric(metrics[i]),right=i+1<metrics.length?measureMetric(metrics[i+1]):null;
+        const rowH=Math.max(left.h,right?right.h:0);
+        if(y+rowH>MAX_Y){ pageInfo=addMetricsPage(true); y=pageInfo.y; }
+        drawMetric(metrics[i],left,M,y,rowH);
+        if(right) drawMetric(metrics[i+1],right,M+metricW+metricGap,y,rowH);
+        y+=rowH+5;
+      }
     }
-    if(!metrics.length){
+    if(allDim){
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(9);
+      doc.text('Ningún indicador con elementos en el radio. Revise el encuadre o amplíe el radio de análisis.',M,y+8);
+    } else if(!metrics.length){
       doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(9);
       doc.text('No se registraron indicadores para esta corrida.',M,y+8);
     }
 
     // Secciones analíticas: cada una inicia en página propia y puede continuar tantas veces como sea necesario.
+    // Se filtran secciones sin contenido real (tablas vacías, sin chips ni filas informativas).
+    const hasContent=(sec)=>{
+      const t1=(sec.table&&sec.table.rows&&sec.table.rows.length>0);
+      const t2=(sec.table2&&sec.table2.rows&&sec.table2.rows.length>0);
+      const rowVals=(sec.rows||[]).map(r=>String(r[1]||''));
+      const rowUseful=rowVals.some(v=>v&&!/^(no analizada|ninguno)/.test(v));
+      const ch=(sec.chips&&sec.chips.length>0);
+      return t1||t2||(sec.hasRows&&rowUseful)||(sec.hasChips&&ch);
+    };
+    const nonEmptySections=sections.filter(hasContent);
     const indexEntries=[
       {group:'Panorama general',folio:'01',title:'Zona evaluada y mapa del análisis',page:zonePage},
-      {group:'Panorama general',folio:'02',title:'Indicadores del radio analizado',page:metricsPage},
     ];
-    sections.forEach((sec,sectionIndex)=>{
-      const folio=String(sectionIndex+3).padStart(2,'0');
+    const allDim=metrics.length>0&&metrics.every(m=>m&&m.dim);
+    if(!allDim) indexEntries.push({group:'Panorama general',folio:'02',title:'Indicadores del radio analizado',page:metricsPage});
+    nonEmptySections.forEach((sec)=>{
+      const folio=String(sections.indexOf(sec)+3).padStart(2,'0');
       const addSectionPage=(continuation)=>{
         const info=addReportPage(sec.kicker||'Análisis territorial',continuation?String(sec.title||'Sección')+' · continuación':sec.title||'Sección',folio,folio);
         return info;
@@ -3816,6 +3833,7 @@ class Component extends DCLogic {
     const meta=Array.isArray(R&&R.meta)?R.meta:[];
     const folios={};
     const indexEntries=[];
+    const allDim=metrics.length>0&&metrics.every(m=>m&&m.dim);
     const rgb=(hex,fallback)=>{
       const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex||''));
       return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:(fallback||[155,34,71]);
@@ -3849,7 +3867,7 @@ class Component extends DCLogic {
       doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(12);
       doc.text('Mapa no disponible para exportación',M+18,y+40);
       doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(9);
-      doc.text('Cambie la base Satélite por Color, Claro u Oscuro y vuelva a generar el reporte.',M+18,y+62);
+      doc.text('El encuadre actual no permite capturar el mapa. Pruebe con la base Color, Claro u Oscuro y genere el reporte de nuevo.',M+18,y+62);
     }
 
     const metaX=M+mapW+28,metaW=W-M-metaX;
@@ -3894,58 +3912,73 @@ class Component extends DCLogic {
     }
 
     // Indicadores: todas las tarjetas continúan en las láminas necesarias, sin cortes por cantidad.
-    const addMetricsPage=(continuation)=>addReportPage('Indicadores del radio',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R&&R.date?R.date:'Reporte territorial','02');
-    pageInfo=addMetricsPage(false);
-    const metricsPage=pageInfo.page;
-    indexEntries.push({group:'Panorama general',folio:'02',title:'Indicadores del radio analizado',page:metricsPage});
-    y=pageInfo.y;
-    const metricGap=12,metricW=(W-M*2-metricGap*2)/3;
-    const measureMetric=(metric,width)=>{
-      doc.setFont('helvetica','bold'); doc.setFontSize(8);
-      const label=doc.splitTextToSize(String((metric&&metric.label)||'Indicador').toUpperCase(),width-28);
-      doc.setFont('times','bold'); doc.setFontSize(20);
-      const value=doc.splitTextToSize(String(metric&&metric.value!=null?metric.value:'—'),width-28);
-      doc.setFont('helvetica','normal'); doc.setFontSize(8);
-      const sub=doc.splitTextToSize(String((metric&&metric.sub)||''),width-28);
-      return {label,value,sub,h:Math.max(80,21+label.length*9+value.length*21+sub.length*10)};
-    };
-    const drawMetric=(metric,box,x,top,width,height)=>{
-      const accent=rgb(metric&&metric.color,metric&&metric.dim?[154,149,142]:[155,34,71]);
-      doc.setFillColor(metric&&metric.dim?250:255,metric&&metric.dim?248:255,metric&&metric.dim?245:255);
-      doc.setDrawColor(236,232,226); doc.roundedRect(x,top,width,height-6,5,5,'FD');
-      doc.setFillColor(accent[0],accent[1],accent[2]); doc.rect(x,top,5,height-6,'F');
-      let ty=top+16;
-      doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text(box.label,x+15,ty);
-      ty+=box.label.length*9+4;
-      doc.setTextColor(metric&&metric.dim?111:155,metric&&metric.dim?107:34,metric&&metric.dim?102:71);
-      doc.setFont('times','bold'); doc.setFontSize(20); doc.text(box.value,x+15,ty+14);
-      ty+=box.value.length*21+3;
-      if(box.sub.length){ doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text(box.sub,x+15,ty+7); }
-    };
-    for(let i=0;i<metrics.length;i+=3){
-      const group=metrics.slice(i,i+3);
-      let boxes=group.map(metric=>measureMetric(metric,metricW));
-      let rowH=Math.max.apply(null,boxes.map(box=>box.h));
-      if(rowH>MAX_Y-pageInfo.y){
-        group.forEach(metric=>{
-          const fullBox=measureMetric(metric,W-M*2);
-          if(y+fullBox.h>MAX_Y){ pageInfo=addMetricsPage(true); y=pageInfo.y; }
-          drawMetric(metric,fullBox,M,y,W-M*2,fullBox.h); y+=fullBox.h+5;
-        });
-        continue;
+    let metricsPage=null;
+    if(!allDim){
+      const addMetricsPage=(continuation)=>addReportPage('Indicadores del radio',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R&&R.date?R.date:'Reporte territorial','02');
+      pageInfo=addMetricsPage(false);
+      metricsPage=pageInfo.page;
+      indexEntries.push({group:'Panorama general',folio:'02',title:'Indicadores del radio analizado',page:metricsPage});
+      y=pageInfo.y;
+      const metricGap=12,metricW=(W-M*2-metricGap*2)/3;
+      const measureMetric=(metric,width)=>{
+        doc.setFont('helvetica','bold'); doc.setFontSize(8);
+        const label=doc.splitTextToSize(String((metric&&metric.label)||'Indicador').toUpperCase(),width-28);
+        doc.setFont('times','bold'); doc.setFontSize(20);
+        const value=doc.splitTextToSize(String(metric&&metric.value!=null?metric.value:'—'),width-28);
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
+        const sub=doc.splitTextToSize(String((metric&&metric.sub)||''),width-28);
+        return {label,value,sub,h:Math.max(80,21+label.length*9+value.length*21+sub.length*10)};
+      };
+      const drawMetric=(metric,box,x,top,width,height)=>{
+        const accent=rgb(metric&&metric.color,metric&&metric.dim?[154,149,142]:[155,34,71]);
+        doc.setFillColor(metric&&metric.dim?250:255,metric&&metric.dim?248:255,metric&&metric.dim?245:255);
+        doc.setDrawColor(236,232,226); doc.roundedRect(x,top,width,height-6,5,5,'FD');
+        doc.setFillColor(accent[0],accent[1],accent[2]); doc.rect(x,top,5,height-6,'F');
+        let ty=top+16;
+        doc.setTextColor(111,107,102); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text(box.label,x+15,ty);
+        ty+=box.label.length*9+4;
+        doc.setTextColor(metric&&metric.dim?111:155,metric&&metric.dim?107:34,metric&&metric.dim?102:71);
+        doc.setFont('times','bold'); doc.setFontSize(20); doc.text(box.value,x+15,ty+14);
+        ty+=box.value.length*21+3;
+        if(box.sub.length){ doc.setTextColor(111,107,102); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text(box.sub,x+15,ty+7); }
+      };
+      for(let i=0;i<metrics.length;i+=3){
+        const group=metrics.slice(i,i+3);
+        let boxes=group.map(metric=>measureMetric(metric,metricW));
+        let rowH=Math.max.apply(null,boxes.map(box=>box.h));
+        if(rowH>MAX_Y-pageInfo.y){
+          group.forEach(metric=>{
+            const fullBox=measureMetric(metric,W-M*2);
+            if(y+fullBox.h>MAX_Y){ pageInfo=addMetricsPage(true); y=pageInfo.y; }
+            drawMetric(metric,fullBox,M,y,W-M*2,fullBox.h); y+=fullBox.h+5;
+          });
+          continue;
+        }
+        if(y+rowH>MAX_Y){ pageInfo=addMetricsPage(true); y=pageInfo.y; }
+        group.forEach((metric,ci)=>drawMetric(metric,boxes[ci],M+ci*(metricW+metricGap),y,metricW,rowH));
+        y+=rowH+6;
       }
-      if(y+rowH>MAX_Y){ pageInfo=addMetricsPage(true); y=pageInfo.y; }
-      group.forEach((metric,ci)=>drawMetric(metric,boxes[ci],M+ci*(metricW+metricGap),y,metricW,rowH));
-      y+=rowH+6;
     }
-    if(!metrics.length){
+    if(allDim){
+      doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(10);
+      doc.text('Ningún indicador con elementos en el radio. Revise el encuadre o amplíe el radio de análisis.',M,y+10);
+    } else if(!metrics.length){
       doc.setTextColor(111,107,102); doc.setFont('helvetica','italic'); doc.setFontSize(10);
       doc.text('No se registraron indicadores para esta corrida.',M,y+10);
     }
 
     // Secciones analíticas PAM: introducciones, tablas, hallazgos y chips continúan sin truncarse.
-    sections.forEach((sec,sectionIndex)=>{
-      const folio=String(sectionIndex+3).padStart(2,'0');
+    const hasContent=(sec)=>{
+      const t1=(sec&&sec.table&&sec.table.rows&&sec.table.rows.length>0);
+      const t2=(sec&&sec.table2&&sec.table2.rows&&sec.table2.rows.length>0);
+      const rowVals=(sec.rows||[]).map(r=>String(r[1]||''));
+      const rowUseful=rowVals.some(v=>v&&!/^(no analizada|ninguno)/.test(v));
+      const ch=(sec.chips&&sec.chips.length>0);
+      return t1||t2||(sec.hasRows&&rowUseful)||(sec.hasChips&&ch);
+    };
+    const nonEmptySections=sections.filter(hasContent);
+    nonEmptySections.forEach((sec)=>{
+      const folio=String(sections.indexOf(sec)+3).padStart(2,'0');
       const sectionTitle=String(sec&&sec.title||'Sección');
       const addSectionPage=(continuation)=>addReportPage(sec&&sec.kicker||'Análisis territorial',continuation?sectionTitle+' · continuación':sectionTitle,folio,folio);
       let sectionPage=addSectionPage(false);
