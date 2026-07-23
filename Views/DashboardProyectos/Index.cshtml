@@ -3557,7 +3557,7 @@ class Component extends DCLogic {
 
   _buildReport(){
     const A = this.state.analysis;
-    if (!A.lat || !A.ranKeys.length) return null;
+    if (!A.lat || !A.ranKeys.length) return Promise.resolve(null);
     const L = this.state.layers;
     const feats = k => ((this._genericFeats||{})[k]||[]);
     const names = (k, n) => { const seen=new Set(), list=[]; feats(k).forEach(f=>{ const nm=f.nom; if(nm && !seen.has(nm)){ seen.add(nm); if(list.length<(n||8)) list.push(nm); } }); return { total:seen.size, list }; };
@@ -3571,19 +3571,9 @@ class Component extends DCLogic {
     const subs = this._nearestSubs(A.lat, A.lng, 5);
     const lines = this._nearestLines(A.lat, A.lng, 5);
     const sections = [];
-    // 0 · PODECOBI nacionales — se inyecta de forma asíncrona después del render inicial
-    // (los KPIs y secciones se renderizan sincrónicamente; esta sección aparece al resolver
-    // la consulta al backend).
-    this._pendingPolosSection = this._buildPolosSection(A).then(sec => {
-      if (!sec) return;
-      // Evita duplicar si ya existe (re-renders durante análisis)
-      const idx = sections.findIndex(s => s.key === 'podecobi');
-      if (idx >= 0) sections[idx] = sec; else sections.push(sec);
-      if (this._report) {
-        this._report = { ...this._report, sections: this._report.sections.map(s => s.key==='podecobi' ? sec : s).filter((s,i,a)=>a.findIndex(x=>x.key===s.key)===i) };
-        if (this.state.reportOpen) this.setState({});
-      }
-    }).catch(()=>{});
+
+    // Resuelve la sección PODECOBI en paralelo al resto del reporte.
+    const polosSectionPromise = this._buildPolosSection(A).catch(() => null);
 
     // 1 · Conexión eléctrica estratégica (siempre: subestaciones/líneas se cargan al arranque)
     sections.push({ key:'elec', kicker:'Infraestructura eléctrica', color:'#9B2247', icon:'M13 2 3 14h7l-1 8 10-12h-7z', title:'Conexión estratégica a la red',
@@ -3715,7 +3705,24 @@ class Component extends DCLogic {
         }))
         .concat(dsAct.map(d => { let inR=0; d.rows.forEach(r=>{ const ll=this._placeRow(r,d); if(ll && this._haversine(A.lat,A.lng,ll[0],ll[1])<=A.radiusKm) inR++; }); return { label:d.name, value:this._nf(inR), color:d.color||'#1E9CB8', dim:inR===0, sub: inR>0 ? 'registros en el radio' : 'sin registros en el radio' }; })),
       sections,
+      _buildPolosSectionPromise: polosSectionPromise,
     };
+  }
+
+  // Versión async: construye el reporte y ESPERA la sección PODECOBI antes de
+  // retornar. Usada por onOpenReport para garantizar que la sección aparezca
+  // desde el primer render del modal.
+  async _buildReportAsync(){
+    const rep = this._buildReport();
+    if (!rep) return null;
+    const sec = await rep._buildPolosSectionPromise;
+    if (sec && !rep.sections.find(s => s.key === 'podecobi')) {
+      // Inserta PODECOBI justo después de la sección eléctrica (índice 1) o al inicio
+      const idx = rep.sections.findIndex(s => s.key === 'elec');
+      if (idx >= 0) rep.sections.splice(idx + 1, 0, sec);
+      else rep.sections.unshift(sec);
+    }
+    return rep;
   }
 
   // Entidades federativas cuyo polígono intersecta el radio. Usa el bbox del
@@ -3822,21 +3829,26 @@ class Component extends DCLogic {
       }
     });
   }
-  onOpenReport = () => {
-    const rep = this._buildReport();
-    if (!rep) { this._toast('Ejecuta primero un análisis de zona'); return; }
-    this._report = rep;
-    // Asegura que el KPI PODECOBI esté poblado antes de mostrar el reporte
-    this._updatePolosKpi();
-    this.setState({ reportOpen:true });
+  onOpenReport = async () => {
+    this.setState({ blocking:{ label:'Preparando reporte territorial…' } });
+    try {
+      const rep = await this._buildReportAsync();
+      if (!rep) { this._toast('Ejecuta primero un análisis de zona'); return; }
+      this._report = rep;
+      this._updatePolosKpi();
+      this.setState({ reportOpen:true, blocking:null });
+    } catch (e) {
+      this.setState({ blocking:null });
+      this._toast('Error al preparar el reporte: '+(e.message||e));
+    }
   };
   onCloseReport = () => this.setState({ reportOpen:false, reportSendOpen:false, reportSendBusy:false });
-  onOpenReportSend = () => {
+  onOpenReportSend = async () => {
     const A = this.state.analysis || {};
     const hasRun = !!(A.lat!=null && A.ranKeys && A.ranKeys.length && !A.stale);
     if (!hasRun) { this._toast('Primero ejecuta una corrida de análisis para habilitar el envío'); return; }
     if (!this._report) {
-      const rep = this._buildReport();
+      const rep = await this._buildReportAsync();
       if (!rep) { this._toast('No se pudo preparar el reporte para envío'); return; }
       this._report = rep;
     }
