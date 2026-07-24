@@ -304,6 +304,44 @@
           font-family:"IBM Plex Mono",Consolas,"Courier New",monospace;
         }
 
+        .dg-report-chart-grid {
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:16px;
+          margin-top:18px;
+        }
+        .dg-report-chart-card {
+          min-width:0;
+          padding:18px 18px 14px;
+          border:1px solid var(--report-linea);
+          border-top:4px solid var(--report-dorado);
+          background:#fff;
+        }
+        .dg-report-chart-card__title {
+          color:var(--report-tinta);
+          font-family:"Patria",Georgia,serif;
+          font-size:19px;
+          font-weight:700;
+          line-height:1.15;
+        }
+        .dg-report-chart-card__subtitle {
+          min-height:32px;
+          margin:5px 0 10px;
+          color:var(--report-gris);
+          font-size:11px;
+          font-weight:600;
+          line-height:1.4;
+        }
+        .dg-report-chart-card img { display:block;width:100%;height:auto;aspect-ratio:720/290; }
+        .dg-report-chart-card__source {
+          margin-top:8px;
+          color:var(--report-gris-claro);
+          font-size:9px;
+          font-weight:700;
+          letter-spacing:.07em;
+          text-transform:uppercase;
+        }
+
         .dg-report-footnote { border-top:1px solid var(--report-linea);padding-top:14px !important; }
 
         /* Homologación del modal de envío (pam-envio-*): esta vista no tiene la clase
@@ -336,6 +374,8 @@
           .dg-report-back kbd { display:none; }
           .dg-report-section { padding:22px 18px !important; }
           .dg-report-section__title { font-size:24px !important; }
+          .dg-report-chart-grid { grid-template-columns:1fr; }
+          .dg-report-chart-card { padding:15px 12px 12px; }
           .dg-report-fab { right: 12px; bottom: 72px; min-height: 44px; padding: 0 14px; font-size: 11.5px; }
         }
     </style>
@@ -372,6 +412,7 @@
     }
   </script>
   <script src="/tablero/assets/gcr-data.js"></script>
+  <script src="/tablero/assets/d3.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@@1.2.0/dist/xlsx.bundle.js"></script>
   <style>
@@ -1196,6 +1237,26 @@
             </div>
           </sc-for>
         </div>
+        <sc-if value="{{ reportHasCharts }}" hint-placeholder-val="{{ false }}">
+          <section class="dg-report-section" data-screen-label="Perfil eléctrico">
+            <div class="dg-report-section__head" style="display:flex;align-items:center;gap:10px">
+              <span class="dg-report-section__marker" style="background:#9B2247;display:block;flex:none"></span>
+              <span class="dg-report-section__kicker" style="font-weight:800;text-transform:uppercase">Infraestructura eléctrica</span>
+            </div>
+            <div class="dg-report-section__title" style="letter-spacing:-.01em">Perfil eléctrico de la zona</div>
+            <div class="dg-report-section__intro" style="color:#6F6B66;margin:9px 0 14px;text-wrap:pretty">Lectura comparativa de los activos identificados dentro del radio analizado. Las gráficas se omiten cuando la capa no fue analizada o no produjo elementos.</div>
+            <div class="dg-report-chart-grid">
+              <sc-for list="{{ reportCharts }}" as="chart" hint-placeholder-count="2">
+                <article class="dg-report-chart-card">
+                  <div class="dg-report-chart-card__title">{{ chart.title }}</div>
+                  <div class="dg-report-chart-card__subtitle">{{ chart.subtitle }}</div>
+                  <img src="{{ chart.svgDataUrl }}" alt="{{ chart.alt }}">
+                  <div class="dg-report-chart-card__source">{{ chart.source }}</div>
+                </article>
+              </sc-for>
+            </div>
+          </section>
+        </sc-if>
         <!-- Secciones de contenido -->
         <sc-for list="{{ reportSections }}" as="sec" hint-placeholder-count="4">
           <section class="dg-report-section" data-screen-label="{{ sec.title }}">
@@ -1827,6 +1888,13 @@ class Component extends DCLogic {
     if (/import/.test(s)) return 'IMP';
     if (/combustioninterna|diesel|turbogas|gasnatural|gas|combustoleo|vapor|termo/.test(s)) return 'TER';
     return 'TER';
+  }
+  _centralCapacity(p){
+    if(!p) return null;
+    const raw=p.Capacidad_autorizada_MW ?? p.Capacidad_operacion_MW ?? p.Capacidad_autorizada_MW_1 ?? p.capacidad_mw ?? p.Capacidad_MW;
+    if(raw==null||String(raw).trim()==='') return null;
+    const n=typeof raw==='number'?raw:parseFloat(String(raw).replace(/,/g,'').replace(/[^\d.\-]/g,''));
+    return Number.isFinite(n)&&n>0?n:null;
   }
   _techFull(code){ return ({FV:'Fotovoltaica',CSP:'Solar concentración',EO:'Eólica',HID:'Hidroeléctrica',GEO:'Geotérmica',COG:'Cogeneración',CC:'Ciclo combinado',NUC:'Nucleoeléctrica',CARB:'Carboeléctrica',BIO:'Bioenergía',H2:'Hidrógeno',IMP:'Importación',TER:'Termoeléctrica'}[code]||code); }
   _gerenciaOf(nom){ const n=this._norm(nom); for(const [k,toks] of this.GCR_ASSIGN){ if(toks.some(t=>n.includes(t))) return k; } return 'central'; }
@@ -3922,6 +3990,158 @@ class Component extends DCLogic {
     };
   }
 
+  _buildElectricReportCharts(A, ran, feats){
+    const charts=[];
+    if(ran('centrales')){
+      const centralItems=feats('centrales');
+      if(centralItems.length){
+        const grouped={};
+        centralItems.forEach(item=>{
+          const props=(item&&item.props)||{};
+          const code=this._centralTech(props);
+          const label=this._techFull(code);
+          const cap=this._centralCapacity(props);
+          if(!grouped[code]) grouped[code]={label,color:this._tecColor(code),count:0,capacity:0,capacityCount:0};
+          grouped[code].count++;
+          if(cap!=null){ grouped[code].capacity+=cap; grouped[code].capacityCount++; }
+        });
+        const groups=Object.values(grouped);
+        const hasCapacity=groups.some(group=>group.capacityCount>0);
+        let data=groups.map(group=>({
+          label:group.label,
+          value:hasCapacity?group.capacity:group.count,
+          color:group.color,
+          detail:group.count+' '+(group.count===1?'central':'centrales'),
+        })).sort((a,b)=>b.value-a.value);
+        if(data.length>6){
+          const rest=data.slice(5);
+          data=data.slice(0,5).concat([{
+            label:'Otras tecnologías',
+            value:rest.reduce((sum,item)=>sum+item.value,0),
+            color:'#8A9099',
+            detail:rest.length+' categorías adicionales',
+          }]);
+        }
+        charts.push({
+          key:'generation-profile',
+          title:hasCapacity?'Capacidad por tecnología':'Centrales por tecnología',
+          subtitle:centralItems.length+' '+(centralItems.length===1?'central identificada':'centrales identificadas')+' dentro de '+A.radiusKm+' km.',
+          unit:hasCapacity?'MW':'centrales',
+          decimals:hasCapacity?1:0,
+          data,
+          source:'Fuente: SENER · Inventario DGMESNIE',
+        });
+      }
+    }
+
+    if(ran('subestaciones')){
+      const subItems=this._anaSubSet?Array.from(this._anaSubSet):(this.subFeatures||[]).filter(sub=>this._haversine(A.lat,A.lng,sub.lat,sub.lng)<=A.radiusKm);
+      if(subItems.length){
+        const buckets=[
+          {label:'Menor a 115 kV',color:'#C0552E',value:0},
+          {label:'115 a 229 kV',color:'#E0A12E',value:0},
+          {label:'230 a 399 kV',color:'#2E6FB0',value:0},
+          {label:'400 kV o más',color:'#9B2247',value:0},
+          {label:'Sin dato de tensión',color:'#8A9099',value:0},
+        ];
+        subItems.forEach(sub=>{
+          const kv=Number(sub&&sub.kv);
+          const bucket=!Number.isFinite(kv)||kv<=0?buckets[4]:(kv<115?buckets[0]:(kv<230?buckets[1]:(kv<400?buckets[2]:buckets[3])));
+          bucket.value++;
+        });
+        charts.push({
+          key:'substation-voltage',
+          title:'Subestaciones por nivel de tensión',
+          subtitle:subItems.length+' '+(subItems.length===1?'subestación identificada':'subestaciones identificadas')+' dentro de '+A.radiusKm+' km.',
+          unit:'subestaciones',
+          decimals:0,
+          data:buckets.filter(bucket=>bucket.value>0),
+          source:'Fuente: SENER · DGMESNIE',
+        });
+      }
+    }
+
+    return charts.map(chart=>({
+      ...chart,
+      alt:'Gráfica de '+chart.title.toLowerCase(),
+      svgDataUrl:this._reportChartSvg(chart),
+    }));
+  }
+
+  _reportChartSvg(chart){
+    const D=window.d3;
+    if(!D||typeof D.create!=='function') return '';
+    const data=(chart&&Array.isArray(chart.data)?chart.data:[]).filter(item=>Number.isFinite(Number(item.value))&&Number(item.value)>=0);
+    if(!data.length) return '';
+    const width=720,height=290,margin={top:30,right:88,bottom:18,left:198};
+    const innerH=height-margin.top-margin.bottom;
+    const maxValue=Math.max(1,D.max(data,item=>Number(item.value))||1);
+    const x=D.scaleLinear().domain([0,maxValue]).nice().range([margin.left,width-margin.right]);
+    const y=D.scaleBand().domain(data.map(item=>item.label)).range([margin.top,height-margin.bottom]).padding(.28);
+    const formatValue=value=>Number(value).toLocaleString('es-MX',{minimumFractionDigits:chart.decimals||0,maximumFractionDigits:chart.decimals||0});
+    const svg=D.create('svg')
+      .attr('xmlns','http://www.w3.org/2000/svg')
+      .attr('viewBox','0 0 '+width+' '+height)
+      .attr('width',width)
+      .attr('height',height)
+      .attr('role','img')
+      .attr('aria-label','Gráfica de '+chart.title);
+    svg.append('rect').attr('width',width).attr('height',height).attr('fill','#fff');
+    const axis=svg.append('g')
+      .attr('transform','translate(0,'+margin.top+')')
+      .call(D.axisTop(x).ticks(4).tickSize(-innerH).tickFormat(value=>formatValue(value)));
+    axis.select('.domain').remove();
+    axis.selectAll('.tick line').attr('stroke','#ECE8E2').attr('stroke-width',1);
+    axis.selectAll('.tick text').attr('fill','#9A958E').attr('font-size',11).attr('font-family','Arial, Helvetica, sans-serif');
+    svg.append('g').selectAll('rect')
+      .data(data).join('rect')
+      .attr('x',margin.left)
+      .attr('y',item=>y(item.label))
+      .attr('width',item=>Math.max(2,x(Number(item.value))-margin.left))
+      .attr('height',y.bandwidth())
+      .attr('rx',4)
+      .attr('fill',item=>item.color||'#9B2247');
+    svg.append('g').selectAll('text')
+      .data(data).join('text')
+      .attr('x',margin.left-12)
+      .attr('y',item=>y(item.label)+y.bandwidth()/2+4)
+      .attr('text-anchor','end')
+      .attr('fill','#3A3A3A')
+      .attr('font-size',12)
+      .attr('font-weight',700)
+      .attr('font-family','Arial, Helvetica, sans-serif')
+      .text(item=>String(item.label).length>25?String(item.label).slice(0,23)+'…':item.label);
+    svg.append('g').selectAll('text')
+      .data(data).join('text')
+      .attr('x',item=>{
+        const px=x(Number(item.value));
+        return px>width-margin.right-72?px-7:px+7;
+      })
+      .attr('y',item=>y(item.label)+y.bandwidth()/2+4)
+      .attr('text-anchor',item=>x(Number(item.value))>width-margin.right-72?'end':'start')
+      .attr('fill',item=>x(Number(item.value))>width-margin.right-72?'#fff':'#1c1b1a')
+      .attr('font-size',12)
+      .attr('font-weight',800)
+      .attr('font-family','Arial, Helvetica, sans-serif')
+      .text(item=>this._reportChartValueText(chart,item.value));
+    const xml=new XMLSerializer().serializeToString(svg.node());
+    return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(xml);
+  }
+
+  _reportChartValueText(chart,value){
+    const numeric=Number(value);
+    const formatted=numeric.toLocaleString('es-MX',{
+      minimumFractionDigits:chart&&chart.decimals||0,
+      maximumFractionDigits:chart&&chart.decimals||0,
+    });
+    let unit=String(chart&&chart.unit||'');
+    if(numeric===1){
+      if(unit==='subestaciones') unit='subestación';
+      if(unit==='centrales') unit='central';
+    }
+    return formatted+(unit?' '+unit:'');
+  }
+
   _buildReport(){
     const A = this.state.analysis;
     if (!A.lat || !A.ranKeys.length) return Promise.resolve(null);
@@ -3939,6 +4159,7 @@ class Component extends DCLogic {
     const subs = this._nearestSubs(A.lat, A.lng, 5);
     const lines = this._nearestLines(A.lat, A.lng, 5);
     const sections = [];
+    const charts=this._buildElectricReportCharts(A,ran,feats);
 
     // Resuelve la sección PODECOBI en paralelo al resto del reporte.
     const polosSectionPromise = this._buildPolosSection(A).catch(() => null);
@@ -4077,6 +4298,7 @@ class Component extends DCLogic {
         }))
         .concat(dsAct.map(d => { let inR=0; d.rows.forEach(r=>{ const ll=this._placeRow(r,d); if(ll && this._haversine(A.lat,A.lng,ll[0],ll[1])<=A.radiusKm) inR++; }); return { label:d.name, value:this._nf(inR), color:d.color||'#1E9CB8', dim:inR===0, sub: inR>0 ? 'registros en el radio' : 'sin registros en el radio' }; })),
       legendGroups: this._legendGroups(false),
+      charts,
       sections,
       target,
       _buildPolosSectionPromise: polosSectionPromise,
@@ -4550,6 +4772,57 @@ class Component extends DCLogic {
     });
     return y;
   }
+  _pdfReportCharts(doc,charts,cfg){
+    const data=(Array.isArray(charts)?charts:[]).filter(chart=>chart&&Array.isArray(chart.data)&&chart.data.length).slice(0,2);
+    if(!data.length) return cfg.y;
+    const rgb=hex=>{
+      const match=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex||''));
+      return match?[parseInt(match[1],16),parseInt(match[2],16),parseInt(match[3],16)]:[155,34,71];
+    };
+    const gap=cfg.landscape?18:16;
+    const cardW=cfg.landscape?(cfg.width-gap)/2:cfg.width;
+    const cardH=cfg.landscape?cfg.maxY-cfg.y:Math.min(248,(cfg.maxY-cfg.y-gap)/Math.max(1,data.length));
+    const drawCard=(chart,index)=>{
+      const x=cfg.landscape?cfg.x+index*(cardW+gap):cfg.x;
+      const top=cfg.landscape?cfg.y:cfg.y+index*(cardH+gap);
+      doc.setFillColor(255,255,255); doc.setDrawColor(224,220,212); doc.setLineWidth(.8);
+      doc.roundedRect(x,top,cardW,cardH,5,5,'FD');
+      doc.setFillColor(224,161,46); doc.rect(x,top,cardW,4,'F');
+      doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(cfg.landscape?8:7.5);
+      doc.setCharSpace(.55); doc.text('INFRAESTRUCTURA ELÉCTRICA',x+15,top+20); doc.setCharSpace(0);
+      doc.setTextColor(28,27,26); this._setReportFont(doc,'title','bold'); doc.setFontSize(cfg.landscape?16:14);
+      const titleLines=doc.splitTextToSize(String(chart.title||'Perfil eléctrico'),cardW-30);
+      doc.text(titleLines,x+15,top+41);
+      let cy=top+41+titleLines.length*(cfg.landscape?17:15);
+      doc.setTextColor(111,107,102); this._setReportFont(doc,'body','normal'); doc.setFontSize(cfg.landscape?8.5:7.8);
+      const subtitleLines=doc.splitTextToSize(String(chart.subtitle||''),cardW-30);
+      doc.text(subtitleLines,x+15,cy); cy+=subtitleLines.length*(cfg.landscape?10:9)+11;
+
+      const rows=chart.data.slice(0,6);
+      const maxValue=Math.max(1,...rows.map(item=>Number(item.value)||0));
+      const labelW=cfg.landscape?125:146;
+      const valueW=cfg.landscape?74:78;
+      const barX=x+15+labelW, barW=Math.max(54,cardW-30-labelW-valueW);
+      const available=Math.max(70,top+cardH-28-cy);
+      const rowH=Math.max(22,Math.min(cfg.landscape?43:31,available/Math.max(rows.length,1)));
+      rows.forEach((item,rowIndex)=>{
+        const rowY=cy+rowIndex*rowH;
+        const value=Number(item.value)||0;
+        doc.setTextColor(58,58,58); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?8.2:7.4);
+        doc.text(this._clipText(doc,String(item.label||'Dato'),labelW-9),x+15,rowY+rowH*.62);
+        doc.setFillColor(246,243,239); doc.roundedRect(barX,rowY+rowH*.25,barW,rowH*.42,3,3,'F');
+        const color=rgb(item.color);
+        doc.setFillColor(color[0],color[1],color[2]);
+        doc.roundedRect(barX,rowY+rowH*.25,Math.max(2,barW*(value/maxValue)),rowH*.42,3,3,'F');
+        doc.setTextColor(28,27,26); this._setReportFont(doc,'mono','bold'); doc.setFontSize(cfg.landscape?8:7.2);
+        doc.text(this._reportChartValueText(chart,value),x+cardW-15,rowY+rowH*.62,{align:'right'});
+      });
+      doc.setTextColor(154,149,142); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7:6.6);
+      doc.text(this._clipText(doc,String(chart.source||'Fuente: SENER'),cardW-30).toUpperCase(),x+15,top+cardH-11);
+    };
+    data.forEach(drawCard);
+    return cfg.landscape?cfg.maxY:cfg.y+data.length*(cardH+gap)-gap;
+  }
   async _writeReportPDF(R, opts){
     const O=opts||{};
     const J=window.jspdf&&window.jspdf.jsPDF;
@@ -4562,6 +4835,7 @@ class Component extends DCLogic {
     const W=612,H=792,M=46,MAX_Y=H-58,indexPage=2;
     const sections=Array.isArray(R&&R.sections)?R.sections:[];
     const metrics=Array.isArray(R&&R.metrics)?R.metrics:[];
+    const charts=Array.isArray(R&&R.charts)?R.charts:[];
     const folios={};
     const rgb=(hex,fallback)=>{
       const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex||''));
@@ -4670,6 +4944,13 @@ class Component extends DCLogic {
       doc.text('No se registraron indicadores para esta corrida.',M,y+8);
     }
 
+    let chartPage=null;
+    if(charts.length){
+      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro del radio','04');
+      chartPage=pageInfo.page;
+      this._pdfReportCharts(doc,charts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
+    }
+
     // Secciones analíticas: cada una inicia en página propia y puede continuar tantas veces como sea necesario.
     // Se filtran secciones sin contenido real (tablas vacías, sin chips ni filas informativas).
     const hasContent=(sec)=>{
@@ -4687,8 +4968,9 @@ class Component extends DCLogic {
       {group:'Panorama general',folio:'02',title:'Zona evaluada y mapa del análisis',page:zonePage},
     ];
     if(!allDim) indexEntries.push({group:'Panorama general',folio:'03',title:'Indicadores del radio analizado',page:metricsPage});
+    if(chartPage) indexEntries.push({group:'Panorama general',folio:'04',title:'Perfil eléctrico de la zona',page:chartPage});
     nonEmptySections.forEach((sec)=>{
-      const folio=String(sections.indexOf(sec)+4).padStart(2,'0');
+      const folio=String(sections.indexOf(sec)+4+(chartPage?1:0)).padStart(2,'0');
       const addSectionPage=(continuation)=>{
         const info=addReportPage(sec.kicker||'Análisis territorial',continuation?String(sec.title||'Sección')+' · continuación':sec.title||'Sección',folio,folio);
         return info;
@@ -4795,6 +5077,7 @@ class Component extends DCLogic {
     const W=960,H=540,M=40,MAX_Y=494,indexPage=2;
     const sections=Array.isArray(R&&R.sections)?R.sections:[];
     const metrics=Array.isArray(R&&R.metrics)?R.metrics:[];
+    const charts=Array.isArray(R&&R.charts)?R.charts:[];
     const meta=Array.isArray(R&&R.meta)?R.meta:[];
     const folios={};
     const indexEntries=[];
@@ -4941,6 +5224,12 @@ class Component extends DCLogic {
       doc.text('No se registraron indicadores para esta corrida.',M,y+10);
     }
 
+    if(charts.length){
+      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro del radio','04');
+      indexEntries.push({group:'Panorama general',folio:'04',title:'Perfil eléctrico de la zona',page:pageInfo.page});
+      this._pdfReportCharts(doc,charts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:true});
+    }
+
     // Secciones analíticas PAM: introducciones, tablas, hallazgos y chips continúan sin truncarse.
     const hasContent=(sec)=>{
       const t1=(sec&&sec.table&&sec.table.rows&&sec.table.rows.length>0);
@@ -4953,7 +5242,7 @@ class Component extends DCLogic {
     };
     const nonEmptySections=sections.filter(hasContent);
     nonEmptySections.forEach((sec)=>{
-      const folio=String(sections.indexOf(sec)+4).padStart(2,'0');
+      const folio=String(sections.indexOf(sec)+4+(charts.length?1:0)).padStart(2,'0');
       const sectionTitle=String(sec&&sec.title||'Sección');
       const addSectionPage=(continuation)=>addReportPage(sec&&sec.kicker||'Análisis territorial',continuation?sectionTitle+' · continuación':sectionTitle,folio,folio);
       let sectionPage=addSectionPage(false);
@@ -5818,9 +6107,27 @@ class Component extends DCLogic {
     const metrics=Array.isArray(R.metrics)?R.metrics:[];
     const metricRows=metrics.map(m=>[m&&m.label!=null?m.label:'',asNumber(m&&m.value,'valor'),m&&m.sub!=null?m.sub:'',m&&m.color!=null?m.color:'',m&&m.dim?'Sí':'No']);
     const metricsRows=[[],[],[],[],[],['Indicador','Valor','Detalle','Color de referencia','Atenuado'],...metricRows];
+    const chartBlocks=[];
+    (Array.isArray(R.charts)?R.charts:[]).forEach(chart=>{
+      metricsRows.push([]);
+      const titleRow=metricsRows.length; metricsRows.push([chart.title||'Perfil eléctrico']);
+      const headerRow=metricsRows.length; metricsRows.push(['Categoría','Valor','Unidad','Detalle','Fuente']);
+      (Array.isArray(chart.data)?chart.data:[]).forEach(item=>metricsRows.push([
+        item&&item.label!=null?item.label:'',
+        asNumber(item&&item.value,'valor'),
+        chart.unit||'',
+        item&&item.detail!=null?item.detail:'',
+        chart.source||'SENER',
+      ]));
+      chartBlocks.push({title:titleRow,header:headerRow,last:metricsRows.length-1});
+    });
     const metricSheet=X.utils.aoa_to_sheet(metricsRows);
-    titleBlock(metricSheet,'Indicadores','Métricas completas del radio analizado',4);
-    paintTable(metricSheet,5,metricsRows.length-1,5,true);
+    titleBlock(metricSheet,'Indicadores','Métricas y datos fuente del perfil eléctrico',4);
+    paintTable(metricSheet,5,5+metricRows.length,5,true);
+    chartBlocks.forEach(block=>{
+      ensure(metricSheet,block.title,0).s=ST.gold; merge(metricSheet,block.title,0,block.title,4);
+      paintTable(metricSheet,block.header,block.last,5,true);
+    });
     finish(metricSheet,widths(metricsRows,[31,18,48,20,12]),6);
 
     const buildSection=(plan)=>{
@@ -6213,6 +6520,8 @@ class Component extends DCLogic {
       reportEyebrow: ((this._report||{}).target||{}).eyebrow || 'Evaluación de sitio estratégico',
       reportMeta: ((this._report||{}).meta||[]).map(r => ({ label:r[0], value:r[1] })),
       reportMetrics: ((this._report||{}).metrics || []).map(m => ({ ...m, op: m.dim ? '.62' : '1', vcolor: m.dim ? '#9A958E' : '#1c1b1a', sub: m.sub||'' })),
+      reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.svgDataUrl).length),
+      reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.svgDataUrl),
       reportSections: ((this._report||{}).sections||[]).map(sec => ({
         ...sec,
         rowItems: (sec.rows||[]).map(r => ({ label:r[0], value:r[1], color: r[1]==='no analizada' ? '#9A958E' : '#1c1b1a' })),
