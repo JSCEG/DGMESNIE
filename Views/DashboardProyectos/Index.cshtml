@@ -261,7 +261,10 @@
         .dg-report-kpi__label { color:var(--report-gris) !important;font-size:10px !important;letter-spacing:.10em !important; }
         .dg-report-kpi__value {
           color:var(--report-guinda) !important;
-          font-size:34px !important;
+          max-width:100%;
+          min-width:0;
+          overflow-wrap:anywhere;
+          font-size:clamp(26px,2.7vw,34px) !important;
           font-weight:700 !important;
           font-family:"IBM Plex Mono",Consolas,"Courier New",monospace !important;
         }
@@ -412,6 +415,7 @@
     }
   </script>
   <script src="/tablero/assets/gcr-data.js"></script>
+  <script src="/js/turf.min.js"></script>
   <script src="/tablero/assets/d3.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@@1.2.0/dist/xlsx.bundle.js"></script>
@@ -757,7 +761,7 @@
                   <div style="display:flex;align-items:center;gap:7px">
                     <span style="font-size:9px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#6F6B66">Atajo territorial</span>
                     <span style="flex:1"></span>
-                    <span style="font-size:9px;color:#9A958E">centro representativo</span>
+                    <span style="font-size:9px;color:#9A958E">geometría territorial</span>
                   </div>
                   <div style="display:flex;flex-wrap:wrap;gap:5px">
                     <sc-for list="{{ anaShortcutTypes }}" as="st" hint-placeholder-count="4">
@@ -787,7 +791,7 @@
                   <sc-if value="{{ anaShortcutNoResults }}" hint-placeholder-val="{{ false }}">
                     <div style="padding:7px 8px;color:#9A958E;font-size:10.5px">No hay coincidencias para esa búsqueda.</div>
                   </sc-if>
-                  <div style="font-size:9.5px;color:#9A958E;line-height:1.4">El atajo ubica el centro del territorio. El radio seleccionado sigue definiendo la cobertura efectiva del análisis.</div>
+                  <div style="font-size:9.5px;color:#9A958E;line-height:1.4">El atajo analiza el polígono completo. Un buffer de 0 km conserva el límite territorial; valores mayores amplían todo su contorno.</div>
                 </div>
               </sc-if>
             </div>
@@ -820,12 +824,14 @@
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9B2247" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 21s-7-5.2-7-11a7 7 0 0 1 14 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
                 <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
                   <span style="font-size:11px;font-weight:700;color:#1c1b1a;line-height:1.2">{{ anaTargetTitle }}</span>
-                  <span style="font-size:9.5px;color:#9A958E;font-family:'IBM Plex Mono',monospace">{{ anaTargetMeta }} · arrastra el pin para mover</span>
+                  <span style="font-size:9.5px;color:#9A958E;font-family:'IBM Plex Mono',monospace">{{ anaTargetMeta }}</span>
                 </span>
-                <button onClick="{{ onAnaPlace }}" title="Reubicar con clic en el mapa" style="border:1px solid #ECE8E2;background:#fff;cursor:pointer;color:#6F6B66;display:flex;padding:4px;border-radius:6px" style-hover="color:#9B2247;border-color:#9B2247"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></button>
+                <sc-if value="{{ anaPointTarget }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ onAnaPlace }}" title="Reubicar con clic en el mapa" style="border:1px solid #ECE8E2;background:#fff;cursor:pointer;color:#6F6B66;display:flex;padding:4px;border-radius:6px" style-hover="color:#9B2247;border-color:#9B2247"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg></button>
+                </sc-if>
               </div>
               <div style="display:flex;flex-direction:column;gap:5px">
-                <span style="font-size:9px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#6F6B66">Radio de análisis</span>
+                <span style="font-size:9px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#6F6B66">{{ anaDistanceLabel }}</span>
                 <div style="display:flex;flex-wrap:wrap;gap:5px">
                   <sc-for list="{{ anaRadii }}" as="r" hint-placeholder-count="6">
                     <button onClick="{{ r.onPick }}" style="flex:1;min-width:46px;padding:7px 0;border:1px solid {{ r.border }};background:{{ r.bg }};color:{{ r.fg }};border-radius:7px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace">{{ r.label }}</button>
@@ -1244,7 +1250,7 @@
               <span class="dg-report-section__kicker" style="font-weight:800;text-transform:uppercase">Infraestructura eléctrica</span>
             </div>
             <div class="dg-report-section__title" style="letter-spacing:-.01em">Perfil eléctrico de la zona</div>
-            <div class="dg-report-section__intro" style="color:#6F6B66;margin:9px 0 14px;text-wrap:pretty">Lectura comparativa de los activos identificados dentro del radio analizado. Las gráficas se omiten cuando la capa no fue analizada o no produjo elementos.</div>
+            <div class="dg-report-section__intro" style="color:#6F6B66;margin:9px 0 14px;text-wrap:pretty">Lectura comparativa de los activos identificados dentro de la cobertura territorial analizada. Las gráficas se omiten cuando la capa no fue analizada o no produjo elementos.</div>
             <div class="dg-report-chart-grid">
               <sc-for list="{{ reportCharts }}" as="chart" hint-placeholder-count="2">
                 <article class="dg-report-chart-card">
@@ -1266,6 +1272,18 @@
             </div>
             <div class="dg-report-section__title" style="letter-spacing:-.01em">{{ sec.title }}</div>
             <div class="dg-report-section__intro" style="color:#6F6B66;margin:9px 0 14px;text-wrap:pretty">{{ sec.intro }}</div>
+            <sc-if value="{{ sec.hasCharts }}" hint-placeholder-val="{{ false }}">
+              <div class="dg-report-chart-grid" style="margin:16px 0 20px">
+                <sc-for list="{{ sec.charts }}" as="sectionChart" hint-placeholder-count="2">
+                  <article class="dg-report-chart-card">
+                    <div class="dg-report-chart-card__title">{{ sectionChart.title }}</div>
+                    <div class="dg-report-chart-card__subtitle">{{ sectionChart.subtitle }}</div>
+                    <img src="{{ sectionChart.svgDataUrl }}" alt="{{ sectionChart.alt }}">
+                    <div class="dg-report-chart-card__source">{{ sectionChart.source }}</div>
+                  </article>
+                </sc-for>
+              </div>
+            </sc-if>
             <sc-if value="{{ sec.hasTable }}" hint-placeholder-val="{{ false }}">
               <div class="dg-report-table-wrap"><table class="dg-report-table">
                 <thead><tr>
@@ -1577,10 +1595,13 @@ class Component extends DCLogic {
     layers: this._initLayers(),
     // Análisis geoespacial: capas masivas acotadas a una zona (marcador + radio)
     analysis: {
-      placing:false, lat:null, lng:null, estado:'', radiusKm:20, sel:{}, ranKeys:[],
+      placing:false, lat:null, lng:null, estado:'', radiusKm:20, bufferKm:0,
+      territoryGeometry:null, analysisGeometry:null, territoryAreaKm2:null,
+      sel:{}, ranKeys:[],
       stale:false, running:false, mode:'click', latIn:'', lngIn:'', dirIn:'', dirResults:[],
       shortcutType:'gcr', shortcutQuery:'', shortcutOptions:[], shortcutBusy:false,
-      targetKind:'', targetLabel:'', targetDetail:'', targetState:'', targetMunicipality:''
+      targetKind:'', targetLabel:'', targetDetail:'', targetState:'', targetMunicipality:'',
+      targetStateCode:'', targetMunicipalityCode:''
     },
     datasets: [],
     metrics: { capacidad:0, subs:0, km:0, permisos:0, proyectos:0, distancia:null },
@@ -2205,6 +2226,183 @@ class Component extends DCLogic {
     if (this.geo && this.geo.estados) { for (const f of (this.geo.estados.features||[])) { if (this._inFeature(lng, lat, f.geometry)) return this._propEnt(f.properties) || 'México'; } return null; }
     return (lat>=14.3 && lat<=32.8 && lng>=-118.5 && lng<=-86.5) ? 'México' : null; // fallback bbox
   }
+  _asFeatureCollection(geo){
+    if(!geo) return null;
+    if(geo.type==='FeatureCollection') return geo;
+    if(geo.type==='Feature') return {type:'FeatureCollection',features:[geo]};
+    if(geo.type&&geo.coordinates) return {type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:geo}]};
+    return null;
+  }
+  _analysisPolygonFeatures(A){
+    const T=window.turf;
+    const source=A&&A.analysisGeometry;
+    if(!source||!T) return [];
+    try{
+      const flat=T.flatten(this._asFeatureCollection(source));
+      return (flat.features||[]).filter(feature=>{
+        const type=feature&&feature.geometry&&feature.geometry.type;
+        return type==='Polygon'||type==='MultiPolygon';
+      });
+    }catch(e){ return []; }
+  }
+  _analysisContainsPoint(A,lat,lng){
+    if(!A||!isFinite(lat)||!isFinite(lng)) return false;
+    if(!A.analysisGeometry) return this._haversine(A.lat,A.lng,lat,lng)<=A.radiusKm;
+    const T=window.turf;
+    if(!T) return false;
+    try{
+      const point=T.point([lng,lat]);
+      return this._analysisPolygonFeatures(A).some(polygon=>T.booleanPointInPolygon(point,polygon));
+    }catch(e){ return false; }
+  }
+  _analysisFeatureIntersects(A,feature){
+    if(!feature||!feature.geometry) return false;
+    if(!A||!A.analysisGeometry){
+      const T=window.turf;
+      if(T&&A&&isFinite(A.lat)&&isFinite(A.lng)&&isFinite(A.radiusKm)){
+        try{
+          const circle=T.circle([A.lng,A.lat],A.radiusKm,{steps:48,units:'kilometers'});
+          return T.booleanIntersects(feature,circle);
+        }catch(e){}
+      }
+      const wrapped={type:'FeatureCollection',features:[feature]};
+      return this._filterByRadius(wrapped,A.lat,A.lng,A.radiusKm).features.length>0;
+    }
+    const T=window.turf;
+    if(!T) return false;
+    try{
+      return this._analysisPolygonFeatures(A).some(polygon=>T.booleanIntersects(feature,polygon));
+    }catch(e){
+      return false;
+    }
+  }
+  _filterByAnalysis(geo,A){
+    if(!A||!A.analysisGeometry) return this._filterByRadius(geo,A.lat,A.lng,A.radiusKm);
+    const features=this._normFeatures(geo).filter(feature=>this._analysisFeatureIntersects(A,{
+      type:'Feature',properties:feature.properties||{},geometry:feature.geometry
+    }));
+    return {type:'FeatureCollection',features};
+  }
+  _analysisFeatureOverlapsArea(A,feature){
+    if(!A||!A.analysisGeometry) return this._analysisFeatureIntersects(A,feature);
+    const T=window.turf;
+    if(!T||!feature||!feature.geometry) return false;
+    const candidateType=feature.geometry.type;
+    if(candidateType!=='Polygon'&&candidateType!=='MultiPolygon'){
+      return this._analysisFeatureIntersects(A,feature);
+    }
+    try{
+      const coverage=this._analysisPolygonFeatures(A);
+      const candidates=(T.flatten({type:'FeatureCollection',features:[feature]}).features||[])
+        .filter(item=>item&&item.geometry&&item.geometry.type==='Polygon');
+      return coverage.some(areaFeature=>candidates.some(candidate=>{
+        let overlap=null;
+        try{ overlap=T.intersect(candidate,areaFeature); }
+        catch(firstError){
+          try{ overlap=T.intersect(T.featureCollection([candidate,areaFeature])); }catch(secondError){}
+        }
+        return overlap&&T.area(overlap)>1000;
+      }));
+    }catch(e){ return false; }
+  }
+  _analysisAreaKm2(A){
+    if(!A) return null;
+    if(A.analysisGeometry&&window.turf){
+      try{
+        const area=window.turf.area(this._asFeatureCollection(A.analysisGeometry))/1e6;
+        return Number.isFinite(area)&&area>0?area:null;
+      }catch(e){}
+    }
+    return Number.isFinite(A.radiusKm)?Math.PI*A.radiusKm*A.radiusKm:null;
+  }
+  _analysisCoverageLabel(A,withArea){
+    if(!A) return 'zona analizada';
+    let label;
+    if(A.analysisGeometry){
+      const buffer=Math.max(0,Number(A.bufferKm)||0);
+      label=buffer>0?'polígono + buffer de '+buffer+' km':'polígono territorial';
+    }else{
+      label='radio de '+A.radiusKm+' km';
+    }
+    const area=this._analysisAreaKm2(A);
+    return withArea&&area?label+' · '+area.toLocaleString('es-MX',{maximumFractionDigits:1})+' km²':label;
+  }
+  _bufferTerritoryGeometry(geometry,km){
+    const base=this._asFeatureCollection(geometry);
+    if(!base) return null;
+    const distance=Math.max(0,Number(km)||0);
+    if(distance===0||!window.turf||typeof window.turf.buffer!=='function') return base;
+    try{
+      return window.turf.buffer(base,distance,{units:'kilometers',steps:8})||base;
+    }catch(e){
+      this._toast('No fue posible calcular el buffer; se usará el polígono original');
+      return base;
+    }
+  }
+  _clearAnalysisTerritoryLayers(){
+    [this._anaTerritoryBaseLayer,this._anaTerritoryBufferLayer].forEach(layer=>{
+      if(layer){ try{ this.map.removeLayer(layer); }catch(e){} }
+    });
+    this._anaTerritoryBaseLayer=null;
+    this._anaTerritoryBufferLayer=null;
+  }
+  _renderAnalysisTerritory(baseGeometry,effectiveGeometry,bufferKm){
+    const L=window.L;
+    this._clearAnalysisTerritoryLayers();
+    if(!L||!baseGeometry) return null;
+    try{
+      this._anaTerritoryBaseLayer=L.geoJSON(baseGeometry,{
+        pane:'draw',
+        interactive:false,
+        style:{color:'#9B2247',weight:2.2,fillColor:'#9B2247',fillOpacity:.10}
+      }).addTo(this.map);
+      const distance=Math.max(0,Number(bufferKm)||0);
+      if(distance>0&&effectiveGeometry){
+        this._anaTerritoryBufferLayer=L.geoJSON(effectiveGeometry,{
+          pane:'draw',
+          interactive:false,
+          style:{color:'#E0A12E',weight:1.8,dashArray:'7 6',fillColor:'#E0A12E',fillOpacity:.06}
+        }).addTo(this.map);
+      }
+      return (this._anaTerritoryBufferLayer||this._anaTerritoryBaseLayer).getBounds();
+    }catch(e){ return null; }
+  }
+  _anaPlaceTerritory(option){
+    if(!option||!option.geometry||!isFinite(option.lat)||!isFinite(option.lng)) return;
+    const estado=option.state||this._insideMexico(option.lat,option.lng)||'México';
+    const base=this._asFeatureCollection(option.geometry);
+    const bufferKm=0;
+    const effective=this._bufferTerritoryGeometry(base,bufferKm);
+    if(!base||!effective){ this._toast('El territorio seleccionado no tiene una geometría válida'); return; }
+    try{ if(this._anaMarker) this.map.removeLayer(this._anaMarker); }catch(e){}
+    try{ if(this._anaCircle) this.map.removeLayer(this._anaCircle); }catch(e){}
+    this._anaMarker=null;
+    this._anaCircle=null;
+    const bounds=this._renderAnalysisTerritory(base,effective,bufferKm);
+    const hadRun=this.state.analysis.ranKeys.length>0;
+    const area=this._analysisAreaKm2({analysisGeometry:effective});
+    this.setState({
+      anaOpen:true,menuOpen:null,selected:null,collapsed:{...this.state.collapsed,detalle:true},
+      analysis:{
+        ...this.state.analysis,
+        placing:false,lat:option.lat,lng:option.lng,estado,stale:true,
+        latIn:option.lat.toFixed(5),lngIn:option.lng.toFixed(5),
+        bufferKm,territoryGeometry:base,analysisGeometry:effective,territoryAreaKm2:area,
+        targetKind:option.kind||'territory',
+        targetLabel:option.label||'Territorio seleccionado',
+        targetDetail:'Geometría territorial'+(option.detail?' · '+option.detail:''),
+        targetState:option.state||'',
+        targetMunicipality:option.municipality||'',
+        targetStateCode:option.stateCode||'',
+        targetMunicipalityCode:option.municipalityCode||''
+      }
+    },()=>{
+      this._renderZonalDatasets();
+      this._recompute();
+      try{ if(bounds&&bounds.isValid()) this.map.fitBounds(bounds.pad(.12),{animate:true}); }catch(e){}
+    });
+    this._toast('Territorio listo · '+this._analysisCoverageLabel({analysisGeometry:effective,bufferKm},true)+(hadRun?' · actualiza el análisis':' · elige capas'));
+  }
   _anaPlace(lat, lng, target){
     const estado = this._insideMexico(lat, lng);
     if (!estado) { this._toast('El punto debe estar dentro de México'); return; }
@@ -2214,6 +2412,7 @@ class Component extends DCLogic {
       detail:lat.toFixed(5)+', '+lng.toFixed(5)
     };
     const L = window.L;
+    this._clearAnalysisTerritoryLayers();
     if (!this._anaMarker) {
       const ic = L.divIcon({ className:'', iconSize:[30,40], iconAnchor:[15,38], html:'<svg width="30" height="40" viewBox="0 0 30 40"><path d="M15 1C7.8 1 2 6.8 2 14c0 9.6 13 25 13 25s13-15.4 13-25C28 6.8 22.2 1 15 1z" fill="#9B2247" stroke="#fff" stroke-width="2"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>' });
       this._anaMarker = L.marker([lat, lng], { icon:ic, draggable:true, zIndexOffset:900 }).addTo(this.map);
@@ -2238,11 +2437,14 @@ class Component extends DCLogic {
     this.setState({ anaOpen:true, menuOpen:null, selected:null, collapsed:{ ...this.state.collapsed, detalle:true }, analysis: {
       ...this.state.analysis,
       placing:false, lat, lng, estado, stale:true, latIn:lat.toFixed(5), lngIn:lng.toFixed(5),
+      bufferKm:0,territoryGeometry:null,analysisGeometry:null,territoryAreaKm2:null,
       targetKind:chosenTarget.kind||'point',
       targetLabel:chosenTarget.label||'Punto seleccionado en mapa',
       targetDetail:chosenTarget.detail||'',
       targetState:chosenTarget.state||'',
-      targetMunicipality:chosenTarget.municipality||''
+      targetMunicipality:chosenTarget.municipality||'',
+      targetStateCode:'',
+      targetMunicipalityCode:''
     } }, () => {
       this._renderZonalDatasets();
       this._recompute();
@@ -2315,6 +2517,15 @@ class Component extends DCLogic {
     if(!pts.length) return null;
     return [pts.reduce((s,c)=>s+c.lat,0)/pts.length,pts.reduce((s,c)=>s+c.lng,0)/pts.length];
   }
+  _anaGcrShortcutGeometry(key){
+    const source=(this.geo&&this.geo.gerencias&&this.geo.gerencias.features)||[];
+    let features=source.filter(feature=>this._gcrKeyFromName(this._gerName(feature.properties))===key);
+    if(!features.length){
+      features=((this.geo&&this.geo.estados&&this.geo.estados.features)||[])
+        .filter(feature=>this._gerenciaOf(this._propEnt(feature.properties)||'')===key);
+    }
+    return features.length?{type:'FeatureCollection',features}:null;
+  }
   _anaMunicipiosShortcutGeo(){
     if(this._muniGeo) return Promise.resolve(this._muniGeo);
     if(this._municipiosShortcutGeo) return Promise.resolve(this._municipiosShortcutGeo);
@@ -2325,6 +2536,13 @@ class Component extends DCLogic {
     }).finally(()=>{ this._municipiosShortcutPromise=null; });
     return this._municipiosShortcutPromise;
   }
+  _fetchPolosGeoCache(){
+    if(this._polosGeoCachePromise) return this._polosGeoCachePromise;
+    this._polosGeoCachePromise=fetch('/api/podecobi/geojson',{credentials:'same-origin'})
+      .then(response=>response.ok?response.json():{type:'FeatureCollection',features:[]})
+      .catch(()=>({type:'FeatureCollection',features:[]}));
+    return this._polosGeoCachePromise;
+  }
   anaLoadShortcutOptions = (type) => {
     const selectedType=type||'gcr';
     const token=(this._anaShortcutLoadToken||0)+1;
@@ -2334,9 +2552,10 @@ class Component extends DCLogic {
     if(selectedType==='gcr'){
       load=Promise.resolve(Object.keys(this.GCR_NOMBRE).map(key=>{
         const center=this._anaGcrShortcutCenter(key);
-        return center?{
+        const geometry=this._anaGcrShortcutGeometry(key);
+        return center&&geometry?{
           kind:'gcr',label:'GCR '+this.GCR_NOMBRE[key],detail:'Gerencia de control regional',
-          lat:center[0],lng:center[1],zoom:6,color:this.GCR_COLORS[key]||'#9B2247',code:'GC'
+          lat:center[0],lng:center[1],zoom:6,color:this.GCR_COLORS[key]||'#9B2247',code:'GC',geometry
         }:null;
       }).filter(Boolean));
     } else if(selectedType==='state'){
@@ -2344,19 +2563,31 @@ class Component extends DCLogic {
         const center=this.estCentroid&&this.estCentroid[this._norm(name)];
         return center?{
           kind:'state',label:name,detail:'Entidad federativa',
-          state:name,lat:center.lat,lng:center.lng,zoom:7,color:'#0E8A6E',code:'ED'
+          state:name,stateCode:String((center.feature.properties||{}).CVE_ENT||(center.feature.properties||{}).cve_ent||'').padStart(2,'0'),
+          lat:center.lat,lng:center.lng,zoom:7,color:'#0E8A6E',code:'ED',geometry:center.feature
         }:null;
       }).filter(Boolean));
     } else if(selectedType==='podecobi'){
-      load=this._fetchPolosCache().then(polos=>(polos||[]).map(p=>(
-        p.centroidLat!=null&&p.centroidLon!=null?{
-          kind:'podecobi',
-          label:p.nombreOficial||('PODECOBI '+(p.numero||'')),
-          detail:[p.estado,p.municipio,p.etapa].filter(Boolean).join(' · '),
-          state:p.estado||'',municipality:p.municipio||'',
-          lat:+p.centroidLat,lng:+p.centroidLon,zoom:10,color:'#9B2247',code:'PO'
-        }:null
-      )).filter(Boolean).sort((a,b)=>a.label.localeCompare(b.label,'es')));
+      load=Promise.all([this._fetchPolosCache(),this._fetchPolosGeoCache()]).then(([polos,geo])=>{
+        const byNumber=new Map();
+        ((geo&&geo.features)||[]).forEach(feature=>{
+          const number=String((feature.properties||{}).Numero||'').trim();
+          if(!number) return;
+          if(!byNumber.has(number)) byNumber.set(number,[]);
+          byNumber.get(number).push(feature);
+        });
+        return (polos||[]).map(p=>{
+          const features=byNumber.get(String(p.numero||'').trim())||[];
+          return p.centroidLat!=null&&p.centroidLon!=null&&features.length?{
+            kind:'podecobi',
+            label:p.nombreOficial||('PODECOBI '+(p.numero||'')),
+            detail:[p.estado,p.municipio,p.etapa].filter(Boolean).join(' · '),
+            state:p.estado||'',municipality:p.municipio||'',
+            lat:+p.centroidLat,lng:+p.centroidLon,zoom:10,color:'#9B2247',code:'PO',
+            geometry:{type:'FeatureCollection',features}
+          }:null;
+        }).filter(Boolean).sort((a,b)=>a.label.localeCompare(b.label,'es'));
+      });
     } else {
       load=this._anaMunicipiosShortcutGeo().then(geo=>(geo.features||[]).map(f=>{
         const p=f.properties||{}, name=p.NOMGEO||p.nombre||'';
@@ -2366,8 +2597,10 @@ class Component extends DCLogic {
         return name&&center?{
           kind:'municipality',label:name+(ent?', '+ent:''),
           detail:'Municipio'+(p.CVEGEO?' · CVEGEO '+p.CVEGEO:''),
-          state:ent,municipality:name,
-          lat:center[0],lng:center[1],zoom:10,color:'#C9A24B',code:'MU'
+          state:ent,municipality:name,stateCode:entKey,
+          municipalityCode:String(p.CVE_MUN||p.cve_mun||(p.CVEGEO?String(p.CVEGEO).slice(-3):'')).padStart(3,'0'),
+          lat:center[0],lng:center[1],zoom:10,color:'#C9A24B',code:'MU',
+          geometry:{type:'Feature',properties:p,geometry:f.geometry}
         }:null;
       }).filter(Boolean).sort((a,b)=>a.label.localeCompare(b.label,'es')));
     }
@@ -2385,14 +2618,11 @@ class Component extends DCLogic {
   anaShortcutPick = (option) => {
     if(!option||!isFinite(option.lat)||!isFinite(option.lng)) return;
     this.setState({ analysis:{ ...this.state.analysis, shortcutQuery:option.label } });
-    this._anaPlace(option.lat,option.lng,{
-      kind:option.kind,
-      label:option.label,
-      detail:'Centro representativo · '+(option.detail||this._anaShortcutInfo(option.kind).label),
-      state:option.state||'',
-      municipality:option.municipality||''
-    });
-    this.map.setView([option.lat,option.lng],option.zoom||8,{animate:true});
+    if(option.geometry){
+      this._anaPlaceTerritory(option);
+      return;
+    }
+    this._toast('El territorio seleccionado no tiene una geometría disponible');
   };
   // Respaldo del buscador del header: si no hay coincidencia local, busca como dirección
   _searchAddress(q){
@@ -2444,6 +2674,22 @@ class Component extends DCLogic {
       this.map.fitBounds(this._anaCircle.getBounds().pad(0.3), { animate:true });
     } catch(e) {}
   };
+  anaSetTerritoryBuffer = (km) => {
+    const A=this.state.analysis;
+    if(!A||!A.territoryGeometry) return;
+    const bufferKm=Math.max(0,Number(km)||0);
+    const effective=this._bufferTerritoryGeometry(A.territoryGeometry,bufferKm);
+    if(!effective) return;
+    const area=this._analysisAreaKm2({analysisGeometry:effective});
+    const bounds=this._renderAnalysisTerritory(A.territoryGeometry,effective,bufferKm);
+    this.setState({analysis:{
+      ...A,bufferKm,analysisGeometry:effective,territoryAreaKm2:area,stale:true
+    }},()=>{
+      this._renderZonalDatasets();
+      this._recompute();
+      try{ if(bounds&&bounds.isValid()) this.map.fitBounds(bounds.pad(.12),{animate:true}); }catch(e){}
+    });
+  };
   anaToggleSel = (key) => {
     const A = this.state.analysis;
     this.setState({ analysis: { ...A, sel: { ...A.sel, [key]: !A.sel[key] }, stale:true } });
@@ -2468,6 +2714,7 @@ class Component extends DCLogic {
     this._anaSummary = null;
     if (this._anaMarker) { try { this.map.removeLayer(this._anaMarker); } catch(e){} this._anaMarker = null; }
     if (this._anaCircle) { try { this.map.removeLayer(this._anaCircle); } catch(e){} this._anaCircle = null; }
+    this._clearAnalysisTerritoryLayers();
     const layers = { ...this.state.layers };
     this.state.analysis.ranKeys.forEach(k => {
       const g = this.groups[k]; if (g) { try { g.clearLayers(); this.map.removeLayer(g); } catch(e){} }
@@ -2478,17 +2725,20 @@ class Component extends DCLogic {
     this.map.getContainer().style.cursor = '';
     this._invalidateSearch();
     this.setState({ layers, selected:null, collapsed:{ ...this.state.collapsed, detalle:true }, analysis: {
-      placing:false, lat:null, lng:null, estado:'', radiusKm:this.state.analysis.radiusKm, sel:{}, ranKeys:[],
+      placing:false, lat:null, lng:null, estado:'', radiusKm:this.state.analysis.radiusKm, bufferKm:0,
+      territoryGeometry:null, analysisGeometry:null, territoryAreaKm2:null,
+      sel:{}, ranKeys:[],
       stale:false, running:false, mode:'click', latIn:'', lngIn:'', dirIn:'', dirResults:[],
       shortcutType:'gcr', shortcutQuery:'', shortcutOptions:[], shortcutBusy:false,
-      targetKind:'', targetLabel:'', targetDetail:'', targetState:'', targetMunicipality:''
+      targetKind:'', targetLabel:'', targetDetail:'', targetState:'', targetMunicipality:'',
+      targetStateCode:'', targetMunicipalityCode:''
     } }, () => {
       this._renderZonalDatasets();
       this._recompute();
     });
   };
-  // Filtra un GeoJSON a los features con algún vértice dentro del radio, o que CONTIENEN el
-  // marcador (polígonos grandes, p.ej. una ANP cuyo centro queda lejos pero cubre la zona).
+  // Filtra un GeoJSON contra el círculo cuando el objetivo es puntual; los atajos territoriales
+  // usan la geometría efectiva (polígono original o su buffer) mediante _filterByAnalysis.
   // Distancia al feature MÁS CERCANO de un GeoJSON (muestreo de vértices) — para explicar los ceros
   _nearestFeatKm(geo, lat, lng){
     let best=Infinity; const feats=this._normFeatures(geo);
@@ -2514,7 +2764,8 @@ class Component extends DCLogic {
     const activeDatasets=this.state.datasets.filter(d=>d.active);
     if (!selKeys.length && !activeDatasets.length) { this._toast('Selecciona al menos una capa o un dataset para analizar'); return; }
     this._rawGeo = this._rawGeo || {};
-    this.setState({ analysis: { ...A, running:true }, blocking:{ label:'Analizando zona · '+A.radiusKm+' km…' } });
+    const coverageLabel=this._analysisCoverageLabel(A,false);
+    this.setState({ analysis: { ...A, running:true }, blocking:{ label:'Analizando '+coverageLabel+'…' } });
     // Descarga (con caché) y filtra capa por capa, en secuencia — el preloader informa el avance
     const layers = { ...this.state.layers };
     // Apaga capas de un análisis anterior que ya no están seleccionadas
@@ -2537,19 +2788,23 @@ class Component extends DCLogic {
         if (key === 'subestaciones') {
           // Ya cargadas al arranque: se filtra la MEMBRESÍA del grupo (sin re-crear marcadores)
           const g = this.groups.subestaciones; g.clearLayers(); const set = new Set();
-          (this._subMarkers || []).forEach(m => { const s = m._rec; if (s && this._haversine(A.lat, A.lng, s.lat, s.lng) <= A.radiusKm) { g.addLayer(m); set.add(s); } });
+          (this._subMarkers || []).forEach(m => { const s = m._rec; if (s && this._analysisContainsPoint(A,s.lat,s.lng)) { g.addLayer(m); set.add(s); } });
           this._anaSubSet = set; n = set.size;
           if (!n) nearKm = (this._nearestSubs(A.lat, A.lng, 1)[0]||{}).dist || null;
         } else if (key === 'lineas') {
           const g = this.groups.lineas; g.clearLayers(); const set = new Set();
           (this.lineFeatures || []).forEach(pl => {
             let lls = pl.getLatLngs(); while (Array.isArray(lls[0])) lls = lls.flat();
-            if (lls.some(p => this._haversine(A.lat, A.lng, p.lat, p.lng) <= A.radiusKm)) { g.addLayer(pl); set.add(pl); }
+            const feature={
+              type:'Feature',properties:{},
+              geometry:{type:'LineString',coordinates:lls.map(point=>[point.lng,point.lat])}
+            };
+            if (this._analysisFeatureIntersects(A,feature)) { g.addLayer(pl); set.add(pl); }
           });
           this._anaLineSet = set; n = set.size;
           if (!n) nearKm = (this._nearestLines(A.lat, A.lng, 1)[0]||{}).dist || null;
         } else {
-          const sub = this._filterByRadius(geo, A.lat, A.lng, A.radiusKm);
+          const sub = this._filterByAnalysis(geo,A);
           this._buildGeneric(key, sub, cfg);
           n = (this._genericCount && this._genericCount[key]) || sub.features.length;
           // Cero en el radio: se calcula a qué distancia está el elemento más cercano — un «0»
@@ -2573,14 +2828,14 @@ class Component extends DCLogic {
       // panel de detalle en vez del detalle de un solo punto.
       const sumRows = okKeys.map(k => { const cfg = this.LAYERS.find(c=>c.key===k) || {}; const ct=layers[k].count||0; const nr=layers[k].nearest; return [cfg.label||k, ct>0 ? ct.toLocaleString('es-MX') : (nr ? '0 · a '+Math.round(nr)+' km el más cercano' : '0')]; });
       failedKeys.forEach(k => { const cfg = this.LAYERS.find(c=>c.key===k) || {}; sumRows.push([cfg.label||k, 'fuente no disponible']); });
-      // Datasets externos activos: registros dentro del radio (también van a métricas y reporte)
+      // Datasets externos activos: registros dentro de la cobertura (también van a métricas y reporte)
       const dsParts = this.state.datasets.filter(d=>d.active).map(d => {
-        let inR=0; d.rows.forEach(r => { const ll=this._placeRow(r,d); if (ll && this._haversine(A.lat,A.lng,ll[0],ll[1])<=A.radiusKm) inR++; });
+        let inR=0; d.rows.forEach(r => { const ll=this._placeRow(r,d); if (ll && this._analysisContainsPoint(A,ll[0],ll[1])) inR++; });
         return { name:d.name, inR, total:d.rows.length, color:d.color };
       });
       dsParts.forEach(p => sumRows.push(['Dataset · '+p.name, this._nf(p.inR)+' de '+this._nf(p.total)]));
-      sumRows.push(['Radio de análisis', A.radiusKm+' km']);
-      sumRows.push(['Coordenadas', A.lat.toFixed(4)+', '+A.lng.toFixed(4)]);
+      sumRows.push(['Cobertura de análisis', this._analysisCoverageLabel(A,true)]);
+      sumRows.push(['Coordenadas del centro', A.lat.toFixed(4)+', '+A.lng.toFixed(4)]);
       const totalEl = okKeys.reduce((s,k)=>s+(layers[k].count||0),0) + dsParts.reduce((s,p)=>s+p.inR,0);
       // Métricas rápidas: las capas con MÁS elementos primero (evita mostrar puros ceros
       // cuando las primeras capas seleccionadas no tienen presencia en el radio)
@@ -2589,14 +2844,17 @@ class Component extends DCLogic {
       const sumMetrics = pool.sort((a,b)=>b.count-a.count).slice(0,6).map(p=>({ label:p.label, value:p.count.toLocaleString('es-MX'), unit:'', accent:p.color }));
       const selectedTarget=A.targetLabel||A.estado||'Zona';
       sumRows.unshift(['Objetivo evaluado',selectedTarget]);
-      const anaSelected = { kicker:'Análisis de zona · '+A.radiusKm+' km', color:'#9B2247', name:selectedTarget+' — '+totalEl.toLocaleString('es-MX')+' elementos', rows:sumRows, metrics:sumMetrics, isAnaSummary:true };
+      const anaSelected = { kicker:'Análisis de zona · '+coverageLabel, color:'#9B2247', name:selectedTarget+' — '+totalEl.toLocaleString('es-MX')+' elementos', rows:sumRows, metrics:sumMetrics, isAnaSummary:true };
       this._anaSummary = anaSelected; // se conserva para poder VOLVER al resumen tras ver otro elemento
       this.setState({ layers, blocking:null, anaOpen:false, menuOpen:null, selected:anaSelected, collapsed:{ ...this.state.collapsed, detalle:false }, analysis: { ...this.state.analysis, running:false, stale:false, ranKeys:okKeys } }, () => this._recompute());
-      try { this.map.fitBounds(this._anaCircle.getBounds().pad(0.25), { animate:true }); } catch(e){}
+      try {
+        const focusLayer=this._anaTerritoryBufferLayer||this._anaTerritoryBaseLayer||this._anaCircle;
+        if(focusLayer) this.map.fitBounds(focusLayer.getBounds().pad(0.25),{animate:true});
+      } catch(e){}
       // Refresca el KPI de PODECOBI con la nueva zona/radio del análisis
       this._updatePolosKpi();
       const total = okKeys.reduce((s,k) => s+(layers[k].count||0), 0) + dsParts.reduce((s,p)=>s+p.inR,0);
-      this._toast('Análisis listo · '+total.toLocaleString('es-MX')+' elementos en '+A.radiusKm+' km'+(failedKeys.length?' · '+failedKeys.length+' capa(s) sin fuente disponible':''));
+      this._toast('Análisis listo · '+total.toLocaleString('es-MX')+' elementos · '+coverageLabel+(failedKeys.length?' · '+failedKeys.length+' capa(s) sin fuente disponible':''));
     }).catch(e => {
       this.setState({ blocking:null, analysis: { ...this.state.analysis, running:false } });
       this._toast('Error en el análisis: '+(e.message||e));
@@ -3297,7 +3555,7 @@ class Component extends DCLogic {
     if (!analysis || analysis.lat==null || analysis.lng==null) return [];
     return (ds.rows||[]).filter(row => {
       const ll=this._placeRow(row, ds);
-      return ll && this._haversine(analysis.lat, analysis.lng, ll[0], ll[1]) <= analysis.radiusKm;
+      return ll && this._analysisContainsPoint(analysis,ll[0],ll[1]);
     });
   }
   _renderDataset(ds) {
@@ -3665,10 +3923,13 @@ class Component extends DCLogic {
       exportOpen:false, anaOpen:false, mobilePanel:null, menuOpen:null, reportOpen:false,
       blocking:null, layerBar:null, collapsed:{ capas:false, datasets:false, detalle:true, metricas:false },
       analysis:{
-        placing:false, lat:null, lng:null, estado:'', radiusKm:20, sel:{}, ranKeys:[],
+        placing:false, lat:null, lng:null, estado:'', radiusKm:20, bufferKm:0,
+        territoryGeometry:null, analysisGeometry:null, territoryAreaKm2:null,
+        sel:{}, ranKeys:[],
         stale:false, running:false, mode:'click', latIn:'', lngIn:'', dirIn:'', dirResults:[],
         shortcutType:'gcr', shortcutQuery:'', shortcutOptions:[], shortcutBusy:false,
-        targetKind:'', targetLabel:'', targetDetail:'', targetState:'', targetMunicipality:''
+        targetKind:'', targetLabel:'', targetDetail:'', targetState:'', targetMunicipality:'',
+        targetStateCode:'', targetMunicipalityCode:''
       }
     }, () => { this._recompute(); this._toast('Nuevo análisis listo · mapa limpio'); });
   };
@@ -3792,19 +4053,29 @@ class Component extends DCLogic {
     return Promise.all([
       fetch('/api/podecobi/polos', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : []),
       fetch('/api/podecobi/resumen', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null),
-    ]).then(([polos, resumen]) => {
+      this._fetchPolosGeoCache(),
+    ]).then(([polos, resumen, geo]) => {
       if (!Array.isArray(polos) || !polos.length) return null;
 
-      const inRadius = polos.filter(p =>
-        p.centroidLon != null && p.centroidLat != null &&
-        this._haversine(A.lat, A.lng, p.centroidLat, p.centroidLon) <= A.radiusKm
-      );
+      const byNumber=new Map();
+      ((geo&&geo.features)||[]).forEach(feature=>{
+        const number=String((feature.properties||{}).Numero||'').trim();
+        if(!number) return;
+        if(!byNumber.has(number)) byNumber.set(number,[]);
+        byNumber.get(number).push(feature);
+      });
+      const inCoverage = polos.filter(p => {
+        const features=byNumber.get(String(p.numero||'').trim())||[];
+        if(features.length) return features.some(feature=>this._analysisFeatureIntersects(A,feature));
+        return p.centroidLon != null && p.centroidLat != null &&
+          this._analysisContainsPoint(A,p.centroidLat,p.centroidLon);
+      });
 
       // Sin intersección: la sección no aparece en el reporte territorial
-      if (!inRadius.length) return null;
+      if (!inCoverage.length) return null;
 
       // Trae el detalle de cada polo intersectado en paralelo
-      const detallePromises = inRadius.map(p =>
+      const detallePromises = inCoverage.map(p =>
         fetch('/api/podecobi/polos/' + encodeURIComponent(p.numero), { credentials: 'same-origin' })
           .then(r => r.ok ? r.json() : null)
           .catch(() => null)
@@ -3824,7 +4095,7 @@ class Component extends DCLogic {
         ];
 
         // Tabla resumen de los intersectados (mismo formato que el reporte nacional)
-        const tablaResumen = inRadius.map(p => [
+        const tablaResumen = inCoverage.map(p => [
           p.numero || '—',
           p.nombreOficial || '—',
           p.estado || '—',
@@ -3888,10 +4159,10 @@ class Component extends DCLogic {
         return {
           key: 'podecobi', kicker: 'PODECOBI en la zona', color: '#9B2247',
           icon: 'M3 21h18 M5 21V10l7-5 7 5v11 M9 21v-6h6v6',
-          title: inRadius.length === 1
-            ? `PODECOBI intersectado: ${inRadius[0].nombreOficial || 'polo ' + inRadius[0].numero}`
-            : `${inRadius.length} polos PODECOBI intersectados por el radio de ${A.radiusKm} km`,
-          intro: 'Polo(s) con declaratoria vigente en DOF/SIDOF cuyo centroide cae dentro del radio de análisis. Detalle completo contra la base institucional dgmesnie.PODECOBI.',
+          title: inCoverage.length === 1
+            ? `PODECOBI intersectado: ${inCoverage[0].nombreOficial || 'polo ' + inCoverage[0].numero}`
+            : `${inCoverage.length} polos PODECOBI intersectados por la cobertura analizada`,
+          intro: 'Polo(s) con declaratoria vigente en DOF/SIDOF cuya geometría intersecta la cobertura territorial. Detalle completo contra la base institucional dgmesnie.PODECOBI.',
           hasRows: true, rows, hasChips: false, chips: [],
           hasTable: true, hasTable2: false,
           hasSubSections: polosDetalle.length > 0,
@@ -3918,9 +4189,10 @@ class Component extends DCLogic {
         items:Object.keys(this.GCR_NOMBRE).map(k=>({ color:this.GCR_COLORS[k], label:this.GCR_NOMBRE[k], ...dot, hasCount:false, count:'', active:true, cursor:'default', op:1 }))
       });
     }
-    const caps=this.LAYERS.filter(c=>!c.analysis || S.layers[c.key].on);
+    const analyzedKeys=new Set((S.analysis&&S.analysis.ranKeys)||[]);
+    const caps=this.LAYERS.filter(c=>!c.analysis || S.layers[c.key].on || analyzedKeys.has(c.key));
     groups.push({
-      title:'Capas · clic para encender/apagar',
+      title:interactive?'Capas · clic para encender/apagar':'Capas del análisis',
       items:caps.map(c=>{
         const v=S.layers[c.key];
         return {
@@ -4025,7 +4297,7 @@ class Component extends DCLogic {
         charts.push({
           key:'generation-profile',
           title:hasCapacity?'Capacidad por tecnología':'Centrales por tecnología',
-          subtitle:centralItems.length+' '+(centralItems.length===1?'central identificada':'centrales identificadas')+' dentro de '+A.radiusKm+' km.',
+          subtitle:centralItems.length+' '+(centralItems.length===1?'central identificada':'centrales identificadas')+' dentro de la cobertura analizada.',
           unit:hasCapacity?'MW':'centrales',
           decimals:hasCapacity?1:0,
           data,
@@ -4035,7 +4307,7 @@ class Component extends DCLogic {
     }
 
     if(ran('subestaciones')){
-      const subItems=this._anaSubSet?Array.from(this._anaSubSet):(this.subFeatures||[]).filter(sub=>this._haversine(A.lat,A.lng,sub.lat,sub.lng)<=A.radiusKm);
+      const subItems=this._anaSubSet?Array.from(this._anaSubSet):(this.subFeatures||[]).filter(sub=>this._analysisContainsPoint(A,sub.lat,sub.lng));
       if(subItems.length){
         const buckets=[
           {label:'Menor a 115 kV',color:'#C0552E',value:0},
@@ -4052,7 +4324,7 @@ class Component extends DCLogic {
         charts.push({
           key:'substation-voltage',
           title:'Subestaciones por nivel de tensión',
-          subtitle:subItems.length+' '+(subItems.length===1?'subestación identificada':'subestaciones identificadas')+' dentro de '+A.radiusKm+' km.',
+          subtitle:subItems.length+' '+(subItems.length===1?'subestación identificada':'subestaciones identificadas')+' dentro de la cobertura analizada.',
           unit:'subestaciones',
           decimals:0,
           data:buckets.filter(bucket=>bucket.value>0),
@@ -4079,6 +4351,21 @@ class Component extends DCLogic {
     const x=D.scaleLinear().domain([0,maxValue]).nice().range([margin.left,width-margin.right]);
     const y=D.scaleBand().domain(data.map(item=>item.label)).range([margin.top,height-margin.bottom]).padding(.28);
     const formatValue=value=>Number(value).toLocaleString('es-MX',{minimumFractionDigits:chart.decimals||0,maximumFractionDigits:chart.decimals||0});
+    const labelLines=label=>{
+      const words=String(label||'').split(/\s+/).filter(Boolean),lines=[];
+      let current='';
+      words.forEach(word=>{
+        const next=current?current+' '+word:word;
+        if(next.length<=25||!current) current=next;
+        else{ lines.push(current); current=word; }
+      });
+      if(current) lines.push(current);
+      if(lines.length>2){
+        const second=lines.slice(1).join(' ');
+        return [lines[0],second.length>27?second.slice(0,25)+'…':second];
+      }
+      return lines.length?lines:['Dato'];
+    };
     const svg=D.create('svg')
       .attr('xmlns','http://www.w3.org/2000/svg')
       .attr('viewBox','0 0 '+width+' '+height)
@@ -4104,13 +4391,19 @@ class Component extends DCLogic {
     svg.append('g').selectAll('text')
       .data(data).join('text')
       .attr('x',margin.left-12)
-      .attr('y',item=>y(item.label)+y.bandwidth()/2+4)
+      .attr('y',item=>y(item.label)+y.bandwidth()/2-((labelLines(item.label).length-1)*6)+4)
       .attr('text-anchor','end')
       .attr('fill','#3A3A3A')
-      .attr('font-size',12)
+      .attr('font-size',11)
       .attr('font-weight',700)
       .attr('font-family','Arial, Helvetica, sans-serif')
-      .text(item=>String(item.label).length>25?String(item.label).slice(0,23)+'…':item.label);
+      .each(function(item){
+        const node=D.select(this);
+        node.text(null);
+        labelLines(item.label).forEach((line,index)=>{
+          node.append('tspan').attr('x',margin.left-12).attr('dy',index?12:0).text(line);
+        });
+      });
     svg.append('g').selectAll('text')
       .data(data).join('text')
       .attr('x',item=>{
@@ -4142,6 +4435,213 @@ class Component extends DCLogic {
     return formatted+(unit?' '+unit:'');
   }
 
+  _ringAreaKm2(ring){
+    if(!Array.isArray(ring)||ring.length<3) return 0;
+    const earthRadiusKm=6371.0088;
+    let sum=0;
+    for(let i=0;i<ring.length;i++){
+      const current=ring[i],next=ring[(i+1)%ring.length];
+      if(!current||!next||!isFinite(current[0])||!isFinite(current[1])||!isFinite(next[0])||!isFinite(next[1])) continue;
+      const lon1=current[0]*Math.PI/180,lon2=next[0]*Math.PI/180;
+      const lat1=current[1]*Math.PI/180,lat2=next[1]*Math.PI/180;
+      sum+=(lon2-lon1)*(2+Math.sin(lat1)+Math.sin(lat2));
+    }
+    return Math.abs(sum)*earthRadiusKm*earthRadiusKm/2;
+  }
+
+  _geometryAreaKm2(geometry){
+    if(!geometry||!Array.isArray(geometry.coordinates)) return null;
+    const polygonArea=rings=>{
+      if(!Array.isArray(rings)||!rings.length) return 0;
+      const outer=this._ringAreaKm2(rings[0]);
+      const holes=rings.slice(1).reduce((sum,ring)=>sum+this._ringAreaKm2(ring),0);
+      return Math.max(0,outer-holes);
+    };
+    const area=geometry.type==='Polygon'
+      ? polygonArea(geometry.coordinates)
+      : geometry.type==='MultiPolygon'
+        ? geometry.coordinates.reduce((sum,rings)=>sum+polygonArea(rings),0)
+        : 0;
+    return area>0?area:null;
+  }
+
+  _resolveInegiArea(A){
+    // La API oficial publica ámbitos geoestadísticos (entidad/municipio), no polígonos GCR.
+    // Para una GCR evitamos atribuirle cifras del municipio donde cae su centroide.
+    if(A.targetKind==='gcr') return null;
+    const stateName=A.targetState||A.estado||'';
+    const stateFeatures=(this.geo&&this.geo.estados&&this.geo.estados.features)||[];
+    const stateFeature=stateFeatures.find(feature=>this._inFeature(A.lng,A.lat,feature.geometry))
+      ||stateFeatures.find(feature=>this._norm(this._propEnt(feature.properties)||'')===this._norm(stateName));
+    const stateProps=(stateFeature&&stateFeature.properties)||{};
+    const stateCodeRaw=String(A.targetStateCode||stateProps.CVE_ENT||stateProps.cve_ent||
+      Object.keys(this.CVE_ENT).find(key=>this._norm(this.CVE_ENT[key])===this._norm(stateName))||'');
+    const stateCode=stateCodeRaw?stateCodeRaw.padStart(2,'0'):'';
+    if(!/^(0[1-9]|[12]\d|3[0-2])$/.test(stateCode)) return null;
+
+    if(A.targetKind==='state'){
+      return {
+        entidad:stateCode,municipio:'',name:this.CVE_ENT[stateCode]||stateName||'Entidad federativa',
+        scope:'Entidad federativa',areaKm2:this._geometryAreaKm2(stateFeature&&stateFeature.geometry)
+      };
+    }
+
+    const municipalGeo=this._muniGeo||this._municipiosShortcutGeo;
+    const municipalityFeature=municipalGeo&&(municipalGeo.features||[]).find(feature=>{
+      const props=feature.properties||{};
+      if(A.targetKind==='municipality'&&A.targetMunicipalityCode){
+        return String(props.CVE_ENT||props.cve_ent||'').padStart(2,'0')===stateCode &&
+          String(props.CVE_MUN||props.cve_mun||'').padStart(3,'0')===String(A.targetMunicipalityCode).padStart(3,'0');
+      }
+      return this._inFeature(A.lng,A.lat,feature.geometry);
+    });
+    if(municipalityFeature){
+      const props=municipalityFeature.properties||{};
+      const entidad=String(props.CVE_ENT||props.cve_ent||stateCode).padStart(2,'0');
+      const cveGeo=String(props.CVEGEO||props.cvegeo||'');
+      const municipalityRaw=String(props.CVE_MUN||props.cve_mun||(cveGeo.length>=5?cveGeo.slice(-3):''));
+      const municipio=municipalityRaw?municipalityRaw.padStart(3,'0'):'';
+      if(/^\d{2}$/.test(entidad)&&/^\d{3}$/.test(municipio)&&municipio!=='000'){
+        return {
+          entidad,municipio,
+          name:props.NOMGEO||props.nombre||A.targetMunicipality||'Municipio del punto central',
+          scope:'Municipio',areaKm2:this._geometryAreaKm2(municipalityFeature.geometry)
+        };
+      }
+    }
+
+    return {
+      entidad:stateCode,municipio:'',name:this.CVE_ENT[stateCode]||stateName||'Entidad federativa',
+      scope:'Entidad federativa',areaKm2:this._geometryAreaKm2(stateFeature&&stateFeature.geometry)
+    };
+  }
+
+  async _loadInegiReportContext(area){
+    if(!area) return null;
+    this._inegiReportCache=this._inegiReportCache||new Map();
+    const key=area.entidad+area.municipio+':'+(area.areaKm2?area.areaKm2.toFixed(2):'na');
+    if(this._inegiReportCache.has(key)) return this._inegiReportCache.get(key);
+    const params=new URLSearchParams({entidad:area.entidad});
+    if(area.municipio) params.set('municipio',area.municipio);
+    if(area.areaKm2) params.set('areaKm2',area.areaKm2.toFixed(2));
+    try{
+      const response=await fetch('/DashboardProyectos/IndicadoresInegi?'+params.toString(),{
+        method:'GET',credentials:'same-origin',headers:{Accept:'application/json'}
+      });
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok||!payload||!payload.ok||!payload.data){
+        this._inegiStatus=payload&&payload.code?payload.code:'INEGI_UNAVAILABLE';
+        return null;
+      }
+      const result={...payload.data,area};
+      this._inegiReportCache.set(key,result);
+      this._inegiStatus='OK';
+      return result;
+    }catch(e){
+      this._inegiStatus='INEGI_UNAVAILABLE';
+      return null;
+    }
+  }
+
+  _formatInegiIndicator(indicator){
+    const value=Number(indicator&&indicator.value);
+    if(!Number.isFinite(value)) return 'sin dato';
+    const decimals=Math.max(0,Math.min(2,Number(indicator.decimals)||0));
+    const formatted=value.toLocaleString('es-MX',{
+      minimumFractionDigits:decimals,maximumFractionDigits:decimals
+    });
+    const unit=String(indicator.unit||'').trim();
+    return formatted+(unit?' '+unit:'');
+  }
+
+  _formatInegiNumber(indicator){
+    const value=Number(indicator&&indicator.value);
+    if(!Number.isFinite(value)) return 'sin dato';
+    const decimals=Math.max(0,Math.min(2,Number(indicator.decimals)||0));
+    return value.toLocaleString('es-MX',{
+      minimumFractionDigits:decimals,maximumFractionDigits:decimals
+    });
+  }
+
+  _buildInegiReportCharts(context){
+    const breakdowns=Array.isArray(context&&context.breakdowns)?context.breakdowns:[];
+    const palettes={
+      population_trend:['#C9A24B','#1E6F5C'],
+      economic_structure:['#1E6F5C','#9B2247','#E0A12E','#2E6FB0','#C0552E','#8A9099']
+    };
+    return breakdowns.map(breakdown=>{
+      const items=Array.isArray(breakdown.items)?breakdown.items:[];
+      const palette=palettes[breakdown.key]||palettes.economic_structure;
+      const data=items.map((item,index)=>({
+        label:item.label||item.key||'Indicador',
+        value:Number(item.value),
+        color:palette[index%palette.length],
+        detail:breakdown.period||''
+      })).filter(item=>Number.isFinite(item.value)&&item.value>=0);
+      if(!data.length) return null;
+      const chart={
+        key:'inegi-'+(breakdown.key||'profile'),
+        group:'inegi',
+        title:breakdown.title||'Perfil territorial INEGI',
+        subtitle:[breakdown.subtitle,breakdown.period].filter(Boolean).join(' · '),
+        unit:breakdown.unit||'',
+        decimals:Math.max(0,Math.min(2,Number(breakdown.decimals)||0)),
+        data,
+        source:'Fuente: '+(breakdown.source||'INEGI')
+      };
+      return {
+        ...chart,
+        alt:'Gráfica de '+chart.title.toLowerCase(),
+        svgDataUrl:this._reportChartSvg(chart)
+      };
+    }).filter(Boolean);
+  }
+
+  _appendInegiToReport(report,context){
+    if(!report||!context||!Array.isArray(context.indicators)||!context.indicators.length) return;
+    const indicators=context.indicators;
+    const area=context.area||{};
+    const population=indicators.find(item=>item.key==='population_total');
+    const economicUnits=indicators.find(item=>item.key==='economic_units');
+    const rows=indicators.map(item=>[
+      item.label||'Indicador',
+      this._formatInegiIndicator(item),
+      item.period||'—',
+      [item.detail,item.source?'Fuente: '+item.source:''].filter(Boolean).join(' · ')
+    ]);
+    const charts=this._buildInegiReportCharts(context);
+    const section={
+      key:'inegi',kicker:'Contexto territorial · INEGI',color:'#1E6F5C',
+      title:'Indicadores sociodemográficos y económicos',
+      intro:'Ámbito de referencia: '+(area.scope||context.scope||'Territorio')+' · '+(area.name||context.geographicCode||'zona evaluada')+
+        '. Se presenta el dato oficial más reciente disponible para ese ámbito geoestadístico; no se prorratea dentro de buffers o radios.',
+      hasRows:false,rows:[],hasChips:false,chips:[],
+      hasTable:true,table:{head:['Indicador','Valor','Periodo','Nota metodológica / fuente'],rows},
+      tableLabel:'Indicadores oficiales',
+      hasCharts:charts.length>0,charts,
+      hasTable2:false,
+      source:'INEGI · Banco de Indicadores y DENUE',
+    };
+    const socialIndex=report.sections.findIndex(item=>item.key==='social');
+    report.sections.splice(socialIndex>=0?socialIndex+1:1,0,section);
+    [population,economicUnits].filter(Boolean).forEach(item=>report.metrics.push({
+      label:item.label,
+      value:this._formatInegiNumber(item),
+      color:item.key==='population_total'?'#1E6F5C':'#C0552E',
+      dim:false,
+      sub:[item.unit,item.period||'Dato más reciente','INEGI'].filter(Boolean).join(' · ')
+    }));
+    report.charts=(Array.isArray(report.charts)?report.charts:[]).concat(charts);
+    report.inegi={
+      geographicCode:context.geographicCode,
+      scope:context.scope,
+      queriedAt:context.queriedAt,
+      area,
+      indicators,
+      breakdowns:Array.isArray(context.breakdowns)?context.breakdowns:[]
+    };
+  }
+
   _buildReport(){
     const A = this.state.analysis;
     if (!A.lat || !A.ranKeys.length) return Promise.resolve(null);
@@ -4151,11 +4651,21 @@ class Component extends DCLogic {
     const cnt = k => (L[k] && L[k].count) || 0;
     const ran = k => A.ranKeys.includes(k);
     // Texto de conteo con contexto: un cero indica a qué distancia está el elemento más cercano
-    const cntTxt = k => { if (!ran(k)) return 'no analizada'; const ct=cnt(k); if (ct>0) return this._nf(ct)+' en el radio'; const nr=L[k]&&L[k].nearest; return nr ? 'ninguno · el más cercano a '+Math.round(nr)+' km' : 'ninguno en el radio'; };
-    const gerKey = this._gerenciaOf(A.estado||'');
-    let muni = A.targetMunicipality || '—';
+    const cntTxt = k => {
+      if(!ran(k)) return 'no analizada';
+      const ct=cnt(k);
+      if(ct>0) return this._nf(ct)+' en la cobertura';
+      const nr=L[k]&&L[k].nearest;
+      return !A.analysisGeometry&&nr?'ninguno · el más cercano a '+Math.round(nr)+' km':'ninguno en la cobertura';
+    };
+    let gerKey = this._gerenciaOf(A.estado||'');
+    if(A.targetKind==='gcr'){
+      const normalizedTarget=this._norm(A.targetLabel||'');
+      gerKey=Object.keys(this.GCR_NOMBRE).find(key=>normalizedTarget.includes(this._norm(this.GCR_NOMBRE[key])))||gerKey;
+    }
+    let muni = ['state','gcr'].includes(A.targetKind)?'—':(A.targetMunicipality||'—');
     const municipalityGeo=this._muniGeo||this._municipiosShortcutGeo;
-    if (municipalityGeo) { for (const f of (municipalityGeo.features||[])) { if (this._inFeature(A.lng, A.lat, f.geometry)) { muni = (f.properties && (f.properties.NOMGEO||f.properties.nombre)) || muni; break; } } }
+    if (municipalityGeo&&!['state','gcr'].includes(A.targetKind)) { for (const f of (municipalityGeo.features||[])) { if (this._inFeature(A.lng, A.lat, f.geometry)) { muni = (f.properties && (f.properties.NOMGEO||f.properties.nombre)) || muni; break; } } }
     const subs = this._nearestSubs(A.lat, A.lng, 5);
     const lines = this._nearestLines(A.lat, A.lng, 5);
     const sections = [];
@@ -4173,7 +4683,7 @@ class Component extends DCLogic {
     // 2 · Impacto social — población indígena
     const socKeys = [['atlas_pi','Pueblos indígenas (atlas)'],['lenguas','Lenguas indígenas'],['loc_ind','Localidades indígenas'],['reg_ind','Regiones indígenas'],['ruta_wx','Ruta Wixárika']];
     const socRows = socKeys.map(([k,lab]) => [lab, cntTxt(k)]);
-    // Detalle de elementos sociales identificados en el radio (todas las capas sociales analizadas)
+    // Detalle de elementos sociales identificados en la cobertura (todas las capas sociales analizadas)
     const socDetail = [];
     [['atlas_pi','Pueblo indígena'],['lenguas','Lengua indígena'],['loc_ind','Localidad indígena'],['reg_ind','Región indígena'],['ruta_wx','Ruta Wixárika']].forEach(([k,lab])=>{
       if (!ran(k)) return;
@@ -4212,14 +4722,14 @@ class Component extends DCLogic {
     sections.push({ key:'ter', kicker:'Territorio', color:'#2E6FB0', icon:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z', title:'Tenencia de la tierra e infraestructura',
       intro:'Núcleos agrarios (posible negociación ejidal/comunal) e infraestructura complementaria.',
       hasRows:true, rows:terRows, hasChips:ranNames.length>0, chips:ranNames, hasTable:false, hasTable2:false });
-    // 6 · Datasets vinculados: registros de las fuentes conectadas dentro del radio
+    // 6 · Datasets vinculados: registros de las fuentes conectadas dentro de la cobertura
     const dsAct = this.state.datasets.filter(d=>d.active);
     if (dsAct.length) {
       const rowsDs=[]; const inRows=[];
       dsAct.forEach(d=>{
         let inR=0;
-        d.rows.forEach(r=>{ const ll=this._placeRow(r,d); if(!ll) return; if(this._haversine(A.lat,A.lng,ll[0],ll[1])<=A.radiusKm){ inR++; inRows.push({ r, d }); } });
-        rowsDs.push([d.name, this._nf(inR)+' de '+this._nf(d.rows.length)+' registros en el radio']);
+        d.rows.forEach(r=>{ const ll=this._placeRow(r,d); if(!ll) return; if(this._analysisContainsPoint(A,ll[0],ll[1])){ inR++; inRows.push({ r, d }); } });
+        rowsDs.push([d.name, this._nf(inR)+' de '+this._nf(d.rows.length)+' registros en la cobertura']);
       });
       // Detalle de los registros encontrados — sólo los campos más representativos
       const MAXR = 14;
@@ -4231,12 +4741,12 @@ class Component extends DCLogic {
       });
       if (inRows.length > MAXR) tRows.push(['… y '+this._nf(inRows.length-MAXR)+' registros más (ver Excel)', '', '', '', '']);
       sections.push({ key:'ds', kicker:'Datasets vinculados', color:'#1E9CB8', icon:'M12 8c4.4 0 8-1.3 8-3s-3.6-3-8-3-8 1.3-8 3 3.6 3 8 3z M20 5v14c0 1.7-3.6 3-8 3s-8-1.3-8-3V5 M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3', title:'Registros de datasets en la zona',
-        intro:'Filas de las fuentes conectadas (convocatorias, permisos, seguimiento) cuya ubicación cae dentro del radio. Los registros ubicados por territorio (centroide de entidad/gerencia) son aproximados.',
+        intro:'Filas de las fuentes conectadas (convocatorias, permisos, seguimiento) cuya ubicación cae dentro de la cobertura. Los registros ubicados por territorio (centroide de entidad/gerencia) son aproximados.',
         hasRows:true, rows:rowsDs, hasChips:false, chips:[],
         hasTable:tRows.length>0, table:{ head:['Registro','Dataset','Tecnología','Capacidad','Entidad'], rows:tRows }, hasTable2:false });
     }
     const totalEl = A.ranKeys.reduce((s,k)=>s+cnt(k),0);
-    // KPIs dinámicos: primero capas con datos dentro del radio; después capas en cero por cercanía.
+    // KPIs dinámicos: primero capas con datos dentro de la cobertura; después capas en cero.
     // Se mantienen subestaciones y líneas si están seleccionadas para preservar contexto de red.
     const pri = ['subestaciones','lineas'];
     const pool = A.ranKeys.map(k => ({
@@ -4258,10 +4768,15 @@ class Component extends DCLogic {
     // Si el cache aún no está listo, lo pedimos en línea y bloqueamos.
     const polosKpi = this._polosKpiCache || null;
 
-    // Entidades, municipios y gerencias que el círculo toca (no solo el centroide).
-    const intersectedEntidades = this._entitiesInRadius(A.lat, A.lng, A.radiusKm);
-    const intersectedMunicipios = this._municipiosInRadius(A.lat, A.lng, A.radiusKm);
-    const intersectedGerencias = this._gerenciasInRadius(A.lat, A.lng, A.radiusKm);
+    let intersectedEntidades = this._entitiesInAnalysis(A);
+    let intersectedMunicipios = this._municipiosInAnalysis(A);
+    const intersectedGerencias = this._gerenciasInAnalysis(A);
+    if(A.analysisGeometry&&Number(A.bufferKm||0)===0&&A.targetKind==='municipality'){
+      intersectedEntidades=[A.targetState||A.estado].filter(Boolean);
+      intersectedMunicipios=[A.targetMunicipality].filter(Boolean);
+    }else if(A.analysisGeometry&&Number(A.bufferKm||0)===0&&A.targetKind==='state'){
+      intersectedEntidades=[A.targetState||A.estado].filter(Boolean);
+    }
     const geoLink = `https://www.google.com/maps/search/?api=1&query=${A.lat.toFixed(5)}%2C${A.lng.toFixed(5)}`;
     const osmLink = `https://www.openstreetmap.org/?mlat=${A.lat.toFixed(5)}&mlon=${A.lng.toFixed(5)}#map=12/${A.lat.toFixed(5)}/${A.lng.toFixed(5)}`;
     const target=this._analysisTarget(A,muni,gerKey);
@@ -4270,8 +4785,9 @@ class Component extends DCLogic {
       ['Objetivo evaluado', target.label],
       ['Referencia de ubicación', target.detail],
       ['Coordenadas del centro', `${A.lat.toFixed(5)}, ${A.lng.toFixed(5)}`],
-      ['Radio de análisis', A.radiusKm + ' km · ' + ((Math.PI * A.radiusKm * A.radiusKm).toFixed(1)) + ' km²'],
-      ['Estado', A.targetState || A.estado || '—'],
+      ['Cobertura de análisis', this._analysisCoverageLabel(A,false)],
+      ['Superficie analizada', (this._analysisAreaKm2(A)||0).toLocaleString('es-MX',{maximumFractionDigits:1})+' km²'],
+      ['Estado', A.targetKind==='gcr'?'Varias entidades':(A.targetState || A.estado || '—')],
       ['Municipio', muni],
       ['Gerencia de control', 'GCR ' + (this.GCR_NOMBRE[gerKey] || '—')],
     ];
@@ -4284,19 +4800,19 @@ class Component extends DCLogic {
     return {
       date: new Date().toLocaleDateString('es-MX', { year:'numeric', month:'long', day:'numeric' }),
       meta: metaRows,
-      metrics: [{ label:'Elementos totales', value:this._nf(totalEl), color:'#9B2247', dim:false, sub:'en '+A.radiusKm+' km' }]
+      metrics: [{ label:'Elementos totales', value:this._nf(totalEl), color:'#9B2247', dim:false, sub:'en la cobertura' }]
         .concat(polosKpi ? [polosKpi] : [])
         .concat(kpiLayers.map(it => {
-          const nrTxt = Number.isFinite(it.nr) ? ('más cercano a '+Math.round(it.nr)+' km') : 'sin presencia en el radio';
+          const nrTxt = !A.analysisGeometry&&Number.isFinite(it.nr) ? ('más cercano a '+Math.round(it.nr)+' km') : 'sin presencia en la cobertura';
           return {
             label: it.label,
             value: this._nf(it.ct),
             color: it.color,
             dim: it.ct===0,
-            sub: it.ct>0 ? 'en el radio' : nrTxt
+            sub: it.ct>0 ? 'en la cobertura' : nrTxt
           };
         }))
-        .concat(dsAct.map(d => { let inR=0; d.rows.forEach(r=>{ const ll=this._placeRow(r,d); if(ll && this._haversine(A.lat,A.lng,ll[0],ll[1])<=A.radiusKm) inR++; }); return { label:d.name, value:this._nf(inR), color:d.color||'#1E9CB8', dim:inR===0, sub: inR>0 ? 'registros en el radio' : 'sin registros en el radio' }; })),
+        .concat(dsAct.map(d => { let inR=0; d.rows.forEach(r=>{ const ll=this._placeRow(r,d); if(ll && this._analysisContainsPoint(A,ll[0],ll[1])) inR++; }); return { label:d.name, value:this._nf(inR), color:d.color||'#1E9CB8', dim:inR===0, sub: inR>0 ? 'registros en la cobertura' : 'sin registros en la cobertura' }; })),
       legendGroups: this._legendGroups(false),
       charts,
       sections,
@@ -4309,15 +4825,21 @@ class Component extends DCLogic {
   // retornar. Usada por onOpenReport para garantizar que la sección aparezca
   // desde el primer render del modal.
   async _buildReportAsync(){
+    await this._anaMunicipiosShortcutGeo().catch(()=>null);
     const rep = await this._buildReport();
     if (!rep) return null;
-    const sec = await rep._buildPolosSectionPromise;
+    const inegiArea=this._resolveInegiArea(this.state.analysis);
+    const [sec,inegiContext] = await Promise.all([
+      rep._buildPolosSectionPromise,
+      this._loadInegiReportContext(inegiArea)
+    ]);
     if (sec && !rep.sections.find(s => s.key === 'podecobi')) {
       // Inserta PODECOBI justo después de la sección eléctrica (índice 1) o al inicio
       const idx = rep.sections.findIndex(s => s.key === 'elec');
       if (idx >= 0) rep.sections.splice(idx + 1, 0, sec);
       else rep.sections.unshift(sec);
     }
+    this._appendInegiToReport(rep,inegiContext);
     return rep;
   }
 
@@ -4373,6 +4895,39 @@ class Component extends DCLogic {
     });
     return Array.from(gcrs);
   }
+  _entitiesInAnalysis(A){
+    const features=(this.geo&&this.geo.estados&&this.geo.estados.features)||[];
+    const seen=new Set();
+    features.forEach(feature=>{
+      if(!this._analysisFeatureOverlapsArea(A,feature)) return;
+      const name=this._propEnt(feature.properties);
+      if(name) seen.add(name);
+    });
+    return Array.from(seen).sort((a,b)=>a.localeCompare(b,'es'));
+  }
+  _municipiosInAnalysis(A){
+    const geo=this._muniGeo||this._municipiosShortcutGeo;
+    const seen=new Set();
+    ((geo&&geo.features)||[]).forEach(feature=>{
+      if(!this._analysisFeatureOverlapsArea(A,feature)) return;
+      const props=feature.properties||{};
+      const name=props.NOMGEO||props.nombre||'';
+      if(name) seen.add(name);
+    });
+    return Array.from(seen).sort((a,b)=>a.localeCompare(b,'es'));
+  }
+  _gerenciasInAnalysis(A){
+    const features=(this.geo&&this.geo.gerencias&&this.geo.gerencias.features)||[];
+    const keys=new Set();
+    features.forEach(feature=>{
+      if(this._analysisFeatureOverlapsArea(A,feature)){
+        const key=this._gcrKeyFromName(this._gerName(feature.properties));
+        if(key) keys.add(key);
+      }
+    });
+    if(!keys.size) this._entitiesInAnalysis(A).forEach(name=>keys.add(this._gerenciaOf(name)));
+    return Array.from(keys).filter(Boolean);
+  }
 
   _featureBBox(geom){
     if (!geom) return null;
@@ -4403,15 +4958,24 @@ class Component extends DCLogic {
   }
   _updatePolosKpi(){
     const A = this.state.analysis || {};
-    if (!A.lat || !A.radiusKm) return;
-    this._fetchPolosCache().then(async polos => {
+    if (A.lat==null || A.lng==null) return;
+    Promise.all([this._fetchPolosCache(),this._fetchPolosGeoCache()]).then(async ([polos,geo]) => {
       if (!Array.isArray(polos) || !polos.length) { this._polosKpiCache = null; return; }
-      const inR = polos.filter(p =>
-        p.centroidLon != null && p.centroidLat != null &&
-        this._haversine(A.lat, A.lng, p.centroidLat, p.centroidLon) <= A.radiusKm
-      );
+      const byNumber=new Map();
+      ((geo&&geo.features)||[]).forEach(feature=>{
+        const number=String((feature.properties||{}).Numero||'').trim();
+        if(!number) return;
+        if(!byNumber.has(number)) byNumber.set(number,[]);
+        byNumber.get(number).push(feature);
+      });
+      const inR = polos.filter(p => {
+        const features=byNumber.get(String(p.numero||'').trim())||[];
+        return features.length
+          ?features.some(feature=>this._analysisFeatureIntersects(A,feature))
+          :(p.centroidLon!=null&&p.centroidLat!=null&&this._analysisContainsPoint(A,p.centroidLat,p.centroidLon));
+      });
       if (inR.length === 0) {
-        this._polosKpiCache = { label:'PODECOBI en la zona', value:'0', color:'#9B2247', dim:true, sub:'fuera del radio' };
+        this._polosKpiCache = { label:'PODECOBI en la zona', value:'0', color:'#9B2247', dim:true, sub:'sin intersección territorial' };
       } else if (inR.length === 1) {
         this._polosKpiCache = { label:'PODECOBI intersectado', value:'1', color:'#9B2247', dim:false, sub:inR[0].nombreOficial };
       } else {
@@ -4555,7 +5119,7 @@ class Component extends DCLogic {
   }
   _pdfReportCover(doc, R, W, H, landscape){
     const estado=this._reportMetaValue(R,'Estado'), municipio=this._reportMetaValue(R,'Municipio');
-    const radio=this._reportMetaValue(R,'Radio de análisis'), gcr=this._reportMetaValue(R,'Gerencia de control');
+    const coverage=this._reportMetaValue(R,'Cobertura de análisis'), gcr=this._reportMetaValue(R,'Gerencia de control');
     const target=R.target||{
       typeLabel:'Sitio estratégico',
       subtitle:'Evaluación de sitio estratégico · '+municipio+', '+estado
@@ -4563,7 +5127,7 @@ class Component extends DCLogic {
     this._pdfTitlePage(doc, W, H, landscape, {
       kicker:'SUBSECRETARÍA DE PLANEACIÓN Y TRANSICIÓN ENERGÉTICA',
       title:'Reporte de análisis territorial',
-      idText:radio,
+      idText:coverage,
       subtitle:target.subtitle+'.',
       imgKey:'portada',
       responsible:this.REPORT_UNIT,
@@ -4694,14 +5258,14 @@ class Component extends DCLogic {
           const x=cfg.x+col*(colW+gap);
           doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(cfg.landscape?8:7.5);
           doc.setCharSpace(.45);
-          doc.text((String(group.title||'Leyenda')+(idx?' · continuación':'')).toUpperCase(),x,y);
+          doc.text(String(group.title||'Leyenda').toUpperCase(),x,y);
           doc.setCharSpace(0); y+=headingH; headingPending=false;
         }
         if(y+itemH>cfg.maxY){ nextColumn(); headingPending=true; }
         if(headingPending){
           const x=cfg.x+col*(colW+gap);
           doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(cfg.landscape?8:7.5);
-          doc.text((String(group.title||'Leyenda')+' · CONTINUACIÓN').toUpperCase(),x,y);
+          doc.text(String(group.title||'Leyenda').toUpperCase(),x,y);
           y+=headingH; headingPending=false;
         }
         const x=cfg.x+col*(colW+gap);
@@ -4788,8 +5352,9 @@ class Component extends DCLogic {
       doc.setFillColor(255,255,255); doc.setDrawColor(224,220,212); doc.setLineWidth(.8);
       doc.roundedRect(x,top,cardW,cardH,5,5,'FD');
       doc.setFillColor(224,161,46); doc.rect(x,top,cardW,4,'F');
+      const chartGroup=chart.group==='inegi'?'CONTEXTO TERRITORIAL · INEGI':'INFRAESTRUCTURA ELÉCTRICA';
       doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(cfg.landscape?8:7.5);
-      doc.setCharSpace(.55); doc.text('INFRAESTRUCTURA ELÉCTRICA',x+15,top+20); doc.setCharSpace(0);
+      doc.setCharSpace(.55); doc.text(chartGroup,x+15,top+20); doc.setCharSpace(0);
       doc.setTextColor(28,27,26); this._setReportFont(doc,'title','bold'); doc.setFontSize(cfg.landscape?16:14);
       const titleLines=doc.splitTextToSize(String(chart.title||'Perfil eléctrico'),cardW-30);
       doc.text(titleLines,x+15,top+41);
@@ -4809,7 +5374,14 @@ class Component extends DCLogic {
         const rowY=cy+rowIndex*rowH;
         const value=Number(item.value)||0;
         doc.setTextColor(58,58,58); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?8.2:7.4);
-        doc.text(this._clipText(doc,String(item.label||'Dato'),labelW-9),x+15,rowY+rowH*.62);
+        const rawLabel=String(item.label||'Dato');
+        const splitLabel=doc.splitTextToSize(rawLabel,labelW-9);
+        const labelLines=splitLabel.length>2
+          ? [splitLabel[0],this._clipText(doc,splitLabel.slice(1).join(' '),labelW-9)]
+          : splitLabel;
+        const labelLineH=cfg.landscape?8.8:7.8;
+        const labelY=rowY+rowH*.5-((labelLines.length-1)*labelLineH)/2+labelLineH*.25;
+        doc.text(labelLines,x+15,labelY,{lineHeightFactor:1.05});
         doc.setFillColor(246,243,239); doc.roundedRect(barX,rowY+rowH*.25,barW,rowH*.42,3,3,'F');
         const color=rgb(item.color);
         doc.setFillColor(color[0],color[1],color[2]);
@@ -4874,8 +5446,12 @@ class Component extends DCLogic {
     if(mapH){
       y+=mapH+13;
       doc.setTextColor(111,107,102); this._setReportFont(doc,'body','italic'); doc.setFontSize(7.7);
-      const radius=this._reportMetaValue(R,'Radio de análisis');
-      doc.text(this._clipText(doc,'Pin guinda: sitio evaluado · Círculo guinda: '+radius+' · El mapa conserva el encuadre activo.',W-M*2),M,y);
+      const coverage=this._reportMetaValue(R,'Cobertura de análisis');
+      const polygonTarget=R&&R.target&&['state','municipality','gcr','podecobi'].includes(R.target.kind);
+      const caption=polygonTarget
+        ?'Contorno guinda: territorio seleccionado · Línea ámbar: buffer cuando aplica · '+coverage+'.'
+        :'Pin guinda: sitio evaluado · Círculo guinda: '+coverage+' · El mapa conserva el encuadre activo.';
+      doc.text(this._clipText(doc,caption,W-M*2),M,y);
       y+=17;
     }else{
       doc.setFillColor(250,248,245); doc.setDrawColor(236,232,226); doc.roundedRect(M,y,W-M*2,76,4,4,'FD');
@@ -4903,7 +5479,7 @@ class Component extends DCLogic {
     // 5 · Indicadores. Se omite si todas las métricas están en cero.
     let metricsPage=null;
     if(!allDim){
-      const addMetricsPage=(continuation)=>addReportPage('Indicadores del radio',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R.date||'Reporte territorial','03');
+      const addMetricsPage=(continuation)=>addReportPage('Indicadores territoriales',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R.date||'Reporte territorial','03');
       pageInfo=addMetricsPage(false);
       metricsPage=pageInfo.page;
       y=pageInfo.y;
@@ -4938,17 +5514,25 @@ class Component extends DCLogic {
     }
     if(allDim){
       doc.setTextColor(111,107,102); this._setReportFont(doc,'body','italic'); doc.setFontSize(9);
-      doc.text('Ningún indicador con elementos en el radio. Revise el encuadre o amplíe el radio de análisis.',M,y+8);
+      doc.text('Ningún indicador con elementos en la cobertura. Revise la ubicación o amplíe el buffer de análisis.',M,y+8);
     } else if(!metrics.length){
       doc.setTextColor(111,107,102); this._setReportFont(doc,'body','italic'); doc.setFontSize(9);
       doc.text('No se registraron indicadores para esta corrida.',M,y+8);
     }
 
-    let chartPage=null;
-    if(charts.length){
-      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro del radio','04');
-      chartPage=pageInfo.page;
-      this._pdfReportCharts(doc,charts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
+    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi');
+    const inegiCharts=charts.filter(chart=>chart&&chart.group==='inegi');
+    let electricChartPage=null,inegiChartPage=null,chartPageCount=0;
+    if(electricCharts.length){
+      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro de la cobertura','04');
+      electricChartPage=pageInfo.page; chartPageCount++;
+      this._pdfReportCharts(doc,electricCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
+    }
+    if(inegiCharts.length){
+      const folio=String(4+chartPageCount).padStart(2,'0');
+      pageInfo=addReportPage('Contexto territorial · INEGI','Perfil sociodemográfico y económico','Indicadores oficiales',folio);
+      inegiChartPage=pageInfo.page; chartPageCount++;
+      this._pdfReportCharts(doc,inegiCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
     }
 
     // Secciones analíticas: cada una inicia en página propia y puede continuar tantas veces como sea necesario.
@@ -4967,10 +5551,11 @@ class Component extends DCLogic {
       {group:'Panorama general',folio:'01',title:'Leyenda del mapa y estado de capas',page:legendPage},
       {group:'Panorama general',folio:'02',title:'Zona evaluada y mapa del análisis',page:zonePage},
     ];
-    if(!allDim) indexEntries.push({group:'Panorama general',folio:'03',title:'Indicadores del radio analizado',page:metricsPage});
-    if(chartPage) indexEntries.push({group:'Panorama general',folio:'04',title:'Perfil eléctrico de la zona',page:chartPage});
+    if(!allDim) indexEntries.push({group:'Panorama general',folio:'03',title:'Indicadores de la cobertura analizada',page:metricsPage});
+    if(electricChartPage) indexEntries.push({group:'Panorama general',folio:'04',title:'Perfil eléctrico de la zona',page:electricChartPage});
+    if(inegiChartPage) indexEntries.push({group:'Panorama general',folio:String(4+(electricChartPage?1:0)).padStart(2,'0'),title:'Perfil sociodemográfico y económico',page:inegiChartPage});
     nonEmptySections.forEach((sec)=>{
-      const folio=String(sections.indexOf(sec)+4+(chartPage?1:0)).padStart(2,'0');
+      const folio=String(sections.indexOf(sec)+4+chartPageCount).padStart(2,'0');
       const addSectionPage=(continuation)=>{
         const info=addReportPage(sec.kicker||'Análisis territorial',continuation?String(sec.title||'Sección')+' · continuación':sec.title||'Sección',folio,folio);
         return info;
@@ -5115,8 +5700,11 @@ class Component extends DCLogic {
     const mapW=552,mapMaxH=Math.min(292,MAX_Y-y-34);
     const mapH=this._fitMap(doc,M,y,mapW,mapMaxH);
     if(mapH){
-      const radius=this._reportMetaValue(R,'Radio de análisis');
-      const caption='Pin guinda: sitio evaluado · Círculo guinda: '+radius+' · El mapa conserva el encuadre activo.';
+      const coverage=this._reportMetaValue(R,'Cobertura de análisis');
+      const polygonTarget=R&&R.target&&['state','municipality','gcr','podecobi'].includes(R.target.kind);
+      const caption=polygonTarget
+        ?'Contorno guinda: territorio seleccionado · Línea ámbar: buffer cuando aplica · '+coverage+'.'
+        :'Pin guinda: sitio evaluado · Círculo guinda: '+coverage+' · El mapa conserva el encuadre activo.';
       doc.setTextColor(111,107,102); this._setReportFont(doc,'body','italic'); doc.setFontSize(8);
       doc.text(this._clipText(doc,caption,mapW),M,y+mapH+14);
     }else{
@@ -5171,10 +5759,10 @@ class Component extends DCLogic {
     // Indicadores: todas las tarjetas continúan en las láminas necesarias, sin cortes por cantidad.
     let metricsPage=null;
     if(!allDim){
-      const addMetricsPage=(continuation)=>addReportPage('Indicadores del radio',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R&&R.date?R.date:'Reporte territorial','03');
+      const addMetricsPage=(continuation)=>addReportPage('Indicadores territoriales',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R&&R.date?R.date:'Reporte territorial','03');
       pageInfo=addMetricsPage(false);
       metricsPage=pageInfo.page;
-      indexEntries.push({group:'Panorama general',folio:'03',title:'Indicadores del radio analizado',page:metricsPage});
+      indexEntries.push({group:'Panorama general',folio:'03',title:'Indicadores de la cobertura analizada',page:metricsPage});
       y=pageInfo.y;
       const metricGap=12,metricW=(W-M*2-metricGap*2)/3;
       const measureMetric=(metric,width)=>{
@@ -5218,16 +5806,27 @@ class Component extends DCLogic {
     }
     if(allDim){
       doc.setTextColor(111,107,102); this._setReportFont(doc,'body','italic'); doc.setFontSize(10);
-      doc.text('Ningún indicador con elementos en el radio. Revise el encuadre o amplíe el radio de análisis.',M,y+10);
+      doc.text('Ningún indicador con elementos en la cobertura. Revise la ubicación o amplíe el buffer de análisis.',M,y+10);
     } else if(!metrics.length){
       doc.setTextColor(111,107,102); this._setReportFont(doc,'body','italic'); doc.setFontSize(10);
       doc.text('No se registraron indicadores para esta corrida.',M,y+10);
     }
 
-    if(charts.length){
-      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro del radio','04');
+    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi');
+    const inegiCharts=charts.filter(chart=>chart&&chart.group==='inegi');
+    let chartPageCount=0;
+    if(electricCharts.length){
+      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro de la cobertura','04');
       indexEntries.push({group:'Panorama general',folio:'04',title:'Perfil eléctrico de la zona',page:pageInfo.page});
-      this._pdfReportCharts(doc,charts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:true});
+      this._pdfReportCharts(doc,electricCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:true});
+      chartPageCount++;
+    }
+    if(inegiCharts.length){
+      const folio=String(4+chartPageCount).padStart(2,'0');
+      pageInfo=addReportPage('Contexto territorial · INEGI','Perfil sociodemográfico y económico','Indicadores oficiales',folio);
+      indexEntries.push({group:'Panorama general',folio,title:'Perfil sociodemográfico y económico',page:pageInfo.page});
+      this._pdfReportCharts(doc,inegiCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:true});
+      chartPageCount++;
     }
 
     // Secciones analíticas PAM: introducciones, tablas, hallazgos y chips continúan sin truncarse.
@@ -5242,7 +5841,7 @@ class Component extends DCLogic {
     };
     const nonEmptySections=sections.filter(hasContent);
     nonEmptySections.forEach((sec)=>{
-      const folio=String(sections.indexOf(sec)+4+(charts.length?1:0)).padStart(2,'0');
+      const folio=String(sections.indexOf(sec)+4+chartPageCount).padStart(2,'0');
       const sectionTitle=String(sec&&sec.title||'Sección');
       const addSectionPage=(continuation)=>addReportPage(sec&&sec.kicker||'Análisis territorial',continuation?sectionTitle+' · continuación':sectionTitle,folio,folio);
       let sectionPage=addSectionPage(false);
@@ -5297,7 +5896,7 @@ class Component extends DCLogic {
       };
       const table1=sec&&sec.table;
       const table2=sec&&sec.table2;
-      if((sec&&sec.hasTable)||(table1&&Array.isArray(table1.head)&&table1.head.length)) drawTable(table1,false,'Detalle de infraestructura');
+      if((sec&&sec.hasTable)||(table1&&Array.isArray(table1.head)&&table1.head.length)) drawTable(table1,false,sec.tableLabel||'Detalle de la sección');
       if((sec&&sec.hasTable2)||(table2&&Array.isArray(table2.head)&&table2.head.length)) drawTable(table2,true,'Detalle complementario');
 
       const rows=Array.isArray(sec&&sec.rows)?sec.rows:[];
@@ -5376,7 +5975,12 @@ class Component extends DCLogic {
   _anaRows(){
     const A=this.state.analysis;
     if(!A.lat || !A.ranKeys.length) return [];
-    const rows=[['Zona de análisis', A.estado||'—', ''], ['Radio', A.radiusKm, 'km'], ['Coordenadas', A.lat.toFixed(4)+', '+A.lng.toFixed(4), '']];
+    const rows=[
+      ['Zona de análisis',A.targetLabel||A.estado||'—',''],
+      ['Cobertura',this._analysisCoverageLabel(A,false),''],
+      ['Superficie analizada',+(this._analysisAreaKm2(A)||0).toFixed(1),'km²'],
+      ['Coordenadas del centro',A.lat.toFixed(4)+', '+A.lng.toFixed(4),'']
+    ];
     A.ranKeys.forEach(k=>{ const v=this.state.layers[k]; if(v) rows.push([v.label, v.count||0, 'elementos']); });
     return rows;
   }
@@ -6066,7 +6670,7 @@ class Component extends DCLogic {
     put(cover,11,0,'Tipo de objetivo',ST.head); put(cover,11,1,(R.target&&R.target.typeLabel)||this._reportMetaValue(R,'Tipo de objetivo'),ST.cell); merge(cover,11,1,11,7);
     put(cover,12,0,'Objetivo evaluado',ST.head); put(cover,12,1,(R.target&&R.target.label)||this._reportMetaValue(R,'Objetivo evaluado'),ST.cell); merge(cover,12,1,12,7);
     put(cover,13,0,'Ámbito territorial',ST.head); put(cover,13,1,this._reportMetaValue(R,'Municipio')+', '+this._reportMetaValue(R,'Estado'),ST.cell); merge(cover,13,1,13,7);
-    put(cover,14,0,'Radio de análisis',ST.head); put(cover,14,1,this._reportMetaValue(R,'Radio de análisis'),ST.cell); merge(cover,14,1,14,7);
+    put(cover,14,0,'Cobertura de análisis',ST.head); put(cover,14,1,this._reportMetaValue(R,'Cobertura de análisis'),ST.cell); merge(cover,14,1,14,7);
     put(cover,15,0,'Gerencia de control',ST.head); put(cover,15,1,this._reportMetaValue(R,'Gerencia de control'),ST.cell); merge(cover,15,1,15,7);
     put(cover,17,0,'Contenido',ST.gold); merge(cover,17,0,17,7);
     put(cover,18,0,'El libro integra la ficha territorial, indicadores y secciones analíticas.\nIncluye fuentes activas completas y notas metodológicas.',ST.note); merge(cover,18,0,19,7);
@@ -6141,7 +6745,7 @@ class Component extends DCLogic {
         const table=sec[key], sourceRows=table.rows, n=Math.max(table.head.length,...sourceRows.map(r=>Array.isArray(r)?r.length:0),1);
         const head=Array.from({length:n},(_,i)=>table.head[i]!=null?table.head[i]:'Campo '+(i+1));
         maxCols=Math.max(maxCols,n);
-        const labelRow=rows.length; rows.push([ti===0?'Detalle de la sección':'Detalle complementario']); merges.push({r:labelRow});
+        const labelRow=rows.length; rows.push([ti===0?(sec.tableLabel||'Detalle de la sección'):'Detalle complementario']); merges.push({r:labelRow});
         const hr=rows.length; rows.push(head);
         sourceRows.forEach(row=>rows.push(Array.from({length:n},(_,i)=>asNumber((row||[])[i],head[i]))));
         blocks.push({header:hr,last:rows.length-1,cols:n}); rows.push([]);
@@ -6191,10 +6795,11 @@ class Component extends DCLogic {
       ['Fuente o nota','Detalle','Registros','Campos'],
       ['Sistema institucional','DGMESNIE · Secretaría de Energía · CENACE · CFE','',''],
       ['Fecha de corte',R.date||this._stamp(),'',''],
-      ['Cobertura territorial',this._reportMetaValue(R,'Municipio')+', '+this._reportMetaValue(R,'Estado')+' · '+this._reportMetaValue(R,'Radio de análisis'),'',''],
+      ['Cobertura territorial',this._reportMetaValue(R,'Municipio')+', '+this._reportMetaValue(R,'Estado')+' · '+this._reportMetaValue(R,'Cobertura de análisis'),'',''],
       ['Integridad del reporte','Las secciones, tablas, hallazgos y elementos identificados se incorporan completos conforme a this._report.','',''],
       ['Criterio geográfico','Los registros ubicados por centroide de entidad o gerencia representan una aproximación territorial.','',''],
       ['Validación','Las cifras están sujetas a actualización y verificación en campo.','',''],
+      ...(R.inegi?[['INEGI','Banco de Indicadores y DENUE · consulta territorial '+(R.inegi.queriedAt||R.date||this._stamp()),Array.isArray(R.inegi.indicators)?R.inegi.indicators.length:0,'Indicadores']]:[]),
       ...activeDatasets.map(d=>[d.name||'Dataset activo',d.url||'Fuente conectada',Array.isArray(d.rows)?d.rows.length:0,Array.isArray(d.fields)?d.fields.length:0])
     ];
     const sources=X.utils.aoa_to_sheet(sourceRows);
@@ -6418,8 +7023,14 @@ class Component extends DCLogic {
           anaTargetMeta: (()=>{
             if(A.lat==null) return '';
             const coordinates=A.lat.toFixed(5)+', '+A.lng.toFixed(5);
-            return A.targetDetail&&A.targetDetail!==coordinates ? A.targetDetail+' · '+coordinates : coordinates;
+            if(A.analysisGeometry){
+              return (A.targetDetail?A.targetDetail+' · ':'')+this._analysisCoverageLabel(A,true);
+            }
+            const detail=A.targetDetail&&A.targetDetail!==coordinates?A.targetDetail+' · '+coordinates:coordinates;
+            return detail+' · arrastra el pin para mover';
           })(),
+          anaPointTarget:!A.analysisGeometry,
+          anaDistanceLabel:A.analysisGeometry?'Buffer territorial':'Radio de análisis',
           // Modos de ubicación del punto (clic · coordenadas · dirección · territorio)
           anaModes: [ {m:'click',label:'Mapa'}, {m:'coords',label:'Coordenadas'}, {m:'dir',label:'Dirección'}, {m:'territory',label:'Territorio'} ].map(o => {
             const active = (A.mode||'click')===o.m;
@@ -6467,11 +7078,17 @@ class Component extends DCLogic {
             const located=d.geo&&d.geo.placeable!=null?d.geo.placeable:d.rows.length;
             const status=!d.active ? d.rows.length+' filas · inactivo'
               : d.analysisOnly && A.lat==null ? located+' con ubicación de '+d.rows.length+' registros · se mostrarán al ubicar la zona'
-              : d.analysisOnly ? visible+' dentro de '+A.radiusKm+' km · '+located+' con ubicación'
+              : d.analysisOnly ? visible+' dentro de '+this._analysisCoverageLabel(A,false)+' · '+located+' con ubicación'
               : visible+' registros activos';
             return { name:d.name, color:d.active?d.color:'#C7C2BA', active:d.active, status, onToggle:()=>this.toggleDataset(d.id) };
           }),
-          anaRadii: [2,4,5,10,20,50].map(km => { const on = km===A.radiusKm; return { label:km+' km', on, bg:on?'#9B2247':'#fff', fg:on?'#fff':'#6F6B66', border:on?'#9B2247':'#ECE8E2', onPick:()=>this.anaSetRadius(km) }; }),
+          anaRadii: (A.analysisGeometry?[0,2,5,10,20]:[2,4,5,10,20,50]).map(km => {
+            const on=A.analysisGeometry?km===A.bufferKm:km===A.radiusKm;
+            return {
+              label:km+' km',on,bg:on?'#9B2247':'#fff',fg:on?'#fff':'#6F6B66',border:on?'#9B2247':'#ECE8E2',
+              onPick:()=>A.analysisGeometry?this.anaSetTerritoryBuffer(km):this.anaSetRadius(km)
+            };
+          }),
           anaLayerCats: (() => { const order=[], byCat={}; this.LAYERS.filter(c => c.analysis || c.key === 'podecobi').forEach(cfg => { const v = S.layers[cfg.key]; const ran = A.ranKeys.includes(cfg.key) && !A.stale && v.on; if (!byCat[cfg.cat]) { byCat[cfg.cat]=[]; order.push(cfg.cat); } byCat[cfg.cat].push({ key:cfg.key, label:cfg.label, code:cfg.code, color:cfg.color, sel:!!A.sel[cfg.key], showCount:ran, countLabel:(v.count||0).toLocaleString('es-MX'), onToggle:()=>this.anaToggleSel(cfg.key) }); }); return order.map(name => ({ name, items:byCat[name] })); })(),
           // Escenarios (presets) — un chip resalta si la selección actual coincide exactamente
           anaSelCount: (() => { const n = Object.keys(A.sel).filter(k => A.sel[k]).length; return n===0 ? '0' : n+' de '+this.LAYERS.filter(c=>c.analysis || c.key === 'podecobi').length; })(),
@@ -6482,7 +7099,7 @@ class Component extends DCLogic {
             return { label:pr.label, hint:pr.hint, onClick:()=>this.anaApplyPreset(pr.keys),
               style:`padding:6px 11px;border:1px solid ${active?pr.color:'#ECE8E2'};background:${active?pr.color:'#fff'};color:${active?'#fff':'#3a3a3a'};border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .12s` };
           }),
-          anaRunLabel: A.running ? 'Analizando…' : (A.ranKeys.length && A.stale ? 'Actualizar análisis · '+A.radiusKm+' km' : 'Ejecutar análisis · '+A.radiusKm+' km'),
+          anaRunLabel: A.running ? 'Analizando…' : ((A.ranKeys.length && A.stale?'Actualizar análisis · ':'Ejecutar análisis · ')+this._analysisCoverageLabel(A,false)),
           anaRunBg: (anySel && !A.running) ? '#0E8A6E' : '#C7C2BA',
         };
       })(),
@@ -6498,7 +7115,7 @@ class Component extends DCLogic {
       datasetsBadgeCount: String(S.datasets.length),
       onOpenConnect:this.onOpenConnect,
       hasDatasets: S.datasets.length>0, noDatasets: S.datasets.length===0,
-      datasetsList: S.datasets.map(d => { const visible=this._datasetRowsForMap(d).length; const located=d.geo&&d.geo.placeable!=null?d.geo.placeable:d.rows.length; return { id:d.id, name:d.name, color:d.color, type:d.type.toUpperCase(), typeColor: d.type==='json'?'#1E9CB8':d.type==='csv'?'#0E8A6E':'#E0A12E', meta:`${d.rows.length} filas · ${located} con ubicación · llave: ${d.keyField} → ${L[d.target].label}`, active:d.active, activeLabel: d.active?(d.analysisOnly?(S.analysis.lat==null?'Listo · esperando ubicación':visible+' dentro de '+S.analysis.radiusKm+' km'):'Activo en el mapa'):'Inactivo', onToggle:()=>this.toggleDataset(d.id), onRemove:()=>this.removeDataset(d.id) }; }),
+      datasetsList: S.datasets.map(d => { const visible=this._datasetRowsForMap(d).length; const located=d.geo&&d.geo.placeable!=null?d.geo.placeable:d.rows.length; return { id:d.id, name:d.name, color:d.color, type:d.type.toUpperCase(), typeColor: d.type==='json'?'#1E9CB8':d.type==='csv'?'#0E8A6E':'#E0A12E', meta:`${d.rows.length} filas · ${located} con ubicación · llave: ${d.keyField} → ${L[d.target].label}`, active:d.active, activeLabel: d.active?(d.analysisOnly?(S.analysis.lat==null?'Listo · esperando ubicación':visible+' dentro de '+this._analysisCoverageLabel(S.analysis,false)):'Activo en el mapa'):'Inactivo', onToggle:()=>this.toggleDataset(d.id), onRemove:()=>this.removeDataset(d.id) }; }),
 
       // detalle — barra lateral derecha en desktop (el CSS móvil .dgp la convierte en hoja inferior)
       detalleStyle: (() => { const hid=S.collapsed.detalle; const st={ position:'absolute', zIndex:22, top:0, right:0, bottom:0, width:'320px', background:'#fff', borderLeft:'1px solid #ECE8E2', boxShadow:'-10px 0 28px rgba(0,0,0,.08)', display:'flex', flexDirection:'column', overflow:'hidden', transition:'transform .32s cubic-bezier(.2,.7,.2,1)', transform: hid?'translateX(100%)':'translateX(0)' }; return st; })(),
@@ -6520,8 +7137,8 @@ class Component extends DCLogic {
       reportEyebrow: ((this._report||{}).target||{}).eyebrow || 'Evaluación de sitio estratégico',
       reportMeta: ((this._report||{}).meta||[]).map(r => ({ label:r[0], value:r[1] })),
       reportMetrics: ((this._report||{}).metrics || []).map(m => ({ ...m, op: m.dim ? '.62' : '1', vcolor: m.dim ? '#9A958E' : '#1c1b1a', sub: m.sub||'' })),
-      reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.svgDataUrl).length),
-      reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.svgDataUrl),
+      reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.svgDataUrl).length),
+      reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.svgDataUrl),
       reportSections: ((this._report||{}).sections||[]).map(sec => ({
         ...sec,
         rowItems: (sec.rows||[]).map(r => ({ label:r[0], value:r[1], color: r[1]==='no analizada' ? '#9A958E' : '#1c1b1a' })),

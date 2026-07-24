@@ -10,15 +10,18 @@ namespace NSIE.Controllers
     {
         private readonly IPamrntProyectosIdentificadosService _pamService;
         private readonly IServicioEmailSMTP _emailService;
+        private readonly IInegiTerritorialService _inegiService;
         private readonly ILogger<DashboardProyectosController> _logger;
 
         public DashboardProyectosController(
             IPamrntProyectosIdentificadosService pamService,
             IServicioEmailSMTP emailService,
+            IInegiTerritorialService inegiService,
             ILogger<DashboardProyectosController> logger)
         {
             _pamService = pamService;
             _emailService = emailService;
+            _inegiService = inegiService;
             _logger = logger;
         }
 
@@ -49,6 +52,63 @@ namespace NSIE.Controllers
             }
 
             return View();
+        }
+
+        [HttpGet("DashboardProyectos/IndicadoresInegi")]
+        public async Task<IActionResult> IndicadoresInegi(
+            [FromQuery] string entidad,
+            [FromQuery] string? municipio,
+            [FromQuery] double? areaKm2,
+            CancellationToken cancellationToken)
+        {
+            var entidadNormalizada = (entidad ?? string.Empty).Trim();
+            var municipioNormalizado = (municipio ?? string.Empty).Trim();
+            if (entidadNormalizada.Length != 2 ||
+                !int.TryParse(entidadNormalizada, out var entidadClave) ||
+                entidadClave is < 1 or > 32)
+            {
+                return BadRequest(new { ok = false, code = "INVALID_STATE", mensaje = "La clave de entidad debe estar entre 01 y 32." });
+            }
+
+            if (!string.IsNullOrEmpty(municipioNormalizado) &&
+                (municipioNormalizado.Length != 3 ||
+                 !int.TryParse(municipioNormalizado, out var municipioClave) ||
+                 municipioClave is < 1 or > 999))
+            {
+                return BadRequest(new { ok = false, code = "INVALID_MUNICIPALITY", mensaje = "La clave municipal debe estar entre 001 y 999." });
+            }
+
+            if (areaKm2 is <= 0 or > 10_000_000)
+            {
+                return BadRequest(new { ok = false, code = "INVALID_AREA", mensaje = "La superficie territorial no es válida." });
+            }
+
+            if (!_inegiService.IsConfigured)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    ok = false,
+                    code = "INEGI_TOKEN_MISSING",
+                    mensaje = "Configure Inegi:Token mediante secretos de usuario o la variable Inegi__Token."
+                });
+            }
+
+            var geographicCode = entidadNormalizada + municipioNormalizado;
+            try
+            {
+                var result = await _inegiService.GetAsync(geographicCode, areaKm2, cancellationToken);
+                return Json(new { ok = true, data = result });
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "La consulta territorial INEGI falló para {GeographicCode}.", geographicCode);
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    ok = false,
+                    code = "INEGI_UNAVAILABLE",
+                    mensaje = "INEGI no devolvió datos para el ámbito solicitado."
+                });
+            }
         }
 
         [HttpPost("DashboardProyectos/EnviarReporte")]

@@ -18,6 +18,13 @@ using Microsoft.AspNetCore.Authentication.Facebook;  // opcional
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configuración local no versionada para credenciales de desarrollo y pruebas.
+// Los proveedores estándar (variables de entorno, secretos, etc.) siguen disponibles.
+builder.Configuration.AddJsonFile(
+    "appsettings.Local.json",
+    optional: true,
+    reloadOnChange: true);
+
 var defaultConnection = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? builder.Configuration["SQLCONNSTR_DefaultConnection"]
     ?? builder.Configuration["CUSTOMCONNSTR_DefaultConnection"];
@@ -116,6 +123,15 @@ builder.Services.AddTransient<InformePormenorizadoImportService>();
 builder.Services.AddTransient<IRepositorioGestor, RepositorioGestor>();
 builder.Services.AddTransient<IRepositorioProyectosPrivados, RepositorioProyectosPrivados>();
 builder.Services.AddTransient<IRepositorioGruposInteres, RepositorioGruposInteres>();
+builder.Services.AddMemoryCache();
+builder.Services.Configure<InegiOptions>(builder.Configuration.GetSection(InegiOptions.SectionName));
+builder.Services.AddHttpClient<IInegiTerritorialService, InegiTerritorialService>(client =>
+{
+    client.BaseAddress = new Uri("https://www.inegi.org.mx/");
+    client.Timeout = TimeSpan.FromSeconds(25);
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-Territorial/1.0");
+});
 
 
 
