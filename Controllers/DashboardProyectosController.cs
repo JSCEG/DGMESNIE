@@ -77,8 +77,9 @@ namespace NSIE.Controllers
                 return BadRequest(new { ok = false, mensaje = "El archivo adjunto no se pudo procesar. Vuelve a generarlo." });
             }
 
-            if (adjunto.Length == 0 || adjunto.Length > 25 * 1024 * 1024)
-                return BadRequest(new { ok = false, mensaje = "El archivo está vacío o supera el límite de 25 MB." });
+            const int maxAttachmentBytes = 20 * 1024 * 1024;
+            if (adjunto.Length == 0 || adjunto.Length > maxAttachmentBytes)
+                return BadRequest(new { ok = false, mensaje = "El archivo está vacío o supera el límite seguro de 20 MB para correo." });
 
             var nombreArchivo = string.IsNullOrWhiteSpace(input.NombreArchivo)
                 ? $"DGMESNIE_reporte_territorial{(formato == "pdf16x9" ? "_16x9" : string.Empty)}_{DateTime.Now:yyyy-MM-dd}.pdf"
@@ -99,6 +100,7 @@ namespace NSIE.Controllers
 
             var enviados = new List<string>();
             var fallidos = new List<string>();
+            var motivosFallo = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var destino in seleccionados)
             {
                 try
@@ -116,15 +118,48 @@ namespace NSIE.Controllers
                 {
                     _logger.LogError(ex, "No fue posible enviar el reporte territorial a {Correo}.", destino.Correo);
                     fallidos.Add(destino.Nombre);
+                    motivosFallo.Add(DescribirFalloEnvio(ex));
                 }
             }
 
             if (enviados.Count == 0)
-                return StatusCode(500, new { ok = false, mensaje = "No fue posible enviar el reporte a ningún destinatario." });
+            {
+                var detalle = motivosFallo.Count > 0 ? $" {string.Join(" ", motivosFallo)}" : string.Empty;
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    ok = false,
+                    mensaje = $"No fue posible enviar el reporte a ningún destinatario.{detalle}"
+                });
+            }
 
             var mensaje = $"Reporte enviado a {enviados.Count} destinatario(s): {string.Join(", ", enviados)}.";
-            if (fallidos.Count > 0) mensaje += $" No se pudo enviar a: {string.Join(", ", fallidos)}.";
+            if (fallidos.Count > 0)
+            {
+                var detalle = motivosFallo.Count > 0 ? $" Motivo: {string.Join(" ", motivosFallo)}" : string.Empty;
+                mensaje += $" No se pudo enviar a: {string.Join(", ", fallidos)}.{detalle}";
+            }
             return Ok(new { ok = true, mensaje });
+        }
+
+        private static string DescribirFalloEnvio(Exception ex)
+        {
+            var detalle = ex?.ToString() ?? string.Empty;
+            var motivos = new List<string>();
+
+            if (detalle.Contains("535", StringComparison.OrdinalIgnoreCase)
+                || detalle.Contains("Autenticación SMTP rechazada", StringComparison.OrdinalIgnoreCase)
+                || detalle.Contains("Authentication unsuccessful", StringComparison.OrdinalIgnoreCase))
+            {
+                motivos.Add("El servidor SMTP rechazó las credenciales (535).");
+            }
+
+            if (detalle.Contains("413", StringComparison.OrdinalIgnoreCase))
+                motivos.Add("SendGrid rechazó el tamaño del mensaje o adjunto (413).");
+
+            if (motivos.Count == 0)
+                motivos.Add("Los proveedores de correo no aceptaron el envío; revisa el registro del servidor.");
+
+            return string.Join(" ", motivos);
         }
 
         private static string ConstruirCorreoReporte(string nombreDestino, string descripcionFormato, string remitente, string remitenteCargo, string mensajeAdicional)

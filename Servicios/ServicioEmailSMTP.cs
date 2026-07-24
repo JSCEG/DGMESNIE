@@ -38,9 +38,11 @@ namespace NSIE.Servicios
                 string password = _configuration["EmailSettings:Password"];
 
                 _logger.LogInformation("Tipo de cuenta configurada: {TipoCuenta}", tipoCuenta);
-                _logger.LogInformation("Usuario de envío: {Usuario}", username);
-                Console.WriteLine($"Tipo de cuenta configurada: {tipoCuenta}");
-                Console.WriteLine($"Usuario de envío: {username}");
+                _logger.LogInformation(
+                    "Configuración de correo cargada. SMTPUserPresent={SmtpUserPresent}, SMTPPasswordPresent={SmtpPasswordPresent}, AttachmentBytes={AttachmentBytes}",
+                    !string.IsNullOrWhiteSpace(username),
+                    !string.IsNullOrWhiteSpace(password),
+                    adjunto?.Length ?? 0);
 
                 var configuracionesPrueba = new List<(string nombre, string host, int port, bool ssl)>();
 
@@ -93,44 +95,23 @@ namespace NSIE.Servicios
                 if (!configuracionesPrueba.Any())
                 {
                     _logger.LogWarning("No se encontró configuración SMTP para tipo de cuenta: {TipoCuenta}", tipoCuenta);
-                    Console.WriteLine($"⚠️ No se encontró configuración SMTP para tipo de cuenta: {tipoCuenta}");
                     throw new InvalidOperationException($"No existe configuración SMTP para EmailSettings:TipoCuenta='{tipoCuenta}'");
                 }
 
                 Exception ultimoError = null;
                 string? sendGridError = null;
 
-                var sendGridApiKey = _configuration["EmailSettings:SendGrid:ApiKey"]
-                                     ?? _configuration["SEND_GRID_API_KEY"];
-                var sendGridFrom = _configuration["EmailSettings:SendGrid:From"]
-                                   ?? _configuration["SEND_GRID_FROM"]
-                                   ?? username;
-                var sendGridConfigured = !string.IsNullOrWhiteSpace(sendGridApiKey)
-                                         && !string.IsNullOrWhiteSpace(sendGridFrom);
-
-                if (sendGridConfigured)
-                {
-                    _logger.LogInformation("Intentando envío primero con SendGrid para reducir latencia de timeouts SMTP.");
-                    var sendGridFirst = await TrySendWithSendGridAsync(destinatario, asunto, cuerpo, username, adjunto, nombreAdjunto);
-                    if (sendGridFirst.Success)
-                    {
-                        _logger.LogInformation("Email enviado exitosamente usando SendGrid (prioritario).");
-                        return;
-                    }
-
-                    sendGridError = sendGridFirst.Error;
-                    _logger.LogWarning("SendGrid prioritario no pudo enviar. Se intentará SMTP. Detalle: {Detalle}", sendGridError);
-                }
-
                 foreach (var config in configuracionesPrueba)
                 {
-                    _logger.LogInformation("Configuración registrada: {Nombre} - {Host}:{Port} SSL={Ssl}", config.nombre, config.host, config.port, config.ssl);
-                    Console.WriteLine($"Configuración registrada: {config.nombre} - {config.host}:{config.port} SSL={config.ssl}");
-
                     try
                     {
-                        _logger.LogInformation("Intentando envío con {Nombre} ({Host}:{Port})", config.nombre, config.host, config.port);
-                        Console.WriteLine($"Intentando envío con: {config.nombre} ({config.host}:{config.port})");
+                        _logger.LogInformation(
+                            "EmailDeliveryAttempt Provider=SMTP SMTPProfile={Profile} Host={Host} Port={Port} StartTls={StartTls} AttachmentBytes={AttachmentBytes}",
+                            config.nombre,
+                            config.host,
+                            config.port,
+                            config.ssl,
+                            adjunto?.Length ?? 0);
 
                         var message = new MimeMessage();
                         message.From.Add(MailboxAddress.Parse(username));
@@ -143,7 +124,6 @@ namespace NSIE.Servicios
 
                         using var client = new MailKit.Net.Smtp.SmtpClient();
                         client.Timeout = 30000;
-                        client.ServerCertificateValidationCallback = (_, _, _, _) => true;
 
                         var secureSocket = config.ssl
                             ? SecureSocketOptions.StartTls
@@ -155,38 +135,38 @@ namespace NSIE.Servicios
                         await client.SendAsync(message);
                         await client.DisconnectAsync(true);
 
-                        _logger.LogInformation("Email enviado exitosamente usando {Nombre}", config.nombre);
-                        Console.WriteLine($"✅ Email enviado exitosamente usando {config.nombre}");
+                        _logger.LogInformation(
+                            "EmailDeliverySucceeded Provider=SMTP SMTPProfile={Profile} AttachmentBytes={AttachmentBytes}",
+                            config.nombre,
+                            adjunto?.Length ?? 0);
                         return;
                     }
                     catch (Exception ex)
                     {
                         ultimoError = ex;
-                        _logger.LogError(ex, "Error con {Nombre}: {Mensaje}", config.nombre, ex.Message);
-                        Console.WriteLine($"❌ Error con {config.nombre}: {ex.Message}");
-
-                        if (ex.Message.Contains("authentication") || ex.Message.Contains("5.7."))
-                        {
-                            continue;
-                        }
-
+                        _logger.LogWarning(
+                            ex,
+                            "EmailDeliveryFailed Provider=SMTP SMTPProfile={Profile} Category={Category}",
+                            config.nombre,
+                            DescribeSmtpError(ex));
                         continue;
                     }
                 }
 
-                if (!sendGridConfigured)
+                _logger.LogInformation(
+                    "EmailFallbackStarted FromProvider=SMTP ToProvider=SendGrid AttachmentBytes={AttachmentBytes}",
+                    adjunto?.Length ?? 0);
+                var sendGridResult = await TrySendWithSendGridAsync(destinatario, asunto, cuerpo, username, adjunto, nombreAdjunto);
+                if (sendGridResult.Success)
                 {
-                    var sendGridResult = await TrySendWithSendGridAsync(destinatario, asunto, cuerpo, username, adjunto, nombreAdjunto);
-                    if (sendGridResult.Success)
-                    {
-                        _logger.LogInformation("Email enviado exitosamente usando SendGrid fallback.");
-                        return;
-                    }
-
-                    sendGridError = sendGridResult.Error;
+                    _logger.LogInformation(
+                        "EmailDeliverySucceeded Provider=SendGrid Mode=Fallback AttachmentBytes={AttachmentBytes}",
+                        adjunto?.Length ?? 0);
+                    return;
                 }
+                sendGridError = DescribeSendGridError(sendGridResult.Error);
 
-                var smtpError = ultimoError?.Message ?? "Error SMTP desconocido";
+                var smtpError = ultimoError == null ? "Error SMTP desconocido" : DescribeSmtpError(ultimoError);
                 var sendGridErrorFinal = string.IsNullOrWhiteSpace(sendGridError)
                     ? "SendGrid no configurado o rechazado."
                     : sendGridError;
@@ -195,10 +175,39 @@ namespace NSIE.Servicios
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "ERROR AL ENVIAR CORREO");
-                Console.WriteLine($"ERROR AL ENVIAR CORREO: {ex.Message}");
+                _logger.LogError(ex, "EmailDeliveryFailed Provider=All");
                 throw;
             }
+        }
+
+        private static string DescribeSmtpError(Exception ex)
+        {
+            var detail = ex?.ToString() ?? string.Empty;
+            if (detail.Contains("535", StringComparison.OrdinalIgnoreCase)
+                || detail.Contains("Authentication unsuccessful", StringComparison.OrdinalIgnoreCase)
+                || detail.Contains("authentication", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Autenticación SMTP rechazada (535). Verifica EmailSettings:Username/Password o los secretos del despliegue.";
+            }
+
+            if (detail.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+                || detail.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Tiempo de espera agotado al conectar o enviar por SMTP.";
+            }
+
+            return string.IsNullOrWhiteSpace(ex?.Message) ? "Error SMTP desconocido." : ex.Message;
+        }
+
+        private static string DescribeSendGridError(string error)
+        {
+            var detail = error ?? string.Empty;
+            if (detail.Contains("413", StringComparison.OrdinalIgnoreCase))
+                return "SendGrid rechazó el tamaño del mensaje o adjunto (413).";
+            if (detail.Contains("401", StringComparison.OrdinalIgnoreCase)
+                || detail.Contains("403", StringComparison.OrdinalIgnoreCase))
+                return "SendGrid rechazó la autenticación o autorización de la API.";
+            return string.IsNullOrWhiteSpace(detail) ? "SendGrid no configurado o rechazado." : detail;
         }
 
         private async Task ConnectWithAddressFallbackAsync(
@@ -263,12 +272,15 @@ namespace NSIE.Servicios
 
             if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(from))
             {
-                _logger.LogWarning("SendGrid fallback no configurado. Falta ApiKey o remitente.");
+                _logger.LogWarning("EmailDeliverySkipped Provider=SendGrid Reason=MissingConfiguration");
                 return (false, "Falta EmailSettings:SendGrid:ApiKey o EmailSettings:SendGrid:From.");
             }
 
             try
             {
+                _logger.LogInformation(
+                    "EmailDeliveryAttempt Provider=SendGrid Mode=Fallback AttachmentBytes={AttachmentBytes}",
+                    adjunto?.Length ?? 0);
                 var client = new SendGridClient(apiKey);
                 var fromEmail = new EmailAddress(from, fromName);
                 var toEmail = new EmailAddress(destinatario);
@@ -285,16 +297,24 @@ namespace NSIE.Servicios
 
                 if ((int)response.StatusCode >= 200 && (int)response.StatusCode < 300)
                 {
+                    _logger.LogInformation(
+                        "EmailDeliveryAccepted Provider=SendGrid StatusCode={StatusCode} AttachmentBytes={AttachmentBytes}",
+                        (int)response.StatusCode,
+                        adjunto?.Length ?? 0);
                     return (true, string.Empty);
                 }
 
                 var responseBody = await response.Body.ReadAsStringAsync();
-                _logger.LogError("SendGrid fallback falló con status {StatusCode}. Body: {Body}", response.StatusCode, responseBody);
+                _logger.LogWarning(
+                    "EmailDeliveryRejected Provider=SendGrid StatusCode={StatusCode} AttachmentBytes={AttachmentBytes} Body={Body}",
+                    (int)response.StatusCode,
+                    adjunto?.Length ?? 0,
+                    responseBody);
                 return (false, $"Status {(int)response.StatusCode}: {responseBody}");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error en fallback SendGrid.");
+                _logger.LogError(ex, "EmailDeliveryFailed Provider=SendGrid Mode=Fallback");
                 return (false, ex.Message);
             }
         }
