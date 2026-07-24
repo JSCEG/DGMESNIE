@@ -4777,7 +4777,7 @@ class Component extends DCLogic {
     // Contraportada, índice y navegación interna.
     doc.addPage('letter','portrait');
     const backPage=doc.getNumberOfPages();
-    this._pdfBack(doc,W,H,false);
+    this._pdfReportBack(doc,W,H,false,R);
     this._pdfReportIndex(doc,W,H,false,indexEntries,indexPage);
     this._pdfApplyReportFooters(doc,W,H,false,indexPage,backPage,folios);
 
@@ -5075,7 +5075,7 @@ class Component extends DCLogic {
     // Contraportada, índice de la página 2 y navegación interna en todos los folios.
     doc.addPage([960,540],'landscape');
     const backPage=doc.getNumberOfPages();
-    this._pdfBack(doc,W,H,true);
+    this._pdfReportBack(doc,W,H,true,R);
     this._pdfReportIndex(doc,W,H,true,indexEntries,indexPage);
     this._pdfApplyReportFooters(doc,W,H,true,indexPage,backPage,folios);
 
@@ -5311,6 +5311,7 @@ class Component extends DCLogic {
     load('sener','/tablero/assets/logo_sener.png');
     load('portada','/tablero/assets/portada_energia.png','image/jpeg'); // imagen de portada aportada por el usuario (eólica + presa + solar)
     load('anexos','/tablero/assets/reno_anexos.png','image/jpeg');
+    load('pamWoman','/img/pamrnt/mujer.png');
   };
   // Dibuja una imagen con recorte object-fit:cover dentro de [x,y,w,h] (sin deformar ni desbordar)
   _drawImageCover(doc, key, x, y, w, h){
@@ -5414,6 +5415,125 @@ class Component extends DCLogic {
       subtitle: 'Infraestructura, permisos y proyectos estratégicos.',
       imgKey: 'portada',
       cols: [['Versión','1.0'], ['Fecha', this._stamp()], ['Fuente','SENER · CFE · CENACE']],
+    });
+  };
+
+  // Contraportada del reporte territorial, homologada con el cierre de las fichas PAM.
+  _pdfReportBack = (doc, W, H, landscape, report) => {
+    const burgundy=[155,34,71], gold=[201,162,75], ink=[28,27,26], gray=[111,107,102], line=[224,220,212];
+    const pad=landscape?52:44;
+    const target=(report&&report.target)||{};
+    const targetType=String(target.typeLabel||target.kind||'Punto').trim();
+    const targetLabel=String(target.label||target.detail||'Ubicación seleccionada').trim();
+    const codeType=targetType.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'').toUpperCase().slice(0,16)||'PUNTO';
+    const reportCode='SENER·DGMESNIE·'+codeType+'·'+new Date().getFullYear();
+    const setFont=(role,style)=>{
+      if(doc._reportFonts) this._setReportFont(doc,role,style||'normal');
+      else doc.setFont(role==='title'?'times':'helvetica',style==='bold'?'bold':'normal');
+    };
+
+    doc.setFillColor(255,255,255); doc.rect(0,0,W,H,'F');
+    this._pdfLogos(doc,pad,landscape?34:38,landscape?30:28);
+
+    const band=landscape
+      ? {x:232,y:140,w:W-pad-232,h:90,textX:344,textY:201,font:54}
+      : {x:142,y:150,w:W-pad-142,h:100,textX:350,textY:217,font:39};
+    doc.setFillColor(...burgundy); doc.rect(band.x,band.y,band.w,band.h,'F');
+    doc.setTextColor(255,255,255); setFont('title','bold'); doc.setFontSize(band.font);
+    doc.text('Gracias',band.textX,band.textY);
+
+    const woman=this._logo&&this._logo.pamWoman;
+    if(woman&&woman.url){
+      const imgH=landscape?307:390;
+      const imgW=imgH*(woman.w/woman.h);
+      doc.addImage(woman.url,'PNG',landscape?52:18,landscape?88:210,imgW,imgH);
+    }
+
+    const center=landscape
+      ? {x:414,w:410,dividerY:282,messageY:314,font:14,line:20}
+      : {x:350,w:190,dividerY:286,messageY:321,font:11.2,line:16};
+    const diamond=landscape?7:6;
+    doc.setDrawColor(...gold); doc.setLineWidth(.8);
+    doc.line(center.x,center.dividerY,center.x+center.w*.45,center.dividerY);
+    doc.line(center.x+center.w*.55,center.dividerY,center.x+center.w,center.dividerY);
+    doc.setFillColor(...gold);
+    doc.rect(center.x+center.w/2-diamond/2,center.dividerY-diamond/2,diamond,diamond,'F');
+    doc.setTextColor(...ink); setFont('body','normal'); doc.setFontSize(center.font);
+    const thanks='A todas y todos los que hacen posible, con energía y compromiso, construir un México más justo, soberano y sostenible.';
+    const thanksLines=doc.splitTextToSize(thanks,center.w);
+    doc.text(thanksLines,center.x+center.w/2,center.messageY,{align:'center',lineHeightFactor:1.35});
+
+    const goldY=landscape?397:600;
+    doc.setDrawColor(...gold); doc.setLineWidth(1.25); doc.line(pad,goldY,W-pad,goldY);
+
+    const institutionY=landscape?422:626;
+    doc.setTextColor(...burgundy); setFont('bodyBold','bold'); doc.setCharSpace(.8);
+    doc.setFontSize(landscape?12:11); doc.text('SECRETARÍA DE ENERGÍA',pad,institutionY); doc.setCharSpace(0);
+    doc.setTextColor(...gray); setFont('body','normal'); doc.setFontSize(landscape?10:9.2);
+    doc.text('Subsecretaría de Planeación y Transición Energética',pad,institutionY+(landscape?17:16));
+    doc.setTextColor(...ink); setFont('body','normal'); doc.setFontSize(landscape?8.5:7.5);
+    const unitWidth=landscape?500:292;
+    doc.text(doc.splitTextToSize(this.REPORT_UNIT,unitWidth),pad,institutionY+(landscape?32:30),{lineHeightFactor:1.2});
+
+    const socialY=landscape?486:696;
+    this._pdfReportSocials(doc,pad,socialY,landscape);
+    doc.setDrawColor(...line); doc.setLineWidth(.7); doc.line(pad+(landscape?91:78),socialY-10,pad+(landscape?91:78),socialY+4);
+    doc.setTextColor(...burgundy); setFont('bodyBold','bold'); doc.setFontSize(landscape?9.5:8.5);
+    doc.text('gob.mx/sener',pad+(landscape?104:90),socialY);
+
+    const barcode={x:pad,y:landscape?500:722,w:landscape?170:150,h:landscape?24:25};
+    this._pdfReportBarcode(doc,barcode.x,barcode.y,barcode.w,barcode.h);
+    doc.setTextColor(...gray); setFont('mono','normal'); doc.setFontSize(landscape?6.7:6);
+    doc.setCharSpace(landscape ? .7 : .55); doc.text(reportCode,barcode.x,barcode.y+barcode.h+(landscape?9:10)); doc.setCharSpace(0);
+
+    const qrSize=landscape?68:70;
+    const qrX=W-pad-qrSize, qrY=landscape?443:690;
+    this._pdfReportQr(doc,qrX,qrY,qrSize);
+    const qrTextX=qrX-(landscape?18:12), qrTextW=landscape?230:135;
+    doc.setTextColor(...ink); setFont('title','bold'); doc.setFontSize(landscape?14:11);
+    doc.text('Reporte territorial',qrTextX,qrY+(landscape?18:17),{align:'right'});
+    doc.setTextColor(...gray); setFont('body','normal'); doc.setFontSize(landscape?8.5:7);
+    const context=targetType+' · '+targetLabel;
+    doc.text(doc.splitTextToSize(context,qrTextW),qrTextX,qrY+(landscape?33:31),{align:'right',lineHeightFactor:1.2});
+    doc.setTextColor(...burgundy); setFont('bodyBold','bold'); doc.setFontSize(landscape?7.5:6.5);
+    doc.text('FUENTE · SENER',qrTextX,qrY+qrSize-(landscape?3:2),{align:'right'});
+  };
+
+  _pdfReportBarcode = (doc,x,y,w,h) => {
+    const pattern=[2,1,3,1,1,2,4,1,2,2,1,3,2,1,4,2,1,1,3,2,2,1,4,1,1,3,1,2,3,1,2,1];
+    const units=pattern.reduce((sum,n)=>sum+n,0);
+    const scale=w/units;
+    let cx=x;
+    doc.setFillColor(28,27,26);
+    pattern.forEach((unitsWide,index)=>{
+      const bw=unitsWide*scale;
+      if(index%2===0) doc.rect(cx,y,bw,h,'F');
+      cx+=bw;
+    });
+  };
+
+  _pdfReportQr = (doc,x,y,size) => {
+    const cells=[
+      '1110111','1010101','1110111','0001000','1110111','1011101','1110111'
+    ];
+    const pad=size*.08, gap=size*.012, cell=(size-pad*2-gap*6)/7;
+    doc.setFillColor(255,255,255); doc.setDrawColor(224,220,212); doc.setLineWidth(.8);
+    doc.roundedRect(x,y,size,size,5,5,'FD');
+    doc.setFillColor(28,27,26);
+    cells.forEach((row,r)=>row.split('').forEach((on,c)=>{
+      if(on==='1') doc.rect(x+pad+c*(cell+gap),y+pad+r*(cell+gap),cell,cell,'F');
+    }));
+  };
+
+  _pdfReportSocials = (doc,x,y,landscape) => {
+    const labels=['f','X','IG','YT'];
+    const box=landscape?15:13, gap=landscape?7:6;
+    labels.forEach((label,index)=>{
+      const bx=x+index*(box+gap);
+      doc.setDrawColor(155,34,71); doc.setLineWidth(.8);
+      doc.roundedRect(bx,y-box+3,box,box,box*.22,box*.22,'S');
+      doc.setTextColor(155,34,71); doc.setFont('helvetica','bold'); doc.setFontSize(landscape?6.5:5.7);
+      doc.text(label,bx+box/2,y-1,{align:'center'});
     });
   };
 
