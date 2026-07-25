@@ -1506,6 +1506,7 @@ class Component extends DCLogic {
     { key:'perm_gn',       cat:'Permisos energéticos',   label:'Permisos · Gas natural',     code:'GN', color:'#2E6FB0', type:'geo', analysis:true, lazy:true, compactPoints:true, api:'gas-natural' },
     { key:'perm_glp',      cat:'Permisos energéticos',   label:'Permisos · Gas LP',          code:'LP', color:'#E0A12E', type:'geo', analysis:true, lazy:true, compactPoints:true, api:'gas-lp' },
     { key:'perm_pet',      cat:'Permisos energéticos',   label:'Permisos · Petrolíferos',    code:'PT', color:'#C0552E', type:'geo', analysis:true, lazy:true, compactPoints:true, api:'petroliferos' },
+    { key:'tarifas_div',   cat:'Precios energéticos',    label:'Divisiones tarifarias',      code:'TE', color:'#A57F2C', type:'geo', analysis:true, lazy:true, src:'window:division' },
     { key:'anp',           cat:'Áreas naturales',        label:'ANP 2025',                   code:'AN', color:'#0E8A6E', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/ANP2025.geojson' },
     { key:'anp_est',       cat:'Áreas naturales',        label:'ANP estatales',              code:'AE', color:'#3BA98C', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Gabvy/anp_estatal.geojson' },
     { key:'podecobi',      cat:'PODECOBI',               label:'Polos de Desarrollo (PODECOBI)', code:'PO', color:'#9B2247', type:'podecobi', lazy:true, src:'/api/podecobi/geojson' },
@@ -1542,6 +1543,7 @@ class Component extends DCLogic {
     perm_glp:  { tier:'medium',mb:2.3,  label:'media' },
     perm_elec: { tier:'light', mb:0.9,  label:'ligera' },
     perm_gn:   { tier:'light', mb:0.2,  label:'ligera' },
+    tarifas_div:{ tier:'light',mb:1.9,  label:'ligera' },
   };
   ANA_RECOMMENDED = ['subestaciones','lineas','centrales','ductos_imp','ductos_sis','presas','anp','anp_est'];
   ENERGY_PERMIT_KEYS = ['perm_elec','perm_gn','perm_glp','perm_pet'];
@@ -1892,6 +1894,14 @@ class Component extends DCLogic {
   }
   _mockFetchGeo(url, options) {
     // MOCK: simula latencia de red de un CDN externo y devuelve GeoJSON real.
+    if(typeof url==='string'&&url.startsWith('window:')){
+      const globalName=url.slice('window:'.length);
+      const payload=window[globalName];
+      if(!payload||payload.type!=='FeatureCollection'||!Array.isArray(payload.features)){
+        return Promise.reject(new Error('La geometría '+globalName+' no está disponible'));
+      }
+      return Promise.resolve(payload);
+    }
     return fetch(url,options||{}).then(r => { if (!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
   }
 
@@ -2932,6 +2942,7 @@ class Component extends DCLogic {
     { key:'cultural',    label:'Cultural',    color:'#C0552E', hint:'Sitios y zonas arqueológicas · zonas históricas',    keys:['arqueo','za_pub','z_hist'] },
     { key:'territorial', label:'Territorial', color:'#1E9CB8', hint:'Red eléctrica, ductos, presas y núcleos agrarios',   keys:['subestaciones','lineas','centrales','presas','ran','ductos_imp','ductos_sis'] },
     { key:'permits',     label:'Permisos energéticos', color:'#9B2247', hint:'Electricidad e hidrocarburos autorizados dentro de la cobertura', keys:['perm_elec','perm_gn','perm_glp','perm_pet'] },
+    { key:'prices',      label:'Precios energéticos', color:'#A57F2C', hint:'Divisiones tarifarias y último histórico eléctrico disponible', keys:['tarifas_div'] },
     { key:'intensive',   label:'Todos · intensivo', color:'#1c1b1a', hint:'Todas las capas; las fuentes masivas se procesan al final y se resumen en territorios amplios', keys:'ALL' },
     { key:'ninguno',     label:'Ninguno',     color:'#6F6B66', hint:'Quitar todas las capas seleccionadas',               keys:[] },
   ];
@@ -5132,6 +5143,146 @@ class Component extends DCLogic {
     };
   }
 
+  _tariffDivisionsInAnalysis(){
+    const A=this.state.analysis||{};
+    if(!Array.isArray(A.ranKeys)||!A.ranKeys.includes('tarifas_div')) return [];
+    const names=((this._genericFeats||{}).tarifas_div||[]).map(item=>{
+      const props=(item&&item.props)||{};
+      return props['DIVISIÓN']||props.DIVISION||props.Division||props.division||'';
+    }).map(name=>String(name).trim()).filter(Boolean);
+    return Array.from(new Set(names)).sort((a,b)=>a.localeCompare(b,'es-MX'));
+  }
+
+  async _loadTariffReportContext(divisions){
+    if(!Array.isArray(divisions)||!divisions.length) return null;
+    this._tariffReportCache=this._tariffReportCache||new Map();
+    const key=divisions.map(name=>this._norm(name)).sort().join('|');
+    if(this._tariffReportCache.has(key)) return this._tariffReportCache.get(key);
+    const params=new URLSearchParams({divisiones:divisions.join(',')});
+    try{
+      const response=await fetch('/DashboardProyectos/TarifasTerritoriales?'+params.toString(),{
+        method:'GET',credentials:'same-origin',headers:{Accept:'application/json'}
+      });
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok||!payload||!payload.ok||!payload.data) return null;
+      this._tariffReportCache.set(key,payload.data);
+      return payload.data;
+    }catch(e){
+      return null;
+    }
+  }
+
+  _tariffPeriodLabel(raw){
+    if(!raw) return 'sin periodo disponible';
+    const parsed=new Date(raw);
+    if(Number.isNaN(parsed.getTime())) return String(raw);
+    return parsed.toLocaleDateString('es-MX',{month:'long',year:'numeric',timeZone:'UTC'});
+  }
+
+  _appendTariffsToReport(report,context){
+    const records=Array.isArray(context&&context.registros)?context.registros:[];
+    const divisions=Array.isArray(context&&context.divisiones)?context.divisiones:[];
+    if(!report||!records.length||!divisions.length) return;
+    const period=this._tariffPeriodLabel(context.periodo);
+    const fmt=value=>{
+      const number=Number(value);
+      return Number.isFinite(number)
+        ? number.toLocaleString('es-MX',{minimumFractionDigits:3,maximumFractionDigits:3})
+        : '—';
+    };
+    const normalizedRecords=records.map(record=>({
+      ...record,
+      tarifa:String(record.tarifa||'').trim().toUpperCase(),
+      division:String(record.division||'').trim()
+    }));
+    const referenceTariffs=[
+      {key:'GDBT',label:'GDBT · comercio BT'},
+      {key:'PDBT',label:'PDBT · comercio BT'},
+      {key:'GDMTO',label:'GDMTO · industria MT'},
+      {key:'GDMTH',label:'GDMTH · industria MT'},
+      {key:'DIST',label:'DIST · industria AT'}
+    ];
+    const byDivision=new Map();
+    normalizedRecords.forEach(record=>{
+      if(!byDivision.has(record.division)) byDivision.set(record.division,new Map());
+      byDivision.get(record.division).set(record.tarifa,record);
+    });
+    const tableRows=divisions.map(division=>{
+      const values=byDivision.get(division)||new Map();
+      return [
+        division,
+        ...referenceTariffs.map(item=>fmt((values.get(item.key)||{}).valor))
+      ];
+    });
+    const chartRows=normalizedRecords
+      .filter(record=>record.tarifa==='GDBT'&&Number.isFinite(Number(record.valor))&&Number(record.valor)>0)
+      .sort((a,b)=>a.division.localeCompare(b.division,'es-MX'))
+      .slice(0,6);
+    const chart=chartRows.length?{
+      key:'tariff-gdbt',
+      group:'tariffs',
+      title:'Tarifa media GDBT por división',
+      subtitle:'Comparación homogénea de comercio en baja tensión · '+period+
+        (divisions.length>chartRows.length?' · se grafican 6 de '+divisions.length+' divisiones; la tabla conserva todas':''),
+      unit:'$/kWh',
+      decimals:3,
+      data:chartRows.map((record,index)=>({
+        label:record.division,
+        value:Number(record.valor),
+        color:this.ESTADO_PALETTE[index%this.ESTADO_PALETTE.length],
+        detail:'GDBT · '+period
+      })),
+      source:'Fuente: '+(context.fuente||'CRE / CFE · Histórico DGMESNIE')
+    }:null;
+    const reportChart=chart?{
+      ...chart,
+      alt:'Gráfica de tarifa media GDBT por división',
+      svgDataUrl:this._reportChartSvg(chart)
+    }:null;
+    const section={
+      key:'tarifas-electricas',kicker:'Precios energéticos',color:'#A57F2C',
+      title:'Tarifas eléctricas por división',
+      intro:'Divisiones tarifarias que intersectan la geometría evaluada. Se presenta el último histórico disponible ('+
+        period+'); los valores son referencias documentales y no deben interpretarse como tarifas vigentes.',
+      hasRows:true,
+      rows:[
+        ['Divisiones intersectadas',divisions.length.toLocaleString('es-MX')],
+        ['Periodo histórico',period],
+        ['Unidad de comparación','pesos por kWh']
+      ],
+      hasChips:false,chips:[],
+      hasCharts:!!reportChart,charts:reportChart?[reportChart]:[],
+      hasTable:true,
+      table:{
+        head:['División',...referenceTariffs.map(item=>item.label)],
+        rows:tableRows
+      },
+      hasTable2:false,
+      source:context.fuente||'CRE / CFE · Cuadros tarifarios históricos DGMESNIE'
+    };
+    const permitsIndex=report.sections.findIndex(item=>item.key==='energy-permits');
+    const electricIndex=report.sections.findIndex(item=>item.key==='elec');
+    const insertAt=permitsIndex>=0?permitsIndex+1:(electricIndex>=0?electricIndex+1:0);
+    report.sections.splice(insertAt,0,section);
+    if(!report.metrics.some(metric=>this._norm(metric&&metric.label)==='divisionestarifarias')){
+      report.metrics.push({
+        label:'Divisiones tarifarias',
+        value:divisions.length.toLocaleString('es-MX'),
+        color:'#A57F2C',
+        dim:false,
+        sub:'intersectadas · histórico '+period
+      });
+    }
+    if(reportChart) report.charts=(Array.isArray(report.charts)?report.charts:[]).concat([reportChart]);
+    report.tariffs={
+      periodo:context.periodo,
+      fuente:context.fuente,
+      nota:context.nota,
+      divisiones:divisions,
+      registros:normalizedRecords
+    };
+  }
+
   _buildReport(){
     const A = this.state.analysis;
     if (!A.lat || !A.ranKeys.length) return Promise.resolve(null);
@@ -5240,8 +5391,9 @@ class Component extends DCLogic {
     }
     const totalEl = A.ranKeys.reduce((s,k)=>s+cnt(k),0);
     // KPIs dinámicos: primero capas con datos dentro de la cobertura; después capas en cero.
-    // Se mantienen subestaciones y líneas si están seleccionadas para preservar contexto de red.
-    const pri = ['subestaciones','lineas'];
+    // Se mantienen subestaciones, líneas y centrales si están seleccionadas para
+    // preservar los tres KPIs básicos de infraestructura en todos los formatos.
+    const pri = ['subestaciones','lineas','centrales'];
     const pool = A.ranKeys.map(k => ({
       key: k,
       ct: cnt(k),
@@ -5334,9 +5486,11 @@ class Component extends DCLogic {
     const rep = await this._buildReport();
     if (!rep) return null;
     const inegiArea=this._resolveInegiArea(this.state.analysis);
-    const [sec,inegiContext] = await Promise.all([
+    const tariffDivisions=this._tariffDivisionsInAnalysis();
+    const [sec,inegiContext,tariffContext] = await Promise.all([
       rep._buildPolosSectionPromise,
-      this._loadInegiReportContext(inegiArea)
+      this._loadInegiReportContext(inegiArea),
+      this._loadTariffReportContext(tariffDivisions)
     ]);
     if (sec && !rep.sections.find(s => s.key === 'podecobi')) {
       // Inserta PODECOBI justo después de la sección eléctrica (índice 1) o al inicio
@@ -5344,6 +5498,7 @@ class Component extends DCLogic {
       if (idx >= 0) rep.sections.splice(idx + 1, 0, sec);
       else rep.sections.unshift(sec);
     }
+    this._appendTariffsToReport(rep,tariffContext);
     this._appendInegiToReport(rep,inegiContext);
     return rep;
   }
@@ -5862,15 +6017,18 @@ class Component extends DCLogic {
       return match?[parseInt(match[1],16),parseInt(match[2],16),parseInt(match[3],16)]:[155,34,71];
     };
     const gap=cfg.landscape?18:16;
-    const cardW=cfg.landscape?(cfg.width-gap)/2:cfg.width;
+    const landscapeColumns=cfg.landscape&&data.length>1?2:1;
+    const cardW=cfg.landscape&&landscapeColumns===2?(cfg.width-gap)/2:cfg.width;
     const cardH=cfg.landscape?cfg.maxY-cfg.y:Math.min(248,(cfg.maxY-cfg.y-gap)/Math.max(1,data.length));
     const drawCard=(chart,index)=>{
-      const x=cfg.landscape?cfg.x+index*(cardW+gap):cfg.x;
+      const x=cfg.landscape&&landscapeColumns===2?cfg.x+index*(cardW+gap):cfg.x;
       const top=cfg.landscape?cfg.y:cfg.y+index*(cardH+gap);
       doc.setFillColor(255,255,255); doc.setDrawColor(224,220,212); doc.setLineWidth(.8);
       doc.roundedRect(x,top,cardW,cardH,5,5,'FD');
       doc.setFillColor(224,161,46); doc.rect(x,top,cardW,4,'F');
-      const chartGroup=chart.group==='inegi'?'CONTEXTO TERRITORIAL · INEGI':'INFRAESTRUCTURA ELÉCTRICA';
+      const chartGroup=chart.group==='inegi'
+        ?'CONTEXTO TERRITORIAL · INEGI'
+        :(chart.group==='tariffs'?'PRECIOS ENERGÉTICOS':'INFRAESTRUCTURA ELÉCTRICA');
       doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(cfg.landscape?8:7.5);
       doc.setCharSpace(.55); doc.text(chartGroup,x+15,top+20); doc.setCharSpace(0);
       doc.setTextColor(28,27,26); this._setReportFont(doc,'title','bold'); doc.setFontSize(cfg.landscape?16:14);
@@ -6038,17 +6196,26 @@ class Component extends DCLogic {
       doc.text('No se registraron indicadores para esta corrida.',M,y+8);
     }
 
-    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi');
+    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs');
+    const tariffCharts=charts.filter(chart=>chart&&chart.group==='tariffs');
     const inegiCharts=charts.filter(chart=>chart&&chart.group==='inegi');
-    let electricChartPage=null,inegiChartPage=null,chartPageCount=0;
+    let electricChartPage=null,tariffChartPage=null,inegiChartPage=null,chartPageCount=0;
+    let electricChartFolio=null,tariffChartFolio=null,inegiChartFolio=null;
     if(electricCharts.length){
-      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro de la cobertura','04');
+      electricChartFolio=String(4+chartPageCount).padStart(2,'0');
+      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro de la cobertura',electricChartFolio);
       electricChartPage=pageInfo.page; chartPageCount++;
       this._pdfReportCharts(doc,electricCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
     }
+    if(tariffCharts.length){
+      tariffChartFolio=String(4+chartPageCount).padStart(2,'0');
+      pageInfo=addReportPage('Precios energéticos','Tarifas eléctricas por división','Último histórico disponible',tariffChartFolio);
+      tariffChartPage=pageInfo.page; chartPageCount++;
+      this._pdfReportCharts(doc,tariffCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
+    }
     if(inegiCharts.length){
-      const folio=String(4+chartPageCount).padStart(2,'0');
-      pageInfo=addReportPage('Contexto territorial · INEGI','Perfil sociodemográfico y económico','Indicadores oficiales',folio);
+      inegiChartFolio=String(4+chartPageCount).padStart(2,'0');
+      pageInfo=addReportPage('Contexto territorial · INEGI','Perfil sociodemográfico y económico','Indicadores oficiales',inegiChartFolio);
       inegiChartPage=pageInfo.page; chartPageCount++;
       this._pdfReportCharts(doc,inegiCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
     }
@@ -6070,8 +6237,9 @@ class Component extends DCLogic {
       {group:'Panorama general',folio:'02',title:'Zona evaluada y mapa del análisis',page:zonePage},
     ];
     if(!allDim) indexEntries.push({group:'Panorama general',folio:'03',title:'Indicadores de la cobertura analizada',page:metricsPage});
-    if(electricChartPage) indexEntries.push({group:'Panorama general',folio:'04',title:'Perfil eléctrico de la zona',page:electricChartPage});
-    if(inegiChartPage) indexEntries.push({group:'Panorama general',folio:String(4+(electricChartPage?1:0)).padStart(2,'0'),title:'Perfil sociodemográfico y económico',page:inegiChartPage});
+    if(electricChartPage) indexEntries.push({group:'Panorama general',folio:electricChartFolio,title:'Perfil eléctrico de la zona',page:electricChartPage});
+    if(tariffChartPage) indexEntries.push({group:'Panorama general',folio:tariffChartFolio,title:'Tarifas eléctricas por división',page:tariffChartPage});
+    if(inegiChartPage) indexEntries.push({group:'Panorama general',folio:inegiChartFolio,title:'Perfil sociodemográfico y económico',page:inegiChartPage});
     nonEmptySections.forEach((sec)=>{
       const folio=String(sections.indexOf(sec)+4+chartPageCount).padStart(2,'0');
       const addSectionPage=(continuation)=>{
@@ -6330,13 +6498,22 @@ class Component extends DCLogic {
       doc.text('No se registraron indicadores para esta corrida.',M,y+10);
     }
 
-    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi');
+    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs');
+    const tariffCharts=charts.filter(chart=>chart&&chart.group==='tariffs');
     const inegiCharts=charts.filter(chart=>chart&&chart.group==='inegi');
     let chartPageCount=0;
     if(electricCharts.length){
-      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro de la cobertura','04');
-      indexEntries.push({group:'Panorama general',folio:'04',title:'Perfil eléctrico de la zona',page:pageInfo.page});
+      const folio=String(4+chartPageCount).padStart(2,'0');
+      pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro de la cobertura',folio);
+      indexEntries.push({group:'Panorama general',folio,title:'Perfil eléctrico de la zona',page:pageInfo.page});
       this._pdfReportCharts(doc,electricCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:true});
+      chartPageCount++;
+    }
+    if(tariffCharts.length){
+      const folio=String(4+chartPageCount).padStart(2,'0');
+      pageInfo=addReportPage('Precios energéticos','Tarifas eléctricas por división','Último histórico disponible',folio);
+      indexEntries.push({group:'Panorama general',folio,title:'Tarifas eléctricas por división',page:pageInfo.page});
+      this._pdfReportCharts(doc,tariffCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:true});
       chartPageCount++;
     }
     if(inegiCharts.length){
@@ -7098,6 +7275,9 @@ class Component extends DCLogic {
     const permitPlans=(Array.isArray(R.energyPermits)?R.energyPermits:[])
       .filter(source=>source&&Array.isArray(source.rows))
       .map((source,i)=>({ source, name:sheetName('Permisos · '+(source.label||('Mercado '+(i+1)))) }));
+    const tariffPlan=R.tariffs&&Array.isArray(R.tariffs.registros)&&R.tariffs.registros.length
+      ?{source:R.tariffs,name:sheetName('Tarifas · histórico')}
+      :null;
     const quoteName=(name)=>String(name).replace(/'/g,"''");
     const touch=(ws,r,c)=>{
       const point={r,c};
@@ -7212,6 +7392,7 @@ class Component extends DCLogic {
       ...sectionPlans.map(p=>({name:p.name,type:'Sección de análisis',description:p.sec&&p.sec.title?p.sec.title:'Sección '+p.order})),
       ...datasetPlans.map(p=>({name:p.name,type:'Dataset fuente completo',description:p.dataset.name||'Dataset activo'})),
       ...permitPlans.map(p=>({name:p.name,type:'Inventario territorial',description:'Permisos de '+(p.source.label||'energía')+' en la cobertura'})),
+      ...(tariffPlan?[{name:tariffPlan.name,type:'Histórico territorial',description:'Cuadros tarifarios completos de las divisiones intersectadas'}]:[]),
       {name:N.sources,type:'Trazabilidad',description:'Fuentes, cobertura y notas metodológicas'}
     ];
     const indexRows=[['ÍNDICE DEL LIBRO'],['Seleccione una hoja para navegar dentro del archivo.'],[],['Hoja','Tipo','Contenido'],...allEntries.map(e=>[e.name,e.type,e.description])];
@@ -7343,6 +7524,36 @@ class Component extends DCLogic {
       return {name:plan.name,ws:finish(ws,widths(sample,tableFields.map(()=>14)),8)};
     });
 
+    const tariffSheet=tariffPlan?(()=>{
+      const source=tariffPlan.source||{};
+      const records=Array.isArray(source.registros)?source.registros:[];
+      const fields=[
+        ['division','División'],['periodo','Periodo'],['esquema','Esquema'],['tarifa','Tarifa'],
+        ['sector','Sector'],['nivelTension','Nivel de tensión'],['concepto','Concepto'],
+        ['unidades','Unidades'],['segmento','Segmento'],['intervaloHorario','Intervalo horario'],
+        ['valor','Valor'],['variacionMensual','Variación mensual'],['tarifaMediaNacional','Tarifa media nacional']
+      ];
+      const header=fields.map(field=>field[1]);
+      const data=records.map(record=>fields.map(field=>asNumber(record&&record[field[0]],field[0])));
+      const period=this._tariffPeriodLabel(source.periodo);
+      const rows=[
+        [],[],[],[],[],
+        ['Fuente y periodo',(source.fuente||'CRE / CFE · Histórico DGMESNIE')+' · '+period],
+        ['Divisiones intersectadas',Array.isArray(source.divisiones)?source.divisiones.length:0,'Registros',records.length],
+        header,
+        ...data
+      ];
+      const ws=X.utils.aoa_to_sheet(rows);
+      titleBlock(ws,'Tarifas eléctricas · fuente territorial completa',
+        'Último histórico disponible para las divisiones intersectadas; no representa una tarifa vigente.',
+        fields.length-1);
+      ensure(ws,5,0).s=ST.gold; ensure(ws,5,1).s=ST.note;
+      ensure(ws,6,0).s=ST.gold; ensure(ws,6,1).s=numberStyle(ST.cell,ensure(ws,6,1));
+      ensure(ws,6,2).s=ST.gold; ensure(ws,6,3).s=numberStyle(ST.cell,ensure(ws,6,3));
+      paintTable(ws,7,rows.length-1,fields.length,true);
+      return {name:tariffPlan.name,ws:finish(ws,widths([header,...data.slice(0,999)],fields.map(()=>14)),8)};
+    })():null;
+
     const sourceRows=[
       [],[],[],[],[],
       ['Fuente o nota','Detalle','Registros','Campos'],
@@ -7353,6 +7564,12 @@ class Component extends DCLogic {
       ['Criterio geográfico','Los registros ubicados por centroide de entidad o gerencia representan una aproximación territorial.','',''],
       ['Validación','Las cifras están sujetas a actualización y verificación en campo.','',''],
       ...(R.inegi?[['INEGI','Banco de Indicadores y DENUE · consulta territorial '+(R.inegi.queriedAt||R.date||this._stamp()),Array.isArray(R.inegi.indicators)?R.inegi.indicators.length:0,'Indicadores']]:[]),
+      ...(R.tariffs?[[
+        'Tarifas eléctricas',
+        (R.tariffs.fuente||'CRE / CFE · Histórico DGMESNIE')+' · '+this._tariffPeriodLabel(R.tariffs.periodo)+' · no vigente',
+        Array.isArray(R.tariffs.registros)?R.tariffs.registros.length:0,
+        'Registros tarifarios'
+      ]]:[]),
       ...activeDatasets.map(d=>[d.name||'Dataset activo',d.url||'Fuente conectada',Array.isArray(d.rows)?d.rows.length:0,Array.isArray(d.fields)?d.fields.length:0]),
       ...permitPlans.map(plan=>{
         const source=plan.source||{}, meta=source.meta||{};
@@ -7377,6 +7594,7 @@ class Component extends DCLogic {
     sectionSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
     datasetSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
     permitSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
+    if(tariffSheet) X.utils.book_append_sheet(wb,tariffSheet.ws,tariffSheet.name);
     X.utils.book_append_sheet(wb,sources,N.sources);
 
     X.writeFile(wb,'DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.xlsx',{cellStyles:true,bookSST:true});
@@ -7729,8 +7947,8 @@ class Component extends DCLogic {
       reportEyebrow: ((this._report||{}).target||{}).eyebrow || 'Evaluación de sitio estratégico',
       reportMeta: ((this._report||{}).meta||[]).map(r => ({ label:r[0], value:r[1] })),
       reportMetrics: ((this._report||{}).metrics || []).map(m => ({ ...m, op: m.dim ? '.62' : '1', vcolor: m.dim ? '#9A958E' : '#1c1b1a', sub: m.sub||'' })),
-      reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.svgDataUrl).length),
-      reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.svgDataUrl),
+      reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.svgDataUrl).length),
+      reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.svgDataUrl),
       reportSections: ((this._report||{}).sections||[]).map(sec => ({
         ...sec,
         rowItems: (sec.rows||[]).map(r => ({ label:r[0], value:r[1], color: r[1]==='no analizada' ? '#9A958E' : '#1c1b1a' })),
@@ -7849,5 +8067,6 @@ class Component extends DCLogic {
     window.__reportDestinatarios = @Html.Raw(reportDestinatariosJson);
     window.__reportCsrf = "@antiForgeryToken";
     </script>
+    <script src="@Cdn.Url/Geovisualizador/shapes/division.js"></script>
     <script src="~/tablero/support.js"></script>
 }

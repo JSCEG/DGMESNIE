@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Data.SqlClient;
 using Newtonsoft.Json;
 using NSIE.Models;
 using NSIE.Servicios;
@@ -11,17 +12,20 @@ namespace NSIE.Controllers
         private readonly IPamrntProyectosIdentificadosService _pamService;
         private readonly IServicioEmailSMTP _emailService;
         private readonly IInegiTerritorialService _inegiService;
+        private readonly IRepositorioTarifas _tarifasRepository;
         private readonly ILogger<DashboardProyectosController> _logger;
 
         public DashboardProyectosController(
             IPamrntProyectosIdentificadosService pamService,
             IServicioEmailSMTP emailService,
             IInegiTerritorialService inegiService,
+            IRepositorioTarifas tarifasRepository,
             ILogger<DashboardProyectosController> logger)
         {
             _pamService = pamService;
             _emailService = emailService;
             _inegiService = inegiService;
+            _tarifasRepository = tarifasRepository;
             _logger = logger;
         }
 
@@ -52,6 +56,59 @@ namespace NSIE.Controllers
             }
 
             return View();
+        }
+
+        [HttpGet("DashboardProyectos/TarifasTerritoriales")]
+        public async Task<IActionResult> TarifasTerritoriales(
+            [FromQuery] string? divisiones,
+            CancellationToken cancellationToken)
+        {
+            var seleccion = (divisiones ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(nombre => nombre.Length is > 0 and <= 80)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (seleccion.Length == 0)
+            {
+                return BadRequest(new
+                {
+                    ok = false,
+                    code = "INVALID_TARIFF_DIVISION",
+                    mensaje = "Se requiere al menos una división tarifaria."
+                });
+            }
+
+            if (seleccion.Length > 17)
+            {
+                return BadRequest(new
+                {
+                    ok = false,
+                    code = "TOO_MANY_TARIFF_DIVISIONS",
+                    mensaje = "El análisis admite como máximo las 17 divisiones tarifarias nacionales."
+                });
+            }
+
+            try
+            {
+                var data = await _tarifasRepository.ObtenerResumenTerritorialAsync(
+                    seleccion,
+                    cancellationToken);
+                return Json(new { ok = true, data });
+            }
+            catch (SqlException exception)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "No fue posible consultar tarifas territoriales para {DivisionCount} divisiones.",
+                    seleccion.Length);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                {
+                    ok = false,
+                    code = "TARIFFS_UNAVAILABLE",
+                    mensaje = "No fue posible recuperar el histórico tarifario institucional en este momento."
+                });
+            }
         }
 
         [HttpGet("DashboardProyectos/IndicadoresInegi")]
