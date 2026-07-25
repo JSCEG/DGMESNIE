@@ -113,6 +113,8 @@ builder.Services.AddTransient<IRepositorioPermisosPV, RepositorioPermisosPV>();
 builder.Services.AddTransient<IRepositorioFacturas, RepositorioFacturas>();
 builder.Services.AddTransient<IRepositorioEnergiasLimpias, RepositorioEnergiasLimpias>();
 builder.Services.AddTransient<IRepositorioTarifas, RepositorioTarifas>();
+builder.Services.AddScoped<IRepositorioPermisosEnergeticos, RepositorioPermisosEnergeticos>();
+builder.Services.AddScoped<IServicioPermisosEnergeticos, ServicioPermisosEnergeticos>();
 builder.Services.AddTransient<FacturaExtractorService>();
 builder.Services.AddTransient<IRepositorioInscripcion, RepositorioInscripcion>();
 builder.Services.AddScoped<IRepositorioFinanzas, RepositorioFinanzas>();

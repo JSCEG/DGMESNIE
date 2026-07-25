@@ -1502,6 +1502,10 @@ class Component extends DCLogic {
     { key:'ductos_imp',    cat:'Gas y ductos',           label:'Ductos de importación',      code:'DI', color:'#8A9099', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/Electricidad/Ductos%20de%20Importacion.geojson' },
     { key:'ductos_sis',    cat:'Gas y ductos',           label:'Ductos SISTRANGAS',          code:'DS', color:'#2E6FB0', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/Electricidad/Ductos%20integrados%20a%20SISTRANGAS.geojson' },
     { key:'presas',        cat:'Gas y ductos',           label:'Presas',                     code:'PR', color:'#1E9CB8', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/Electricidad/presas.geojson' },
+    { key:'perm_elec',     cat:'Permisos energéticos',   label:'Permisos · Electricidad',    code:'PE', color:'#9B2247', type:'geo', analysis:true, lazy:true, compactPoints:true, api:'electricidad' },
+    { key:'perm_gn',       cat:'Permisos energéticos',   label:'Permisos · Gas natural',     code:'GN', color:'#2E6FB0', type:'geo', analysis:true, lazy:true, compactPoints:true, api:'gas-natural' },
+    { key:'perm_glp',      cat:'Permisos energéticos',   label:'Permisos · Gas LP',          code:'LP', color:'#E0A12E', type:'geo', analysis:true, lazy:true, compactPoints:true, api:'gas-lp' },
+    { key:'perm_pet',      cat:'Permisos energéticos',   label:'Permisos · Petrolíferos',    code:'PT', color:'#C0552E', type:'geo', analysis:true, lazy:true, compactPoints:true, api:'petroliferos' },
     { key:'anp',           cat:'Áreas naturales',        label:'ANP 2025',                   code:'AN', color:'#0E8A6E', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/ANP2025.geojson' },
     { key:'anp_est',       cat:'Áreas naturales',        label:'ANP estatales',              code:'AE', color:'#3BA98C', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Gabvy/anp_estatal.geojson' },
     { key:'podecobi',      cat:'PODECOBI',               label:'Polos de Desarrollo (PODECOBI)', code:'PO', color:'#9B2247', type:'podecobi', lazy:true, src:'/api/podecobi/geojson' },
@@ -1534,8 +1538,13 @@ class Component extends DCLogic {
     atlas_pi:  { tier:'medium',mb:6.1,  label:'media' },
     conserv:   { tier:'medium',mb:5.0,  label:'media' },
     centrales: { tier:'medium',mb:2.9,  label:'media' },
+    perm_pet:  { tier:'medium',mb:5.5,  label:'media' },
+    perm_glp:  { tier:'medium',mb:2.3,  label:'media' },
+    perm_elec: { tier:'light', mb:0.9,  label:'ligera' },
+    perm_gn:   { tier:'light', mb:0.2,  label:'ligera' },
   };
   ANA_RECOMMENDED = ['subestaciones','lineas','centrales','ductos_imp','ductos_sis','presas','anp','anp_est'];
+  ENERGY_PERMIT_KEYS = ['perm_elec','perm_gn','perm_glp','perm_pet'];
   ANA_RESULT_CACHE_LIMIT = 36;
   _initLayers(){ const o={}; this.LAYERS.forEach(l=>{ o[l.key]={ label:l.label, on:!!l.on, count:0, color:l.color, code:l.code, cat:l.cat, lazy:!!l.lazy, heavy:l.heavy||'', loading:false }; }); return o; }
   // Paleta para coloreo por estado (estados / municipios)
@@ -2275,6 +2284,46 @@ class Component extends DCLogic {
   _analysisCost(key){
     return this.ANA_LAYER_COST[key]||{tier:'light',mb:0,label:'ligera'};
   }
+  _analysisRequestBbox(A){
+    if(!A||!isFinite(A.lat)||!isFinite(A.lng)) return null;
+    if(A.analysisGeometry&&window.turf){
+      try{
+        const bbox=window.turf.bbox(this._asFeatureCollection(A.analysisGeometry));
+        if(Array.isArray(bbox)&&bbox.length===4&&bbox.every(Number.isFinite)){
+          return {minLon:bbox[0],minLat:bbox[1],maxLon:bbox[2],maxLat:bbox[3]};
+        }
+      }catch(e){}
+    }
+    const radius=Math.max(0.5,Number(A.radiusKm)||1);
+    const latDelta=radius/111;
+    const lonDelta=radius/(111*Math.max(.2,Math.cos(Number(A.lat)*Math.PI/180)));
+    return {
+      minLon:Number(A.lng)-lonDelta,minLat:Number(A.lat)-latDelta,
+      maxLon:Number(A.lng)+lonDelta,maxLat:Number(A.lat)+latDelta
+    };
+  }
+  async _fetchAnalysisGeo(cfg,A,signal){
+    if(!cfg||!cfg.api) return this._mockFetchGeo(cfg&&cfg.src,{signal});
+    const bbox=this._analysisRequestBbox(A);
+    if(!bbox) throw new Error('No fue posible determinar la cobertura territorial');
+    const params=new URLSearchParams({
+      tipo:cfg.api,
+      minLat:bbox.minLat.toFixed(6),minLon:bbox.minLon.toFixed(6),
+      maxLat:bbox.maxLat.toFixed(6),maxLon:bbox.maxLon.toFixed(6)
+    });
+    const response=await fetch('/DashboardProyectos/PermisosEnergeticos?'+params.toString(),{
+      method:'GET',credentials:'same-origin',signal,headers:{Accept:'application/geo+json, application/json'}
+    });
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok){
+      const message=payload&&payload.detail?payload.detail:'HTTP '+response.status;
+      throw new Error(message);
+    }
+    if(!payload||payload.type!=='FeatureCollection'||!Array.isArray(payload.features)){
+      throw new Error('La fuente devolvió un formato territorial no válido');
+    }
+    return payload;
+  }
   _analysisRecommendedKeys(A){
     const essential=['subestaciones','lineas','centrales','ductos_imp','ductos_sis','presas'];
     return this._analysisIsRegional(A)?essential:[...this.ANA_RECOMMENDED];
@@ -2445,7 +2494,9 @@ class Component extends DCLogic {
       return this._analysisFeatureIntersects(A,feature);
     }
     try{
-      const coverage=this._analysisPolygonFeatures(A);
+      const prepared=this._prepareAnalysisContext(A);
+      if(prepared&&!this._analysisBboxIntersects(feature,prepared.bbox)) return false;
+      const coverage=(prepared&&prepared.polygons)||this._analysisPolygonFeatures(A);
       const candidates=(T.flatten({type:'FeatureCollection',features:[feature]}).features||[])
         .filter(item=>item&&item.geometry&&item.geometry.type==='Polygon');
       return coverage.some(areaFeature=>candidates.some(candidate=>{
@@ -2880,6 +2931,7 @@ class Component extends DCLogic {
     { key:'social',      label:'Social',      color:'#9B2247', hint:'Pueblos, lenguas, localidades y regiones indígenas', keys:['atlas_pi','lenguas','loc_ind','reg_ind','ruta_wx'] },
     { key:'cultural',    label:'Cultural',    color:'#C0552E', hint:'Sitios y zonas arqueológicas · zonas históricas',    keys:['arqueo','za_pub','z_hist'] },
     { key:'territorial', label:'Territorial', color:'#1E9CB8', hint:'Red eléctrica, ductos, presas y núcleos agrarios',   keys:['subestaciones','lineas','centrales','presas','ran','ductos_imp','ductos_sis'] },
+    { key:'permits',     label:'Permisos energéticos', color:'#9B2247', hint:'Electricidad e hidrocarburos autorizados dentro de la cobertura', keys:['perm_elec','perm_gn','perm_glp','perm_pet'] },
     { key:'intensive',   label:'Todos · intensivo', color:'#1c1b1a', hint:'Todas las capas; las fuentes masivas se procesan al final y se resumen en territorios amplios', keys:'ALL' },
     { key:'ninguno',     label:'Ninguno',     color:'#6F6B66', hint:'Quitar todas las capas seleccionadas',               keys:[] },
   ];
@@ -2892,6 +2944,7 @@ class Component extends DCLogic {
     this._clearAnalysisTerritoryLayers();
     this._preparedAnalysisContext=null;
     this._analysisFilteredGeo={};
+    this._analysisSourceMeta={};
     this._analysisPreparedKey={};
     const layers = { ...this.state.layers };
     this.state.analysis.ranKeys.forEach(k => {
@@ -2978,6 +3031,7 @@ class Component extends DCLogic {
     };
     this._rawGeo = this._rawGeo || {};
     this._analysisFilteredGeo={};
+    this._analysisSourceMeta={};
     const coverageLabel=this._analysisCoverageLabel(A,false);
     const prepared=this._prepareAnalysisContext(A);
     const selectionKey=this._analysisSelectionKey(A);
@@ -3051,14 +3105,19 @@ class Component extends DCLogic {
             const cached=this._analysisCachedResult(layerCacheKey);
             let geo=null;
             let filtered;
+            let sourceMeta=null;
             if(cached){
               filtered=cached.geo;
               nearKm=cached.nearKm||null;
+              sourceMeta=cached.meta||null;
               setProgress(1,cfg.label+' · caché');
             }else{
-              geo=this._rawGeo[key]||await this._mockFetchGeo(cfg.src,{signal:controller.signal});
+              geo=cfg.api
+                ?await this._fetchAnalysisGeo(cfg,A,controller.signal)
+                :(this._rawGeo[key]||await this._mockFetchGeo(cfg.src,{signal:controller.signal}));
               ensureActive();
-              this._rawGeo[key]=geo;
+              if(!cfg.api) this._rawGeo[key]=geo;
+              sourceMeta=geo&&geo.meta?geo.meta:null;
               filtered=await this._filterByAnalysisAsync(geo,A,prepared,controller.signal,fraction=>setProgress(fraction,cfg.label));
               ensureActive();
             }
@@ -3074,7 +3133,8 @@ class Component extends DCLogic {
             reusedPrepared=canReusePrepared;
             n=canReusePrepared?(Number(cached.count)||0):this._buildGeneric(key,filtered,cfg,{render:!summarized});
             if(!n&&geo&&!regional&&cost.tier!=='heavy') nearKm=this._nearestFeatKm(geo,A.lat,A.lng);
-            if(!cached) this._cacheAnalysisResult(layerCacheKey,{geo:filtered,nearKm,count:n});
+            if(sourceMeta) this._analysisSourceMeta[key]=sourceMeta;
+            if(!cached) this._cacheAnalysisResult(layerCacheKey,{geo:filtered,nearKm,count:n,meta:sourceMeta});
           }
           ensureActive();
           this._analysisPreparedKey=this._analysisPreparedKey||{};
@@ -3291,7 +3351,7 @@ class Component extends DCLogic {
     // Pocos puntos → marcadores DOM (ícono lindo); miles → circleMarker en canvas; decenas de miles
     // → nube en un solo canvas propio (ver _makePointCloud)
     const byTech = (cfg.key === 'centrales');
-    const domPoints = byTech || pointCount <= 1200;
+    const domPoints = byTech || pointCount <= (cfg.compactPoints ? 250 : 1200);
     const useCloud = !domPoints && pointCount > 3000;
     if(!renderEnabled){
       const count=this._countGenericFeatures(geo);
@@ -3487,7 +3547,44 @@ class Component extends DCLogic {
         .catch(err => {
           this._toast('No se pudo cargar la ficha del polo: '+(err.message||err));
           this.setState({ detalleLoading: null });
-        });
+      });
+      return;
+    }
+    // Permisos energéticos provenientes de las vistas autorizadas en dbo.
+    if(this.ENERGY_PERMIT_KEYS.includes(cfg.key)){
+      const value=(camel,pascal)=>p[camel]!=null?p[camel]:p[pascal];
+      const capacity=value('capacidad','Capacidad');
+      const unit=value('unidadCapacidad','UnidadCapacidad')||'';
+      const capacityText=value('capacidadTexto','CapacidadTexto')||'';
+      const granted=value('fechaOtorgamiento','FechaOtorgamiento');
+      const operation=value('fechaOperacion','FechaOperacion');
+      const formatDate=date=>{
+        if(!date) return '—';
+        const parsed=new Date(date);
+        return Number.isNaN(parsed.getTime())?String(date):parsed.toLocaleDateString('es-MX');
+      };
+      const rows=[
+        ['Tipo de infraestructura','Permiso energético autorizado'],
+        ['Mercado',value('mercado','Mercado')||cfg.label],
+        ['Número de permiso',value('numeroPermiso','NumeroPermiso')||'—'],
+        ['Titular / instalación',value('nombre','Nombre')||nom||'—'],
+        ['Tipo de permiso',value('tipoPermiso','TipoPermiso')||'—'],
+        ['Clasificación',value('clasificacion','Clasificacion')||'—'],
+        ['Tecnología',value('tecnologia','Tecnologia')||'—'],
+        ['Capacidad',capacity!=null?(Number(capacity).toLocaleString('es-MX',{maximumFractionDigits:2})+(unit?' '+unit:'')):(capacityText||'—')],
+        ['Entidad',value('entidad','Entidad')||'—'],
+        ['Municipio',value('municipio','Municipio')||'—'],
+        ['Estatus',value('estatus','Estatus')||'—'],
+        ['Fecha de otorgamiento',formatDate(granted)],
+        ['Inicio de operaciones',formatDate(operation)],
+        ['Fuente',value('fuente','Fuente')||'CRE · DGMESNIE'],
+      ];
+      this.setState({selected:{
+        kicker:'Permiso energético · '+(value('mercado','Mercado')||cfg.label),
+        color:cfg.color,
+        name:value('nombre','Nombre')||nom||cfg.label,
+        rows
+      }});
       return;
     }
     // Centrales eléctricas → ficha curada con tecnología y capacidad
@@ -4656,6 +4753,83 @@ class Component extends DCLogic {
     }));
   }
 
+  _buildEnergyPermitReport(ran,feats){
+    const defs=[
+      {key:'perm_elec',label:'Electricidad',color:'#9B2247'},
+      {key:'perm_gn',label:'Gas natural',color:'#2E6FB0'},
+      {key:'perm_glp',label:'Gas LP',color:'#E0A12E'},
+      {key:'perm_pet',label:'Petrolíferos',color:'#C0552E'},
+    ].filter(def=>ran(def.key));
+    if(!defs.length) return {section:null,chart:null,raw:[]};
+    const value=(p,camel,pascal)=>p&&p[camel]!=null?p[camel]:(p&&p[pascal]!=null?p[pascal]:null);
+    const formatDate=raw=>{
+      if(!raw) return '—';
+      const parsed=new Date(raw);
+      return Number.isNaN(parsed.getTime())?String(raw):parsed.toLocaleDateString('es-MX');
+    };
+    const rows=defs.map(def=>{
+      const meta=(this._analysisSourceMeta||{})[def.key]||{};
+      const count=feats(def.key).length;
+      const cutoff=meta.fechaCorte||meta.FechaCorte;
+      return [def.label,count.toLocaleString('es-MX')+' en la cobertura'+(cutoff?' · corte '+formatDate(cutoff):'')];
+    });
+    const raw=defs.map(def=>({
+      key:def.key,label:def.label,
+      meta:(this._analysisSourceMeta||{})[def.key]||{},
+      rows:feats(def.key).map(item=>item.props||{})
+    }));
+    const detail=raw.flatMap(source=>source.rows.map(p=>({source,p})))
+      .sort((a,b)=>{
+        const da=new Date(value(a.p,'fechaOtorgamiento','FechaOtorgamiento')||0).getTime()||0;
+        const db=new Date(value(b.p,'fechaOtorgamiento','FechaOtorgamiento')||0).getTime()||0;
+        return db-da;
+      });
+    const tableRows=detail.slice(0,20).map(({source,p})=>{
+      const cap=value(p,'capacidad','Capacidad');
+      const unit=value(p,'unidadCapacidad','UnidadCapacidad')||'';
+      const capText=value(p,'capacidadTexto','CapacidadTexto')||'';
+      return [
+        source.label,
+        value(p,'numeroPermiso','NumeroPermiso')||'—',
+        String(value(p,'nombre','Nombre')||'—').slice(0,44),
+        value(p,'tipoPermiso','TipoPermiso')||value(p,'clasificacion','Clasificacion')||'—',
+        cap!=null?Number(cap).toLocaleString('es-MX',{maximumFractionDigits:2})+(unit?' '+unit:''):(capText||'—'),
+        formatDate(value(p,'fechaOtorgamiento','FechaOtorgamiento'))
+      ];
+    });
+    if(detail.length>20) tableRows.push(['… y '+(detail.length-20).toLocaleString('es-MX')+' permisos más','Ver Excel','','','','']);
+    const chartData=defs.map(def=>({
+      label:def.label,value:feats(def.key).length,color:def.color,
+      detail:'permisos dentro de la cobertura'
+    }));
+    const chart={
+      key:'energy-permits',
+      title:'Permisos energéticos por mercado',
+      subtitle:detail.length.toLocaleString('es-MX')+' permisos autorizados intersectan la cobertura analizada.',
+      unit:'permisos',decimals:0,data:chartData,
+      source:'Fuente: CRE · Inventarios institucionales DGMESNIE'
+    };
+    return {
+      section:{
+        key:'energy-permits',kicker:'Infraestructura autorizada',color:'#9B2247',
+        icon:'M13 2 3 14h7l-1 8 10-12h-7z',
+        title:'Permisos de electricidad e hidrocarburos',
+        intro:'Permisos georreferenciados cuya ubicación intersecta la cobertura. Cada mercado conserva su fecha de corte; los resultados describen el último inventario disponible y no sustituyen una consulta regulatoria vigente.',
+        hasRows:true,rows,hasChips:false,chips:[],
+        hasTable:tableRows.length>0,
+        table:{head:['Mercado','Permiso','Titular / instalación','Tipo','Capacidad','Otorgamiento'],rows:tableRows},
+        hasTable2:false,
+        source:'CRE · Inventarios institucionales DGMESNIE'
+      },
+      chart:{
+        ...chart,
+        alt:'Gráfica de permisos energéticos por mercado',
+        svgDataUrl:this._reportChartSvg(chart)
+      },
+      raw
+    };
+  }
+
   _reportChartSvg(chart){
     const D=window.d3;
     if(!D||typeof D.create!=='function') return '';
@@ -4996,6 +5170,9 @@ class Component extends DCLogic {
       rows: [], chips: [], hasChips:false, hasRows:false,
       hasTable:true, table:{ head:['Subestación','Entidad','Tensión','Distancia'], rows: subs.map(s=>[s.name, s.ent||'—', s.kv? this._nf(s.kv)+' kV':'—', s.dist.toFixed(1)+' km']) },
       hasTable2:true, table2:{ head:['Línea de transmisión','Tensión','Longitud','Distancia'], rows: lines.map(l=>[l.name, l.kv? this._nf(l.kv)+' kV':'—', l.km? l.km.toFixed(0)+' km':'—', l.dist.toFixed(1)+' km']) } });
+    const permitReport=this._buildEnergyPermitReport(ran,feats);
+    if(permitReport.section) sections.push(permitReport.section);
+    if(permitReport.chart) charts.push(permitReport.chart);
     // 2 · Impacto social — población indígena
     const socKeys = [['atlas_pi','Pueblos indígenas (atlas)'],['lenguas','Lenguas indígenas'],['loc_ind','Localidades indígenas'],['reg_ind','Regiones indígenas'],['ruta_wx','Ruta Wixárika']];
     const socRows = socKeys.map(([k,lab]) => [lab, cntTxt(k)]);
@@ -5084,9 +5261,20 @@ class Component extends DCLogic {
     // Si el cache aún no está listo, lo pedimos en línea y bloqueamos.
     const polosKpi = this._polosKpiCache || null;
 
-    let intersectedEntidades = this._entitiesInAnalysis(A);
-    let intersectedMunicipios = this._municipiosInAnalysis(A);
-    const intersectedGerencias = this._gerenciasInAnalysis(A);
+    const territorialKey=this._analysisSelectionKey(A);
+    let territorialContext=this._reportTerritorialContext;
+    if(!territorialContext||territorialContext.key!==territorialKey){
+      territorialContext={
+        key:territorialKey,
+        entidades:this._entitiesInAnalysis(A),
+        municipios:this._municipiosInAnalysis(A),
+        gerencias:this._gerenciasInAnalysis(A)
+      };
+      this._reportTerritorialContext=territorialContext;
+    }
+    let intersectedEntidades=[...territorialContext.entidades];
+    let intersectedMunicipios=[...territorialContext.municipios];
+    const intersectedGerencias=[...territorialContext.gerencias];
     if(A.analysisGeometry&&Number(A.bufferKm||0)===0&&A.targetKind==='municipality'){
       intersectedEntidades=[A.targetState||A.estado].filter(Boolean);
       intersectedMunicipios=[A.targetMunicipality].filter(Boolean);
@@ -5133,6 +5321,7 @@ class Component extends DCLogic {
       charts,
       sections,
       target,
+      energyPermits:permitReport.raw,
       _buildPolosSectionPromise: polosSectionPromise,
     };
   }
@@ -5224,8 +5413,21 @@ class Component extends DCLogic {
   _municipiosInAnalysis(A){
     const geo=this._muniGeo||this._municipiosShortcutGeo;
     const seen=new Set();
+    const prepared=this._prepareAnalysisContext(A);
+    const representativeMode=!!(A&&A.analysisGeometry&&A.targetKind==='gcr'&&Number(A.bufferKm||0)===0);
     ((geo&&geo.features)||[]).forEach(feature=>{
-      if(!this._analysisFeatureOverlapsArea(A,feature)) return;
+      if(prepared&&!this._analysisBboxIntersects(feature,prepared.bbox)) return;
+      let overlaps=false;
+      if(representativeMode&&window.turf){
+        try{
+          const point=window.turf.pointOnFeature(feature);
+          const coordinates=point&&point.geometry&&point.geometry.coordinates;
+          overlaps=Array.isArray(coordinates)&&this._analysisContainsPoint(A,coordinates[1],coordinates[0],prepared);
+        }catch(e){}
+      }else{
+        overlaps=this._analysisFeatureOverlapsArea(A,feature);
+      }
+      if(!overlaps) return;
       const props=feature.properties||{};
       const name=props.NOMGEO||props.nombre||'';
       if(name) seen.add(name);
@@ -6893,6 +7095,9 @@ class Component extends DCLogic {
     const activeDatasets=(Array.isArray(this.state.datasets)?this.state.datasets:[]).filter(d=>d&&d.active);
     const sectionPlans=sections.map((sec,i)=>({ sec, name:sheetName(sec&&sec.title?sec.title:'Sección '+(i+1)), order:i+1 }));
     const datasetPlans=activeDatasets.map((dataset,i)=>({ dataset, name:sheetName('Datos · '+(dataset.name||('Dataset '+(i+1)))) }));
+    const permitPlans=(Array.isArray(R.energyPermits)?R.energyPermits:[])
+      .filter(source=>source&&Array.isArray(source.rows))
+      .map((source,i)=>({ source, name:sheetName('Permisos · '+(source.label||('Mercado '+(i+1)))) }));
     const quoteName=(name)=>String(name).replace(/'/g,"''");
     const touch=(ws,r,c)=>{
       const point={r,c};
@@ -7006,6 +7211,7 @@ class Component extends DCLogic {
       {name:N.metrics,type:'Panorama general',description:'Indicadores del reporte territorial'},
       ...sectionPlans.map(p=>({name:p.name,type:'Sección de análisis',description:p.sec&&p.sec.title?p.sec.title:'Sección '+p.order})),
       ...datasetPlans.map(p=>({name:p.name,type:'Dataset fuente completo',description:p.dataset.name||'Dataset activo'})),
+      ...permitPlans.map(p=>({name:p.name,type:'Inventario territorial',description:'Permisos de '+(p.source.label||'energía')+' en la cobertura'})),
       {name:N.sources,type:'Trazabilidad',description:'Fuentes, cobertura y notas metodológicas'}
     ];
     const indexRows=[['ÍNDICE DEL LIBRO'],['Seleccione una hoja para navegar dentro del archivo.'],[],['Hoja','Tipo','Contenido'],...allEntries.map(e=>[e.name,e.type,e.description])];
@@ -7106,6 +7312,37 @@ class Component extends DCLogic {
       return {name:plan.name,ws:finish(ws,widths(sample,fields.map(()=>12)),8)};
     });
 
+    const permitSheets=permitPlans.map(plan=>{
+      const source=plan.source||{}, sourceRows=Array.isArray(source.rows)?source.rows:[];
+      const preferred=['nombre','numeroPermiso','mercado','entidad','municipio','estatus','tipoPermiso','tecnologia','clasificacion','capacidad','unidadCapacidad','capacidadTexto','fechaOtorgamiento','fechaOperacion','fuente'];
+      const available=new Set(sourceRows.flatMap(row=>row&&typeof row==='object'?Object.keys(row):[]));
+      const fields=[
+        ...preferred.filter(field=>available.has(field)),
+        ...Array.from(available).filter(field=>!preferred.includes(field)).sort((a,b)=>a.localeCompare(b,'es-MX'))
+      ];
+      const headers={
+        nombre:'Titular',numeroPermiso:'Número de permiso',mercado:'Mercado',entidad:'Entidad',
+        municipio:'Municipio',estatus:'Estatus',tipoPermiso:'Tipo de permiso',tecnologia:'Tecnología',
+        clasificacion:'Clasificación',capacidad:'Capacidad',unidadCapacidad:'Unidad',
+        capacidadTexto:'Capacidad reportada',fechaOtorgamiento:'Fecha de otorgamiento',
+        fechaOperacion:'Inicio de operaciones',fuente:'Fuente'
+      };
+      const tableFields=fields.length?fields:['nombre'];
+      const header=tableFields.map(field=>headers[field]||field);
+      const data=sourceRows.map(row=>tableFields.map(field=>asNumber(row&&row[field],field)));
+      const meta=source.meta||{};
+      const cutoff=meta.fechaCorte||meta.FechaCorte||'Sin fecha de corte';
+      const detail=(meta.fuente||meta.Fuente||'Inventario institucional')+' · corte '+String(cutoff).slice(0,10);
+      const rows=[[],[],[],[],[],['Fuente y corte',detail],['Registros en la cobertura',sourceRows.length,'Campos',tableFields.length],header,...data];
+      const ws=X.utils.aoa_to_sheet(rows);
+      titleBlock(ws,'Permisos energéticos · fuente territorial completa',String(source.label||plan.name)+' · registros contenidos en la geometría analizada',Math.max(tableFields.length-1,3));
+      ensure(ws,5,0).s=ST.gold; ensure(ws,5,1).s=ST.note;
+      ensure(ws,6,0).s=ST.gold; ensure(ws,6,1).s=numberStyle(ST.cell,ensure(ws,6,1)); ensure(ws,6,2).s=ST.gold; ensure(ws,6,3).s=numberStyle(ST.cell,ensure(ws,6,3));
+      paintTable(ws,7,rows.length-1,Math.max(tableFields.length,1),true);
+      const sample=[header,...data.slice(0,999)];
+      return {name:plan.name,ws:finish(ws,widths(sample,tableFields.map(()=>14)),8)};
+    });
+
     const sourceRows=[
       [],[],[],[],[],
       ['Fuente o nota','Detalle','Registros','Campos'],
@@ -7116,7 +7353,17 @@ class Component extends DCLogic {
       ['Criterio geográfico','Los registros ubicados por centroide de entidad o gerencia representan una aproximación territorial.','',''],
       ['Validación','Las cifras están sujetas a actualización y verificación en campo.','',''],
       ...(R.inegi?[['INEGI','Banco de Indicadores y DENUE · consulta territorial '+(R.inegi.queriedAt||R.date||this._stamp()),Array.isArray(R.inegi.indicators)?R.inegi.indicators.length:0,'Indicadores']]:[]),
-      ...activeDatasets.map(d=>[d.name||'Dataset activo',d.url||'Fuente conectada',Array.isArray(d.rows)?d.rows.length:0,Array.isArray(d.fields)?d.fields.length:0])
+      ...activeDatasets.map(d=>[d.name||'Dataset activo',d.url||'Fuente conectada',Array.isArray(d.rows)?d.rows.length:0,Array.isArray(d.fields)?d.fields.length:0]),
+      ...permitPlans.map(plan=>{
+        const source=plan.source||{}, meta=source.meta||{};
+        const cutoff=meta.fechaCorte||meta.FechaCorte;
+        return [
+          'Permisos · '+(source.label||'energía'),
+          (meta.fuente||meta.Fuente||'Inventario institucional')+(cutoff?' · corte '+String(cutoff).slice(0,10):''),
+          Array.isArray(source.rows)?source.rows.length:0,
+          'Registros territoriales'
+        ];
+      })
     ];
     const sources=X.utils.aoa_to_sheet(sourceRows);
     titleBlock(sources,'Fuentes y notas','Trazabilidad, cobertura y criterios de lectura',3);
@@ -7129,6 +7376,7 @@ class Component extends DCLogic {
     X.utils.book_append_sheet(wb,metricSheet,N.metrics);
     sectionSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
     datasetSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
+    permitSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
     X.utils.book_append_sheet(wb,sources,N.sources);
 
     X.writeFile(wb,'DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.xlsx',{cellStyles:true,bookSST:true});
