@@ -12,21 +12,86 @@ namespace NSIE.Controllers
         private readonly IPamrntProyectosIdentificadosService _pamService;
         private readonly IServicioEmailSMTP _emailService;
         private readonly IInegiTerritorialService _inegiService;
+        private readonly ICneFuelPriceService _cneFuelPriceService;
         private readonly IRepositorioTarifas _tarifasRepository;
         private readonly ILogger<DashboardProyectosController> _logger;
 
+        [ActivatorUtilitiesConstructor]
         public DashboardProyectosController(
             IPamrntProyectosIdentificadosService pamService,
             IServicioEmailSMTP emailService,
             IInegiTerritorialService inegiService,
+            ICneFuelPriceService cneFuelPriceService,
             IRepositorioTarifas tarifasRepository,
             ILogger<DashboardProyectosController> logger)
         {
             _pamService = pamService;
             _emailService = emailService;
             _inegiService = inegiService;
+            _cneFuelPriceService = cneFuelPriceService;
             _tarifasRepository = tarifasRepository;
             _logger = logger;
+        }
+
+        [HttpGet("DashboardProyectos/PreciosCombustibles")]
+        public async Task<IActionResult> PreciosCombustibles(
+            [FromQuery] double minLat,
+            [FromQuery] double minLon,
+            [FromQuery] double maxLat,
+            [FromQuery] double maxLon,
+            CancellationToken cancellationToken)
+        {
+            var validBounds =
+                double.IsFinite(minLat) &&
+                double.IsFinite(minLon) &&
+                double.IsFinite(maxLat) &&
+                double.IsFinite(maxLon) &&
+                minLat >= 14 &&
+                maxLat <= 33.5 &&
+                minLon >= -118 &&
+                maxLon <= -86 &&
+                minLat < maxLat &&
+                minLon < maxLon;
+            if (!validBounds)
+            {
+                return BadRequest(new
+                {
+                    ok = false,
+                    code = "INVALID_FUEL_PRICE_BOUNDS",
+                    mensaje = "La cobertura solicitada para precios de combustibles no es válida."
+                });
+            }
+
+            try
+            {
+                var data = await _cneFuelPriceService.GetAsync(
+                    minLat,
+                    minLon,
+                    maxLat,
+                    maxLon,
+                    cancellationToken);
+                return Json(new { ok = true, data });
+            }
+            catch (Exception ex) when (
+                ex is HttpRequestException or
+                TaskCanceledException or
+                System.Xml.XmlException or
+                InvalidOperationException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible consultar precios CNE para la cobertura {MinLat},{MinLon},{MaxLat},{MaxLon}.",
+                    minLat,
+                    minLon,
+                    maxLat,
+                    maxLon);
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    ok = false,
+                    code = "CNE_FUEL_PRICES_UNAVAILABLE",
+                    mensaje = "La CNE no devolvió precios de combustibles en este momento."
+                });
+            }
         }
 
         public async Task<IActionResult> Index()

@@ -84,6 +84,70 @@ public sealed class DashboardEnergiaController : ControllerBase
         }
     }
 
+    [HttpGet("PermisosEnergeticos/Detalle")]
+    [ResponseCache(
+        Duration = 600,
+        Location = ResponseCacheLocation.Client)]
+    [ProducesResponseType(typeof(PermisoEnergeticoDetalle), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PermisoEnergeticoDetalle>> DetallePermisoEnergetico(
+        [FromQuery] string tipo,
+        [FromQuery] string numeroPermiso,
+        CancellationToken cancellationToken)
+    {
+        var normalizedType = (tipo ?? string.Empty).Trim().ToLowerInvariant();
+        if (!_service.TiposSoportados.Contains(normalizedType, StringComparer.Ordinal))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Tipo de permiso no válido",
+                detail: $"Tipos permitidos: {string.Join(", ", _service.TiposSoportados)}.");
+        }
+
+        var normalizedPermit = (numeroPermiso ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedPermit) ||
+            normalizedPermit.Length > 120 ||
+            normalizedPermit.Any(char.IsControl))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Número de permiso no válido",
+                detail: "Se requiere un número de permiso válido de hasta 120 caracteres.");
+        }
+
+        try
+        {
+            var result = await _service.ObtenerDetalleAsync(
+                normalizedType,
+                normalizedPermit,
+                cancellationToken);
+
+            return result is null
+                ? Problem(
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "Permiso no encontrado",
+                    detail: "El permiso solicitado no existe en el inventario territorial.")
+                : Ok(result);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Falló la consulta de detalle del permiso energético {NumeroPermiso} ({Tipo}).",
+                normalizedPermit,
+                normalizedType);
+            return Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Fuente de permisos no disponible",
+                detail: "No fue posible consultar la ficha del permiso en este momento.");
+        }
+    }
+
     private static bool BoundingBoxIsValid(
         double minLat,
         double minLon,

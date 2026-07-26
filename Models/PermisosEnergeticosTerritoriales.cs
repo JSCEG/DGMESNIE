@@ -75,3 +75,20 @@ public sealed class PermisoEnergeticoProperties
     public DateTime? FechaOperacion { get; init; }
     public required string Fuente { get; init; }
 }
+
+public sealed class PermisoEnergeticoDetalle
+{
+    public required string Tipo { get; init; }
+    public required string Mercado { get; init; }
+    public required string Fuente { get; init; }
+    public required string NumeroPermiso { get; init; }
+    public required string Nombre { get; init; }
+    public required IReadOnlyList<PermisoEnergeticoDetalleCampo> Campos { get; init; }
+}
+
+public sealed class PermisoEnergeticoDetalleCampo
+{
+    public required string Clave { get; init; }
+    public required string Etiqueta { get; init; }
+    public required string Valor { get; init; }
+}

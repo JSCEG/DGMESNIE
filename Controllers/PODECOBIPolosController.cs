@@ -14,6 +14,7 @@ namespace NSIE.Controllers
     [ApiController]
     public class PODECOBIPolosController : ControllerBase
     {
+        private const double GeometryAssociationToleranceKm = 100;
         private readonly IRepositorioPODECOBIPolos _repo;
 
         public PODECOBIPolosController(IRepositorioPODECOBIPolos repo)
@@ -94,6 +95,7 @@ namespace NSIE.Controllers
                 try { geoms = JArray.Parse(row.GeometriasJson); }
                 catch { continue; }
 
+                var parsedGeometries = new List<(JObject Geometry, double DistanceKm)>();
                 foreach (var g in geoms)
                 {
                     var geomJson = (string?)g["GeometryJson"];
@@ -103,6 +105,31 @@ namespace NSIE.Controllers
                     try { geom = JObject.Parse(geomJson); }
                     catch { continue; }
 
+                    var distanceKm = row.Lon.HasValue && row.Lat.HasValue
+                        ? DistanceToGeometryBoundsKm(
+                            (double)row.Lon.Value,
+                            (double)row.Lat.Value,
+                            geom)
+                        : 0;
+                    parsedGeometries.Add((geom, distanceKm));
+                }
+
+                // La tabla histórica puede contener, bajo un mismo número, una geometría
+                // remota que no corresponde al centroide oficial del polo. Conservamos
+                // todas las partes cercanas (un polo sí puede ser multiparte) y evitamos
+                // que un fragmento huérfano expanda el análisis y el reporte a otra región.
+                var selectedGeometries = row.Lon.HasValue && row.Lat.HasValue
+                    ? parsedGeometries
+                        .Where(item => item.DistanceKm <= GeometryAssociationToleranceKm)
+                        .ToList()
+                    : parsedGeometries;
+                if (selectedGeometries.Count == 0 && parsedGeometries.Count > 0)
+                {
+                    selectedGeometries.Add(parsedGeometries.MinBy(item => item.DistanceKm));
+                }
+
+                foreach (var item in selectedGeometries)
+                {
                     var props = new JObject
                     {
                         ["Numero"]         = row.Numero,
@@ -119,7 +146,7 @@ namespace NSIE.Controllers
                     features.Add(new JObject
                     {
                         ["type"] = "Feature",
-                        ["geometry"] = geom,
+                        ["geometry"] = item.Geometry,
                         ["properties"] = props
                     });
                 }
@@ -139,6 +166,61 @@ namespace NSIE.Controllers
             };
 
             return Content(fc.ToString(Newtonsoft.Json.Formatting.None), "application/geo+json");
+        }
+
+        private static double DistanceToGeometryBoundsKm(double lon, double lat, JObject geometry)
+        {
+            var minLon = double.PositiveInfinity;
+            var minLat = double.PositiveInfinity;
+            var maxLon = double.NegativeInfinity;
+            var maxLat = double.NegativeInfinity;
+            AccumulateBounds(geometry["coordinates"], ref minLon, ref minLat, ref maxLon, ref maxLat);
+
+            if (!double.IsFinite(minLon) || !double.IsFinite(minLat))
+                return double.PositiveInfinity;
+
+            var nearestLon = Math.Clamp(lon, minLon, maxLon);
+            var nearestLat = Math.Clamp(lat, minLat, maxLat);
+            return HaversineKm(lat, lon, nearestLat, nearestLon);
+        }
+
+        private static void AccumulateBounds(
+            JToken? token,
+            ref double minLon,
+            ref double minLat,
+            ref double maxLon,
+            ref double maxLat)
+        {
+            if (token is not JArray array) return;
+
+            if (array.Count >= 2 &&
+                array[0]?.Type is JTokenType.Float or JTokenType.Integer &&
+                array[1]?.Type is JTokenType.Float or JTokenType.Integer)
+            {
+                var lon = (double)array[0]!;
+                var lat = (double)array[1]!;
+                minLon = Math.Min(minLon, lon);
+                minLat = Math.Min(minLat, lat);
+                maxLon = Math.Max(maxLon, lon);
+                maxLat = Math.Max(maxLat, lat);
+                return;
+            }
+
+            foreach (var child in array)
+                AccumulateBounds(child, ref minLon, ref minLat, ref maxLon, ref maxLat);
+        }
+
+        private static double HaversineKm(double lat1, double lon1, double lat2, double lon2)
+        {
+            const double EarthRadiusKm = 6371;
+            static double ToRadians(double value) => value * Math.PI / 180;
+
+            var dLat = ToRadians(lat2 - lat1);
+            var dLon = ToRadians(lon2 - lon1);
+            var a = Math.Pow(Math.Sin(dLat / 2), 2) +
+                    Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) *
+                    Math.Pow(Math.Sin(dLon / 2), 2);
+            return 2 * EarthRadiusKm * Math.Asin(Math.Sqrt(a));
         }
     }
 }

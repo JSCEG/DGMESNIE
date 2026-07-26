@@ -284,6 +284,26 @@
         .dg-report-section__kicker { color:var(--report-guinda) !important;font-size:11px !important;letter-spacing:.14em !important; }
         .dg-report-section__title { margin-top:15px;font-size:29px !important;font-weight:700 !important;line-height:1.08 !important; }
         .dg-report-section__intro { max-width:90ch;font-size:13.5px !important;line-height:1.55 !important; }
+        .dg-report-map {
+          margin:18px 0 21px;
+          border:1px solid var(--report-linea);
+          background:#FAF8F5;
+        }
+        .dg-report-map img {
+          display:block;
+          width:100%;
+          height:auto;
+          aspect-ratio:1.84/1;
+          object-fit:contain;
+          background:#F5F1EB;
+        }
+        .dg-report-map figcaption {
+          padding:9px 12px;
+          border-top:1px solid var(--report-linea);
+          color:var(--report-gris);
+          font-size:10.5px;
+          line-height:1.4;
+        }
 
         .dg-report-table-wrap { overflow-x:auto;margin:15px 0 18px; }
         .dg-report-table { width:100%;min-width:560px;border-collapse:collapse;color:var(--report-tinta);font-size:12px;font-weight:500; }
@@ -1285,6 +1305,12 @@
             </div>
             <div class="dg-report-section__title" style="letter-spacing:-.01em">{{ sec.title }}</div>
             <div class="dg-report-section__intro" style="color:#6F6B66;margin:9px 0 14px;text-wrap:pretty">{{ sec.intro }}</div>
+            <sc-if value="{{ sec.hasMap }}" hint-placeholder-val="{{ false }}">
+              <figure class="dg-report-map">
+                <img src="{{ sec.mapDataUrl }}" alt="{{ sec.mapAlt }}">
+                <figcaption>{{ sec.mapCaption }}</figcaption>
+              </figure>
+            </sc-if>
             <sc-if value="{{ sec.hasCharts }}" hint-placeholder-val="{{ false }}">
               <div class="dg-report-chart-grid" style="margin:16px 0 20px">
                 <sc-for list="{{ sec.charts }}" as="sectionChart" hint-placeholder-count="2">
@@ -1475,6 +1501,7 @@ class Component extends DCLogic {
   REPORT_RECIPIENTS = Array.isArray(window.__reportDestinatarios) ? window.__reportDestinatarios : [];
   REPORT_CSRF = window.__reportCsrf || '';
   REPORT_UNIT = 'DGMESNIE - Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información Energética';
+  TARIFF_LOCALITIES_SRC = 'https://cdn.sassoapps.com/Geovisualizador/shapes/localidades_division.js';
 
   // Fuentes oficiales (CORS-open) del sistema de diseño SENER
   SRC = {
@@ -1704,6 +1731,123 @@ class Component extends DCLogic {
     setTimeout(() => this._waitFor(cond, cb, n + 1), 80);
   }
 
+  _isClusterLayerKey(key){
+    return key==='centrales'||key==='permisos'||key==='proyectos'||this.ENERGY_PERMIT_KEYS.includes(key);
+  }
+  _clusterGroup(cfg){
+    const L=window.L;
+    const color=(cfg&&cfg.color)||'#9B2247';
+    const options={
+      maxClusterRadius:44,
+      disableClusteringAtZoom:14,
+      showCoverageOnHover:false,
+      spiderfyOnMaxZoom:true,
+      removeOutsideVisibleBounds:true,
+      chunkedLoading:true,
+      chunkInterval:35,
+      chunkDelay:12,
+      iconCreateFunction:cluster=>{
+        const count=cluster.getChildCount();
+        const label=count>999?'999+':String(count);
+        const fontSize=count>999?11:count>99?12:14;
+        const html='<svg width="44" height="44" viewBox="0 0 44 44" style="filter:drop-shadow(0 3px 5px rgba(0,0,0,.30))">'
+          +'<circle cx="22" cy="22" r="20" fill="#fff" opacity=".96"/>'
+          +'<circle cx="22" cy="22" r="16.5" fill="'+color+'" stroke="#fff" stroke-width="2"/>'
+          +'<text x="22" y="22.5" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-family="Noto Sans,Arial,sans-serif" font-size="'+fontSize+'" font-weight="800">'+label+'</text>'
+          +'</svg>';
+        return L.divIcon({className:'',html,iconSize:[44,44],iconAnchor:[22,22]});
+      }
+    };
+    if(typeof L.markerClusterGroup==='function') return L.markerClusterGroup(options);
+    if(!this._SimpleClusterLayer){
+      this._SimpleClusterLayer=L.LayerGroup.extend({
+        initialize(clusterOptions){
+          L.LayerGroup.prototype.initialize.call(this,[]);
+          this._sourceLayers=[];
+          this._clusterOptions=clusterOptions||{};
+          this._refreshQueued=false;
+        },
+        addLayer(layer){
+          if(layer&&!this._sourceLayers.includes(layer)) this._sourceLayers.push(layer);
+          this._queueRefresh();
+          return this;
+        },
+        addLayers(layers){
+          (layers||[]).forEach(layer=>{
+            if(layer&&!this._sourceLayers.includes(layer)) this._sourceLayers.push(layer);
+          });
+          this._queueRefresh();
+          return this;
+        },
+        clearLayers(){
+          this._sourceLayers=[];
+          L.LayerGroup.prototype.clearLayers.call(this);
+          return this;
+        },
+        onAdd(map){
+          this._map=map;
+          map.on('zoomend moveend resize',this._refresh,this);
+          this._refresh();
+          L.LayerGroup.prototype.onAdd.call(this,map);
+        },
+        onRemove(map){
+          map.off('zoomend moveend resize',this._refresh,this);
+          L.LayerGroup.prototype.onRemove.call(this,map);
+          this._map=null;
+        },
+        _queueRefresh(){
+          if(!this._map||this._refreshQueued) return;
+          this._refreshQueued=true;
+          requestAnimationFrame(()=>{
+            this._refreshQueued=false;
+            this._refresh();
+          });
+        },
+        _refresh(){
+          const map=this._map;
+          if(!map) return;
+          const zoom=map.getZoom();
+          const maxZoom=Number(this._clusterOptions.disableClusteringAtZoom)||14;
+          const cellSize=Number(this._clusterOptions.maxClusterRadius)||44;
+          const bounds=map.getBounds().pad(.3);
+          const direct=[];
+          const buckets=new Map();
+          this._sourceLayers.forEach(layer=>{
+            if(!layer||typeof layer.getLatLng!=='function'){ direct.push(layer); return; }
+            const latLng=layer.getLatLng();
+            if(!latLng||!bounds.contains(latLng)) return;
+            if(zoom>=maxZoom){ direct.push(layer); return; }
+            const point=map.project(latLng,zoom);
+            const key=Math.floor(point.x/cellSize)+':'+Math.floor(point.y/cellSize);
+            if(!buckets.has(key)) buckets.set(key,[]);
+            buckets.get(key).push(layer);
+          });
+          buckets.forEach(items=>{
+            if(items.length===1){ direct.push(items[0]); return; }
+            const latLngs=items.map(layer=>layer.getLatLng());
+            const center=[
+              latLngs.reduce((sum,item)=>sum+item.lat,0)/latLngs.length,
+              latLngs.reduce((sum,item)=>sum+item.lng,0)/latLngs.length
+            ];
+            const icon=this._clusterOptions.iconCreateFunction({
+              getChildCount:()=>items.length,
+              getAllChildMarkers:()=>items.slice()
+            });
+            const clusterMarker=L.marker(center,{icon,zIndexOffset:900,keyboard:false});
+            clusterMarker.on('click',()=>{
+              const clusterBounds=L.latLngBounds(latLngs);
+              if(clusterBounds.isValid()) map.fitBounds(clusterBounds.pad(.35),{maxZoom:maxZoom,animate:true});
+            });
+            direct.push(clusterMarker);
+          });
+          L.LayerGroup.prototype.clearLayers.call(this);
+          direct.forEach(layer=>L.LayerGroup.prototype.addLayer.call(this,layer));
+        }
+      });
+    }
+    return new this._SimpleClusterLayer(options);
+  }
+
   _initMap() {
     const L = window.L;
     // Limita la navegación al territorio mexicano (incluye islas del Pacífico).
@@ -1739,7 +1883,9 @@ class Component extends DCLogic {
 
     // Grupos de capa
     this.groups = {}; this._built = {};
-    this.LAYERS.forEach(l => { this.groups[l.key] = L.layerGroup(); });
+    this.LAYERS.forEach(l => {
+      this.groups[l.key]=this._isClusterLayerKey(l.key)?this._clusterGroup(l):L.layerGroup();
+    });
     // Pane dedicado de Municipios (encima de polígonos de contexto). Se prende/apaga por visibilidad (sin add/remove → sin errores)
     map.createPane('muni'); map.getPane('muni').style.zIndex = '410';
     this._muRenderer = L.canvas({ pane:'muni', padding:0.5 });
@@ -2087,6 +2233,30 @@ class Component extends DCLogic {
   // cuyo valor no esté vacío ni sea "SIN INFORMACIÓN" (convocatorias/GAT traen otros nombres).
   _dsField(row, re){ for(const k in row){ if(re.test(k)){ const v=row[k]; if(v!=null && String(v).trim() && String(v).trim()!=='SIN INFORMACIÓN') return v; } } return null; }
   _dsNum(row, re){ const v=this._dsField(row, re); if(v==null) return null; const n=parseFloat(String(v).replace(/[^\d.\-]/g,'')); return (isFinite(n) && n!==0) ? n : null; }
+  _dsCapacityMw(row){
+    const direct=Number(row && row.capacidad_mw);
+    if(isFinite(direct) && direct>0) return direct;
+    // Las convocatorias pueden traer cientos de columnas que sólo MENCIONAN "capacidad"
+    // (perfiles, documentos y SAEE). Se priorizan los campos eléctricos escalares y se
+    // descartan URLs/textos para no convertir sus dígitos en un supuesto valor de MW.
+    const patterns=[
+      /^capacidad generaci[oó]n$/i,
+      /^capacidad instalada neta$/i,
+      /^capacidad instalada$/i,
+      /^capacidad contratada$/i,
+      /^capacidad en mw(?:_\d+)?$/i,
+      /^capacidad\s*\(mw\)$/i,
+      /^mw$/i,
+    ];
+    for(const re of patterns){
+      const raw=this._dsField(row,re);
+      if(raw==null || /https?:\/\//i.test(String(raw))) continue;
+      const clean=String(raw).trim().replace(/\s/g,'').replace(/,(?=\d{3}(?:\D|$))/g,'').replace(',','.');
+      const n=Number(clean.replace(/[^\d.\-]/g,''));
+      if(isFinite(n) && n>0 && n<=100000) return n;
+    }
+    return null;
+  }
   _selectDatasetFeature(row, ds, ll) {
     if (this._handler) return; // dibujando/midiendo: los clics no seleccionan
     this._selAt = performance.now();
@@ -2094,7 +2264,7 @@ class Component extends DCLogic {
     this._clearHighlight(); this._syncMenu(entN, entN?this._gerenciaOf(entN):'');
     const isProj = ds.target==='proyectos';
     const tec = this._dsRowTech(row);
-    const cap = (+row.capacidad_mw) || this._dsNum(row, /capacidad|^mw$/i);
+    const cap = this._dsCapacityMw(row);
     const kv  = (+row.tension_kv) || this._dsNum(row, /tensi[oó]n|(^|[^a-z])kv/i);
     const est = row.estatus || this._dsField(row, /decisi[oó]n minuta/i) || this._dsField(row, /estatus|^status|etapa|situaci|estado del/i);
     const inv = (+row.inversion_mdp) || this._dsNum(row, /inversi[oó]n/i);
@@ -3188,7 +3358,11 @@ class Component extends DCLogic {
       });
       dsParts.forEach(p => sumRows.push(['Dataset · '+p.name, this._nf(p.inR)+' de '+this._nf(p.total)]));
       sumRows.push(['Cobertura de análisis', this._analysisCoverageLabel(A,true)]);
-      sumRows.push(['Coordenadas del centro', A.lat.toFixed(4)+', '+A.lng.toFixed(4)]);
+      const centroid=this._analysisCentroidFeature(A);
+      const centroidCoordinates=centroid&&centroid.geometry&&centroid.geometry.coordinates;
+      const centroidLat=Array.isArray(centroidCoordinates)&&isFinite(centroidCoordinates[1])?Number(centroidCoordinates[1]):Number(A.lat);
+      const centroidLng=Array.isArray(centroidCoordinates)&&isFinite(centroidCoordinates[0])?Number(centroidCoordinates[0]):Number(A.lng);
+      sumRows.push(['Centroide de referencia', centroidLat.toFixed(4)+', '+centroidLng.toFixed(4)]);
       const totalEl = okKeys.reduce((s,k)=>s+(layers[k].count||0),0) + dsParts.reduce((s,p)=>s+p.inR,0);
       // Métricas rápidas: las capas con MÁS elementos primero (evita mostrar puros ceros
       // cuando las primeras capas seleccionadas no tienen presencia en el radio)
@@ -3342,7 +3516,19 @@ class Component extends DCLogic {
     const renderEnabled=!options||options.render!==false;
     const L = window.L; const g = this.groups[key]; g.clearLayers(); const color = cfg.color;
     const guard = (lyr) => this._guardPath(lyr);
-    const bind = (lyr, p) => { guard(lyr); const nom = this._featName(p) || cfg.label; lyr.bindTooltip(String(nom), { sticky:true }); lyr.on('click', () => this._selectGeneric(cfg, p, nom)); g.addLayer(lyr); };
+    const clustered=this._isClusterLayerKey(key)&&typeof g.addLayers==='function';
+    const pendingMarkers=[];
+    const bind = (lyr, p, location) => {
+      guard(lyr);
+      const nom = this._featName(p) || cfg.label;
+      lyr.bindTooltip(String(nom), { sticky:true });
+      if(this.ENERGY_PERMIT_KEYS.includes(key)){
+        lyr.bindPopup(this._energyPermitPopup(cfg,p,nom,location),{maxWidth:370,minWidth:270});
+      }
+      lyr.on('click', () => this._selectGeneric(cfg, p, nom, location));
+      if(clustered&&lyr instanceof L.Marker) pendingMarkers.push(lyr);
+      else g.addLayer(lyr);
+    };
     // Normaliza features: lista plana de {geometry, properties} desde FeatureCollection,
     // GeometryCollection, Feature suelto o geometría cruda (incl. GeometryCollection anidada).
     const feats = this._normFeatures(geo);
@@ -3356,13 +3542,14 @@ class Component extends DCLogic {
       let c = gm.coordinates; while (Array.isArray(c) && Array.isArray(c[0])) c = c[0];
       return (Array.isArray(c) && isFinite(c[0]) && isFinite(c[1])) ? [c[1], c[0]] : null;
     };
-    feats.forEach(f => { try { const ll = rep(f.geometry); if (ll) reg.push({ nom: this._featName(f.properties || {}) || cfg.label, lat: ll[0], lng: ll[1], props: f.properties || {} }); } catch(e){} });
+    feats.forEach(f => { try { const ll = rep(f.geometry); if (ll) reg.push({ nom: this._featName(f.properties || {}) || cfg.label, lat: ll[0], lng: ll[1], props: f.properties || {}, geometry:f.geometry }); } catch(e){} });
     // Conteo de puntos para decidir el modo de dibujo
     let pointCount = 0; feats.forEach(f => { const t=f.geometry&&f.geometry.type; if(t==='Point') pointCount++; else if(t==='MultiPoint') pointCount+=f.geometry.coordinates.length; });
     // Pocos puntos → marcadores DOM (ícono lindo); miles → circleMarker en canvas; decenas de miles
     // → nube en un solo canvas propio (ver _makePointCloud)
     const byTech = (cfg.key === 'centrales');
-    const domPoints = byTech || pointCount <= (cfg.compactPoints ? 250 : 1200);
+    const byPermit = this.ENERGY_PERMIT_KEYS.includes(key);
+    const domPoints = byTech || byPermit || pointCount <= (cfg.compactPoints ? 250 : 1200);
     const useCloud = !domPoints && pointCount > 3000;
     if(!renderEnabled){
       const count=this._countGenericFeatures(geo);
@@ -3374,7 +3561,12 @@ class Component extends DCLogic {
     const cloudPts = useCloud ? [] : null;
     const addPoint = (lat, lng, p) => {
       if (!isFinite(lat) || !isFinite(lng)) return;
-      if (domPoints) { const ic = byTech ? this._techIcon(this._centralTech(p)) : dot; bind(L.marker([lat, lng], { icon:ic }), p); }
+      if (domPoints) {
+        const icon=byTech
+          ?this._techIcon(this._centralTech(p))
+          :byPermit?this._energyPermitIcon(key,p):dot;
+        bind(L.marker([lat, lng], {icon}), p, [lat,lng]);
+      }
       else if (useCloud) { cloudPts.push({ lat, lng, props:p }); }
       else { bind(L.circleMarker([lat, lng], { radius:3.4, color:'#fff', weight:.8, fillColor:color, fillOpacity:.9, renderer:this._dataRenderer, pane:'data' }), p); }
     };
@@ -3395,8 +3587,9 @@ class Component extends DCLogic {
       else if (t === 'GeometryCollection') { (gm.geometries||[]).forEach(sub => draw(sub, p)); }
     };
     feats.forEach(f => { try { draw(f.geometry, f.properties || {}); } catch(e){} });
+    if(pendingMarkers.length) g.addLayers(pendingMarkers);
     if (useCloud && cloudPts.length) {
-      const cloud = this._makePointCloud(cloudPts, color, (pt) => { const nom = this._featName(pt.props) || cfg.label; this._selectGeneric(cfg, pt.props, nom); });
+      const cloud = this._makePointCloud(cloudPts, color, (pt) => { const nom = this._featName(pt.props) || cfg.label; this._selectGeneric(cfg, pt.props, nom, [pt.lat,pt.lng]); });
       g.addLayer(cloud);
     }
     this._genericCount = this._genericCount || {}; this._genericCount[key] = n;
@@ -3486,7 +3679,118 @@ class Component extends DCLogic {
     const txt = vals.find(x=>!isNum(x));
     return txt!=null ? String(txt) : (vals.length ? String(vals[0]) : '');
   }
-  _selectGeneric(cfg, p, nom){
+  _escapeMapHtml(value){
+    return String(value==null?'':value)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+  _permitValue(p,camel,pascal){
+    return p&&p[camel]!=null?p[camel]:(p&&p[pascal]!=null?p[pascal]:null);
+  }
+  _energyPermitCapacity(p){
+    const capacity=this._permitValue(p,'capacidad','Capacidad');
+    const unit=this._permitValue(p,'unidadCapacidad','UnidadCapacidad')||'';
+    const capacityText=this._permitValue(p,'capacidadTexto','CapacidadTexto')||'';
+    if(capacity!=null&&Number.isFinite(Number(capacity))){
+      return Number(capacity).toLocaleString('es-MX',{maximumFractionDigits:2})+(unit?' '+unit:'');
+    }
+    return capacityText||'—';
+  }
+  _energyPermitPopup(cfg,p,nom,location){
+    const esc=value=>this._escapeMapHtml(value);
+    const market=this._permitValue(p,'mercado','Mercado')||cfg.label;
+    const permit=this._permitValue(p,'numeroPermiso','NumeroPermiso')||'—';
+    const type=this._permitValue(p,'tipoPermiso','TipoPermiso')||this._permitValue(p,'clasificacion','Clasificacion')||'—';
+    const status=this._permitValue(p,'estatus','Estatus')||'—';
+    const feature=Array.isArray(location)&&isFinite(location[0])&&isFinite(location[1])
+      ?{type:'Feature',properties:{},geometry:{type:'Point',coordinates:[Number(location[1]),Number(location[0])]}}
+      :null;
+    const distance=feature?this._distanceFromAnalysisCentroidKm(this.state.analysis,feature):null;
+    return '<div style="font-family:Noto Sans,sans-serif;min-width:250px">'
+      +'<div style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:'+esc(cfg.color)+';margin-bottom:5px">'+esc(market)+'</div>'
+      +'<div style="font-family:Newsreader,serif;font-size:17px;font-weight:800;line-height:1.1;color:#1C1B1A;margin-bottom:8px">'+esc(this._permitValue(p,'nombre','Nombre')||nom||cfg.label)+'</div>'
+      +'<div style="display:grid;grid-template-columns:92px 1fr;gap:4px 8px;font-size:11px;line-height:1.35">'
+      +'<span style="color:#77716B">Permiso</span><strong>'+esc(permit)+'</strong>'
+      +'<span style="color:#77716B">Tipo</span><span>'+esc(type)+'</span>'
+      +'<span style="color:#77716B">Estatus</span><span>'+esc(status)+'</span>'
+      +'<span style="color:#77716B">Capacidad</span><span>'+esc(this._energyPermitCapacity(p))+'</span>'
+      +(Number.isFinite(distance)?'<span style="color:#77716B">Al centroide</span><strong>'+esc(distance.toLocaleString('es-MX',{minimumFractionDigits:1,maximumFractionDigits:1}))+' km</strong>':'')
+      +'</div><div style="margin-top:9px;padding-top:7px;border-top:1px solid #E6E1DA;color:#9B2247;font-size:10px;font-weight:700">Clic para abrir la ficha completa de base de datos</div></div>';
+  }
+  _energyPermitRows(cfg,p,nom,location,detail){
+    const value=(camel,pascal)=>this._permitValue(p,camel,pascal);
+    const formatDate=date=>{
+      if(!date) return '—';
+      const parsed=new Date(date);
+      return Number.isNaN(parsed.getTime())?String(date):parsed.toLocaleDateString('es-MX');
+    };
+    const feature=Array.isArray(location)&&isFinite(location[0])&&isFinite(location[1])
+      ?{type:'Feature',properties:{},geometry:{type:'Point',coordinates:[Number(location[1]),Number(location[0])]}}
+      :null;
+    const distance=feature?this._distanceFromAnalysisCentroidKm(this.state.analysis,feature):null;
+    const rows=[
+      ['Tipo de infraestructura','Permiso energético autorizado'],
+      ['Mercado',value('mercado','Mercado')||cfg.label],
+      ['Número de permiso',value('numeroPermiso','NumeroPermiso')||'—'],
+      ['Titular / instalación',value('nombre','Nombre')||nom||'—'],
+      ['Tipo de permiso',value('tipoPermiso','TipoPermiso')||'—'],
+      ['Clasificación',value('clasificacion','Clasificacion')||'—'],
+      ['Tecnología',value('tecnologia','Tecnologia')||'—'],
+      ['Capacidad',this._energyPermitCapacity(p)],
+      ['Entidad',value('entidad','Entidad')||'—'],
+      ['Municipio',value('municipio','Municipio')||'—'],
+      ['Estatus',value('estatus','Estatus')||'—'],
+      ['Fecha de otorgamiento',formatDate(value('fechaOtorgamiento','FechaOtorgamiento'))],
+      ['Inicio de operaciones',formatDate(value('fechaOperacion','FechaOperacion'))],
+    ];
+    if(Number.isFinite(distance)){
+      rows.push(['Distancia al centroide',distance.toLocaleString('es-MX',{minimumFractionDigits:1,maximumFractionDigits:1})+' km']);
+    }
+    if(feature){
+      rows.push(['Coordenadas',Number(location[0]).toFixed(5)+', '+Number(location[1]).toFixed(5)]);
+    }
+    const used=new Set(rows.map(row=>this._norm(row[0])));
+    ((detail&&detail.campos)||[]).forEach(field=>{
+      const label=String(field&&field.etiqueta||field&&field.clave||'Dato').trim();
+      const raw=field&&field.valor;
+      if(!label||raw==null||String(raw).trim()===''||used.has(this._norm(label))) return;
+      let display=String(raw);
+      if(/fecha|vigencia|suspensi[oó]n/i.test(label)&&/^\d{4}-\d{2}-\d{2}$/.test(display)){
+        const date=new Date(display+'T00:00:00');
+        if(!Number.isNaN(date.getTime())) display=date.toLocaleDateString('es-MX');
+      }
+      rows.push([label,display]);
+      used.add(this._norm(label));
+    });
+    rows.push(['Fuente',(detail&&detail.fuente)||value('fuente','Fuente')||'CRE · DGMESNIE']);
+    return rows;
+  }
+  _loadEnergyPermitDetail(cfg,p){
+    const type=cfg&&cfg.api;
+    const permit=this._permitValue(p,'numeroPermiso','NumeroPermiso');
+    if(!type||!permit) return Promise.resolve(null);
+    this._permitDetailCache=this._permitDetailCache||new Map();
+    const key=type+'|'+String(permit).trim();
+    if(this._permitDetailCache.has(key)) return this._permitDetailCache.get(key);
+    const params=new URLSearchParams({tipo:type,numeroPermiso:String(permit).trim()});
+    const request=fetch('/DashboardProyectos/PermisosEnergeticos/Detalle?'+params.toString(),{
+      method:'GET',credentials:'same-origin',headers:{Accept:'application/json'}
+    }).then(async response=>{
+      if(response.status===404) return null;
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok) throw new Error(payload&&payload.detail?payload.detail:'HTTP '+response.status);
+      return payload;
+    }).catch(error=>{
+      this._permitDetailCache.delete(key);
+      throw error;
+    });
+    this._permitDetailCache.set(key,request);
+    return request;
+  }
+  _selectGeneric(cfg, p, nom, location){
     this._selAt = performance.now();
     this._clearHighlight();
     const ent = this.CVE_ENT[p.CVE_ENT||p.cve_ent] || this._propEnt(p) || p['Ubicación'] || p.Ubicacion || '';
@@ -3563,39 +3867,33 @@ class Component extends DCLogic {
     }
     // Permisos energéticos provenientes de las vistas autorizadas en dbo.
     if(this.ENERGY_PERMIT_KEYS.includes(cfg.key)){
-      const value=(camel,pascal)=>p[camel]!=null?p[camel]:p[pascal];
-      const capacity=value('capacidad','Capacidad');
-      const unit=value('unidadCapacidad','UnidadCapacidad')||'';
-      const capacityText=value('capacidadTexto','CapacidadTexto')||'';
-      const granted=value('fechaOtorgamiento','FechaOtorgamiento');
-      const operation=value('fechaOperacion','FechaOperacion');
-      const formatDate=date=>{
-        if(!date) return '—';
-        const parsed=new Date(date);
-        return Number.isNaN(parsed.getTime())?String(date):parsed.toLocaleDateString('es-MX');
-      };
-      const rows=[
-        ['Tipo de infraestructura','Permiso energético autorizado'],
-        ['Mercado',value('mercado','Mercado')||cfg.label],
-        ['Número de permiso',value('numeroPermiso','NumeroPermiso')||'—'],
-        ['Titular / instalación',value('nombre','Nombre')||nom||'—'],
-        ['Tipo de permiso',value('tipoPermiso','TipoPermiso')||'—'],
-        ['Clasificación',value('clasificacion','Clasificacion')||'—'],
-        ['Tecnología',value('tecnologia','Tecnologia')||'—'],
-        ['Capacidad',capacity!=null?(Number(capacity).toLocaleString('es-MX',{maximumFractionDigits:2})+(unit?' '+unit:'')):(capacityText||'—')],
-        ['Entidad',value('entidad','Entidad')||'—'],
-        ['Municipio',value('municipio','Municipio')||'—'],
-        ['Estatus',value('estatus','Estatus')||'—'],
-        ['Fecha de otorgamiento',formatDate(granted)],
-        ['Inicio de operaciones',formatDate(operation)],
-        ['Fuente',value('fuente','Fuente')||'CRE · DGMESNIE'],
-      ];
-      this.setState({selected:{
-        kicker:'Permiso energético · '+(value('mercado','Mercado')||cfg.label),
+      const market=this._permitValue(p,'mercado','Mercado')||cfg.label;
+      const permit=this._permitValue(p,'numeroPermiso','NumeroPermiso')||nom||'';
+      const detailKey=(cfg.api||cfg.key)+'|'+String(permit);
+      this._selectedPermitDetailKey=detailKey;
+      const selected=detail=>({
+        kicker:'Permiso energético · '+market,
         color:cfg.color,
-        name:value('nombre','Nombre')||nom||cfg.label,
-        rows
-      }});
+        name:this._permitValue(p,'nombre','Nombre')||nom||cfg.label,
+        rows:this._energyPermitRows(cfg,p,nom,location,detail)
+      });
+      this.setState({
+        anaOpen:false,
+        menuOpen:null,
+        collapsed:{...this.state.collapsed,detalle:false},
+        selected:selected(null),
+        detalleLoading:detailKey
+      });
+      this._loadEnergyPermitDetail(cfg,p)
+        .then(detail=>{
+          if(this._selectedPermitDetailKey!==detailKey) return;
+          this.setState({selected:selected(detail),detalleLoading:null});
+        })
+        .catch(error=>{
+          if(this._selectedPermitDetailKey!==detailKey) return;
+          this.setState({detalleLoading:null});
+          this._toast('No se pudo cargar la ficha completa del permiso: '+(error.message||error));
+        });
       return;
     }
     // Centrales eléctricas → ficha curada con tecnología y capacidad
@@ -3982,6 +4280,7 @@ class Component extends DCLogic {
     if (!['permisos','proyectos'].includes(target)) { this._recompute(); return; }
     const g = this.groups[target]; g.clearLayers();
     const activeSets=this.state.datasets.filter(d => d.active && d.target===target);
+    const markers=[];
     let n=0;
     activeSets.forEach(source => this._datasetRowsForMap(source).forEach(row => {
       const ll = this._placeRow(row, source); if (!ll) return;
@@ -3989,10 +4288,13 @@ class Component extends DCLogic {
       const col = this._tecColor(tec);
       const isProj = target==='proyectos';
       const m = L.marker(ll, { icon: this._dsIcon(col, isProj, tec) });
-      m.bindPopup('<b style="font-family:Newsreader,serif">'+this._dsRowName(row)+'</b><br><span style="color:#6F6B66;font-size:11px">'+this._tecLabel(tec)+' · '+(row.capacidad_mw||'—')+' MW · '+(row.estatus||'')+'</span>');
+      const cap=this._dsCapacityMw(row);
+      m.bindPopup('<b style="font-family:Newsreader,serif">'+this._dsRowName(row)+'</b><br><span style="color:#6F6B66;font-size:11px">'+this._tecLabel(tec)+' · '+(cap?this._nf(cap):'—')+' MW · '+(row.estatus||'')+'</span>');
       m.on('click', () => { this.setState({ anaOpen:false, menuOpen:null }); this._selectDatasetFeature(row, source, ll); });
-      g.addLayer(m); n++;
+      markers.push(m); n++;
     }));
+    if(markers.length&&typeof g.addLayers==='function') g.addLayers(markers);
+    else markers.forEach(marker=>g.addLayer(marker));
     const hasActive=activeSets.length>0;
     const layers = { ...this.state.layers };
     layers[target] = { ...layers[target], on:hasActive, count:n };
@@ -4018,32 +4320,69 @@ class Component extends DCLogic {
       H2:'<path d="M6 8v10M6 13h5M11 8v10M15 18h4M17 18v-7l-2 1.4"/>',
       TER:'<path d="M9 7v8a4 4 0 1 0 8 0V7M9 11h8"/><circle cx="13" cy="15" r="1.6"/>',
       IMP:'<path d="M7 13h10M13 9l4 4-4 4M5 7v12"/>',
+      GAS:'<path d="M13 5c1.4 3.2-3 4.4-3 8.2a3.8 3.8 0 0 0 7.6 0c0-2.2-1.2-3.4-1.8-4.6-.4 2.1-1.7 2.5-1.7 1.2 0-2.1 1.1-3.8-1.1-4.8z"/>',
+      TANK:'<path d="M7 8h12v11H7zM9 8V5h8v3M10 12h6M10 15h6"/>',
+      PUMP:'<path d="M7 5h9v15H7zM9 8h5M16 9h2l2 3v5.5a2 2 0 0 1-4 0M9 17h5"/>',
+      TRUCK:'<path d="M4 8h10v8H4zM14 11h4l2 3v2h-6z"/><circle cx="8" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
       DEF:'<path d="M14 5 7 14h5l-1 7 7-9h-5z"/>'
     };
     return '<g fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+(g[t]||g.DEF)+'</g>';
   }
-  // Ícono-mosaico por tecnología (chip redondeado con glifo blanco) — set del sistema de diseño SENER
-  _techIcon(code){
-    const L = window.L; const color = this._tecColor(code); const glyph = this._techGlyph(code);
-    const html = '<svg width="24" height="24" viewBox="0 0 26 26" style="filter:drop-shadow(0 1px 2.5px rgba(0,0,0,.4))">'
-      + '<rect x="2" y="2" width="22" height="22" rx="6" fill="'+color+'" stroke="#fff" stroke-width="1.6"/>'+glyph+'</svg>';
-    return L.divIcon({ className:'', iconSize:[24,24], iconAnchor:[12,12], popupAnchor:[0,-11], html });
-  }
-  _dsIcon(color, isProj, tech) {
-    const L = window.L;
-    const glyph = this._techGlyph(tech);
-    if (isProj) {
-      // proyecto = pin/gota con glifo (ancla inferior)
-      const html = '<svg width="30" height="38" viewBox="0 0 30 38" style="filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))">'
-        + '<path d="M15 37C15 37 27 22 27 13A12 12 0 0 0 3 13C3 22 15 37 15 37Z" fill="'+color+'" stroke="#fff" stroke-width="2"/>'
-        + '<g transform="translate(2,0)">'+glyph+'</g></svg>';
-      return L.divIcon({ className:'', iconSize:[30,38], iconAnchor:[15,37], popupAnchor:[0,-32], html });
+  _mapIconSpec(iconKey){
+    const parts=String(iconKey||'').split(':');
+    if(parts[0]==='tech'){
+      const shape=parts[1]==='pin'?'pin':'chip';
+      const code=String(parts[2]||'DEF').toUpperCase();
+      return {shape,code,color:this._tecColor(code)};
     }
-    // permiso = chip cuadrado con glifo
-    const html = '<svg width="28" height="28" viewBox="0 0 26 26" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,.32))">'
-      + '<rect x="2.5" y="2.5" width="21" height="21" rx="5" fill="'+color+'" stroke="#fff" stroke-width="2"/>'+glyph+'</svg>';
-    return L.divIcon({ className:'', iconSize:[28,28], iconAnchor:[14,14], popupAnchor:[0,-12], html });
+    if(parts[0]==='permit'){
+      const layerKey=parts[1]||'perm_elec';
+      const variant=parts.slice(2).join(':')||'default';
+      if(layerKey==='perm_elec'){
+        const code=String(variant||'DEF').toUpperCase();
+        return {shape:'chip',code,color:this._tecColor(code)};
+      }
+      if(layerKey==='perm_gn') return {shape:'chip',code:'GAS',color:'#2E6FB0'};
+      if(layerKey==='perm_glp'){
+        const code=variant==='almacenamiento'?'TANK':variant==='distribucion'?'TRUCK':'PUMP';
+        return {shape:'chip',code,color:'#E0A12E'};
+      }
+      const code=variant==='almacenamiento'?'TANK':variant==='distribucion'?'TRUCK':'PUMP';
+      return {shape:'chip',code,color:'#C0552E'};
+    }
+    return {shape:'chip',code:'DEF',color:'#9B2247'};
   }
+  _mapSymbolSvg(iconKey){
+    const spec=this._mapIconSpec(iconKey);
+    const glyph=this._techGlyph(spec.code);
+    if(spec.shape==='pin'){
+      return '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="38" viewBox="0 0 30 38">'
+        +'<path d="M15 37C15 37 27 22 27 13A12 12 0 0 0 3 13C3 22 15 37 15 37Z" fill="'+spec.color+'" stroke="#fff" stroke-width="2"/>'
+        +'<g transform="translate(2,0)">'+glyph+'</g></svg>';
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 26 26">'
+      +'<rect x="2.5" y="2.5" width="21" height="21" rx="5" fill="'+spec.color+'" stroke="#fff" stroke-width="2"/>'+glyph+'</svg>';
+  }
+  _leafletSymbolIcon(iconKey){
+    const L=window.L;
+    this._leafletSymbolCache=this._leafletSymbolCache||new Map();
+    if(this._leafletSymbolCache.has(iconKey)) return this._leafletSymbolCache.get(iconKey);
+    const spec=this._mapIconSpec(iconKey);
+    const svg=this._mapSymbolSvg(iconKey);
+    const shadow=spec.shape==='pin'
+      ?'drop-shadow(0 3px 4px rgba(0,0,0,.35))'
+      :'drop-shadow(0 2px 3px rgba(0,0,0,.32))';
+    const html=svg.replace('<svg ','<svg style="filter:'+shadow+'" ');
+    const icon=spec.shape==='pin'
+      ?L.divIcon({className:'',iconSize:[30,38],iconAnchor:[15,37],popupAnchor:[0,-32],html})
+      :L.divIcon({className:'',iconSize:[28,28],iconAnchor:[14,14],popupAnchor:[0,-12],html});
+    this._leafletSymbolCache.set(iconKey,icon);
+    return icon;
+  }
+  // Un único registro vectorial alimenta mapa principal, leyendas y mapas estáticos del reporte.
+  _techIcon(code){ return this._leafletSymbolIcon(this._reportTechIconKey(code,'chip')); }
+  _dsIcon(color,isProj,tech){ return this._leafletSymbolIcon(this._reportTechIconKey(tech,isProj?'pin':'chip')); }
+  _energyPermitIcon(layerKey,properties){ return this._leafletSymbolIcon(this._reportPermitIconKey(layerKey,properties)); }
   toggleDataset = (id) => {
     this._invalidateSearch();
     const datasets = this.state.datasets.map(d => d.id===id ? { ...d, active:!d.active } : d);
@@ -4145,8 +4484,8 @@ class Component extends DCLogic {
     const dsProj = this.state.datasets.filter(d => d.active && d.target==='proyectos');
     const permisos = dsPerm.reduce((a,d)=>a+this._datasetRowsForMap(d).length,0);
     const proyectos = dsProj.reduce((a,d)=>a+this._datasetRowsForMap(d).length,0);
-    let capacidad = dsProj.reduce((a,d)=>a+this._datasetRowsForMap(d).reduce((x,r)=>x+(+r.capacidad_mw||0),0),0)
-                  + dsPerm.reduce((a,d)=>a+this._datasetRowsForMap(d).reduce((x,r)=>x+(+r.capacidad_mw||0),0),0);
+    let capacidad = dsProj.reduce((a,d)=>a+this._datasetRowsForMap(d).reduce((x,r)=>x+(this._dsCapacityMw(r)||0),0),0)
+                  + dsPerm.reduce((a,d)=>a+this._datasetRowsForMap(d).reduce((x,r)=>x+(this._dsCapacityMw(r)||0),0),0);
     let distancia = null;
     const sel = this.state.selected;
     if (sel && sel.lat!=null) distancia = this._nearestSub(sel);
@@ -4160,7 +4499,7 @@ class Component extends DCLogic {
     let capacidad=0, permisos=0, proyectos=0;
     this.state.datasets.filter(d=>d.active).forEach(d => this._datasetRowsForMap(d).forEach(r => {
       const ll = this._placeRow(r, d); if (!ll) return;
-      if (inside(ll[1], ll[0])) { if (d.target==='proyectos') proyectos++; else if (d.target==='permisos') permisos++; capacidad += (+r.capacidad_mw||0); }
+      if (inside(ll[1], ll[0])) { if (d.target==='proyectos') proyectos++; else if (d.target==='permisos') permisos++; capacidad += (this._dsCapacityMw(r)||0); }
     }));
     let distancia = null; const sel=this.state.selected; if (sel && sel.lat!=null) distancia=this._nearestSub(sel);
     this.setState({ metrics:{ capacidad, subs:subs.length, km, permisos, proyectos, distancia }, scope:'Área dibujada' });
@@ -4217,7 +4556,7 @@ class Component extends DCLogic {
       if (cfg.type!=='geo' || !L[cfg.key] || !L[cfg.key].on) return;
       const fs = (this._genericFeats || {})[cfg.key]; if (!fs) return;
       const seen = new Set();
-      fs.forEach(ft => { const n = this._norm(ft.nom); if (!n || seen.has(n)) return; seen.add(n); out.push({ label:ft.nom, kind:cfg.label, color:cfg.color, n, ll:[ft.lat,ft.lng], go:()=>{ this.map.setView([ft.lat, ft.lng], 9, {animate:true}); this._selectGeneric(cfg, ft.props, ft.nom); this._setHighlight(ft.lat, ft.lng, cfg.color); } }); });
+      fs.forEach(ft => { const n = this._norm(ft.nom); if (!n || seen.has(n)) return; seen.add(n); out.push({ label:ft.nom, kind:cfg.label, color:cfg.color, n, ll:[ft.lat,ft.lng], go:()=>{ this.map.setView([ft.lat, ft.lng], 9, {animate:true}); this._selectGeneric(cfg, ft.props, ft.nom, [ft.lat,ft.lng]); this._setHighlight(ft.lat, ft.lng, cfg.color); } }); });
     });
     // Los datasets de permisos/proyectos sólo aparecen en el buscador si además su capa
     // en "Capas disponibles" está encendida — evita sugerir elementos que no se ven en el mapa.
@@ -4764,81 +5103,147 @@ class Component extends DCLogic {
     }));
   }
 
-  _buildEnergyPermitReport(ran,feats){
-    const defs=[
+  _buildEnergyPermitReport(A,ran,feats){
+    const definitions=[
       {key:'perm_elec',label:'Electricidad',color:'#9B2247'},
       {key:'perm_gn',label:'Gas natural',color:'#2E6FB0'},
       {key:'perm_glp',label:'Gas LP',color:'#E0A12E'},
       {key:'perm_pet',label:'Petrolíferos',color:'#C0552E'},
-    ].filter(def=>ran(def.key));
-    if(!defs.length) return {section:null,chart:null,raw:[]};
+    ];
+    const defs=definitions.filter(def=>ran(def.key));
+    if(!defs.length) return {sections:[],charts:[],raw:[]};
     const value=(p,camel,pascal)=>p&&p[camel]!=null?p[camel]:(p&&p[pascal]!=null?p[pascal]:null);
     const formatDate=raw=>{
       if(!raw) return '—';
       const parsed=new Date(raw);
       return Number.isNaN(parsed.getTime())?String(raw):parsed.toLocaleDateString('es-MX');
     };
-    const rows=defs.map(def=>{
-      const meta=(this._analysisSourceMeta||{})[def.key]||{};
-      const count=feats(def.key).length;
-      const cutoff=meta.fechaCorte||meta.FechaCorte;
-      return [def.label,count.toLocaleString('es-MX')+' en la cobertura'+(cutoff?' · corte '+formatDate(cutoff):'')];
-    });
     const raw=defs.map(def=>({
       key:def.key,label:def.label,
       meta:(this._analysisSourceMeta||{})[def.key]||{},
-      rows:feats(def.key).map(item=>item.props||{})
+      rows:feats(def.key).map(item=>{
+        const feature=item&&item.geometry
+          ?{type:'Feature',properties:item.props||{},geometry:item.geometry}
+          :(item&&isFinite(item.lat)&&isFinite(item.lng)
+            ?{type:'Feature',properties:item.props||{},geometry:{type:'Point',coordinates:[Number(item.lng),Number(item.lat)]}}
+            :null);
+        return {
+          ...(item&&item.props||{}),
+          distanciaCentroideKm:feature?this._distanceFromAnalysisCentroidKm(A,feature):null
+        };
+      })
     }));
-    const detail=raw.flatMap(source=>source.rows.map(p=>({source,p})))
-      .sort((a,b)=>{
-        const da=new Date(value(a.p,'fechaOtorgamiento','FechaOtorgamiento')||0).getTime()||0;
-        const db=new Date(value(b.p,'fechaOtorgamiento','FechaOtorgamiento')||0).getTime()||0;
-        return db-da;
+    const groupDefinitions=[
+      {
+        key:'permits-electricity',
+        sourceKeys:['perm_elec'],
+        kicker:'Sistema eléctrico autorizado',
+        color:'#9B2247',
+        title:'Permisos eléctricos y perfil autorizado',
+        chartTitle:'Permisos eléctricos por tipo',
+        intro:'Permisos eléctricos contenidos en la cobertura, desglosados por modalidad o clasificación y vinculados con la red, subestaciones y centrales del territorio.'
+      },
+      {
+        key:'permits-gas',
+        sourceKeys:['perm_gn','perm_glp'],
+        kicker:'Gas natural y Gas LP',
+        color:'#2E6FB0',
+        title:'Permisos de gas natural y Gas LP',
+        chartTitle:'Permisos de gas por tipo',
+        intro:'Permisos de gas natural y Gas LP contenidos en la cobertura. El mapa integra ductos disponibles y puntos autorizados, conservando simbología distinta por mercado.'
+      },
+      {
+        key:'permits-petroleum',
+        sourceKeys:['perm_pet'],
+        kicker:'Petrolíferos',
+        color:'#C0552E',
+        title:'Permisos de petrolíferos y estaciones de servicio',
+        chartTitle:'Permisos de petrolíferos por tipo',
+        intro:'Permisos de expendio, almacenamiento, distribución y autoconsumo contenidos en la cobertura. Cuando existe correspondencia oficial, se incorporan precios reportados por estación de servicio.'
+      }
+    ];
+    const sections=[],charts=[];
+    groupDefinitions.forEach(group=>{
+      const sources=raw.filter(source=>group.sourceKeys.includes(source.key));
+      if(!sources.length) return;
+      const rows=sources.map(source=>{
+        const meta=source.meta||{};
+        const cutoff=meta.fechaCorte||meta.FechaCorte;
+        return [
+          source.label,
+          source.rows.length.toLocaleString('es-MX')+' en la cobertura'+(cutoff?' · corte '+formatDate(cutoff):'')
+        ];
       });
-    const tableRows=detail.slice(0,20).map(({source,p})=>{
-      const cap=value(p,'capacidad','Capacidad');
-      const unit=value(p,'unidadCapacidad','UnidadCapacidad')||'';
-      const capText=value(p,'capacidadTexto','CapacidadTexto')||'';
-      return [
-        source.label,
-        value(p,'numeroPermiso','NumeroPermiso')||'—',
-        String(value(p,'nombre','Nombre')||'—').slice(0,44),
-        value(p,'tipoPermiso','TipoPermiso')||value(p,'clasificacion','Clasificacion')||'—',
-        cap!=null?Number(cap).toLocaleString('es-MX',{maximumFractionDigits:2})+(unit?' '+unit:''):(capText||'—'),
-        formatDate(value(p,'fechaOtorgamiento','FechaOtorgamiento'))
-      ];
-    });
-    if(detail.length>20) tableRows.push(['… y '+(detail.length-20).toLocaleString('es-MX')+' permisos más','Ver Excel','','','','']);
-    const chartData=defs.map(def=>({
-      label:def.label,value:feats(def.key).length,color:def.color,
-      detail:'permisos dentro de la cobertura'
-    }));
-    const chart={
-      key:'energy-permits',
-      title:'Permisos energéticos por mercado',
-      subtitle:detail.length.toLocaleString('es-MX')+' permisos autorizados intersectan la cobertura analizada.',
-      unit:'permisos',decimals:0,data:chartData,
-      source:'Fuente: CRE · Inventarios institucionales DGMESNIE'
-    };
-    return {
-      section:{
-        key:'energy-permits',kicker:'Infraestructura autorizada',color:'#9B2247',
+      const detail=sources.flatMap(source=>source.rows.map(p=>({source,p})))
+        .sort((a,b)=>{
+          const da=new Date(value(a.p,'fechaOtorgamiento','FechaOtorgamiento')||0).getTime()||0;
+          const db=new Date(value(b.p,'fechaOtorgamiento','FechaOtorgamiento')||0).getTime()||0;
+          return db-da;
+        });
+      const tableRows=detail.slice(0,20).map(({source,p})=>{
+        const cap=value(p,'capacidad','Capacidad');
+        const unit=value(p,'unidadCapacidad','UnidadCapacidad')||'';
+        const capText=value(p,'capacidadTexto','CapacidadTexto')||'';
+        return [
+          source.label,
+          value(p,'numeroPermiso','NumeroPermiso')||'—',
+          String(value(p,'nombre','Nombre')||'—').slice(0,44),
+          value(p,'tipoPermiso','TipoPermiso')||value(p,'clasificacion','Clasificacion')||'—',
+          cap!=null?Number(cap).toLocaleString('es-MX',{maximumFractionDigits:2})+(unit?' '+unit:''):(capText||'—'),
+          p.distanciaCentroideKm!=null&&Number.isFinite(Number(p.distanciaCentroideKm))
+            ?Number(p.distanciaCentroideKm).toLocaleString('es-MX',{minimumFractionDigits:1,maximumFractionDigits:1})+' km'
+            :'—',
+          formatDate(value(p,'fechaOtorgamiento','FechaOtorgamiento'))
+        ];
+      });
+      if(detail.length>20) tableRows.push(['… y '+(detail.length-20).toLocaleString('es-MX')+' permisos más','Ver Excel','','','','','']);
+      const counts=new Map();
+      detail.forEach(({source,p})=>{
+        const label=this._reportPermitLegendLabel(source.key,p);
+        const entry=counts.get(this._norm(label))||{label,value:0,color:(definitions.find(def=>def.key===source.key)||{}).color||group.color};
+        entry.value++;
+        counts.set(this._norm(label),entry);
+      });
+      let chartData=[...counts.values()].sort((a,b)=>b.value-a.value);
+      if(chartData.length>6){
+        const others=chartData.slice(5);
+        chartData=chartData.slice(0,5).concat([{
+          label:'Otros tipos',
+          value:others.reduce((sum,item)=>sum+item.value,0),
+          color:'#8A9099'
+        }]);
+      }
+      const chart=chartData.length?{
+        key:group.key+'-types',
+        group:'energy-permits',
+        title:group.chartTitle,
+        subtitle:detail.length.toLocaleString('es-MX')+' permisos intersectan la cobertura analizada.',
+        unit:'permisos',
+        decimals:0,
+        data:chartData.map(item=>({...item,detail:'permisos dentro de la cobertura'})),
+        source:'Fuente: CRE · Inventarios institucionales DGMESNIE'
+      }:null;
+      const reportChart=chart?{
+        ...chart,
+        alt:'Gráfica de '+group.chartTitle.toLowerCase(),
+        svgDataUrl:this._reportChartSvg(chart)
+      }:null;
+      const section={
+        key:group.key,kicker:group.kicker,color:group.color,
         icon:'M13 2 3 14h7l-1 8 10-12h-7z',
-        title:'Permisos de electricidad e hidrocarburos',
-        intro:'Permisos georreferenciados cuya ubicación intersecta la cobertura. Cada mercado conserva su fecha de corte; los resultados describen el último inventario disponible y no sustituyen una consulta regulatoria vigente.',
+        title:group.title,
+        intro:group.intro,
         hasRows:true,rows,hasChips:false,chips:[],
+        hasCharts:!!reportChart,charts:reportChart?[reportChart]:[],
         hasTable:tableRows.length>0,
-        table:{head:['Mercado','Permiso','Titular / instalación','Tipo','Capacidad','Otorgamiento'],rows:tableRows},
+        table:{head:['Mercado','Permiso','Titular / instalación','Tipo','Capacidad','Dist. al centroide','Otorgamiento'],rows:tableRows},
         hasTable2:false,
         source:'CRE · Inventarios institucionales DGMESNIE'
-      },
-      chart:{
-        ...chart,
-        alt:'Gráfica de permisos energéticos por mercado',
-        svgDataUrl:this._reportChartSvg(chart)
-      },
-      raw
-    };
+      };
+      sections.push(section);
+      if(reportChart) charts.push(reportChart);
+    });
+    return {sections,charts,raw};
   }
 
   _reportChartSvg(chart){
@@ -5068,6 +5473,9 @@ class Component extends DCLogic {
     const breakdowns=Array.isArray(context&&context.breakdowns)?context.breakdowns:[];
     const palettes={
       population_trend:['#C9A24B','#1E6F5C'],
+      population_sex:['#2E6FB0','#9B2247'],
+      population_age_groups:['#C9A24B','#E0A12E','#1E6F5C','#9B2247'],
+      indigenous_composition:['#C0552E','#D7D1C8'],
       economic_structure:['#1E6F5C','#9B2247','#E0A12E','#2E6FB0','#C0552E','#8A9099']
     };
     return breakdowns.map(breakdown=>{
@@ -5153,6 +5561,249 @@ class Component extends DCLogic {
     return Array.from(new Set(names)).sort((a,b)=>a.localeCompare(b,'es-MX'));
   }
 
+  _loadScriptGlobal(url,globalName){
+    if(window[globalName]) return Promise.resolve(window[globalName]);
+    this._externalScriptPromises=this._externalScriptPromises||new Map();
+    const cacheKey=globalName+'|'+url;
+    if(this._externalScriptPromises.has(cacheKey)) return this._externalScriptPromises.get(cacheKey);
+    const promise=new Promise((resolve,reject)=>{
+      const existing=document.querySelector('script[data-dg-global="'+globalName+'"]');
+      const script=existing||document.createElement('script');
+      const finish=()=>{
+        const value=window[globalName];
+        if(value) resolve(value);
+        else reject(new Error('La fuente '+globalName+' no publicó una geometría utilizable'));
+      };
+      if(existing){
+        if(window[globalName]) finish();
+        else {
+          existing.addEventListener('load',finish,{once:true});
+          existing.addEventListener('error',()=>reject(new Error('No fue posible cargar '+globalName)),{once:true});
+        }
+        return;
+      }
+      script.src=url;
+      script.async=true;
+      script.dataset.dgGlobal=globalName;
+      script.onload=finish;
+      script.onerror=()=>reject(new Error('No fue posible cargar '+globalName));
+      document.head.appendChild(script);
+    }).catch(error=>{
+      this._externalScriptPromises.delete(cacheKey);
+      throw error;
+    });
+    this._externalScriptPromises.set(cacheKey,promise);
+    return promise;
+  }
+
+  _sampleTariffLocalityFeatures(features,limit){
+    const source=Array.isArray(features)?features:[];
+    if(source.length<=limit) return source;
+    const byDivision=new Map();
+    source.forEach(feature=>{
+      const props=(feature&&feature.properties)||{};
+      const division=String(props['DIVISIÓN']||props.DIVISION||'Sin división');
+      if(!byDivision.has(division)) byDivision.set(division,[]);
+      byDivision.get(division).push(feature);
+    });
+    const selected=[];
+    const perGroup=Math.max(1,Math.floor(limit/Math.max(1,byDivision.size)));
+    byDivision.forEach(items=>{
+      const take=Math.min(items.length,perGroup);
+      const step=items.length/Math.max(1,take);
+      for(let index=0;index<take;index++) selected.push(items[Math.min(items.length-1,Math.floor(index*step))]);
+    });
+    if(selected.length<limit){
+      const chosen=new Set(selected);
+      const remaining=source.filter(feature=>!chosen.has(feature));
+      const take=Math.min(limit-selected.length,remaining.length);
+      const step=remaining.length/Math.max(1,take);
+      for(let index=0;index<take;index++) selected.push(remaining[Math.min(remaining.length-1,Math.floor(index*step))]);
+    }
+    return selected.slice(0,limit);
+  }
+
+  _analysisCentroidFeature(A){
+    const T=window.turf;
+    if(!T||!A) return null;
+    const key=this._analysisSelectionKey(A)+':centroid';
+    if(this._analysisCentroidCache&&this._analysisCentroidCache.key===key){
+      return this._analysisCentroidCache.value;
+    }
+    let point=null;
+    if(A.territoryGeometry){
+      const source=this._asFeatureCollection(A.territoryGeometry);
+      try{
+        if(typeof T.centerOfMass==='function') point=T.centerOfMass(source);
+      }catch(e){}
+      if(!point){
+        try{ point=T.centroid(source); }catch(e){}
+      }
+    }
+    if(!point&&isFinite(A.lat)&&isFinite(A.lng)){
+      try{ point=T.point([Number(A.lng),Number(A.lat)]); }catch(e){}
+    }
+    this._analysisCentroidCache={key,value:point};
+    return point;
+  }
+
+  _distanceFromAnalysisCentroidKm(A,feature){
+    const T=window.turf,origin=this._analysisCentroidFeature(A);
+    if(!T||!origin||!feature||!feature.geometry) return null;
+    let destination=feature;
+    if(feature.geometry.type!=='Point'){
+      try{
+        destination=typeof T.centerOfMass==='function'?T.centerOfMass(feature):T.centroid(feature);
+      }catch(e){
+        try{ destination=T.centroid(feature); }catch(innerError){ return null; }
+      }
+    }
+    try{
+      const distance=T.distance(origin,destination,{units:'kilometers'});
+      return Number.isFinite(distance)&&distance>=0?distance:null;
+    }catch(e){ return null; }
+  }
+
+  _analysisTargetDistanceContext(A){
+    const T=window.turf;
+    if(!T||!A) return null;
+    const key=this._analysisSelectionKey(A)+':distance-target';
+    if(this._analysisDistanceTargetCache&&this._analysisDistanceTargetCache.key===key){
+      return this._analysisDistanceTargetCache.value;
+    }
+    let targetFeatures=[];
+    if(A.territoryGeometry){
+      targetFeatures=this._normFeatures(this._asFeatureCollection(A.territoryGeometry));
+    }else if(isFinite(A.lat)&&isFinite(A.lng)){
+      targetFeatures=[T.point([Number(A.lng),Number(A.lat)])];
+    }
+    const lines=[];
+    const points=[];
+    const appendBoundary=feature=>{
+      if(!feature||!feature.geometry) return;
+      const geometry=feature.geometry;
+      try{
+        if(geometry.type==='Polygon'){
+          this._normFeatures(T.polygonToLine(feature)).forEach(line=>lines.push(line));
+        }else if(geometry.type==='MultiPolygon'){
+          (geometry.coordinates||[]).forEach(coordinates=>{
+            this._normFeatures(T.polygonToLine(T.polygon(coordinates))).forEach(line=>lines.push(line));
+          });
+        }else if(geometry.type==='LineString'||geometry.type==='MultiLineString'){
+          lines.push(feature);
+        }else if(geometry.type==='Point'){
+          points.push(feature);
+        }
+      }catch(e){}
+    };
+    targetFeatures.forEach(appendBoundary);
+    const value={features:targetFeatures,lines,points};
+    this._analysisDistanceTargetCache={key,value};
+    return value;
+  }
+
+  _distanceFromAnalysisTargetKm(A,feature){
+    const T=window.turf,context=this._analysisTargetDistanceContext(A);
+    if(!T||!context||!feature||!feature.geometry||!context.features.length) return null;
+    try{
+      if(context.features.some(target=>{
+        if(target.geometry&&target.geometry.type==='Point'&&/Polygon/.test(feature.geometry.type)){
+          return T.booleanPointInPolygon(target,feature);
+        }
+        return T.booleanIntersects(feature,target);
+      })) return 0;
+    }catch(e){}
+    let best=Number.POSITIVE_INFINITY;
+    const update=value=>{ if(Number.isFinite(value)&&value>=0&&value<best) best=value; };
+    const distancePointToFeature=(point,target)=>{
+      if(!point||!target||!target.geometry) return;
+      try{
+        if(target.geometry.type==='Point') update(T.distance(point,target,{units:'kilometers'}));
+        else update(T.pointToLineDistance(point,target,{units:'kilometers'}));
+      }catch(e){}
+    };
+    let featurePoints=[];
+    try{
+      featurePoints=(T.explode(feature).features||[]);
+      if(featurePoints.length>80){
+        const step=featurePoints.length/80;
+        featurePoints=Array.from({length:80},(_,index)=>featurePoints[Math.min(featurePoints.length-1,Math.floor(index*step))]);
+      }
+    }catch(e){}
+    featurePoints.forEach(point=>{
+      context.lines.forEach(line=>distancePointToFeature(point,line));
+      context.points.forEach(target=>distancePointToFeature(point,target));
+    });
+    if(context.points.length&&/Polygon/.test(feature.geometry.type)){
+      const featureLines=[];
+      try{
+        if(feature.geometry.type==='Polygon') this._normFeatures(T.polygonToLine(feature)).forEach(line=>featureLines.push(line));
+        else (feature.geometry.coordinates||[]).forEach(coordinates=>{
+          this._normFeatures(T.polygonToLine(T.polygon(coordinates))).forEach(line=>featureLines.push(line));
+        });
+      }catch(e){}
+      context.points.forEach(point=>featureLines.forEach(line=>distancePointToFeature(point,line)));
+    }
+    return Number.isFinite(best)?best:null;
+  }
+
+  async _loadTariffLocalitiesInAnalysis(A){
+    if(!A||!Array.isArray(A.ranKeys)||!A.ranKeys.includes('tarifas_div')) return null;
+    const key=this._analysisSelectionKey(A);
+    if(this._tariffLocalityReportCache&&this._tariffLocalityReportCache.key===key){
+      return this._tariffLocalityReportCache.value;
+    }
+    const source=await this._loadScriptGlobal(this.TARIFF_LOCALITIES_SRC,'localidades_division');
+    const prepared=this._prepareAnalysisContext(A);
+    const filtered=await this._filterByAnalysisAsync(source,A,prepared,null);
+    const municipalityNames=new Map();
+    const municipalityGeo=this._muniGeo||this._municipiosShortcutGeo;
+    ((municipalityGeo&&municipalityGeo.features)||[]).forEach(feature=>{
+      const props=feature.properties||{};
+      const code=String(props.CVEGEO||props.cvegeo||'').trim();
+      const name=String(props.NOMGEO||props.nom_mun||props.nombre||'').trim();
+      if(code&&name) municipalityNames.set(code,name);
+    });
+    const features=Array.isArray(filtered.features)?filtered.features:[];
+    const localidades=features.map(feature=>{
+      const props=(feature&&feature.properties)||{};
+      const cvegeo=String(props.CVEGEO||'').trim();
+      const municipalityCode=String(props.union||cvegeo.slice(0,5)||'').trim();
+      const stateCode=String(props.CVE_ENT||cvegeo.slice(0,2)||'').padStart(2,'0');
+      const division=String(props['DIVISIÓN']||props.DIVISION||'Sin división').trim();
+      return {
+        cvegeo,
+        nombre:String(props.NOMGEO||'Localidad sin nombre').trim(),
+        ambito:String(props.AMBITO||'').trim(),
+        municipioCodigo:municipalityCode,
+        municipio:municipalityNames.get(municipalityCode)||municipalityCode||'—',
+        entidad:this.CVE_ENT[stateCode]||stateCode||'—',
+        division,
+        distanciaKm:this._distanceFromAnalysisCentroidKm(A,feature)
+      };
+    }).sort((a,b)=>
+      (Number.isFinite(a.distanciaKm)?a.distanciaKm:Number.POSITIVE_INFINITY)-
+        (Number.isFinite(b.distanciaKm)?b.distanciaKm:Number.POSITIVE_INFINITY)||
+      a.division.localeCompare(b.division,'es-MX')||
+      a.entidad.localeCompare(b.entidad,'es-MX')||
+      a.municipio.localeCompare(b.municipio,'es-MX')||
+      a.nombre.localeCompare(b.nombre,'es-MX')
+    );
+    const divisions=Array.from(new Set(localidades.map(item=>item.division).filter(Boolean)))
+      .sort((a,b)=>a.localeCompare(b,'es-MX'));
+    const mapLimit=1400;
+    const value={
+      total:localidades.length,
+      localidades,
+      divisions,
+      mapFeatures:this._sampleTariffLocalityFeatures(features,mapLimit),
+      mapOmitted:Math.max(0,features.length-mapLimit),
+      sourceFeatureCount:Array.isArray(source.features)?source.features.length:0
+    };
+    this._tariffLocalityReportCache={key,value};
+    return value;
+  }
+
   async _loadTariffReportContext(divisions){
     if(!Array.isArray(divisions)||!divisions.length) return null;
     this._tariffReportCache=this._tariffReportCache||new Map();
@@ -5179,7 +5830,7 @@ class Component extends DCLogic {
     return parsed.toLocaleDateString('es-MX',{month:'long',year:'numeric',timeZone:'UTC'});
   }
 
-  _appendTariffsToReport(report,context){
+  _appendTariffsToReport(report,context,localityContext){
     const records=Array.isArray(context&&context.registros)?context.registros:[];
     const divisions=Array.isArray(context&&context.divisiones)?context.divisiones:[];
     if(!report||!records.length||!divisions.length) return;
@@ -5207,13 +5858,52 @@ class Component extends DCLogic {
       if(!byDivision.has(record.division)) byDivision.set(record.division,new Map());
       byDivision.get(record.division).set(record.tarifa,record);
     });
+    const byDivisionNormalized=new Map();
+    byDivision.forEach((value,key)=>byDivisionNormalized.set(this._norm(key),value));
     const tableRows=divisions.map(division=>{
-      const values=byDivision.get(division)||new Map();
+      const values=byDivision.get(division)||byDivisionNormalized.get(this._norm(division))||new Map();
       return [
         division,
         ...referenceTariffs.map(item=>fmt((values.get(item.key)||{}).valor))
       ];
     });
+    const localities=Array.isArray(localityContext&&localityContext.localidades)
+      ?localityContext.localidades.map(locality=>{
+        const values=byDivision.get(locality.division)||byDivisionNormalized.get(this._norm(locality.division))||new Map();
+        const reference=values.get('GDBT')||null;
+        return {
+          ...locality,
+          tarifaReferencia:'GDBT',
+          tarifaGdbt:reference&&Number.isFinite(Number(reference.valor))?Number(reference.valor):null,
+          unidad:reference&&reference.unidades?reference.unidades:'$/kWh',
+          periodo:reference&&reference.periodo?reference.periodo:context.periodo
+        };
+      }):[];
+    const localityTableLimit=80;
+    const localityRows=localities.slice(0,localityTableLimit).map(locality=>[
+      locality.cvegeo||'—',
+      locality.nombre||'—',
+      locality.municipio||'—',
+      locality.entidad||'—',
+      locality.ambito||'—',
+      locality.division||'—',
+      locality.tarifaGdbt==null?'—':fmt(locality.tarifaGdbt),
+      Number.isFinite(locality.distanciaKm)?locality.distanciaKm.toLocaleString('es-MX',{minimumFractionDigits:1,maximumFractionDigits:1})+' km':'—',
+      period
+    ]);
+    if(localities.length>localityTableLimit){
+      localityRows.push([
+        '…',
+        'Más '+(localities.length-localityTableLimit).toLocaleString('es-MX')+' localidades',
+        'Detalle completo en Excel',
+        '',
+        '',
+        '',
+        '',
+        '',
+        ''
+      ]);
+    }
     const chartRows=normalizedRecords
       .filter(record=>record.tarifa==='GDBT'&&Number.isFinite(Number(record.valor))&&Number(record.valor)>0)
       .sort((a,b)=>a.division.localeCompare(b.division,'es-MX'))
@@ -5243,9 +5933,10 @@ class Component extends DCLogic {
       key:'tarifas-electricas',kicker:'Precios energéticos',color:'#A57F2C',
       title:'Tarifas eléctricas por división',
       intro:'Divisiones tarifarias que intersectan la geometría evaluada. Se presenta el último histórico disponible ('+
-        period+'); los valores son referencias documentales y no deben interpretarse como tarifas vigentes.',
+        period+'). Cada localidad hereda la tarifa aplicable de su división eléctrica; no representa un precio exclusivo de la localidad ni una tarifa vigente.',
       hasRows:true,
       rows:[
+        ['Localidades intersectadas',localities.length.toLocaleString('es-MX')],
         ['Divisiones intersectadas',divisions.length.toLocaleString('es-MX')],
         ['Periodo histórico',period],
         ['Unidad de comparación','pesos por kWh']
@@ -5257,10 +5948,14 @@ class Component extends DCLogic {
         head:['División',...referenceTariffs.map(item=>item.label)],
         rows:tableRows
       },
-      hasTable2:false,
+      hasTable2:localityRows.length>0,
+      table2:{
+        head:['CVEGEO','Localidad','Municipio','Entidad','Ámbito','División','GDBT','Distancia al centroide','Periodo'],
+        rows:localityRows
+      },
       source:context.fuente||'CRE / CFE · Cuadros tarifarios históricos DGMESNIE'
     };
-    const permitsIndex=report.sections.findIndex(item=>item.key==='energy-permits');
+    const permitsIndex=report.sections.findIndex(item=>item.key==='permits-electricity');
     const electricIndex=report.sections.findIndex(item=>item.key==='elec');
     const insertAt=permitsIndex>=0?permitsIndex+1:(electricIndex>=0?electricIndex+1:0);
     report.sections.splice(insertAt,0,section);
@@ -5273,19 +5968,900 @@ class Component extends DCLogic {
         sub:'intersectadas · histórico '+period
       });
     }
+    if(localities.length&&!report.metrics.some(metric=>this._norm(metric&&metric.label)==='localidadestarifarias')){
+      report.metrics.push({
+        label:'Localidades tarifarias',
+        value:localities.length.toLocaleString('es-MX'),
+        color:'#C9A24B',
+        dim:false,
+        sub:'con tarifa aplicable según división'
+      });
+    }
     if(reportChart) report.charts=(Array.isArray(report.charts)?report.charts:[]).concat([reportChart]);
     report.tariffs={
       periodo:context.periodo,
       fuente:context.fuente,
       nota:context.nota,
       divisiones:divisions,
-      registros:normalizedRecords
+      registros:normalizedRecords,
+      localidades:localities,
+      mapaLocalidades:localityContext?{
+        total:localityContext.total||localities.length,
+        mostradas:Array.isArray(localityContext.mapFeatures)?localityContext.mapFeatures.length:0,
+        omitidas:localityContext.mapOmitted||0
+      }:null
     };
+  }
+
+  async _loadFuelPricesInAnalysis(A){
+    if(!A||!Array.isArray(A.ranKeys)||!A.ranKeys.includes('perm_pet')||!window.turf) return null;
+    const key=this._analysisSelectionKey(A);
+    if(this._fuelPriceReportCache&&this._fuelPriceReportCache.key===key){
+      return this._fuelPriceReportCache.value;
+    }
+    let bbox;
+    try{ bbox=window.turf.bbox(this._reportAnalysisGeo(A)); }catch(e){ return null; }
+    if(!Array.isArray(bbox)||bbox.length<4) return null;
+    const minLon=Math.max(-118,Number(bbox[0])),minLat=Math.max(14,Number(bbox[1]));
+    const maxLon=Math.min(-86,Number(bbox[2])),maxLat=Math.min(33.5,Number(bbox[3]));
+    if(!(minLon<maxLon&&minLat<maxLat)) return null;
+    const params=new URLSearchParams({
+      minLat:minLat.toFixed(6),
+      minLon:minLon.toFixed(6),
+      maxLat:maxLat.toFixed(6),
+      maxLon:maxLon.toFixed(6)
+    });
+    try{
+      const response=await fetch('/DashboardProyectos/PreciosCombustibles?'+params.toString(),{
+        method:'GET',credentials:'same-origin',headers:{Accept:'application/json'}
+      });
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok||!payload||!payload.ok||!payload.data) return null;
+      const stations=(Array.isArray(payload.data.estaciones)?payload.data.estaciones:[])
+        .filter(station=>this._analysisContainsPoint(A,Number(station.latitud),Number(station.longitud)))
+        .map(station=>{
+          const feature={
+            type:'Feature',
+            properties:{},
+            geometry:{type:'Point',coordinates:[Number(station.longitud),Number(station.latitud)]}
+          };
+          return {...station,distanciaKm:this._distanceFromAnalysisCentroidKm(A,feature)};
+        })
+        .sort((a,b)=>
+          (Number.isFinite(a.distanciaKm)?a.distanciaKm:Number.POSITIVE_INFINITY)-
+          (Number.isFinite(b.distanciaKm)?b.distanciaKm:Number.POSITIVE_INFINITY)
+        );
+      const value={...payload.data,estaciones:stations};
+      this._fuelPriceReportCache={key,value};
+      return value;
+    }catch(e){
+      return null;
+    }
+  }
+
+  _appendFuelPricesToReport(report,context){
+    if(!report||!context||!Array.isArray(context.estaciones)||!context.estaciones.length) return;
+    const section=(report.sections||[]).find(item=>item&&item.key==='permits-petroleum');
+    if(!section) return;
+    const stations=context.estaciones;
+    const fmtPrice=value=>{
+      const number=Number(value);
+      return Number.isFinite(number)&&number>0
+        ?'$'+number.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})
+        :'—';
+    };
+    const queriedAt=context.fechaConsulta?new Date(context.fechaConsulta):null;
+    const cutoff=queriedAt&&!Number.isNaN(queriedAt.getTime())
+      ?queriedAt.toLocaleString('es-MX',{dateStyle:'medium',timeStyle:'short'})
+      :'consulta actual';
+    section.rows=(Array.isArray(section.rows)?section.rows:[]).concat([
+      ['Estaciones con precios reportados',stations.length.toLocaleString('es-MX')],
+      ['Corte de consulta CNE',cutoff+(context.esRespaldo?' · último dato válido':'')]
+    ]);
+    const stationLimit=15;
+    const stationRows=stations.slice(0,stationLimit).map(station=>[
+      String(station.nombre||'Estación de servicio').slice(0,42),
+      station.numeroPermiso||'—',
+      fmtPrice(station.regular),
+      fmtPrice(station.premium),
+      fmtPrice(station.diesel),
+      Number.isFinite(station.distanciaKm)
+        ?station.distanciaKm.toLocaleString('es-MX',{minimumFractionDigits:1,maximumFractionDigits:1})+' km'
+        :'—'
+    ]);
+    if(stations.length>stationLimit){
+      stationRows.push([
+        '… y '+(stations.length-stationLimit).toLocaleString('es-MX')+' estaciones más',
+        'Detalle completo en Excel','','','',''
+      ]);
+    }
+    section.hasTable2=true;
+    section.table2={
+      head:['Estación','Permiso','Regular','Premium','Diésel','Distancia al centroide'],
+      rows:stationRows
+    };
+    const products=[
+      {key:'regular',label:'Gasolina Regular',color:'#1E6F5C'},
+      {key:'premium',label:'Gasolina Premium',color:'#9B2247'},
+      {key:'diesel',label:'Diésel',color:'#2E6FB0'}
+    ].map(product=>{
+      const values=stations.map(station=>Number(station[product.key])).filter(value=>Number.isFinite(value)&&value>0);
+      return values.length?{
+        label:product.label,
+        value:values.reduce((sum,value)=>sum+value,0)/values.length,
+        color:product.color,
+        detail:values.length.toLocaleString('es-MX')+' estaciones con dato'
+      }:null;
+    }).filter(Boolean);
+    if(products.length){
+      const chart={
+        key:'fuel-prices-average',
+        group:'fuel-prices',
+        title:'Precio promedio reportado en la cobertura',
+        subtitle:'Promedio simple de estaciones con dato · '+cutoff,
+        unit:'$/litro',
+        decimals:2,
+        data:products,
+        source:'Fuente: CNE · precios reportados por permisionarios'
+      };
+      const reportChart={
+        ...chart,
+        alt:'Gráfica de precios promedio de combustibles',
+        svgDataUrl:this._reportChartSvg(chart)
+      };
+      section.hasCharts=true;
+      section.charts=(Array.isArray(section.charts)?section.charts:[]).concat([reportChart]);
+      report.charts=(Array.isArray(report.charts)?report.charts:[]).concat([reportChart]);
+    }
+    report.fuelPrices={
+      fechaConsulta:context.fechaConsulta,
+      esRespaldo:!!context.esRespaldo,
+      fuente:context.fuente||'CNE · precios reportados por permisionarios',
+      estaciones:stations
+    };
+  }
+
+  _reportPermitIconKey(layerKey,properties){
+    const props=properties||{};
+    const permitType=this._norm(
+      props.tipoPermiso||props.TipoPermiso||props.clasificacion||props.Clasificacion||''
+    );
+    if(layerKey==='perm_elec') return 'permit:perm_elec:'+this._centralTech(props);
+    if(layerKey==='perm_pet'){
+      if(permitType.includes('autoconsumo')) return 'permit:perm_pet:autoconsumo';
+      if(permitType.includes('almacenamiento')) return 'permit:perm_pet:almacenamiento';
+      if(permitType.includes('distribucion')) return 'permit:perm_pet:distribucion';
+      return 'permit:perm_pet:expendio';
+    }
+    if(layerKey==='perm_glp'){
+      if(permitType.includes('almacenamiento')) return 'permit:perm_glp:almacenamiento';
+      if(permitType.includes('distribucion')) return 'permit:perm_glp:distribucion';
+      return 'permit:perm_glp:expendio';
+    }
+    if(layerKey==='perm_gn') return 'permit:perm_gn:gas';
+    return 'permit:perm_elec:TER';
+  }
+
+  _reportPermitLegendLabel(layerKey,properties){
+    const props=properties||{};
+    const permitType=String(
+      props.tipoPermiso||props.TipoPermiso||props.clasificacion||props.Clasificacion||''
+    ).trim();
+    if(permitType&&this._norm(permitType)!=='sd') return permitType;
+    return ({
+      perm_elec:'Electricidad',
+      perm_gn:'Gas natural',
+      perm_glp:'Gas LP',
+      perm_pet:'Petrolíferos'
+    })[layerKey]||'Permiso energético';
+  }
+
+  _reportTechIconKey(technology,shape){
+    const code=String(technology||'').trim().toUpperCase();
+    return 'tech:'+(shape==='pin'?'pin':'chip')+':'+(code||'DEF');
+  }
+
+  _loadReportMapIcon(iconKey){
+    if(!iconKey) return Promise.resolve(null);
+    this._reportMapIconCache=this._reportMapIconCache||new Map();
+    if(this._reportMapIconCache.has(iconKey)) return this._reportMapIconCache.get(iconKey);
+    const promise=new Promise(resolve=>{
+      const image=new Image();
+      let settled=false;
+      const finish=value=>{
+        if(settled) return;
+        settled=true;
+        clearTimeout(timeout);
+        resolve(value);
+      };
+      const timeout=setTimeout(()=>finish(null),7000);
+      image.onload=()=>finish(image);
+      image.onerror=()=>finish(null);
+      image.decoding='async';
+      image.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(this._mapSymbolSvg(iconKey));
+    });
+    this._reportMapIconCache.set(iconKey,promise);
+    return promise;
+  }
+
+  async _loadReportMapIcons(iconKeys){
+    const keys=[...new Set((iconKeys||[]).filter(Boolean))];
+    const entries=await Promise.all(keys.map(async key=>[key,await this._loadReportMapIcon(key)]));
+    return new Map(entries);
+  }
+
+  _reportDatasetMapContext(A){
+    const features=[];
+    const sources=[];
+    (this.state.datasets||[]).filter(dataset=>dataset&&dataset.active).forEach(dataset=>{
+      let count=0;
+      (dataset.rows||[]).forEach(row=>{
+        const latLng=this._placeRow(row,dataset);
+        if(!latLng||!this._analysisContainsPoint(A,latLng[0],latLng[1])) return;
+        const technology=this._dsRowTech(row);
+        const color=this._tecColor(technology);
+        features.push({
+          type:'Feature',
+          properties:{
+            datasetId:dataset.id||'',
+            datasetName:dataset.name||'Dataset',
+            target:dataset.target||'',
+            technology:technology||'',
+            technologyLabel:this._tecLabel(technology),
+            iconKey:this._reportTechIconKey(technology,dataset.target==='proyectos'?'pin':'chip'),
+            color,
+            label:this._dsRowName(row)
+          },
+          geometry:{type:'Point',coordinates:[latLng[1],latLng[0]]}
+        });
+        count++;
+      });
+      if(count){
+        sources.push({
+          id:dataset.id||'',
+          name:dataset.name||'Dataset',
+          target:dataset.target||'',
+          count
+        });
+      }
+    });
+    return {
+      geo:{type:'FeatureCollection',features},
+      sources
+    };
+  }
+
+  _reportAnalysisGeo(A){
+    if(A&&A.analysisGeometry) return this._asFeatureCollection(A.analysisGeometry);
+    if(A&&isFinite(A.lat)&&isFinite(A.lng)&&isFinite(A.radiusKm)&&window.turf){
+      try{
+        return {
+          type:'FeatureCollection',
+          features:[window.turf.circle([A.lng,A.lat],A.radiusKm,{steps:72,units:'kilometers'})]
+        };
+      }catch(e){}
+    }
+    return {type:'FeatureCollection',features:[]};
+  }
+
+  _reportLineGeo(){
+    const features=[];
+    const appendLines=(latlngs,properties)=>{
+      if(!Array.isArray(latlngs)||!latlngs.length) return;
+      if(latlngs[0]&&isFinite(latlngs[0].lat)&&isFinite(latlngs[0].lng)){
+        const coordinates=latlngs.map(point=>[point.lng,point.lat]).filter(point=>isFinite(point[0])&&isFinite(point[1]));
+        if(coordinates.length>=2) features.push({type:'Feature',properties:properties||{},geometry:{type:'LineString',coordinates}});
+        return;
+      }
+      latlngs.forEach(part=>appendLines(part,properties));
+    };
+    Array.from(this._anaLineSet||[]).forEach(layer=>{
+      try{ appendLines(layer.getLatLngs(),layer._rec||{}); }catch(e){}
+    });
+    return {type:'FeatureCollection',features};
+  }
+
+  _reportSubstationGeo(){
+    const features=Array.from(this._anaSubSet||[]).filter(item=>item&&isFinite(item.lat)&&isFinite(item.lng)).map(item=>({
+      type:'Feature',
+      properties:{nombre:item.name||'Subestación',tension:item.kv||null},
+      geometry:{type:'Point',coordinates:[item.lng,item.lat]}
+    }));
+    return {type:'FeatureCollection',features};
+  }
+
+  _reportThematicBbox(A,layers){
+    const analysis=this._reportAnalysisGeo(A);
+    const features=(analysis.features||[]).length
+      ?analysis.features
+      :(layers||[]).flatMap(layer=>this._normFeatures(layer&&layer.geo));
+    let minLon=Infinity,minLat=Infinity,maxLon=-Infinity,maxLat=-Infinity;
+    features.forEach(feature=>{
+      const bbox=this._featureBBox(feature&&feature.geometry);
+      if(!bbox) return;
+      minLon=Math.min(minLon,bbox.minLon); minLat=Math.min(minLat,bbox.minLat);
+      maxLon=Math.max(maxLon,bbox.maxLon); maxLat=Math.max(maxLat,bbox.maxLat);
+    });
+    if(!isFinite(minLon)) return [-118.5,14.3,-86.5,32.8];
+    const lonSpan=Math.max(.025,maxLon-minLon),latSpan=Math.max(.025,maxLat-minLat);
+    const padLon=lonSpan*.085,padLat=latSpan*.085;
+    return [minLon-padLon,minLat-padLat,maxLon+padLon,maxLat+padLat];
+  }
+
+  _renderThematicMap(spec,A){
+    const canvas=document.createElement('canvas');
+    canvas.width=1440; canvas.height=780;
+    const ctx=canvas.getContext('2d');
+    if(!ctx) return null;
+    const mapX=34,mapY=34,mapW=1372,mapH=690;
+    const bbox=this._reportThematicBbox(A,spec.layers||[]);
+    const clampLat=lat=>Math.max(-85,Math.min(85,Number(lat)||0));
+    const mercatorY=lat=>Math.log(Math.tan(Math.PI/4+clampLat(lat)*Math.PI/360));
+    const minMerc=mercatorY(bbox[1]),maxMerc=mercatorY(bbox[3]);
+    const project=coordinate=>{
+      const lon=Number(coordinate&&coordinate[0]),lat=Number(coordinate&&coordinate[1]);
+      return [
+        mapX+(lon-bbox[0])/Math.max(1e-9,bbox[2]-bbox[0])*mapW,
+        mapY+(maxMerc-mercatorY(lat))/Math.max(1e-9,maxMerc-minMerc)*mapH
+      ];
+    };
+    const resolveStyle=(style,feature)=>{
+      const value={...(style||{})};
+      ['color','fillColor','fillOpacity','opacity','weight','radius','iconImage','iconSize','clusterColor'].forEach(key=>{
+        if(typeof value[key]==='function') value[key]=value[key](feature);
+      });
+      return value;
+    };
+    const drawPointMarker=(point,style)=>{
+      const st=style||{};
+      const color=st.fillColor||st.color||'#6F6B66';
+      const opacity=st.opacity==null?1:Number(st.opacity);
+      const icon=st.iconImage;
+      if(icon&&icon.complete&&icon.naturalWidth>0){
+        const size=Math.max(24,Math.min(46,Number(st.iconSize)||34));
+        ctx.save();
+        ctx.globalAlpha=opacity;
+        ctx.shadowColor='rgba(28,27,26,.28)';
+        ctx.shadowBlur=7;
+        ctx.shadowOffsetY=2;
+        ctx.fillStyle='#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(point[0],point[1],size*.54,0,Math.PI*2);
+        ctx.fill();
+        ctx.shadowColor='transparent';
+        const ratio=icon.naturalWidth/Math.max(1,icon.naturalHeight);
+        const drawW=ratio>=1?size:size*ratio;
+        const drawH=ratio>=1?size/ratio:size;
+        ctx.drawImage(icon,point[0]-drawW/2,point[1]-drawH/2,drawW,drawH);
+        ctx.restore();
+        return;
+      }
+      ctx.save();
+      ctx.globalAlpha=opacity;
+      ctx.beginPath();
+      ctx.arc(point[0],point[1],Math.max(3,Number(st.radius)||6),0,Math.PI*2);
+      ctx.fillStyle=color;
+      ctx.fill();
+      ctx.strokeStyle=st.strokeColor||'#FFFFFF';
+      ctx.lineWidth=Math.max(1,Number(st.weight)||1.5);
+      ctx.stroke();
+      ctx.restore();
+    };
+    const drawClusterMarker=(point,count,style)=>{
+      const st=style||{};
+      const color=st.clusterColor||st.fillColor||st.color||'#9B2247';
+      const radius=Math.max(16,Math.min(27,15+Math.log10(Math.max(2,count))*7));
+      ctx.save();
+      ctx.shadowColor='rgba(28,27,26,.28)';
+      ctx.shadowBlur=8;
+      ctx.shadowOffsetY=2;
+      ctx.fillStyle='#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(point[0],point[1],radius+4,0,Math.PI*2);
+      ctx.fill();
+      ctx.shadowColor='transparent';
+      ctx.fillStyle=color;
+      ctx.beginPath();
+      ctx.arc(point[0],point[1],radius,0,Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle='#FFFFFF';
+      ctx.lineWidth=2;
+      ctx.stroke();
+      ctx.fillStyle='#FFFFFF';
+      ctx.font='800 '+(count>99?15:17)+'px "Noto Sans",Arial,sans-serif';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.fillText(count>999?'999+':String(count),point[0],point[1]+.5);
+      ctx.restore();
+    };
+    const drawGeometry=(geometry,style,feature)=>{
+      if(!geometry) return;
+      const st=resolveStyle(style,feature);
+      const color=st.color||'#6F6B66';
+      const fillColor=st.fillColor||color;
+      const opacity=st.opacity==null?1:Number(st.opacity);
+      const fillOpacity=st.fillOpacity==null?0:Number(st.fillOpacity);
+      const weight=Math.max(.5,Number(st.weight)||1.5);
+      const drawLine=(coordinates,close)=>{
+        if(!Array.isArray(coordinates)||!coordinates.length) return false;
+        let moved=false;
+        coordinates.forEach((coordinate,index)=>{
+          if(!Array.isArray(coordinate)||!isFinite(coordinate[0])||!isFinite(coordinate[1])) return;
+          const point=project(coordinate);
+          if(!moved){ ctx.moveTo(point[0],point[1]); moved=true; }
+          else ctx.lineTo(point[0],point[1]);
+        });
+        if(moved&&close) ctx.closePath();
+        return moved;
+      };
+      const drawPolygon=polygon=>{
+        ctx.save();
+        ctx.beginPath();
+        let hasPath=false;
+        (polygon||[]).forEach(ring=>{ if(drawLine(ring,true)) hasPath=true; });
+        if(hasPath&&fillOpacity>0){
+          ctx.globalAlpha=fillOpacity;
+          ctx.fillStyle=fillColor;
+          try{ ctx.fill('evenodd'); }catch(e){ ctx.fill(); }
+        }
+        if(hasPath&&opacity>0){
+          ctx.globalAlpha=opacity;
+          ctx.strokeStyle=color; ctx.lineWidth=weight; ctx.lineJoin='round'; ctx.lineCap='round';
+          if(Array.isArray(st.dash)) ctx.setLineDash(st.dash);
+          ctx.stroke();
+        }
+        ctx.restore();
+      };
+      const type=geometry.type;
+      if(type==='Point'){
+        const point=project(geometry.coordinates||[]);
+        drawPointMarker(point,{...st,fillColor,color,opacity,weight});
+      }else if(type==='MultiPoint'){
+        (geometry.coordinates||[]).forEach(coordinate=>drawGeometry({type:'Point',coordinates},st,feature));
+      }else if(type==='LineString'){
+        ctx.save(); ctx.beginPath();
+        if(drawLine(geometry.coordinates||[],false)){
+          ctx.globalAlpha=opacity; ctx.strokeStyle=color; ctx.lineWidth=weight; ctx.lineJoin='round'; ctx.lineCap='round';
+          if(Array.isArray(st.dash)) ctx.setLineDash(st.dash);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }else if(type==='MultiLineString'){
+        (geometry.coordinates||[]).forEach(coordinates=>drawGeometry({type:'LineString',coordinates},st,feature));
+      }else if(type==='Polygon'){
+        drawPolygon(geometry.coordinates||[]);
+      }else if(type==='MultiPolygon'){
+        (geometry.coordinates||[]).forEach(drawPolygon);
+      }else if(type==='GeometryCollection'){
+        (geometry.geometries||[]).forEach(item=>drawGeometry(item,st,feature));
+      }
+    };
+    const drawGeo=(geo,style)=>{
+      this._normFeatures(geo).forEach(feature=>drawGeometry(feature.geometry,style,feature));
+    };
+    const drawClusteredLayer=layer=>{
+      const features=this._normFeatures(layer&&layer.geo);
+      const points=features.filter(feature=>feature&&feature.geometry&&feature.geometry.type==='Point');
+      const nonPoints=features.filter(feature=>!feature||!feature.geometry||feature.geometry.type!=='Point');
+      if(nonPoints.length) drawGeo({type:'FeatureCollection',features:nonPoints},layer.style||{});
+      if(!points.length) return;
+      const cellSize=Math.max(24,Math.min(80,Number(layer.clusterRadius)||42));
+      const buckets=new Map();
+      points.forEach(feature=>{
+        const point=project(feature.geometry.coordinates||[]);
+        const cellX=Math.floor((point[0]-mapX)/cellSize);
+        const cellY=Math.floor((point[1]-mapY)/cellSize);
+        const key=cellX+':'+cellY;
+        if(!buckets.has(key)) buckets.set(key,{sumX:0,sumY:0,items:[]});
+        const bucket=buckets.get(key);
+        bucket.sumX+=point[0];
+        bucket.sumY+=point[1];
+        bucket.items.push({feature,point});
+      });
+      buckets.forEach(bucket=>{
+        if(bucket.items.length===1){
+          const item=bucket.items[0];
+          drawGeometry(item.feature.geometry,layer.style||{},item.feature);
+          return;
+        }
+        const point=[bucket.sumX/bucket.items.length,bucket.sumY/bucket.items.length];
+        const style=resolveStyle(layer.style||{},bucket.items[0].feature);
+        drawClusterMarker(point,bucket.items.length,style);
+      });
+    };
+
+    ctx.fillStyle='#F4F0EA'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#FBFAF8'; ctx.fillRect(mapX,mapY,mapW,mapH);
+    ctx.save(); ctx.beginPath(); ctx.rect(mapX,mapY,mapW,mapH); ctx.clip();
+    const stateFeatures=((this.geo&&this.geo.estados&&this.geo.estados.features)||[]).filter(feature=>{
+      const candidate=this._featureBBox(feature.geometry);
+      return candidate&&!(candidate.maxLon<bbox[0]||candidate.minLon>bbox[2]||candidate.maxLat<bbox[1]||candidate.minLat>bbox[3]);
+    });
+    drawGeo({type:'FeatureCollection',features:stateFeatures},{color:'#D7D1C8',weight:1.2,fillOpacity:0,opacity:.9});
+    const analysisGeo=this._reportAnalysisGeo(A);
+    const territoryGeo=A&&A.territoryGeometry?this._asFeatureCollection(A.territoryGeometry):null;
+    const hasTerritory=!!(territoryGeo&&(territoryGeo.features||[]).length);
+    const hasTerritoryBuffer=hasTerritory&&Number(A&&A.bufferKm)>0;
+    if(hasTerritoryBuffer){
+      drawGeo(analysisGeo,{color:'#E0A12E',fillColor:'#E0A12E',weight:2.2,fillOpacity:.035,opacity:.82,dash:[9,6]});
+    }
+    if(hasTerritory){
+      drawGeo(territoryGeo,{color:'#9B2247',fillColor:'#9B2247',weight:2.6,fillOpacity:.09,opacity:.92});
+    }else{
+      drawGeo(analysisGeo,{color:'#9B2247',fillColor:'#9B2247',weight:2.2,fillOpacity:.055,opacity:.75,dash:[8,6]});
+    }
+    (spec.layers||[]).forEach(layer=>{
+      if(layer&&layer.cluster) drawClusteredLayer(layer);
+      else drawGeo(layer&&layer.geo,layer&&layer.style||{});
+    });
+    if(hasTerritory){
+      if(hasTerritoryBuffer) drawGeo(analysisGeo,{color:'#E0A12E',weight:3,fillOpacity:0,opacity:1,dash:[10,7]});
+      drawGeo(territoryGeo,{color:'#9B2247',weight:3.5,fillOpacity:0,opacity:1});
+    }else{
+      drawGeo(analysisGeo,{color:'#9B2247',weight:3.1,fillOpacity:0,opacity:1,dash:[10,7]});
+    }
+    ctx.restore();
+
+    ctx.strokeStyle='#D9D3CB'; ctx.lineWidth=2; ctx.strokeRect(mapX,mapY,mapW,mapH);
+    const legend=(spec.legendItems||[]).slice(0,9);
+    if(legend.length){
+      const panelW=Math.max(430,Math.min(540,Number(spec.legendWidth)||520));
+      const wrapLegendText=(raw,maxWidth,maxLines)=>{
+        const words=String(raw||'').split(/\s+/).filter(Boolean),lines=[];
+        let current='';
+        words.forEach(word=>{
+          const next=current?current+' '+word:word;
+          if(!current||ctx.measureText(next).width<=maxWidth) current=next;
+          else{ lines.push(current); current=word; }
+        });
+        if(current) lines.push(current);
+        const limit=Math.max(1,maxLines||2);
+        if(lines.length>limit){
+          const overflow=lines.slice(limit-1).join(' ');
+          let clipped=overflow;
+          while(clipped.length>1&&ctx.measureText(clipped+'…').width>maxWidth) clipped=clipped.slice(0,-1);
+          return lines.slice(0,limit-1).concat([clipped.trimEnd()+'…']);
+        }
+        return lines.length?lines:['Capa'];
+      };
+      ctx.font='600 17px "Noto Sans",Arial,sans-serif';
+      const preparedLegend=legend.map(item=>({
+        item,
+        lines:wrapLegendText(item.label||'Capa',panelW-82,2)
+      }));
+      ctx.font='500 15px "Noto Sans",Arial,sans-serif';
+      const extraLines=spec.legendExtra?wrapLegendText(spec.legendExtra,panelW-36,2):[];
+      const rowHeights=preparedLegend.map(entry=>entry.lines.length>1?43:31);
+      const panelH=48+rowHeights.reduce((sum,height)=>sum+height,0)+(extraLines.length?extraLines.length*18+17:0);
+      const x=mapX+18,y=mapY+18;
+      ctx.save(); ctx.globalAlpha=.94; ctx.fillStyle='#FFFFFF'; ctx.fillRect(x,y,panelW,panelH); ctx.globalAlpha=1;
+      ctx.strokeStyle='#E5DFD7'; ctx.lineWidth=1.5; ctx.strokeRect(x,y,panelW,panelH);
+      ctx.fillStyle='#9B2247'; ctx.font='700 18px "Noto Sans",Arial,sans-serif';
+      ctx.fillText(String(spec.legendTitle||'Simbología').toUpperCase(),x+18,y+29);
+      let rowY=y+51;
+      preparedLegend.forEach((entry,index)=>{
+        const item=entry.item;
+        const rowHeight=rowHeights[index];
+        const cy=rowY+Math.min(14,rowHeight/2);
+        ctx.strokeStyle=item.color||'#6F6B66'; ctx.fillStyle=item.color||'#6F6B66';
+        if(item.type==='line'){
+          ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(x+19,cy); ctx.lineTo(x+48,cy); ctx.stroke();
+        }else if(item.type==='icon'&&item.image&&item.image.complete&&item.image.naturalWidth>0){
+          ctx.fillStyle='#FFFFFF';
+          ctx.beginPath();
+          ctx.arc(x+34,cy,13,0,Math.PI*2);
+          ctx.fill();
+          const ratio=item.image.naturalWidth/Math.max(1,item.image.naturalHeight);
+          const drawW=ratio>=1?24:24*ratio;
+          const drawH=ratio>=1?24/ratio:24;
+          ctx.drawImage(item.image,x+34-drawW/2,cy-drawH/2,drawW,drawH);
+        }else if(item.type==='point'){
+          ctx.beginPath(); ctx.arc(x+34,cy,6,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#FFFFFF'; ctx.lineWidth=1.5; ctx.stroke();
+        }else{
+          ctx.globalAlpha=.72; ctx.fillRect(x+20,cy-8,27,16); ctx.globalAlpha=1; ctx.strokeStyle=item.color||'#6F6B66'; ctx.lineWidth=1.5; ctx.strokeRect(x+20,cy-8,27,16);
+        }
+        ctx.fillStyle='#2A2927'; ctx.font='600 17px "Noto Sans",Arial,sans-serif';
+        entry.lines.forEach((line,lineIndex)=>ctx.fillText(line,x+61,rowY+16+lineIndex*19));
+        rowY+=rowHeight;
+      });
+      if(extraLines.length){
+        ctx.fillStyle='#6F6B66'; ctx.font='500 15px "Noto Sans",Arial,sans-serif';
+        extraLines.forEach((line,index)=>ctx.fillText(line,x+18,rowY+17+index*18));
+      }
+      ctx.restore();
+    }
+    ctx.fillStyle='#6F6B66'; ctx.font='600 15px "Noto Sans",Arial,sans-serif';
+    ctx.fillText(String(spec.source||'Fuente: DGMESNIE · SENER'),mapX,mapY+mapH+31);
+    ctx.fillStyle='#9B2247'; ctx.font='700 15px "Noto Sans",Arial,sans-serif'; ctx.textAlign='right';
+    const contourLabel=hasTerritory
+      ?(hasTerritoryBuffer?'GUINDA · TERRITORIO  |  ÁMBAR · BUFFER ANALIZADO':'CONTORNO GUINDA · TERRITORIO ANALIZADO')
+      :'CONTORNO GUINDA · RADIO ANALIZADO';
+    ctx.fillText(contourLabel,mapX+mapW,mapY+mapH+31); ctx.textAlign='left';
+    try{ return canvas.toDataURL('image/png'); }catch(e){ return null; }
+  }
+
+  async _attachReportThematicMaps(report,tariffLocalities){
+    if(!report) return report;
+    const A=this.state.analysis||{};
+    const attach=(key,spec)=>{
+      const section=(report.sections||[]).find(item=>item&&item.key===key);
+      if(!section) return;
+      const dataUrl=this._renderThematicMap(spec,A);
+      if(!dataUrl) return;
+      section.hasMap=true;
+      section.mapDataUrl=dataUrl;
+      section.mapAlt=spec.alt||('Mapa temático de '+String(section.title||'la sección').toLowerCase());
+      section.mapCaption=spec.caption||'Mapa temático recortado al territorio analizado.';
+      section.mapAspect=1440/780;
+    };
+
+    const permitDefinitions=[
+      {key:'perm_elec',label:'Electricidad',color:'#9B2247'},
+      {key:'perm_gn',label:'Gas natural',color:'#2E6FB0'},
+      {key:'perm_glp',label:'Gas LP',color:'#E0A12E'},
+      {key:'perm_pet',label:'Petrolíferos',color:'#C0552E'}
+    ];
+    const permitContexts=permitDefinitions.map(definition=>({
+      ...definition,
+      geo:(A.ranKeys||[]).includes(definition.key)
+        ?((this._analysisFilteredGeo||{})[definition.key]||{type:'FeatureCollection',features:[]})
+        :{type:'FeatureCollection',features:[]}
+    })).filter(context=>(context.geo.features||[]).length);
+    const datasetMapContext=this._reportDatasetMapContext(A);
+    const iconKeys=[];
+    permitContexts.forEach(context=>(context.geo.features||[]).forEach(feature=>{
+      iconKeys.push(this._reportPermitIconKey(context.key,feature.properties));
+    }));
+    (datasetMapContext.geo.features||[]).forEach(feature=>iconKeys.push((feature.properties||{}).iconKey));
+    const centralGeo=(this._analysisFilteredGeo||{}).centrales;
+    const centralIconKey=feature=>this._reportTechIconKey(this._centralTech((feature&&feature.properties)||{}),'chip');
+    if(centralGeo&&(centralGeo.features||[]).length){
+      (centralGeo.features||[]).forEach(feature=>iconKeys.push(centralIconKey(feature)));
+    }
+    const iconImages=await this._loadReportMapIcons(iconKeys);
+    const firstCentralIconKey=centralGeo&&(centralGeo.features||[]).length?centralIconKey(centralGeo.features[0]):null;
+
+    const electricLayers=[];
+    const lineGeo=this._reportLineGeo();
+    const substationGeo=this._reportSubstationGeo();
+    const permitGeo=(this._analysisFilteredGeo||{}).perm_elec;
+    if((lineGeo.features||[]).length) electricLayers.push({geo:lineGeo,style:{color:'#E0A12E',weight:3.5,opacity:.95}});
+    if((substationGeo.features||[]).length) electricLayers.push({geo:substationGeo,style:{color:'#9B2247',fillColor:'#9B2247',radius:7,weight:2}});
+    if(centralGeo&&(centralGeo.features||[]).length) electricLayers.push({
+      geo:centralGeo,
+      cluster:true,
+      clusterRadius:38,
+      style:{
+        color:feature=>this._tecColor(this._centralTech((feature&&feature.properties)||{})),
+        fillColor:feature=>this._tecColor(this._centralTech((feature&&feature.properties)||{})),
+        opacity:.95,radius:6,weight:1.8,
+        iconImage:feature=>iconImages.get(centralIconKey(feature)),
+        iconSize:34,
+        clusterColor:feature=>this._tecColor(this._centralTech((feature&&feature.properties)||{}))
+      }
+    });
+    if(permitGeo&&(permitGeo.features||[]).length) electricLayers.push({
+      geo:permitGeo,
+      cluster:true,
+      clusterRadius:38,
+      style:{
+        color:'#2E6FB0',fillColor:'#2E6FB0',opacity:.92,radius:5,weight:1.5,
+        iconImage:feature=>iconImages.get(this._reportPermitIconKey('perm_elec',feature.properties)),
+        iconSize:32,clusterColor:'#2E6FB0'
+      }
+    });
+    if(electricLayers.length){
+      attach('elec',{
+        layers:electricLayers,
+        legendTitle:'Infraestructura eléctrica',
+        legendItems:[
+          ...((lineGeo.features||[]).length?[{color:'#E0A12E',label:'Líneas de transmisión',type:'line'}]:[]),
+          ...((substationGeo.features||[]).length?[{color:'#9B2247',label:'Subestaciones',type:'point'}]:[]),
+          ...(centralGeo&&(centralGeo.features||[]).length?[{
+            color:'#C0552E',label:'Centrales eléctricas',type:'icon',image:iconImages.get(firstCentralIconKey)
+          }]:[]),
+          ...(permitGeo&&(permitGeo.features||[]).length?[{
+            color:'#2E6FB0',label:'Permisos eléctricos',type:'icon',
+            image:iconImages.get(this._reportPermitIconKey('perm_elec',(permitGeo.features||[])[0].properties))
+          }]:[])
+        ],
+        source:'Fuente: DGMESNIE · SENER · CENACE · inventario de permisos',
+        caption:'Infraestructura y permisos eléctricos contenidos en la cobertura; el contorno guinda delimita el territorio analizado.'
+      });
+    }
+
+    const attachPermitMap=(sectionKey,contexts,options)=>{
+      if(!contexts.length&&!(options.layers||[]).length) return;
+      const permitLegend=new Map();
+      const permitLayers=contexts.map(context=>{
+        (context.geo.features||[]).forEach(feature=>{
+          const iconKey=this._reportPermitIconKey(context.key,feature.properties);
+          const label=this._reportPermitLegendLabel(context.key,feature.properties);
+          const legendKey=context.key+'|'+iconKey+'|'+this._norm(label);
+          const current=permitLegend.get(legendKey)||{
+            color:context.color,
+            label,
+            type:'icon',
+            image:iconImages.get(iconKey),
+            count:0
+          };
+          current.count++;
+          permitLegend.set(legendKey,current);
+        });
+        return {
+          geo:context.geo,
+          cluster:true,
+          clusterRadius:42,
+          style:{
+            color:context.color,
+            fillColor:context.color,
+            opacity:.95,
+            radius:6,
+            weight:1.5,
+            iconImage:feature=>iconImages.get(this._reportPermitIconKey(context.key,feature.properties)),
+            iconSize:34,
+            clusterColor:context.color
+          }
+        };
+      });
+      let legendItems=[...permitLegend.values()].sort((a,b)=>b.count-a.count);
+      const permitLegendLimit=Math.max(3,8-(options.legendItems||[]).length);
+      if(legendItems.length>permitLegendLimit){
+        const others=legendItems.slice(permitLegendLimit-1);
+        legendItems=legendItems.slice(0,permitLegendLimit-1).concat([{
+          color:'#8A9099',
+          label:'Otros tipos',
+          type:'fill',
+          count:others.reduce((sum,item)=>sum+item.count,0)
+        }]);
+      }
+      attach(sectionKey,{
+        layers:[...(options.layers||[]),...permitLayers],
+        legendTitle:options.legendTitle||'Permisos por tipo',
+        legendItems:[
+          ...(options.legendItems||[]),
+          ...legendItems.map(item=>({...item,label:item.label+' · '+item.count.toLocaleString('es-MX')}))
+        ],
+        legendExtra:'Las burbujas agrupan permisos próximos y muestran su cantidad.',
+        source:options.source||'Fuente: CRE · inventarios institucionales DGMESNIE',
+        caption:options.caption||'Permisos contenidos en la cobertura con simbología institucional y agrupación visual de concentraciones.'
+      });
+    };
+
+    const gasContexts=permitContexts.filter(context=>context.key==='perm_gn'||context.key==='perm_glp');
+    const gasLayers=[],gasLegend=[];
+    const sistrangasGeo=(A.ranKeys||[]).includes('ductos_sis')?(this._analysisFilteredGeo||{}).ductos_sis:null;
+    const importDuctGeo=(A.ranKeys||[]).includes('ductos_imp')?(this._analysisFilteredGeo||{}).ductos_imp:null;
+    if(sistrangasGeo&&(sistrangasGeo.features||[]).length){
+      gasLayers.push({geo:sistrangasGeo,style:{color:'#2E6FB0',weight:3.5,opacity:.95}});
+      gasLegend.push({color:'#2E6FB0',label:'Ductos SISTRANGAS',type:'line'});
+    }
+    if(importDuctGeo&&(importDuctGeo.features||[]).length){
+      gasLayers.push({geo:importDuctGeo,style:{color:'#A57F2C',weight:3.2,opacity:.92,dash:[9,5]}});
+      gasLegend.push({color:'#A57F2C',label:'Ductos de importación',type:'line'});
+    }
+    attachPermitMap('permits-gas',gasContexts,{
+      layers:gasLayers,
+      legendItems:gasLegend,
+      legendTitle:'Gas natural y Gas LP',
+      source:'Fuente: CENAGAS / CRE · inventarios institucionales DGMESNIE',
+      caption:'Ductos y permisos de gas natural y Gas LP contenidos en la cobertura; el territorio original se conserva en contorno guinda.'
+    });
+
+    const petroleumContexts=permitContexts.filter(context=>context.key==='perm_pet');
+    attachPermitMap('permits-petroleum',petroleumContexts,{
+      legendTitle:'Petrolíferos por tipo',
+      source:'Fuente: CNE / CRE · inventarios institucionales DGMESNIE',
+      caption:'Permisos de petrolíferos y estaciones de servicio contenidos en la cobertura, agrupados por proximidad.'
+    });
+
+    if((datasetMapContext.geo.features||[]).length){
+      const datasetLegend=new Map();
+      (datasetMapContext.geo.features||[]).forEach(feature=>{
+        const props=feature.properties||{};
+        const legendKey=(props.datasetId||props.datasetName)+'|'+(props.technology||'');
+        const current=datasetLegend.get(legendKey)||{
+          color:props.color||'#1E9CB8',
+          label:props.datasetName+(props.technologyLabel?' · '+props.technologyLabel:''),
+          type:'icon',
+          image:iconImages.get(props.iconKey),
+          count:0
+        };
+        current.count++;
+        datasetLegend.set(legendKey,current);
+      });
+      attach('ds',{
+        layers:[{
+          geo:datasetMapContext.geo,
+          cluster:true,
+          clusterRadius:42,
+          style:{
+            color:feature=>(feature.properties||{}).color||'#1E9CB8',
+            fillColor:feature=>(feature.properties||{}).color||'#1E9CB8',
+            opacity:.96,
+            radius:6,
+            weight:1.5,
+            iconImage:feature=>iconImages.get((feature.properties||{}).iconKey),
+            iconSize:34,
+            clusterColor:feature=>(feature.properties||{}).color||'#1E9CB8'
+          }
+        }],
+        legendTitle:'Datasets seleccionados',
+        legendItems:[...datasetLegend.values()]
+          .sort((a,b)=>b.count-a.count)
+          .map(item=>({...item,label:item.label+' · '+item.count.toLocaleString('es-MX')})),
+        legendExtra:'Las burbujas agrupan proyectos o registros próximos.',
+        source:'Fuente: datasets vinculados por el usuario · DGMESNIE',
+        caption:'PVIRCE, convocatorias y demás datasets activos representados por tecnología dentro del territorio analizado.'
+      });
+    }
+
+    const polosGeo=await this._fetchPolosGeoCache();
+    const polosInAnalysis={
+      type:'FeatureCollection',
+      features:((polosGeo&&polosGeo.features)||[]).filter(feature=>this._analysisFeatureIntersects(A,feature))
+    };
+    if(polosInAnalysis.features.length){
+      attach('podecobi',{
+        layers:[{geo:polosInAnalysis,style:{color:'#9B2247',fillColor:'#9B2247',fillOpacity:.48,opacity:1,weight:3}}],
+        legendTitle:'PODECOBI',
+        legendItems:[{color:'#9B2247',label:'Polo(s) intersectado(s)',type:'fill'}],
+        source:'Fuente: DGMESNIE · declaratorias DOF/SIDOF',
+        caption:'Geometría del PODECOBI intersectado por la cobertura territorial analizada.'
+      });
+    }
+
+    const localityFeatures=Array.isArray(tariffLocalities&&tariffLocalities.mapFeatures)?tariffLocalities.mapFeatures:[];
+    if(localityFeatures.length){
+      const divisions=Array.isArray(tariffLocalities.divisions)?tariffLocalities.divisions:[];
+      const divisionColors=new Map(divisions.map((division,index)=>[this._norm(division),this.ESTADO_PALETTE[index%this.ESTADO_PALETTE.length]]));
+      const priceByDivision=new Map();
+      ((report.tariffs&&report.tariffs.localidades)||[]).forEach(locality=>{
+        if(locality.tarifaGdbt!=null&&!priceByDivision.has(this._norm(locality.division))) priceByDivision.set(this._norm(locality.division),locality.tarifaGdbt);
+      });
+      const divisionGeo=(this._analysisFilteredGeo||{}).tarifas_div;
+      const tariffLayers=[{
+        geo:{type:'FeatureCollection',features:localityFeatures},
+        style:{
+          color:feature=>divisionColors.get(this._norm((feature.properties||{})['DIVISIÓN']||(feature.properties||{}).DIVISION))||'#A57F2C',
+          fillColor:feature=>divisionColors.get(this._norm((feature.properties||{})['DIVISIÓN']||(feature.properties||{}).DIVISION))||'#A57F2C',
+          fillOpacity:.58,opacity:.72,weight:1
+        }
+      }];
+      if(divisionGeo&&(divisionGeo.features||[]).length){
+        tariffLayers.push({geo:divisionGeo,style:{color:'#5E5953',fillOpacity:0,opacity:.9,weight:2.8}});
+      }
+      attach('tarifas-electricas',{
+        layers:tariffLayers,
+        legendTitle:'División y tarifa GDBT',
+        legendItems:divisions.map(division=>{
+          const price=priceByDivision.get(this._norm(division));
+          return {
+            color:divisionColors.get(this._norm(division))||'#A57F2C',
+            label:division+(price==null?'':' · '+Number(price).toLocaleString('es-MX',{minimumFractionDigits:3,maximumFractionDigits:3})+' $/kWh'),
+            type:'fill'
+          };
+        }),
+        legendExtra:tariffLocalities.mapOmitted
+          ?'Vista generalizada: '+tariffLocalities.mapOmitted.toLocaleString('es-MX')+' polígonos se omiten sólo del mapa.'
+          :'Cada polígono corresponde a una localidad intersectada.',
+        source:'Fuente: CFE / CRE · histórico DGMESNIE · marco de localidades tarifarias',
+        caption:'Localidades intersectadas coloreadas por división. La tarifa mostrada es la referencia GDBT aplicable según división, no un precio exclusivo de cada localidad.'
+      });
+    }
+    return report;
+  }
+
+  _hasCompletedReportAnalysis(A){
+    const analysis=A||this.state.analysis||{};
+    const hasLayers=Array.isArray(analysis.ranKeys)&&analysis.ranKeys.length>0;
+    const hasDatasets=(this.state.datasets||[]).some(dataset=>dataset&&dataset.active);
+    return !!(analysis.lat!=null&&!analysis.stale&&(hasLayers||hasDatasets));
   }
 
   _buildReport(){
     const A = this.state.analysis;
-    if (!A.lat || !A.ranKeys.length) return Promise.resolve(null);
+    if (!this._hasCompletedReportAnalysis(A)) return Promise.resolve(null);
     const L = this.state.layers;
     const feats = k => ((this._genericFeats||{})[k]||[]);
     const names = (k, n) => { const seen=new Set(), list=[]; feats(k).forEach(f=>{ const nm=f.nom; if(nm && !seen.has(nm)){ seen.add(nm); if(list.length<(n||8)) list.push(nm); } }); return { total:seen.size, list }; };
@@ -5321,9 +6897,9 @@ class Component extends DCLogic {
       rows: [], chips: [], hasChips:false, hasRows:false,
       hasTable:true, table:{ head:['Subestación','Entidad','Tensión','Distancia'], rows: subs.map(s=>[s.name, s.ent||'—', s.kv? this._nf(s.kv)+' kV':'—', s.dist.toFixed(1)+' km']) },
       hasTable2:true, table2:{ head:['Línea de transmisión','Tensión','Longitud','Distancia'], rows: lines.map(l=>[l.name, l.kv? this._nf(l.kv)+' kV':'—', l.km? l.km.toFixed(0)+' km':'—', l.dist.toFixed(1)+' km']) } });
-    const permitReport=this._buildEnergyPermitReport(ran,feats);
-    if(permitReport.section) sections.push(permitReport.section);
-    if(permitReport.chart) charts.push(permitReport.chart);
+    const permitReport=this._buildEnergyPermitReport(A,ran,feats);
+    if(Array.isArray(permitReport.sections)) sections.push(...permitReport.sections);
+    if(Array.isArray(permitReport.charts)) charts.push(...permitReport.charts);
     // 2 · Impacto social — población indígena
     const socKeys = [['atlas_pi','Pueblos indígenas (atlas)'],['lenguas','Lenguas indígenas'],['loc_ind','Localidades indígenas'],['reg_ind','Regiones indígenas'],['ruta_wx','Ruta Wixárika']];
     const socRows = socKeys.map(([k,lab]) => [lab, cntTxt(k)]);
@@ -5379,7 +6955,7 @@ class Component extends DCLogic {
       const MAXR = 14;
       const tRows = inRows.slice(0, MAXR).map(({r,d}) => {
         const tec = this._dsRowTech(r);
-        const cap = (+r.capacidad_mw) || this._dsNum(r, /capacidad|^mw$/i);
+        const cap = this._dsCapacityMw(r);
         const ent = this.CVE_ENT[r.cve_ent] || this._dsField(r, /entidad|nom_ent|^estado$/i) || '—';
         return [ this._dsRowName(r).slice(0,36), String(d.name).slice(0,26), tec?this._tecLabel(tec):'—', cap?this._nf(cap)+' MW':'—', String(ent).slice(0,16) ];
       });
@@ -5433,14 +7009,18 @@ class Component extends DCLogic {
     }else if(A.analysisGeometry&&Number(A.bufferKm||0)===0&&A.targetKind==='state'){
       intersectedEntidades=[A.targetState||A.estado].filter(Boolean);
     }
-    const geoLink = `https://www.google.com/maps/search/?api=1&query=${A.lat.toFixed(5)}%2C${A.lng.toFixed(5)}`;
-    const osmLink = `https://www.openstreetmap.org/?mlat=${A.lat.toFixed(5)}&mlon=${A.lng.toFixed(5)}#map=12/${A.lat.toFixed(5)}/${A.lng.toFixed(5)}`;
+    const centroidFeature=this._analysisCentroidFeature(A);
+    const centroidCoordinates=centroidFeature&&centroidFeature.geometry&&centroidFeature.geometry.coordinates;
+    const centerLng=Array.isArray(centroidCoordinates)&&isFinite(centroidCoordinates[0])?Number(centroidCoordinates[0]):Number(A.lng);
+    const centerLat=Array.isArray(centroidCoordinates)&&isFinite(centroidCoordinates[1])?Number(centroidCoordinates[1]):Number(A.lat);
+    const geoLink = `https://www.google.com/maps/search/?api=1&query=${centerLat.toFixed(5)}%2C${centerLng.toFixed(5)}`;
+    const osmLink = `https://www.openstreetmap.org/?mlat=${centerLat.toFixed(5)}&mlon=${centerLng.toFixed(5)}#map=12/${centerLat.toFixed(5)}/${centerLng.toFixed(5)}`;
     const target=this._analysisTarget(A,muni,gerKey);
     const metaRows = [
       ['Tipo de objetivo', target.typeLabel],
       ['Objetivo evaluado', target.label],
       ['Referencia de ubicación', target.detail],
-      ['Coordenadas del centro', `${A.lat.toFixed(5)}, ${A.lng.toFixed(5)}`],
+      ['Centroide de referencia', `${centerLat.toFixed(5)}, ${centerLng.toFixed(5)}`],
       ['Cobertura de análisis', this._analysisCoverageLabel(A,false)],
       ['Superficie analizada', (this._analysisAreaKm2(A)||0).toLocaleString('es-MX',{maximumFractionDigits:1})+' km²'],
       ['Estado', A.targetKind==='gcr'?'Varias entidades':(A.targetState || A.estado || '—')],
@@ -5486,20 +7066,26 @@ class Component extends DCLogic {
     const rep = await this._buildReport();
     if (!rep) return null;
     const inegiArea=this._resolveInegiArea(this.state.analysis);
-    const tariffDivisions=this._tariffDivisionsInAnalysis();
-    const [sec,inegiContext,tariffContext] = await Promise.all([
+    const [sec,inegiContext,tariffLocalities,fuelPriceContext] = await Promise.all([
       rep._buildPolosSectionPromise,
       this._loadInegiReportContext(inegiArea),
-      this._loadTariffReportContext(tariffDivisions)
+      this._loadTariffLocalitiesInAnalysis(this.state.analysis).catch(()=>null),
+      this._loadFuelPricesInAnalysis(this.state.analysis).catch(()=>null)
     ]);
+    const tariffDivisions=tariffLocalities&&Array.isArray(tariffLocalities.divisions)&&tariffLocalities.divisions.length
+      ?tariffLocalities.divisions
+      :this._tariffDivisionsInAnalysis();
+    const tariffContext=await this._loadTariffReportContext(tariffDivisions);
     if (sec && !rep.sections.find(s => s.key === 'podecobi')) {
       // Inserta PODECOBI justo después de la sección eléctrica (índice 1) o al inicio
       const idx = rep.sections.findIndex(s => s.key === 'elec');
       if (idx >= 0) rep.sections.splice(idx + 1, 0, sec);
       else rep.sections.unshift(sec);
     }
-    this._appendTariffsToReport(rep,tariffContext);
+    this._appendTariffsToReport(rep,tariffContext,tariffLocalities);
     this._appendInegiToReport(rep,inegiContext);
+    this._appendFuelPricesToReport(rep,fuelPriceContext);
+    await this._attachReportThematicMaps(rep,tariffLocalities);
     return rep;
   }
 
@@ -5682,7 +7268,7 @@ class Component extends DCLogic {
   };
   onOpenReportSend = async () => {
     const A = this.state.analysis || {};
-    const hasRun = !!(A.lat!=null && A.ranKeys && A.ranKeys.length && !A.stale);
+    const hasRun = this._hasCompletedReportAnalysis(A);
     if (!hasRun) { this._toast('Primero ejecuta una corrida de análisis para habilitar el envío'); return; }
     if (!this._report) {
       const rep = await this._buildReportAsync();
@@ -5877,6 +7463,12 @@ class Component extends DCLogic {
     if(n===6 && /^n[úu]m/.test(normalizedHead[0]) && normalizedHead[1].includes('polo')){
       ratios=[.07,.27,.14,.15,.13,.24];
     }
+    if(n===8 && normalizedHead[0]==='cvegeo' && normalizedHead[1].includes('localidad')){
+      ratios=[.12,.19,.13,.12,.08,.13,.08,.15];
+    }
+    if(n===7 && normalizedHead[1].includes('permiso') && normalizedHead.some(value=>value.includes('centroide'))){
+      ratios=[.10,.15,.23,.15,.11,.12,.14];
+    }
     const first=n>=5?.30:(n===2?.56:.42);
     const widths=ratios?ratios.map(r=>width*r):[width*first];
     if(!ratios) for(let i=1;i<n;i++) widths.push(width*(1-first)/(n-1));
@@ -6028,7 +7620,9 @@ class Component extends DCLogic {
       doc.setFillColor(224,161,46); doc.rect(x,top,cardW,4,'F');
       const chartGroup=chart.group==='inegi'
         ?'CONTEXTO TERRITORIAL · INEGI'
-        :(chart.group==='tariffs'?'PRECIOS ENERGÉTICOS':'INFRAESTRUCTURA ELÉCTRICA');
+        :(chart.group==='tariffs'||chart.group==='fuel-prices'
+          ?'PRECIOS ENERGÉTICOS'
+          :(chart.group==='energy-permits'?'PERMISOS ENERGÉTICOS':'INFRAESTRUCTURA ELÉCTRICA'));
       doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(cfg.landscape?8:7.5);
       doc.setCharSpace(.55); doc.text(chartGroup,x+15,top+20); doc.setCharSpace(0);
       doc.setTextColor(28,27,26); this._setReportFont(doc,'title','bold'); doc.setFontSize(cfg.landscape?16:14);
@@ -6229,7 +7823,7 @@ class Component extends DCLogic {
       const rowUseful=rowVals.some(v=>v&&!/^(no analizada|ninguno)/.test(v));
       const ch=(sec.chips&&sec.chips.length>0);
       const sub=(sec.subSections&&sec.subSections.length>0);
-      return t1||t2||(sec.hasRows&&rowUseful)||(sec.hasChips&&ch)||sub;
+      return t1||t2||(sec.hasRows&&rowUseful)||(sec.hasChips&&ch)||sub||!!sec.hasMap;
     };
     const nonEmptySections=sections.filter(hasContent);
     const indexEntries=[
@@ -6258,6 +7852,21 @@ class Component extends DCLogic {
         doc.text(line,M,y); y+=12;
       });
       if(intro.length) y+=7;
+      if(sec.hasMap&&sec.mapDataUrl){
+        const estimatedMapHeight=285;
+        if(y+estimatedMapHeight>MAX_Y) nextSectionPage();
+        y=this._pdfReportThematicMap(doc,sec,{
+          x:M,y,width:W-M*2,maxHeight:250,landscape:false
+        });
+      }
+      const sectionCharts=Array.isArray(sec.charts)?sec.charts:[];
+      const chartOffset=sec.key==='inegi'?Math.min(2,sectionCharts.length):(sec.key==='tarifas-electricas'?Math.min(1,sectionCharts.length):0);
+      sectionCharts.slice(chartOffset).forEach(chart=>{
+        if(y+278>MAX_Y) nextSectionPage();
+        y=this._pdfReportCharts(doc,[chart],{
+          x:M,y,width:W-M*2,maxY:MAX_Y,landscape:false
+        })+14;
+      });
 
       const drawTable=(table,gold)=>{
         if(!table||!Array.isArray(table.head)||!table.head.length) return;
@@ -6532,7 +8141,7 @@ class Component extends DCLogic {
       const rowUseful=rowVals.some(v=>v&&!/^(no analizada|ninguno)/.test(v));
       const ch=(sec.chips&&sec.chips.length>0);
       const sub=(sec&&sec.subSections&&sec.subSections.length>0);
-      return t1||t2||(sec.hasRows&&rowUseful)||(sec.hasChips&&ch)||sub;
+      return t1||t2||(sec.hasRows&&rowUseful)||(sec.hasChips&&ch)||sub||!!(sec&&sec.hasMap);
     };
     const nonEmptySections=sections.filter(hasContent);
     nonEmptySections.forEach((sec)=>{
@@ -6557,6 +8166,21 @@ class Component extends DCLogic {
         doc.setTextColor(111,107,102); this._setReportFont(doc,'body','normal'); doc.setFontSize(9.5); doc.text(line,M,y); y+=13;
       });
       if(intro.length) y+=8;
+      if(sec&&sec.hasMap&&sec.mapDataUrl){
+        const estimatedMapHeight=285;
+        if(y+estimatedMapHeight>MAX_Y) nextSectionPage();
+        y=this._pdfReportThematicMap(doc,sec,{
+          x:M,y,width:W-M*2,maxHeight:245,landscape:true
+        });
+      }
+      const sectionCharts=Array.isArray(sec&&sec.charts)?sec.charts:[];
+      const chartOffset=sec&&sec.key==='inegi'?Math.min(2,sectionCharts.length):(sec&&sec.key==='tarifas-electricas'?Math.min(1,sectionCharts.length):0);
+      sectionCharts.slice(chartOffset).forEach(chart=>{
+        if(y+270>MAX_Y) nextSectionPage();
+        y=this._pdfReportCharts(doc,[chart],{
+          x:M,y,width:W-M*2,maxY:MAX_Y,landscape:true
+        })+12;
+      });
 
       const normalizeTable=(table)=>{
         const head=Array.isArray(table&&table.head)?table.head:[];
@@ -6669,12 +8293,16 @@ class Component extends DCLogic {
   // Filas del análisis de zona (si se ejecutó) — alimentan Excel, PDF y PNG
   _anaRows(){
     const A=this.state.analysis;
-    if(!A.lat || !A.ranKeys.length) return [];
+    if(!this._hasCompletedReportAnalysis(A)) return [];
+    const centroid=this._analysisCentroidFeature(A);
+    const coordinates=centroid&&centroid.geometry&&centroid.geometry.coordinates;
+    const centerLat=Array.isArray(coordinates)&&isFinite(coordinates[1])?Number(coordinates[1]):Number(A.lat);
+    const centerLng=Array.isArray(coordinates)&&isFinite(coordinates[0])?Number(coordinates[0]):Number(A.lng);
     const rows=[
       ['Zona de análisis',A.targetLabel||A.estado||'—',''],
       ['Cobertura',this._analysisCoverageLabel(A,false),''],
       ['Superficie analizada',+(this._analysisAreaKm2(A)||0).toFixed(1),'km²'],
-      ['Coordenadas del centro',A.lat.toFixed(4)+', '+A.lng.toFixed(4),'']
+      ['Centroide de referencia',centerLat.toFixed(4)+', '+centerLng.toFixed(4),'']
     ];
     A.ranKeys.forEach(k=>{ const v=this.state.layers[k]; if(v) rows.push([v.label, v.count||0, 'elementos']); });
     return rows;
@@ -6800,6 +8428,25 @@ class Component extends DCLogic {
     const px=x+(maxW-w)/2;
     doc.addImage(url,'PNG',px,y,w,h); doc.setDrawColor(236,232,226); doc.setLineWidth(1); doc.rect(px,y,w,h);
     return h;
+  }
+  _pdfReportThematicMap(doc,section,cfg){
+    const dataUrl=section&&section.mapDataUrl;
+    if(!dataUrl) return cfg.y;
+    const aspect=Number(section.mapAspect)||1.84;
+    let width=cfg.width,height=width/aspect;
+    if(height>cfg.maxHeight){ height=cfg.maxHeight; width=height*aspect; }
+    const x=cfg.x+(cfg.width-width)/2;
+    try{
+      doc.addImage(dataUrl,'PNG',x,cfg.y,width,height,undefined,'FAST');
+      doc.setDrawColor(226,220,212); doc.setLineWidth(.8); doc.rect(x,cfg.y,width,height);
+    }catch(e){ return cfg.y; }
+    let y=cfg.y+height+11;
+    const caption=String(section.mapCaption||'Mapa temático recortado al territorio analizado.');
+    doc.setTextColor(111,107,102); this._setReportFont(doc,'body','italic'); doc.setFontSize(cfg.landscape?7.8:7.2);
+    const lines=doc.splitTextToSize(caption,cfg.width);
+    doc.text(lines,cfg.x,y);
+    y+=lines.length*(cfg.landscape?9:8.3)+9;
+    return y;
   }
 
   // ── helpers de dibujo en canvas ──
@@ -7278,6 +8925,12 @@ class Component extends DCLogic {
     const tariffPlan=R.tariffs&&Array.isArray(R.tariffs.registros)&&R.tariffs.registros.length
       ?{source:R.tariffs,name:sheetName('Tarifas · histórico')}
       :null;
+    const tariffLocalityPlan=R.tariffs&&Array.isArray(R.tariffs.localidades)&&R.tariffs.localidades.length
+      ?{source:R.tariffs,name:sheetName('Localidades · tarifa')}
+      :null;
+    const fuelPricePlan=R.fuelPrices&&Array.isArray(R.fuelPrices.estaciones)&&R.fuelPrices.estaciones.length
+      ?{source:R.fuelPrices,name:sheetName('Estaciones · precios CNE')}
+      :null;
     const quoteName=(name)=>String(name).replace(/'/g,"''");
     const touch=(ws,r,c)=>{
       const point={r,c};
@@ -7393,6 +9046,8 @@ class Component extends DCLogic {
       ...datasetPlans.map(p=>({name:p.name,type:'Dataset fuente completo',description:p.dataset.name||'Dataset activo'})),
       ...permitPlans.map(p=>({name:p.name,type:'Inventario territorial',description:'Permisos de '+(p.source.label||'energía')+' en la cobertura'})),
       ...(tariffPlan?[{name:tariffPlan.name,type:'Histórico territorial',description:'Cuadros tarifarios completos de las divisiones intersectadas'}]:[]),
+      ...(tariffLocalityPlan?[{name:tariffLocalityPlan.name,type:'Detalle territorial',description:'Localidades intersectadas y tarifa GDBT aplicable según división'}]:[]),
+      ...(fuelPricePlan?[{name:fuelPricePlan.name,type:'Precios energéticos',description:'Precios reportados por estación de servicio y distancia al centroide'}]:[]),
       {name:N.sources,type:'Trazabilidad',description:'Fuentes, cobertura y notas metodológicas'}
     ];
     const indexRows=[['ÍNDICE DEL LIBRO'],['Seleccione una hoja para navegar dentro del archivo.'],[],['Hoja','Tipo','Contenido'],...allEntries.map(e=>[e.name,e.type,e.description])];
@@ -7495,7 +9150,7 @@ class Component extends DCLogic {
 
     const permitSheets=permitPlans.map(plan=>{
       const source=plan.source||{}, sourceRows=Array.isArray(source.rows)?source.rows:[];
-      const preferred=['nombre','numeroPermiso','mercado','entidad','municipio','estatus','tipoPermiso','tecnologia','clasificacion','capacidad','unidadCapacidad','capacidadTexto','fechaOtorgamiento','fechaOperacion','fuente'];
+      const preferred=['nombre','numeroPermiso','mercado','entidad','municipio','estatus','tipoPermiso','tecnologia','clasificacion','capacidad','unidadCapacidad','capacidadTexto','distanciaCentroideKm','fechaOtorgamiento','fechaOperacion','fuente'];
       const available=new Set(sourceRows.flatMap(row=>row&&typeof row==='object'?Object.keys(row):[]));
       const fields=[
         ...preferred.filter(field=>available.has(field)),
@@ -7506,7 +9161,7 @@ class Component extends DCLogic {
         municipio:'Municipio',estatus:'Estatus',tipoPermiso:'Tipo de permiso',tecnologia:'Tecnología',
         clasificacion:'Clasificación',capacidad:'Capacidad',unidadCapacidad:'Unidad',
         capacidadTexto:'Capacidad reportada',fechaOtorgamiento:'Fecha de otorgamiento',
-        fechaOperacion:'Inicio de operaciones',fuente:'Fuente'
+        fechaOperacion:'Inicio de operaciones',distanciaCentroideKm:'Distancia al centroide (km)',fuente:'Fuente'
       };
       const tableFields=fields.length?fields:['nombre'];
       const header=tableFields.map(field=>headers[field]||field);
@@ -7554,6 +9209,75 @@ class Component extends DCLogic {
       return {name:tariffPlan.name,ws:finish(ws,widths([header,...data.slice(0,999)],fields.map(()=>14)),8)};
     })():null;
 
+    const tariffLocalitySheet=tariffLocalityPlan?(()=>{
+      const source=tariffLocalityPlan.source||{};
+      const localities=Array.isArray(source.localidades)?source.localidades:[];
+      const header=['CVEGEO','Localidad','Municipio','Código de municipio','Entidad','Ámbito','División tarifaria','Tarifa de referencia','GDBT','Unidad','Distancia al centroide (km)','Periodo'];
+      const data=localities.map(locality=>[
+        locality&&locality.cvegeo||'',
+        locality&&locality.nombre||'',
+        locality&&locality.municipio||'',
+        locality&&locality.municipioCodigo||'',
+        locality&&locality.entidad||'',
+        locality&&locality.ambito||'',
+        locality&&locality.division||'',
+        locality&&locality.tarifaReferencia||'GDBT',
+        locality&&locality.tarifaGdbt==null?'':Number(locality.tarifaGdbt),
+        locality&&locality.unidad||'$/kWh',
+        locality&&Number.isFinite(locality.distanciaKm)?Number(locality.distanciaKm):'',
+        locality&&locality.periodo||source.periodo||''
+      ]);
+      const rows=[
+        [],[],[],[],[],
+        ['Nota metodológica','La tarifa corresponde a la división eléctrica aplicable; no es un precio exclusivo de la localidad ni una tarifa vigente.'],
+        ['Localidades intersectadas',localities.length,'Divisiones',Array.isArray(source.divisiones)?source.divisiones.length:0],
+        header,
+        ...data
+      ];
+      const ws=X.utils.aoa_to_sheet(rows);
+      titleBlock(ws,'Localidades y tarifa eléctrica aplicable',
+        'Detalle completo de las localidades contenidas en la geometría analizada.',
+        header.length-1);
+      ensure(ws,5,0).s=ST.gold; ensure(ws,5,1).s=ST.note;
+      ensure(ws,6,0).s=ST.gold; ensure(ws,6,1).s=numberStyle(ST.cell,ensure(ws,6,1));
+      ensure(ws,6,2).s=ST.gold; ensure(ws,6,3).s=numberStyle(ST.cell,ensure(ws,6,3));
+      paintTable(ws,7,rows.length-1,header.length,true);
+      return {name:tariffLocalityPlan.name,ws:finish(ws,widths([header,...data.slice(0,999)],[13,28,26,18,24,12,23,18,14,12,22,18]),8)};
+    })():null;
+
+    const fuelPriceSheet=fuelPricePlan?(()=>{
+      const source=fuelPricePlan.source||{};
+      const stations=Array.isArray(source.estaciones)?source.estaciones:[];
+      const header=['Estación','Número de permiso','Place ID CNE','Latitud','Longitud','Regular ($/l)','Premium ($/l)','Diésel ($/l)','Distancia al centroide (km)'];
+      const data=stations.map(station=>[
+        station&&station.nombre||'',
+        station&&station.numeroPermiso||'',
+        station&&station.placeId!=null?Number(station.placeId):'',
+        station&&Number.isFinite(Number(station.latitud))?Number(station.latitud):'',
+        station&&Number.isFinite(Number(station.longitud))?Number(station.longitud):'',
+        station&&station.regular!=null&&Number.isFinite(Number(station.regular))&&Number(station.regular)>0?Number(station.regular):'',
+        station&&station.premium!=null&&Number.isFinite(Number(station.premium))&&Number(station.premium)>0?Number(station.premium):'',
+        station&&station.diesel!=null&&Number.isFinite(Number(station.diesel))&&Number(station.diesel)>0?Number(station.diesel):'',
+        station&&Number.isFinite(Number(station.distanciaKm))?Number(station.distanciaKm):''
+      ]);
+      const rows=[
+        [],[],[],[],[],
+        ['Fuente y consulta',(source.fuente||'CNE · precios reportados por permisionarios')+' · '+String(source.fechaConsulta||R.date||'')],
+        ['Estaciones en la cobertura',stations.length,'Modo',source.esRespaldo?'Último dato válido':'Consulta actual'],
+        header,
+        ...data
+      ];
+      const ws=X.utils.aoa_to_sheet(rows);
+      titleBlock(ws,'Precios de combustibles por estación de servicio',
+        'Regular, Premium y Diésel reportados por permisionarios; distancia calculada respecto del centroide del objetivo evaluado.',
+        header.length-1);
+      ensure(ws,5,0).s=ST.gold; ensure(ws,5,1).s=ST.note;
+      ensure(ws,6,0).s=ST.gold; ensure(ws,6,1).s=numberStyle(ST.cell,ensure(ws,6,1));
+      ensure(ws,6,2).s=ST.gold; ensure(ws,6,3).s=ST.note;
+      paintTable(ws,7,rows.length-1,header.length,true);
+      return {name:fuelPricePlan.name,ws:finish(ws,widths([header,...data.slice(0,999)],[34,24,13,13,13,16,16,16,24]),8)};
+    })():null;
+
     const sourceRows=[
       [],[],[],[],[],
       ['Fuente o nota','Detalle','Registros','Campos'],
@@ -7566,9 +9290,15 @@ class Component extends DCLogic {
       ...(R.inegi?[['INEGI','Banco de Indicadores y DENUE · consulta territorial '+(R.inegi.queriedAt||R.date||this._stamp()),Array.isArray(R.inegi.indicators)?R.inegi.indicators.length:0,'Indicadores']]:[]),
       ...(R.tariffs?[[
         'Tarifas eléctricas',
-        (R.tariffs.fuente||'CRE / CFE · Histórico DGMESNIE')+' · '+this._tariffPeriodLabel(R.tariffs.periodo)+' · no vigente',
-        Array.isArray(R.tariffs.registros)?R.tariffs.registros.length:0,
-        'Registros tarifarios'
+        (R.tariffs.fuente||'CRE / CFE · Histórico DGMESNIE')+' · '+this._tariffPeriodLabel(R.tariffs.periodo)+' · tarifa por división, no vigente',
+        (Array.isArray(R.tariffs.registros)?R.tariffs.registros.length:0)+(Array.isArray(R.tariffs.localidades)?R.tariffs.localidades.length:0),
+        'Registros tarifarios y localidades'
+      ]]:[]),
+      ...(R.fuelPrices?[[
+        'Precios por estación CNE',
+        (R.fuelPrices.fuente||'CNE · precios reportados por permisionarios')+' · consulta '+String(R.fuelPrices.fechaConsulta||R.date||''),
+        Array.isArray(R.fuelPrices.estaciones)?R.fuelPrices.estaciones.length:0,
+        'Estaciones con precio'
       ]]:[]),
       ...activeDatasets.map(d=>[d.name||'Dataset activo',d.url||'Fuente conectada',Array.isArray(d.rows)?d.rows.length:0,Array.isArray(d.fields)?d.fields.length:0]),
       ...permitPlans.map(plan=>{
@@ -7595,6 +9325,8 @@ class Component extends DCLogic {
     datasetSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
     permitSheets.forEach(p=>X.utils.book_append_sheet(wb,p.ws,p.name));
     if(tariffSheet) X.utils.book_append_sheet(wb,tariffSheet.ws,tariffSheet.name);
+    if(tariffLocalitySheet) X.utils.book_append_sheet(wb,tariffLocalitySheet.ws,tariffLocalitySheet.name);
+    if(fuelPriceSheet) X.utils.book_append_sheet(wb,fuelPriceSheet.ws,fuelPriceSheet.name);
     X.utils.book_append_sheet(wb,sources,N.sources);
 
     X.writeFile(wb,'DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.xlsx',{cellStyles:true,bookSST:true});
@@ -7942,7 +9674,7 @@ class Component extends DCLogic {
       onSubmitReportSend: this.onSubmitReportSend,
       onWmToggle: () => { const wmOn = !S.wmOn; this.setState({ wmOn }); this._toast(wmOn ? 'Marca de agua activada: logo SENER + fecha en el mapa exportado' : 'Marca de agua desactivada'); },
       wmBtnStyle: 'display:flex;align-items:center;gap:6px;padding:9px 11px;border:1px solid '+(S.wmOn?'#E0A12E':'rgba(255,255,255,.28)')+';background:'+(S.wmOn?'rgba(224,161,46,.22)':'none')+';color:'+(S.wmOn?'#E0A12E':'rgba(255,255,255,.9)')+';border-radius:9px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;flex:none;white-space:nowrap',
-      reportBtnVisible: !!(S.selected && S.selected.isAnaSummary && S.analysis.ranKeys.length),
+      reportBtnVisible: !!(S.selected && S.selected.isAnaSummary && this._hasCompletedReportAnalysis(S.analysis)),
       reportDate: (this._report||{}).date || '',
       reportEyebrow: ((this._report||{}).target||{}).eyebrow || 'Evaluación de sitio estratégico',
       reportMeta: ((this._report||{}).meta||[]).map(r => ({ label:r[0], value:r[1] })),
@@ -7960,13 +9692,13 @@ class Component extends DCLogic {
       reportSendOpen: !!S.reportSendOpen,
       reportSendFmtPdf: S.reportSendFmt!=='pdf16x9',
       reportSendFmtPpt: S.reportSendFmt==='pdf16x9',
-      reportSendReady: !!(S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale),
-      reportSendDisabled: !(S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale),
-      reportSendTitle: (S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale)
+      reportSendReady: this._hasCompletedReportAnalysis(S.analysis),
+      reportSendDisabled: !this._hasCompletedReportAnalysis(S.analysis),
+      reportSendTitle: this._hasCompletedReportAnalysis(S.analysis)
         ? 'Enviar reporte por correo'
         : 'Ejecuta una corrida de análisis para habilitar el envío',
       reportSendTopBtnStyle: (() => {
-        const on = !!(S.analysis && S.analysis.lat!=null && S.analysis.ranKeys && S.analysis.ranKeys.length && !S.analysis.stale);
+        const on = this._hasCompletedReportAnalysis(S.analysis);
         return 'display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid '+(on?'#9B2247':'#D8D3CC')+';background:'+(on?'#fff':'#F2F0ED')+';color:'+(on?'#9B2247':'#9A958E')+';border-radius:8px;font-size:11.5px;font-weight:700;cursor:'+(on?'pointer':'not-allowed')+';font-family:inherit';
       })(),
       onSendFmtPdf: () => this.setState({ reportSendFmt:'pdf' }),
