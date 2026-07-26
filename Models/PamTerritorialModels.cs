@@ -72,7 +72,9 @@ public sealed class PamTerritorialGeoJsonMeta
     public int Ubicaciones { get; init; }
     public int ProyectosValidados { get; init; }
     public int ProyectosAsociadosRed { get; init; }
+    public int ProyectosAsociadosConvocatoria { get; init; }
     public int AsociacionesSugeridas { get; init; }
+    public int AsociacionesConvocatoria { get; init; }
 }
 
 public sealed class PamTerritorialFeature

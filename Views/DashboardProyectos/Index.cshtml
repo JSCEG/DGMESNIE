@@ -1523,6 +1523,7 @@ class Component extends DCLogic {
     { key:'subestaciones', cat:'Red eléctrica',          label:'Subestaciones eléctricas',   code:'SE', color:'#9B2247', type:'point', analysis:true,     src:'subestaciones', on:false },
     { key:'lineas',        cat:'Red eléctrica',          label:'Líneas de transmisión',      code:'LT', color:'#E0A12E', type:'line', analysis:true,      src:'lineas',     on:false },
     { key:'red_grafo',     cat:'Red eléctrica',          label:'Grafo eléctrico navegable',  code:'GR', color:'#6B3654', type:'graph', lazy:true, compactPoints:true, src:'/DashboardProyectos/RedElectrica/Grafo/GeoJson', on:false },
+    { key:'conv2_red_gap', cat:'Red eléctrica',          label:'Vacíos de red · 2ª convocatoria', code:'C2', color:'#A57F2C', type:'geo', analysis:false, lazy:true, compactPoints:true, src:'/DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/GeoJson', on:false },
     { key:'centrales',     cat:'Red eléctrica',          label:'Centrales eléctricas',       code:'CE', color:'#C0552E', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/geojson/Centrales_El%C3%A9ctricas_privadas_y_de_CFE.geojson' },
     // OJO: municipios_sin_electrificar.geojson responde 404 en el CDN (auditoría 2026-07) — la capa
     // falla con aviso y ya no aborta el análisis; restaurar src cuando la fuente vuelva a publicarse.
@@ -2234,8 +2235,11 @@ class Component extends DCLogic {
         });
       });
       const catalogCount=(items||[]).length;
-      const associatedCount=(items||[]).filter(item=>preciseIds.has(Number(item.proyectoId))).length;
-      const regionalCount=Math.max(0,catalogCount-associatedCount);
+      const preciseCount=(items||[]).filter(item=>preciseIds.has(Number(item.proyectoId))).length;
+      const serverMeta=source.meta||{};
+      const associatedRedCount=Number(serverMeta.proyectosAsociadosRed||0);
+      const associatedConv2Count=Number(serverMeta.proyectosAsociadosConvocatoria||0);
+      const regionalCount=Math.max(0,catalogCount-preciseCount);
       const prepared={
         ...source,
         features:[...originalFeatures,...regionalFeatures],
@@ -2243,7 +2247,9 @@ class Component extends DCLogic {
           ...(source.meta||{}),
           catalogoProyectos:catalogCount,
           proyectos:catalogCount,
-          proyectosAsociadosRed:associatedCount,
+          proyectosConUbicacionPrecisa:preciseCount,
+          proyectosAsociadosRed:associatedRedCount,
+          proyectosAsociadosConvocatoria:associatedConv2Count,
           proyectosRegionales:regionalCount,
           elementosAsociados:originalFeatures.length,
           representacionesRegionales:regionalFeatures.length
@@ -2273,7 +2279,9 @@ class Component extends DCLogic {
         :this._centroid(geometry);
       lat=center[0]; lng=center[1];
       precision=detailLocation.esAsociacionSugerida
-        ?'asociada al catálogo de red'
+        ?(detailLocation.metodoUbicacion==='cruce_segunda_convocatoria_v1'
+          ?'asociada mediante Segunda Convocatoria'
+          :'asociada al catálogo de red')
         :(detailLocation.precisionUbicacion||'exacta');
       const geometryType=String(detailLocation.tipoGeometria||(detailLocation.geometria&&detailLocation.geometria.type)||'');
       const isSinglePoint=locations.length===1&&geometryType==='Point';
@@ -2350,6 +2358,8 @@ class Component extends DCLogic {
         ?highSuggestions.length+' confianza alta · '+reviewSuggestions.length+' por revisar'
         :'0'],
       ['Subgrafo eléctrico','Consultando conexiones…'],
+      ['Segunda convocatoria','Consultando evidencia…'],
+      ['Diagnóstico de red','Consultando subestaciones y líneas…'],
       ['Precisión',precise
         ?(primary.esAsociacionSugerida?'asociada · pendiente de validación':(primary.precisionUbicacion||'validada'))
         :'regional aproximada'],
@@ -2391,10 +2401,11 @@ class Component extends DCLogic {
       }).then(payload=>{
         if(this._pamGraphRequestId!==requestId||!this.state.selected||this.state.selected.name!==selected.name) return;
         const meta=payload&&payload.geoJson&&payload.geoJson.meta||{};
-        const graphRows=rows.map(row=>row[0]==='Subgrafo eléctrico'
+        const current=this.state.selected||selected;
+        const graphRows=(current.rows||rows).map(row=>row[0]==='Subgrafo eléctrico'
           ?['Subgrafo eléctrico',(Number(meta.nodes)||0)+' nodos · '+(Number(meta.edges)||0)+' conexiones · profundidad '+(payload.depth??1)]
           :row);
-        const graphSelected={...selected,rows:graphRows,metrics:[
+        const graphSelected={...current,rows:graphRows,metrics:[
           {label:'Nodos del subgrafo',value:String(Number(meta.nodes)||0),unit:'',accent:'#9B2247'},
           {label:'Conexiones',value:String(Number(meta.edges)||0),unit:'',accent:'#E0A12E'},
           {label:'Asociaciones altas',value:String(payload.highConfidenceAssociations??0),unit:'',accent:'#0E8A6E'},
@@ -2416,10 +2427,50 @@ class Component extends DCLogic {
         if(graphResult.nodes.length||graphResult.edges.length) this._renderGraphFocus(graphResult);
       }).catch(error=>{
         if(this._pamGraphRequestId!==requestId||!this.state.selected||this.state.selected.name!==selected.name) return;
-        const graphRows=rows.map(row=>row[0]==='Subgrafo eléctrico'
+        const current=this.state.selected||selected;
+        const graphRows=(current.rows||rows).map(row=>row[0]==='Subgrafo eléctrico'
           ?['Subgrafo eléctrico','No disponible · '+(error.message||error)]
           :row);
-        this.setState({selected:{...selected,rows:graphRows}});
+        this.setState({selected:{...current,rows:graphRows}});
+      });
+      const evidenceRequestId=(this._pamEvidenceRequestId||0)+1;
+      this._pamEvidenceRequestId=evidenceRequestId;
+      fetch('/DashboardProyectos/PamTerritorial/'+encodeURIComponent(projectId)+'/EvidenciaConvocatoria',{
+        credentials:'same-origin',headers:{Accept:'application/json'}
+      }).then(async response=>{
+        const payload=await response.json().catch(()=>null);
+        if(!response.ok) throw new Error(payload&&payload.detail?payload.detail:'HTTP '+response.status);
+        return payload;
+      }).then(payload=>{
+        if(this._pamEvidenceRequestId!==evidenceRequestId||!this.state.selected||this.state.selected.name!==selected.name) return;
+        const matches=Array.isArray(payload&&payload.coincidencias)?payload.coincidencias:[];
+        const best=matches[0]||null;
+        const evidenceText=matches.length
+          ?(Number(payload.coincidenciasAltas||0)+' alta · '+Number(payload.requierenRevision||0)+' por revisar'
+            +(best&&best.preFolio?' · '+best.preFolio:''))
+          :'Sin coincidencias trazables';
+        const networkText=best
+          ?[
+              best.subestacionDeclarada||best.puntoInterconexion||best.elementoRedCatalogado||'elemento sin nombre',
+              best.estadoElementoRed||'sin diagnóstico',
+              best.tensionKv!=null?Number(best.tensionKv).toLocaleString('es-MX',{maximumFractionDigits:2})+' kV':''
+            ].filter(Boolean).join(' · ')
+          :'Sin infraestructura compartida identificada';
+        const current=this.state.selected||selected;
+        const evidenceRows=(current.rows||rows).map(row=>{
+          if(row[0]==='Segunda convocatoria') return ['Segunda convocatoria',evidenceText];
+          if(row[0]==='Diagnóstico de red') return ['Diagnóstico de red',networkText];
+          return row;
+        });
+        this.setState({selected:{...current,rows:evidenceRows}});
+      }).catch(error=>{
+        if(this._pamEvidenceRequestId!==evidenceRequestId||!this.state.selected||this.state.selected.name!==selected.name) return;
+        const current=this.state.selected||selected;
+        const evidenceRows=(current.rows||rows).map(row=>
+          row[0]==='Segunda convocatoria'||row[0]==='Diagnóstico de red'
+            ?[row[0],'No disponible · '+(error.message||error)]
+            :row);
+        this.setState({selected:{...current,rows:evidenceRows}});
       });
     }
   }
@@ -2440,7 +2491,9 @@ class Component extends DCLogic {
       this._toast(option.located
         ?(option.precision==='asociada al catálogo de red'
           ?'Proyecto PAM asociado con la red · coincidencia de confianza alta pendiente de validación'
-          :'Proyecto PAM localizado · abre la ficha o analiza su entorno')
+          :option.precision==='asociada mediante Segunda Convocatoria'
+            ?'Proyecto PAM enriquecido con Segunda Convocatoria · evidencia pendiente de validación'
+            :'Proyecto PAM localizado · abre la ficha o analiza su entorno')
         :'Proyecto PAM sin asociación de confianza alta · mostrando su GCR aproximada');
     }).catch(error=>this._toast('No se pudo localizar el proyecto PAM: '+(error.message||error)));
   }
@@ -2845,6 +2898,7 @@ class Component extends DCLogic {
         this._toast(pamMeta
           ?cnt.toLocaleString('es-MX')+' proyectos PAM · '
             +Number(pamMeta.proyectosAsociadosRed||0).toLocaleString('es-MX')+' asociados a la red · '
+            +Number(pamMeta.proyectosAsociadosConvocatoria||0).toLocaleString('es-MX')+' con evidencia de 2ª convocatoria · '
             +Number(pamMeta.proyectosRegionales||0).toLocaleString('es-MX')+' con referencia regional GCR'
           :cfg.label+' cargada · '+cnt.toLocaleString('es-MX')+' elementos');
       }, 180);
@@ -4714,6 +4768,33 @@ class Component extends DCLogic {
           this.setState({detalleLoading:null});
           this._toast('No se pudo cargar la ficha completa del permiso: '+(error.message||error));
         });
+      return;
+    }
+    if(cfg.key==='conv2_red_gap'){
+      const rows=[
+        ['Tipo de infraestructura','Evidencia de red · Segunda Convocatoria'],
+        ['Estado',p.estado||'revisión'],
+        ['Tipo de elemento',p.tipo_elemento||'—'],
+        ['Referencia declarada',p.nombre||nom||'—'],
+        ['Coincidencia de catálogo',p.coincidencia_catalogo||'—'],
+        ['Puntaje',p.puntaje!=null?String(p.puntaje)+'/100':'—'],
+        ['Tensión',p.tension_kv!=null?Number(p.tension_kv).toLocaleString('es-MX',{maximumFractionDigits:2})+' kV':'—'],
+        ['GCR',p.gcr||'—'],
+        ['Entidad / municipio',[p.entidad,p.municipio].filter(Boolean).join(' · ')||'—'],
+        ['Proyectos relacionados',String(p.proyectos_relacionados||0)],
+        ['Folios',p.folios||'—'],
+        ['Evidencias',p.evidencias||'—'],
+        ['Validación','Pendiente de revisión humana · no forma parte del grafo oficial'],
+        ['Fuente',p.fuente||'Google Sheets · Segunda Convocatoria']
+      ];
+      this.setState({
+        selected:{
+          kicker:'Segunda Convocatoria · evidencia de red',
+          color:cfg.color,
+          name:p.nombre||nom||cfg.label,
+          rows
+        }
+      });
       return;
     }
     // Centrales eléctricas → ficha curada con tecnología y capacidad

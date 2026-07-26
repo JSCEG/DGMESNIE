@@ -24,16 +24,19 @@ public sealed class PamTerritorialService : IPamTerritorialService
 {
     private readonly string _connectionString;
     private readonly IPamRedAssociationService _redAssociationService;
+    private readonly IPamConvocatoriaEvidenceService _convocatoriaEvidenceService;
     private readonly ILogger<PamTerritorialService> _logger;
 
     public PamTerritorialService(
         IConfiguration configuration,
         IPamRedAssociationService redAssociationService,
+        IPamConvocatoriaEvidenceService convocatoriaEvidenceService,
         ILogger<PamTerritorialService> logger)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("DefaultConnection no está configurada.");
         _redAssociationService = redAssociationService;
+        _convocatoriaEvidenceService = convocatoriaEvidenceService;
         _logger = logger;
     }
 
@@ -78,24 +81,18 @@ public sealed class PamTerritorialService : IPamTerritorialService
             return project;
         }
 
+        var suggested = new List<PamTerritorialUbicacion>();
         try
         {
             var association = (await _redAssociationService.ResolverAsync(
                 new[] { project },
                 cancellationToken)).FirstOrDefault();
-            if (association is null)
+            if (association is not null)
             {
-                return project;
+                suggested.AddRange(_redAssociationService.CrearUbicaciones(
+                    association,
+                    soloConfianzaAlta: false));
             }
-
-            var suggested = _redAssociationService.CrearUbicaciones(
-                association,
-                soloConfianzaAlta: false);
-            return suggested.Count == 0
-                ? project
-                : WithLocations(
-                    project,
-                    project.Ubicaciones.Concat(suggested).ToList());
         }
         catch (Exception ex) when (
             ex is HttpRequestException or
@@ -106,8 +103,36 @@ public sealed class PamTerritorialService : IPamTerritorialService
                 ex,
                 "No fue posible resolver las asociaciones de red del proyecto PAM {ProyectoId}; se conserva la cobertura GCR.",
                 project.ProyectoId);
-            return project;
         }
+
+        try
+        {
+            var evidence = (await _convocatoriaEvidenceService.ResolverPamAsync(
+                new[] { project },
+                cancellationToken)).FirstOrDefault();
+            if (evidence is not null)
+            {
+                suggested.AddRange(_convocatoriaEvidenceService.CrearUbicaciones(
+                    evidence,
+                    soloConfianzaAlta: false));
+            }
+        }
+        catch (Exception ex) when (
+            ex is HttpRequestException or
+            JsonException or
+            InvalidDataException or
+            TaskCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible contrastar el proyecto PAM {ProyectoId} con Segunda Convocatoria.",
+                project.ProyectoId);
+        }
+
+        var merged = MergeSuggestedLocations(project.Ubicaciones, suggested);
+        return merged.Count == project.Ubicaciones.Count
+            ? project
+            : WithLocations(project, merged);
     }
 
     public async Task<PamTerritorialGeoJson> ObtenerGeoJsonAsync(
@@ -123,6 +148,7 @@ public sealed class PamTerritorialService : IPamTerritorialService
 
         var projects = baseProjects.ToList();
         var associationLocations = new Dictionary<long, IReadOnlyList<PamTerritorialUbicacion>>();
+        var convocatoriaLocations = new Dictionary<long, IReadOnlyList<PamTerritorialUbicacion>>();
         var projectsWithoutValidatedLocation = projects
             .Where(project => !project.TieneUbicacionValidada)
             .ToList();
@@ -151,15 +177,52 @@ public sealed class PamTerritorialService : IPamTerritorialService
             }
         }
 
+        if (projectsWithoutValidatedLocation.Count > 0)
+        {
+            try
+            {
+                var evidence = await _convocatoriaEvidenceService.ResolverPamAsync(
+                    projectsWithoutValidatedLocation,
+                    cancellationToken);
+                convocatoriaLocations = evidence.ToDictionary(
+                    result => result.ProyectoId,
+                    result => _convocatoriaEvidenceService.CrearUbicaciones(
+                        result,
+                        soloConfianzaAlta: true));
+            }
+            catch (Exception ex) when (
+                ex is HttpRequestException or
+                JsonException or
+                InvalidDataException or
+                TaskCanceledException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "No fue posible enriquecer el GeoJSON PAM con Segunda Convocatoria.");
+            }
+        }
+
         var resolvedProjects = projects
             .Select(project =>
-                project.TieneUbicacionValidada ||
-                !associationLocations.TryGetValue(project.ProyectoId, out var suggested) ||
-                suggested.Count == 0
+            {
+                if (project.TieneUbicacionValidada)
+                {
+                    return project;
+                }
+
+                var suggested = associationLocations.GetValueOrDefault(
+                    project.ProyectoId,
+                    Array.Empty<PamTerritorialUbicacion>());
+                var convocatoria = convocatoriaLocations.GetValueOrDefault(
+                    project.ProyectoId,
+                    Array.Empty<PamTerritorialUbicacion>());
+                var merged = MergeSuggestedLocations(
+                    project.Ubicaciones,
+                    suggested.Concat(convocatoria));
+                return merged.Count == project.Ubicaciones.Count
                     ? project
-                    : WithLocations(
-                        project,
-                        project.Ubicaciones.Concat(suggested).ToList()))
+                    : WithLocations(project, merged);
+            })
             .ToList();
 
         var features = resolvedProjects
@@ -212,8 +275,23 @@ public sealed class PamTerritorialService : IPamTerritorialService
             .ToList();
 
         var validatedProjects = projects.Count(project => project.TieneUbicacionValidada);
-        var associatedProjectIds = features
-            .Where(feature => feature.Properties.EsAsociacionSugerida)
+        var associatedRedProjectIds = features
+            .Where(feature =>
+                feature.Properties.EsAsociacionSugerida &&
+                !string.Equals(
+                    feature.Properties.MetodoUbicacion,
+                    "cruce_segunda_convocatoria_v1",
+                    StringComparison.Ordinal))
+            .Select(feature => feature.Properties.ProyectoId)
+            .Distinct()
+            .ToHashSet();
+        var associatedConvocatoriaProjectIds = features
+            .Where(feature =>
+                feature.Properties.EsAsociacionSugerida &&
+                string.Equals(
+                    feature.Properties.MetodoUbicacion,
+                    "cruce_segunda_convocatoria_v1",
+                    StringComparison.Ordinal))
             .Select(feature => feature.Properties.ProyectoId)
             .Distinct()
             .ToHashSet();
@@ -229,9 +307,15 @@ public sealed class PamTerritorialService : IPamTerritorialService
                     .Count(),
                 Ubicaciones = features.Count,
                 ProyectosValidados = validatedProjects,
-                ProyectosAsociadosRed = associatedProjectIds.Count,
+                ProyectosAsociadosRed = associatedRedProjectIds.Count,
+                ProyectosAsociadosConvocatoria = associatedConvocatoriaProjectIds.Count,
                 AsociacionesSugeridas = features.Count(feature =>
-                    feature.Properties.EsAsociacionSugerida)
+                    feature.Properties.EsAsociacionSugerida),
+                AsociacionesConvocatoria = features.Count(feature =>
+                    string.Equals(
+                        feature.Properties.MetodoUbicacion,
+                        "cruce_segunda_convocatoria_v1",
+                        StringComparison.Ordinal))
             },
             Features = features
         };
@@ -258,6 +342,28 @@ public sealed class PamTerritorialService : IPamTerritorialService
             FechaCorte = project.FechaCorte,
             Ubicaciones = locations
         };
+    }
+
+    private static IReadOnlyList<PamTerritorialUbicacion> MergeSuggestedLocations(
+        IEnumerable<PamTerritorialUbicacion> current,
+        IEnumerable<PamTerritorialUbicacion> suggested)
+    {
+        return current
+            .Concat(suggested)
+            .GroupBy(
+                location => !string.IsNullOrWhiteSpace(location.ClaveElementoRed)
+                    ? location.ClaveElementoRed
+                    : $"{location.MetodoUbicacion}|{location.Etiqueta}|{location.Latitud:0.#####}|{location.Longitud:0.#####}",
+                StringComparer.Ordinal)
+            .Select(group => group
+                .OrderByDescending(location => location.Validada)
+                .ThenByDescending(location => location.PuntajeCoincidencia ?? 0)
+                .First())
+            .OrderByDescending(location => location.Validada)
+            .ThenByDescending(location => location.EsPrincipal)
+            .ThenByDescending(location => location.PuntajeCoincidencia ?? 0)
+            .ThenBy(location => location.Orden)
+            .ToList();
     }
 
     private async Task<IReadOnlyList<PamTerritorialProyecto>> ConsultarAsync(

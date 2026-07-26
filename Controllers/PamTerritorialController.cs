@@ -11,15 +11,18 @@ public sealed class PamTerritorialController : ControllerBase
 {
     private readonly IPamTerritorialService _service;
     private readonly IPamRedAssociationService _redAssociationService;
+    private readonly IPamConvocatoriaEvidenceService _convocatoriaEvidenceService;
     private readonly ILogger<PamTerritorialController> _logger;
 
     public PamTerritorialController(
         IPamTerritorialService service,
         IPamRedAssociationService redAssociationService,
+        IPamConvocatoriaEvidenceService convocatoriaEvidenceService,
         ILogger<PamTerritorialController> logger)
     {
         _service = service;
         _redAssociationService = redAssociationService;
+        _convocatoriaEvidenceService = convocatoriaEvidenceService;
         _logger = logger;
     }
 
@@ -136,6 +139,120 @@ public sealed class PamTerritorialController : ControllerBase
                 statusCode: StatusCodes.Status503ServiceUnavailable,
                 title: "Catálogo eléctrico no disponible",
                 detail: "No fue posible contrastar el proyecto PAM con las subestaciones y líneas en este momento.");
+        }
+    }
+
+    [HttpGet("{proyectoId:long}/EvidenciaConvocatoria")]
+    [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]
+    [ProducesResponseType(
+        typeof(PamConvocatoriaEvidenceResult),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PamConvocatoriaEvidenceResult>> EvidenciaConvocatoria(
+        long proyectoId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var project = await _service.ObtenerAsync(proyectoId, cancellationToken);
+            if (project is null)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "Proyecto PAM no encontrado");
+            }
+
+            var result = (await _convocatoriaEvidenceService.ResolverPamAsync(
+                new[] { project },
+                cancellationToken)).First();
+            return Ok(result);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception ex) when (
+            ex is SqlException or
+            HttpRequestException or
+            InvalidDataException or
+            TaskCanceledException or
+            System.Text.Json.JsonException)
+        {
+            _logger.LogError(
+                ex,
+                "Falló el cruce del proyecto PAM {ProyectoId} con Segunda Convocatoria.",
+                proyectoId);
+            return Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Segunda Convocatoria no disponible",
+                detail: "No fue posible contrastar el proyecto PAM con la fuente publicada en este momento.");
+        }
+    }
+
+    [HttpGet("EvidenciaConvocatoria/Resumen")]
+    [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]
+    [ProducesResponseType(
+        typeof(PamConvocatoriaCoverageReport),
+        StatusCodes.Status200OK)]
+    public async Task<ActionResult<PamConvocatoriaCoverageReport>>
+        ResumenEvidenciaConvocatoria(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _convocatoriaEvidenceService.ObtenerCoberturaAsync(
+                cancellationToken));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception ex) when (
+            ex is HttpRequestException or
+            InvalidDataException or
+            TaskCanceledException or
+            System.Text.Json.JsonException)
+        {
+            _logger.LogError(
+                ex,
+                "Falló el diagnóstico de cobertura de red con Segunda Convocatoria.");
+            return Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Segunda Convocatoria no disponible",
+                detail: "No fue posible generar el diagnóstico de subestaciones y líneas en este momento.");
+        }
+    }
+
+    [HttpGet("EvidenciaConvocatoria/GeoJson")]
+    [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]
+    [Produces("application/geo+json", "application/json")]
+    [ProducesResponseType(
+        typeof(PamConvocatoriaGeoJson),
+        StatusCodes.Status200OK)]
+    public async Task<ActionResult<PamConvocatoriaGeoJson>>
+        GeoJsonEvidenciaConvocatoria(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _convocatoriaEvidenceService.ObtenerCoberturaGeoJsonAsync(
+                cancellationToken));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception ex) when (
+            ex is HttpRequestException or
+            InvalidDataException or
+            TaskCanceledException or
+            System.Text.Json.JsonException)
+        {
+            _logger.LogError(
+                ex,
+                "Falló la capa de evidencia de Segunda Convocatoria.");
+            return Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Segunda Convocatoria no disponible",
+                detail: "No fue posible construir la capa de evidencia en este momento.");
         }
     }
 

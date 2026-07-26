@@ -298,44 +298,75 @@ Los marcadores de asociación de red y los regionales son clicables. El panel
 de detalle conserva clave, nombre, GCR, tipo, etapa, estatus, zona atendida,
 elementos asociados, fuente, corte y enlace a la ficha PAM.
 
-## 16. Convocatorias, municipio y KML como evidencia adicional
+## 16. Segunda Convocatoria como evidencia adicional
 
-La fuente consolidada de proyectos de convocatorias disponible para
-enriquecimiento es:
+La fuente correcta para este enriquecimiento es el dataset público
+`conv2_part`, **2ª convocatoria · Particulares**, registrado en
+`wwwroot/tablero/datasets-catalog.json`. Se compone de:
 
-`https://cdn.sassoapps.com/Mapas/Mixtos/mixtos.geojson`
+- hoja base publicada como CSV;
+- pestaña pública de trazabilidad/minutas;
+- filtro por la última decisión `Continúa`;
+- relación de trazabilidad `Pre Folio` ↔ `folio`, eliminando el prefijo
+  técnico `PRE-` antes de comparar.
 
-En el corte revisado contiene puntos de proyecto con folio, nombre,
-tecnología, estado, subestación o punto de interconexión, tensión y capacidad.
-La hoja de origen también contempla municipio y archivo KMZ. Estos datos
-pueden ayudar a localizar infraestructura relacionada, pero un proyecto de
-generación de una convocatoria no es automáticamente el mismo objeto que una
-obra de transmisión del PAM.
+No se mezcla esta evidencia con `GAT Mixto`.
+
+Los campos utilizados son:
+
+- folio y nombre del proyecto;
+- subestación eléctrica y punto de interconexión declarados;
+- nivel de tensión;
+- distancia declarada entre proyecto e interconexión;
+- GCR, entidad y municipio;
+- vértices y KMZ del proyecto;
+- vértices y KMZ de la subestación propia del proyecto de generación.
+
+La última geometría no se interpreta como coordenada de la subestación de la
+red. Se usa como origen para contrastar la distancia declarada hacia un nodo
+catalogado. Esto evita publicar como infraestructura de CFE/CENACE una
+subestación elevadora o colectora perteneciente al proyecto privado.
 
 ### Jerarquía de evidencia
 
 | Nivel | Coincidencia requerida | Resultado permitido |
 |---|---|---|
-| A | Mismo folio o identificador PAM y KML explícitamente asociado | Crear candidato geométrico de evidencia alta, pendiente de validación |
-| B | Misma subestación o línea, GCR, tensión compatible y municipio coherente | Crear candidato para revisión; no validar automáticamente |
-| C | Proyecto cercano sin identidad compartida, aunque use una SE próxima | Contexto territorial solamente |
+| A | Mismo folio o identidad de proyecto y geometría explícita | Crear candidato geométrico de evidencia alta, pendiente de validación |
+| B | Misma subestación o línea, GCR y tensión compatibles, con nodo/tramo catalogado | Reforzar el elemento de red como candidato pendiente de validación |
+| C | Referencia nominal consistente pero elemento ausente o ambiguo en el catálogo | Ingresar al diagnóstico de cobertura para revisión |
 | D | Cercanía visual o cruce aparente de una línea | No crea asociación |
 
 ### Procedimiento propuesto
 
-1. Normalizar folios, nombres de subestación, extremos de línea y tensión.
-2. Resolver el municipio de cada punto por intersección con el GeoJSON
-   municipal; no depender solamente de texto libre.
-3. Comparar contra los elementos/equipos asociados del PAM y el grafo
-   eléctrico.
-4. Calcular distancia al elemento de red y registrar todas las evidencias.
-5. Si existe KMZ/KML, conservar la geometría original y su folio de origen.
-6. Enviar las coincidencias A/B a una cola de revisión.
-7. Persistir una ubicación oficial sólo después de validación humana.
+1. Cargar y cachear la hoja base y la trazabilidad.
+2. Conservar sólo folios cuya última decisión sea `Continúa`.
+3. Normalizar folios, nombres de subestación, referencias de línea y tensión.
+4. Comparar la subestación declarada con el catálogo de nodos.
+5. Cuando exista distancia declarada, calcularla desde la subestación propia
+   del proyecto hacia el nodo candidato y usarla para desambiguar.
+6. Comparar referencias explícitas de LT con las aristas del catálogo.
+7. Clasificar cada elemento como `catalogada`, `revision`, `faltante` o
+   `tramo_sin_geometria`.
+8. Comparar las evidencias con folio, nombre y elementos asociados de cada PAM.
+9. Mostrar coincidencias altas o de revisión sin cambiar `Validada = 0`.
+10. Persistir una ubicación oficial sólo después de validación humana.
 
 No se debe usar el centroide regional del icono GCR para calcular cercanía con
 convocatorias. Las distancias sólo se calculan a partir de coordenadas,
 geometrías KML/KMZ o elementos de red identificados.
+
+### API y capa de revisión
+
+- Evidencia para un PAM:
+  `GET /DashboardProyectos/PamTerritorial/{proyectoId}/EvidenciaConvocatoria`
+- Diagnóstico completo:
+  `GET /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Resumen`
+- Capa GeoJSON de elementos revisables con geometría conocida:
+  `GET /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/GeoJson`
+
+La capa aparece como **Vacíos de red · 2ª convocatoria** y está apagada por
+defecto. Un elemento faltante sin geometría no se dibuja artificialmente; se
+conserva en el resumen para revisión.
 
 ## 17. Control de cambios de representación y enriquecimiento
 
@@ -343,3 +374,4 @@ geometrías KML/KMZ o elementos de red identificados.
 |---|---|---|
 | `PAM-MAPA-v1.1` | 2026-07-26 | Catálogo completo, icono regional clicable, detalle y análisis por GCR |
 | `PAM-EVIDENCIA-v1.0` | 2026-07-26 | Reglas de apoyo con convocatorias, municipio, interconexión y KML/KMZ |
+| `PAM-CONV2-v1.0` | 2026-07-26 | Segunda Convocatoria en línea, filtro por última decisión, cruce PAM y diagnóstico de vacíos de red |
