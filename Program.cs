@@ -139,6 +139,17 @@ builder.Services.AddHttpClient<IPamRedAssociationService, PamRedAssociationServi
         new MediaTypeWithQualityHeaderValue("application/json"));
     client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-PAM-Red/1.0");
 });
+builder.Services.Configure<RedElectricaGraphOptions>(
+    builder.Configuration.GetSection(RedElectricaGraphOptions.SectionName));
+builder.Services.AddHttpClient<IRedElectricaGraphService, RedElectricaGraphService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+    client.DefaultRequestHeaders.Accept.Add(
+        new MediaTypeWithQualityHeaderValue("application/geo+json"));
+    client.DefaultRequestHeaders.Accept.Add(
+        new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-Red-Grafo/1.0");
+});
 builder.Services.Configure<InegiOptions>(builder.Configuration.GetSection(InegiOptions.SectionName));
 builder.Services.AddHttpClient<IInegiTerritorialService, InegiTerritorialService>(client =>
 {

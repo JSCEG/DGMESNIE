@@ -1522,6 +1522,7 @@ class Component extends DCLogic {
     { key:'municipios',    cat:'División territorial',   label:'Municipios',                 code:'MU', color:'#C9A24B', type:'polygon',   src:'municipios', on:false, lazy:true, heavy:'~26 MB' },
     { key:'subestaciones', cat:'Red eléctrica',          label:'Subestaciones eléctricas',   code:'SE', color:'#9B2247', type:'point', analysis:true,     src:'subestaciones', on:false },
     { key:'lineas',        cat:'Red eléctrica',          label:'Líneas de transmisión',      code:'LT', color:'#E0A12E', type:'line', analysis:true,      src:'lineas',     on:false },
+    { key:'red_grafo',     cat:'Red eléctrica',          label:'Grafo eléctrico navegable',  code:'GR', color:'#6B3654', type:'graph', lazy:true, compactPoints:true, src:'/DashboardProyectos/RedElectrica/Grafo/GeoJson', on:false },
     { key:'centrales',     cat:'Red eléctrica',          label:'Centrales eléctricas',       code:'CE', color:'#C0552E', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/geojson/Centrales_El%C3%A9ctricas_privadas_y_de_CFE.geojson' },
     // OJO: municipios_sin_electrificar.geojson responde 404 en el CDN (auditoría 2026-07) — la capa
     // falla con aviso y ya no aborta el análisis; restaurar src cuando la fuente vuelva a publicarse.
@@ -2263,6 +2264,7 @@ class Component extends DCLogic {
       ['Asociaciones de red',suggestedLocations.length
         ?highSuggestions.length+' confianza alta · '+reviewSuggestions.length+' por revisar'
         :'0'],
+      ['Subgrafo eléctrico','Consultando conexiones…'],
       ['Precisión',precise
         ?(primary.esAsociacionSugerida?'asociada · pendiente de validación':(primary.precisionUbicacion||'validada'))
         :'regional aproximada'],
@@ -2279,17 +2281,62 @@ class Component extends DCLogic {
       ['Corte',formatDate(cut)],
       ['Ficha PAM',item.fichaUrl?window.location.origin+item.fichaUrl:'—']
     ];
+    const selected={
+      kicker:'PAM / PAMRNT · '+(item.claveProyecto||'proyecto'),
+      color:'#6B3654',
+      name:item.nombreProyecto||item.claveProyecto||'Proyecto PAM',
+      rows
+    };
     this.setState({
       anaOpen:false,
       menuOpen:null,
       collapsed:{...this.state.collapsed,detalle:false},
-      selected:{
-        kicker:'PAM / PAMRNT · '+(item.claveProyecto||'proyecto'),
-        color:'#6B3654',
-        name:item.nombreProyecto||item.claveProyecto||'Proyecto PAM',
-        rows
-      }
+      selected
     });
+    const projectId=Number(item.proyectoId||0);
+    if(projectId>0){
+      const requestId=(this._pamGraphRequestId||0)+1;
+      this._pamGraphRequestId=requestId;
+      fetch('/DashboardProyectos/RedElectrica/Grafo/Pam/'+encodeURIComponent(projectId)+'?depth=1',{
+        credentials:'same-origin',headers:{Accept:'application/json'}
+      }).then(async response=>{
+        const payload=await response.json().catch(()=>null);
+        if(!response.ok) throw new Error(payload&&payload.detail?payload.detail:'HTTP '+response.status);
+        return payload;
+      }).then(payload=>{
+        if(this._pamGraphRequestId!==requestId||!this.state.selected||this.state.selected.name!==selected.name) return;
+        const meta=payload&&payload.geoJson&&payload.geoJson.meta||{};
+        const graphRows=rows.map(row=>row[0]==='Subgrafo eléctrico'
+          ?['Subgrafo eléctrico',(Number(meta.nodes)||0)+' nodos · '+(Number(meta.edges)||0)+' conexiones · profundidad '+(payload.depth??1)]
+          :row);
+        const graphSelected={...selected,rows:graphRows,metrics:[
+          {label:'Nodos del subgrafo',value:String(Number(meta.nodes)||0),unit:'',accent:'#9B2247'},
+          {label:'Conexiones',value:String(Number(meta.edges)||0),unit:'',accent:'#E0A12E'},
+          {label:'Asociaciones altas',value:String(payload.highConfidenceAssociations??0),unit:'',accent:'#0E8A6E'},
+          {label:'Por revisar',value:String(payload.reviewAssociations??0),unit:'',accent:'#A57F2C'}
+        ]};
+        this.setState({selected:graphSelected},()=>this._recompute());
+        const features=payload&&payload.geoJson&&payload.geoJson.features||[];
+        const graphResult={nodes:[],edges:[]};
+        features.forEach(feature=>{
+          const p=feature.properties||{};
+          if(p.element_type==='edge') graphResult.edges.push({...p,geometry:feature.geometry});
+          else if(p.element_type==='node'&&feature.geometry&&feature.geometry.type==='Point'){
+            const coordinates=feature.geometry.coordinates||[];
+            graphResult.nodes.push({
+              nodeId:p.node_id,name:p.name,latitude:Number(coordinates[1]),longitude:Number(coordinates[0]),isVirtual:!!p.is_virtual
+            });
+          }
+        });
+        if(graphResult.nodes.length||graphResult.edges.length) this._renderGraphFocus(graphResult);
+      }).catch(error=>{
+        if(this._pamGraphRequestId!==requestId||!this.state.selected||this.state.selected.name!==selected.name) return;
+        const graphRows=rows.map(row=>row[0]==='Subgrafo eléctrico'
+          ?['Subgrafo eléctrico','No disponible · '+(error.message||error)]
+          :row);
+        this.setState({selected:{...selected,rows:graphRows}});
+      });
+    }
   }
   _focusPamItem(item){
     this._fetchPamDetail(item).then(fullItem=>{
@@ -2659,6 +2706,7 @@ class Component extends DCLogic {
     } else {
       const g = this._layerOf(key);
       try { if (g && this.map.hasLayer(g)) this.map.removeLayer(g); } catch(err){ try{ g.clearLayers&&g.clearLayers(); }catch(e2){} }
+      if(key==='red_grafo') this._clearGraphFocus();
       this.setState(datasetsSync ? { layers, datasets:datasetsSync } : { layers }, () => this._recompute());
     }
   }
@@ -2675,6 +2723,7 @@ class Component extends DCLogic {
     const done = (geo) => {
       try {
         if (key==='municipios') this._buildMunicipios(geo);
+        else if (cfg.type==='graph') this._buildElectricGraph(key, geo, cfg);
         else this._buildGeneric(key, geo, cfg);
         this._built[key] = true;
       } catch(e){ return fail(e); }
@@ -2694,10 +2743,13 @@ class Component extends DCLogic {
         if(key==='pam'&&geo.meta&&Number.isFinite(Number(geo.meta.proyectos))){
           cnt=Number(geo.meta.proyectos);
         }
+        if(key==='red_grafo'&&geo.meta&&Number.isFinite(Number(geo.meta.nodes))){
+          cnt=Number(geo.meta.nodes);
+        }
         const l2 = { ...this.state.layers }; l2[key] = { ...l2[key], loading:false, count:cnt };
         this._invalidateSearch(); // el índice del buscador debe reconstruirse CON los features recién cargados
         this._hideBar();
-        this.setState({ layers:l2, blocking:null }, () => { this._recompute(); if (cfg.type==='geo'||cfg.type==='pam') { try { this._fitToLayer(key); } catch(e){} } });
+        this.setState({ layers:l2, blocking:null }, () => { this._recompute(); if (cfg.type==='geo'||cfg.type==='pam'||cfg.type==='graph') { try { this._fitToLayer(key); } catch(e){} } });
         this._toast(key==='pam'&&cnt===0&&geo.meta&&Number(geo.meta.catalogoProyectos)>0
           ?Number(geo.meta.catalogoProyectos).toLocaleString('es-MX')+' proyectos PAM disponibles en buscador y atajo · faltan ubicaciones validadas para dibujarlos'
           :cfg.label+' cargada · '+cnt.toLocaleString('es-MX')+' elementos');
@@ -3809,6 +3861,245 @@ class Component extends DCLogic {
     };
     this._normFeatures(geo).forEach(feature=>walk(feature.geometry));
     return count;
+  }
+  _buildElectricGraph(key, geo, cfg){
+    const L=window.L;
+    const group=this.groups[key];
+    group.clearLayers();
+    this._clearGraphFocus();
+    this._graphNodeById=new Map();
+    this._graphEdgeById=new Map();
+    const searchRecords=[];
+    const features=this._normFeatures(geo);
+    const edges=features.filter(feature=>(feature.properties||{}).element_type==='edge');
+    const nodes=features.filter(feature=>(feature.properties||{}).element_type==='node');
+    const lineSegments=geometry=>{
+      if(!geometry) return [];
+      if(geometry.type==='LineString') return [geometry.coordinates||[]];
+      if(geometry.type==='MultiLineString') return geometry.coordinates||[];
+      return [];
+    };
+    const toLatLngs=segment=>(segment||[])
+      .filter(coordinate=>Array.isArray(coordinate)&&isFinite(coordinate[0])&&isFinite(coordinate[1]))
+      .map(coordinate=>[Number(coordinate[1]),Number(coordinate[0])]);
+
+    edges.forEach(feature=>{
+      const p=feature.properties||{};
+      const edgeId=String(p.edge_id||'');
+      const state=String(p.connection_state||'sin_resolver');
+      const kv=Number(p.voltage_kv)||0;
+      const color=state==='conectada'?this._colorForKv(kv):(state==='parcial'?'#A57F2C':'#8A9099');
+      const dash=state==='conectada'?null:(state==='parcial'?'7 5':'3 6');
+      lineSegments(feature.geometry).forEach(segment=>{
+        const latlngs=toLatLngs(segment);
+        if(latlngs.length<2) return;
+        const line=L.polyline(latlngs,{
+          color,weight:state==='conectada'?2.5:2,opacity:state==='sin_resolver' ? .45 : .82,
+          dashArray:dash,renderer:this._svgRenderer,pane:'genvec',noClip:true,smoothFactor:0
+        });
+        this._guardPath(line);
+        line.bindTooltip(String(p.name||'Línea de transmisión'),{sticky:true});
+        line.on('click',event=>{
+          this._selAt=performance.now();
+          try{if(event&&event.originalEvent)L.DomEvent.stopPropagation(event.originalEvent);}catch(error){}
+          this._selectGraphEdge(p,line);
+        });
+        group.addLayer(line);
+        if(edgeId&&!this._graphEdgeById.has(edgeId)){
+          this._graphEdgeById.set(edgeId,{props:p,layer:line,geometry:feature.geometry});
+        }
+      });
+    });
+
+    nodes.forEach(feature=>{
+      const p=feature.properties||{};
+      const coordinates=(feature.geometry&&feature.geometry.coordinates)||[];
+      if(!isFinite(coordinates[0])||!isFinite(coordinates[1])) return;
+      const lng=Number(coordinates[0]),lat=Number(coordinates[1]);
+      const nodeId=String(p.node_id||'');
+      const virtual=!!p.is_virtual;
+      const marker=L.circleMarker([lat,lng],{
+        radius:virtual?2.5:4.4,
+        color:virtual?'#fff':'#5F1233',
+        weight:virtual ? .8 : 1.2,
+        fillColor:virtual?'#8A9099':'#9B2247',
+        fillOpacity:virtual ? .58 : .94,
+        renderer:this._dataRenderer,
+        pane:'data'
+      });
+      this._guardPath(marker);
+      marker.bindTooltip(String(p.name||(virtual?'Extremo sin resolver':'Subestación')),{
+        sticky:true
+      });
+      marker.on('click',event=>{
+        this._selAt=performance.now();
+        try{if(event&&event.originalEvent)L.DomEvent.stopPropagation(event.originalEvent);}catch(error){}
+        this._selectGraphNode(p,marker);
+      });
+      group.addLayer(marker);
+      if(nodeId) this._graphNodeById.set(nodeId,{props:p,marker,lat,lng});
+      if(!virtual){
+        searchRecords.push({
+          nom:String(p.name||'Subestación'),
+          lat,lng,props:p,marker,geometry:feature.geometry
+        });
+      }
+    });
+
+    this._genericFeats=this._genericFeats||{};
+    this._genericFeats[key]=searchRecords;
+    this._genericCount=this._genericCount||{};
+    this._genericCount[key]=Number(geo&&geo.meta&&geo.meta.nodes)||nodes.length;
+    this._vectorPathLayers=this._vectorPathLayers||{};
+    this._vectorPathLayers[key]=edges.length>0;
+    this._graphMeta=geo&&geo.meta?geo.meta:null;
+    return nodes.length+edges.length;
+  }
+  _selectGraphNode(p,marker){
+    if(this._handler) return;
+    const nodeId=String(p.node_id||'');
+    if(!nodeId) return;
+    this._selAt=performance.now();
+    this._clearHighlight();
+    this._clearGraphFocus();
+    const lat=marker&&marker.getLatLng?marker.getLatLng().lat:null;
+    const lng=marker&&marker.getLatLng?marker.getLatLng().lng:null;
+    const virtual=!!p.is_virtual;
+    const baseRows=[
+      ['Tipo de infraestructura',virtual?'Nodo topológico pendiente':'Subestación de transmisión'],
+      ['Identificador del grafo',nodeId],
+      ['Tensión',p.voltage_kv?Number(p.voltage_kv).toLocaleString('es-MX')+' kV':'—'],
+      ['Grado topológico',String(p.degree??0)+' conexiones'],
+      ['Componente eléctrico',p.component_id||'—'],
+      ['Estado',virtual?'Pendiente de validar':'Nodo catalogado'],
+      ['Conexiones','Consultando…'],
+      ['Fuente',p.source||'DGMESNIE · grafo eléctrico']
+    ];
+    const selected={
+      kicker:virtual?'Grafo eléctrico · nodo virtual':'Grafo eléctrico · subestación',
+      color:virtual?'#8A9099':'#9B2247',
+      name:String(p.name||(virtual?'Extremo sin resolver':'Subestación')),
+      rows:baseRows,
+      metrics:[
+        {label:'Conexiones directas',value:String(p.degree??0),unit:'',accent:'#9B2247'},
+        {label:'Tensión nominal',value:p.voltage_kv?this._nf(Number(p.voltage_kv)):'—',unit:p.voltage_kv?'kV':'',accent:'#E0A12E'},
+        {label:'Componente',value:String(p.component_id||'—').replace('cmp:',''),unit:'',accent:'#1E9CB8'}
+      ],
+      lat,lng
+    };
+    this._flash(marker);
+    this.setState({selected},()=>this._recompute());
+    if(isFinite(lat)&&isFinite(lng)) this.map.setView([lat,lng],Math.max(this.map.getZoom(),8),{animate:true});
+    const requestId=(this._graphNodeRequestId||0)+1;
+    this._graphNodeRequestId=requestId;
+    fetch('/DashboardProyectos/RedElectrica/Grafo/Nodos/'+encodeURIComponent(nodeId)+'/Vecinos?depth=1',{
+      credentials:'same-origin',headers:{Accept:'application/json'}
+    }).then(async response=>{
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok) throw new Error(payload&&payload.detail?payload.detail:'HTTP '+response.status);
+      return payload;
+    }).then(result=>{
+      if(this._graphNodeRequestId!==requestId||!this.state.selected||this.state.selected.name!==selected.name) return;
+      const neighbors=(result.nodes||[]).filter(node=>node.nodeId!==nodeId);
+      const realNeighbors=neighbors.filter(node=>!node.isVirtual);
+      const lines=result.edges||[];
+      const rows=baseRows.filter(row=>row[0]!=='Conexiones');
+      rows.splice(6,0,
+        ['Líneas conectadas',lines.length?lines.slice(0,14).map(edge=>edge.name).join(' · '):'Sin líneas conectadas'],
+        ['Subestaciones vecinas',realNeighbors.length?realNeighbors.slice(0,14).map(node=>node.name).join(' · '):'Sin subestaciones vecinas'],
+        ['Nodos pendientes',String(neighbors.filter(node=>node.isVirtual).length)]
+      );
+      const next={...selected,rows,metrics:[
+        {label:'Líneas conectadas',value:String(lines.length),unit:'',accent:'#9B2247'},
+        {label:'Subestaciones vecinas',value:String(realNeighbors.length),unit:'',accent:'#0E8A6E'},
+        {label:'Tensión nominal',value:p.voltage_kv?this._nf(Number(p.voltage_kv)):'—',unit:p.voltage_kv?'kV':'',accent:'#E0A12E'},
+        {label:'Componente',value:String(p.component_id||'—').replace('cmp:',''),unit:'',accent:'#1E9CB8'}
+      ]};
+      this.setState({selected:next},()=>this._recompute());
+      this._renderGraphFocus(result);
+    }).catch(error=>{
+      if(this._graphNodeRequestId!==requestId||!this.state.selected||this.state.selected.name!==selected.name) return;
+      const rows=baseRows.map(row=>row[0]==='Conexiones'?['Conexiones','No disponibles · '+(error.message||error)]:row);
+      this.setState({selected:{...selected,rows}});
+    });
+  }
+  _selectGraphEdge(p,line){
+    if(this._handler) return;
+    this._selAt=performance.now();
+    this._clearHighlight();
+    this._clearGraphFocus();
+    const from=this._graphNodeById&&this._graphNodeById.get(String(p.from_id||''));
+    const to=this._graphNodeById&&this._graphNodeById.get(String(p.to_id||''));
+    const fromName=from&&from.props?from.props.name:(p.from_id||'—');
+    const toName=to&&to.props?to.props.name:(p.to_id||'—');
+    const state=String(p.connection_state||'sin_resolver');
+    const selected={
+      kicker:'Grafo eléctrico · línea de transmisión',
+      color:state==='conectada'?'#0E8A6E':(state==='parcial'?'#A57F2C':'#8A9099'),
+      name:String(p.name||'Línea de transmisión'),
+      rows:[
+        ['Tipo de infraestructura','Arista de la red eléctrica'],
+        ['Subestación origen',String(fromName)],
+        ['Subestación destino',String(toName)],
+        ['Estado topológico',state.replace('_',' ')],
+        ['Confianza origen',String(p.from_confidence??0)+'/100 · '+String(p.from_resolution||'—')],
+        ['Confianza destino',String(p.to_confidence??0)+'/100 · '+String(p.to_resolution||'—')],
+        ['Tensión',p.voltage_kv?Number(p.voltage_kv).toLocaleString('es-MX')+' kV':'—'],
+        ['Circuitos',p.circuits??'—'],
+        ['Longitud geométrica',p.length_km?Number(p.length_km).toLocaleString('es-MX',{maximumFractionDigits:2})+' km':'—'],
+        ['Fuente',p.source||'DGMESNIE · grafo eléctrico']
+      ],
+      metrics:[
+        {label:'Longitud',value:p.length_km?Number(p.length_km).toFixed(1):'—',unit:p.length_km?'km':'',accent:'#E0A12E'},
+        {label:'Tensión',value:p.voltage_kv?this._nf(Number(p.voltage_kv)):'—',unit:p.voltage_kv?'kV':'',accent:'#9B2247'},
+        {label:'Confianza mínima',value:String(Math.min(Number(p.from_confidence)||0,Number(p.to_confidence)||0)),unit:'/100',accent:state==='conectada'?'#0E8A6E':'#A57F2C'}
+      ]
+    };
+    this.setState({selected},()=>this._recompute());
+    const edgeRecord=this._graphEdgeById&&this._graphEdgeById.get(String(p.edge_id||''));
+    this._renderGraphFocus({
+      nodes:[from&&from.props?this._graphNodeModel(from):null,to&&to.props?this._graphNodeModel(to):null].filter(Boolean),
+      edges:[{...p,geometry:edgeRecord&&edgeRecord.geometry}]
+    });
+    try{if(line&&line.getBounds)this.map.fitBounds(line.getBounds().pad(.35),{maxZoom:11,animate:true});}catch(error){}
+  }
+  _graphNodeModel(record){
+    if(!record||!record.props) return null;
+    return {
+      nodeId:record.props.node_id,name:record.props.name,
+      latitude:record.lat,longitude:record.lng,isVirtual:!!record.props.is_virtual
+    };
+  }
+  _renderGraphFocus(result){
+    this._clearGraphFocus();
+    const L=window.L;
+    const features=[];
+    (result.edges||[]).forEach(edge=>{
+      if(edge&&edge.geometry) features.push({type:'Feature',properties:{element_type:'edge'},geometry:edge.geometry});
+    });
+    (result.nodes||[]).forEach(node=>{
+      const lat=Number(node.latitude),lng=Number(node.longitude);
+      if(isFinite(lat)&&isFinite(lng)) features.push({
+        type:'Feature',properties:{element_type:'node',is_virtual:!!node.isVirtual},
+        geometry:{type:'Point',coordinates:[lng,lat]}
+      });
+    });
+    this._graphFocus=L.geoJSON({type:'FeatureCollection',features},{
+      pane:'hl',
+      interactive:false,
+      style:()=>({color:'#9B2247',weight:5,opacity:.92,pane:'hl'}),
+      pointToLayer:(feature,latlng)=>L.circleMarker(latlng,{
+        radius:feature.properties&&feature.properties.is_virtual?5:7,
+        color:'#fff',weight:2,fillColor:feature.properties&&feature.properties.is_virtual?'#8A9099':'#E0A12E',
+        fillOpacity:1,pane:'hl',interactive:false
+      })
+    }).addTo(this.map);
+  }
+  _clearGraphFocus(){
+    if(this._graphFocus&&this.map){
+      try{this.map.removeLayer(this._graphFocus);}catch(error){}
+    }
+    this._graphFocus=null;
   }
   // Constructor GENÉRICO multi-geometría (punto / línea / polígono) — para cualquier GeoJSON del inventario
   _buildGeneric(key, geo, cfg, options) {
@@ -4968,10 +5259,10 @@ class Component extends DCLogic {
     // encendidas y ya construidas. Se deduplica por nombre dentro de cada capa (p.ej. una
     // lengua aparece en miles de localidades): una sugerencia por nombre, a su primera ubicación.
     this.LAYERS.forEach(cfg => {
-      if (cfg.type!=='geo' || !L[cfg.key] || !L[cfg.key].on) return;
+      if (!['geo','graph'].includes(cfg.type) || !L[cfg.key] || !L[cfg.key].on) return;
       const fs = (this._genericFeats || {})[cfg.key]; if (!fs) return;
       const seen = new Set();
-      fs.forEach(ft => { const n = this._norm(ft.nom); if (!n || seen.has(n)) return; seen.add(n); out.push({ label:ft.nom, kind:cfg.label, color:cfg.color, n, ll:[ft.lat,ft.lng], go:()=>{ this.map.setView([ft.lat, ft.lng], 9, {animate:true}); this._selectGeneric(cfg, ft.props, ft.nom, [ft.lat,ft.lng]); this._setHighlight(ft.lat, ft.lng, cfg.color); } }); });
+      fs.forEach(ft => { const n = this._norm(ft.nom); if (!n || seen.has(n)) return; seen.add(n); out.push({ label:ft.nom, kind:cfg.label, color:cfg.color, n, ll:[ft.lat,ft.lng], go:()=>{ this.map.setView([ft.lat, ft.lng], 9, {animate:true}); if(cfg.type==='graph') this._selectGraphNode(ft.props,ft.marker); else this._selectGeneric(cfg, ft.props, ft.nom, [ft.lat,ft.lng]); this._setHighlight(ft.lat, ft.lng, cfg.color); } }); });
     });
     // Los datasets de permisos/proyectos sólo aparecen en el buscador si además su capa
     // en "Capas disponibles" está encendida — evita sugerir elementos que no se ven en el mapa.
@@ -5068,18 +5359,19 @@ class Component extends DCLogic {
     if (this._anaMarker) { try { this.map.removeLayer(this._anaMarker); } catch(e){} this._anaMarker=null; }
     if (this._anaCircle) { try { this.map.removeLayer(this._anaCircle); } catch(e){} this._anaCircle=null; }
     if (this._mTip) { try { this.map.removeLayer(this._mTip); } catch(e){} this._mTip=null; }
-    this._clearHighlight(); this._stopDraw();
+    this._clearHighlight(); this._clearGraphFocus(); this._stopDraw();
     try { this.drawn.clearLayers(); this.map.closePopup(); } catch(e){}
     try { this._muniPaneShow(false); } catch(e){}
     this._anaSubSet=null; this._anaLineSet=null; this._genericFeats={}; this._genericCount={}; this._autoLayer={};
     Object.entries(this.groups||{}).forEach(([key,g]) => {
       if (key!=='gerencias') { try { if (this.map.hasLayer(g)) this.map.removeLayer(g); } catch(e){} }
-      if (['permisos','proyectos','zonas'].includes(key) || (this.LAYERS.find(c=>c.key===key)||{}).analysis) { try { g.clearLayers(); } catch(e){} }
+      if (['permisos','proyectos','zonas','red_grafo'].includes(key) || (this.LAYERS.find(c=>c.key===key)||{}).analysis) { try { g.clearLayers(); } catch(e){} }
     });
     // Las listas maestras permiten recuperar íntegramente red eléctrica tras un análisis filtrado.
     if (this.groups.subestaciones) (this._subMarkers||[]).forEach(m=>this.groups.subestaciones.addLayer(m));
     if (this.groups.lineas) (this.lineFeatures||[]).forEach(pl=>this.groups.lineas.addLayer(pl));
     this.LAYERS.filter(c=>c.analysis && !['subestaciones','lineas'].includes(c.key)).forEach(c=>{ this._built[c.key]=false; });
+    this._built.red_grafo=false;
     try { if (!this.map.hasLayer(this.groups.gerencias)) this.groups.gerencias.addTo(this.map); } catch(e){}
     if (this.state.basemap!=='color') { try { this.map.removeLayer(this.bases[this.state.basemap]); } catch(e){} try { this.bases.color.addTo(this.map); } catch(e){} }
     const layers=this._initLayers();
@@ -9938,7 +10230,7 @@ class Component extends DCLogic {
         this.LAYERS.forEach(cfg => {
           // El panel incluye división territorial + capas institucionales siempre-visibles
           // (PODECOBI). El resto se configura desde el buscador.
-          const visiblePanel = cfg.cat === 'División territorial' || cfg.key === 'podecobi' || cfg.key === 'pam';
+          const visiblePanel = cfg.cat === 'División territorial' || cfg.key === 'podecobi' || cfg.key === 'pam' || cfg.key === 'red_grafo';
           if (cfg.analysis || !visiblePanel) return;
           const v = L[cfg.key]; if (!v) return;
           if (!byCat[cfg.cat]) { byCat[cfg.cat] = []; order.push(cfg.cat); }

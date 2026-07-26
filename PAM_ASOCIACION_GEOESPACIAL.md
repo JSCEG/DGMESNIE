@@ -184,3 +184,87 @@ Rutas:
 | Versión | Fecha | Cambio |
 |---|---|---|
 | `PAM-RED-v1.0` | 2026-07-26 | Nombre, GCR, tensión, circuitos, longitud, homónimos, especificidad y conectividad línea–subestación |
+
+## 13. Grafo eléctrico navegable
+
+La versión `RED-GRAFO-v1.0` materializa la red como nodos y aristas para
+consultar conexiones sin alterar la clasificación `PAM-RED-v1.0`.
+
+### Nodos
+
+- Cada subestación catalogada es un nodo real.
+- Cada extremo de línea que no puede resolverse de forma confiable se conserva
+  como nodo virtual.
+- Dos nodos virtuales sólo se fusionan si su tensión es compatible y están a
+  no más de 100 metros.
+- El nodo conserva identificador estable, nombre, tensión, coordenadas, grado,
+  componente conexa, fuente y condición real/virtual.
+
+### Aristas
+
+- Cada tramo `LineString` es una arista y conserva su geometría completa.
+- Para cada extremo se evalúan tanto el orden nominal como el orden inverso.
+- La resolución usa nombre del extremo, unicidad, distancia geométrica y
+  compatibilidad de tensión.
+- Una subestación única a menos de 150 metros de un extremo real aporta
+  evidencia geométrica adicional.
+- El cruce visual de una línea por otra línea o por un punto intermedio no
+  crea conectividad.
+
+Estados de una arista:
+
+| Estado | Descripción |
+|---|---|
+| `conectada` | Ambos extremos fueron resueltos a nodos reales |
+| `parcial` | Sólo uno de los extremos fue resuelto |
+| `sin_resolver` | Ambos extremos permanecen como nodos virtuales |
+
+Las coincidencias ambiguas o por debajo del umbral alto se guardan en la cola
+de revisión. No se convierten en ubicación oficial ni en conexión validada.
+
+### Persistencia
+
+La reconstrucción se versiona en:
+
+- `dgmesnie.RedElectricaVersion`;
+- `dgmesnie.RedElectricaNodo`;
+- `dgmesnie.RedElectricaArista`;
+- `dgmesnie.RedElectricaRevision`.
+
+El identificador de versión combina las reglas y las huellas de los catálogos.
+Sólo una versión permanece activa. Si no hay una versión persistida o no puede
+leerse, el servicio puede reconstruir el grafo desde los GeoJSON.
+
+Los parámetros se pueden sobrescribir en
+`PamTerritorial:GrafoRedElectrica`; sus valores predeterminados son:
+
+- radio de búsqueda: 5 km;
+- tolerancia de extremo: 3 km;
+- fusión virtual: 0.1 km;
+- confianza alta: 85 puntos;
+- revisión: 70 puntos;
+- margen de ambigüedad: 10 puntos.
+
+### API
+
+- Resumen: `GET /DashboardProyectos/RedElectrica/Grafo/Resumen`
+- Grafo JSON: `GET /DashboardProyectos/RedElectrica/Grafo/Json`
+- Nodos buscables: `GET /DashboardProyectos/RedElectrica/Grafo/Nodos`
+- Vecindad: `GET /DashboardProyectos/RedElectrica/Grafo/Nodos/{nodeId}/Vecinos?depth=1`
+- Ruta mínima: `GET /DashboardProyectos/RedElectrica/Grafo/Ruta?origin={nodeId}&destination={nodeId}`
+- Revisiones: `GET /DashboardProyectos/RedElectrica/Grafo/Revisiones`
+- Capa GeoJSON: `GET /DashboardProyectos/RedElectrica/Grafo/GeoJson`
+- Subgrafo PAM: `GET /DashboardProyectos/RedElectrica/Grafo/Pam/{proyectoId}?depth=1`
+- Reconstrucción administrativa:
+  `POST /DashboardProyectos/RedElectrica/Grafo/Reconstruir?persist=true`
+
+El subgrafo PAM toma únicamente las asociaciones `alta` como semillas y agrega
+las subestaciones y líneas vecinas hasta la profundidad solicitada. Esto
+permite listar las conexiones alrededor de un PAM sin presentar la sugerencia
+automática como una ubicación oficialmente validada.
+
+## 14. Control de cambios del grafo
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| `RED-GRAFO-v1.0` | 2026-07-26 | Nodos, aristas, adyacencia, componentes, ruta mínima, revisiones y subgrafo PAM |
