@@ -268,3 +268,78 @@ automática como una ubicación oficialmente validada.
 | Versión | Fecha | Cambio |
 |---|---|---|
 | `RED-GRAFO-v1.0` | 2026-07-26 | Nodos, aristas, adyacencia, componentes, ruta mínima, revisiones y subgrafo PAM |
+
+## 15. Representación del catálogo PAM completo
+
+La capa del dashboard distingue el proyecto del elemento geográfico que lo
+representa. El corte del 26 de julio de 2026 contiene:
+
+- 281 proyectos PAM/PAMRNT en el catálogo;
+- 133 proyectos con al menos una asociación de red de confianza alta;
+- 148 proyectos sin geometría precisa suficiente, representados por su GCR.
+
+Para los 148 proyectos regionales se genera únicamente en el navegador un
+marcador de referencia en el centroide de la GCR. Ese marcador:
+
+1. permite localizar, consultar y abrir la ficha del proyecto;
+2. muestra la leyenda `Referencia regional GCR · no es coordenada oficial`;
+3. resalta el polígono completo de la GCR al seleccionarlo;
+4. ejecuta el análisis con la geometría GCR y buffer 0;
+5. no se persiste en `PAMProyectoUbicacion`;
+6. no participa como nodo del grafo eléctrico;
+7. nunca se presenta como ubicación validada.
+
+Si el campo GCR contiene varias regiones, por ejemplo `CE / OR / OC`, el
+análisis usa la unión de las regiones reconocidas. `Varias` se representa como
+cobertura multirregional. Un valor desconocido no se sustituye silenciosamente
+por todo el territorio nacional.
+
+Los marcadores de asociación de red y los regionales son clicables. El panel
+de detalle conserva clave, nombre, GCR, tipo, etapa, estatus, zona atendida,
+elementos asociados, fuente, corte y enlace a la ficha PAM.
+
+## 16. Convocatorias, municipio y KML como evidencia adicional
+
+La fuente consolidada de proyectos de convocatorias disponible para
+enriquecimiento es:
+
+`https://cdn.sassoapps.com/Mapas/Mixtos/mixtos.geojson`
+
+En el corte revisado contiene puntos de proyecto con folio, nombre,
+tecnología, estado, subestación o punto de interconexión, tensión y capacidad.
+La hoja de origen también contempla municipio y archivo KMZ. Estos datos
+pueden ayudar a localizar infraestructura relacionada, pero un proyecto de
+generación de una convocatoria no es automáticamente el mismo objeto que una
+obra de transmisión del PAM.
+
+### Jerarquía de evidencia
+
+| Nivel | Coincidencia requerida | Resultado permitido |
+|---|---|---|
+| A | Mismo folio o identificador PAM y KML explícitamente asociado | Crear candidato geométrico de evidencia alta, pendiente de validación |
+| B | Misma subestación o línea, GCR, tensión compatible y municipio coherente | Crear candidato para revisión; no validar automáticamente |
+| C | Proyecto cercano sin identidad compartida, aunque use una SE próxima | Contexto territorial solamente |
+| D | Cercanía visual o cruce aparente de una línea | No crea asociación |
+
+### Procedimiento propuesto
+
+1. Normalizar folios, nombres de subestación, extremos de línea y tensión.
+2. Resolver el municipio de cada punto por intersección con el GeoJSON
+   municipal; no depender solamente de texto libre.
+3. Comparar contra los elementos/equipos asociados del PAM y el grafo
+   eléctrico.
+4. Calcular distancia al elemento de red y registrar todas las evidencias.
+5. Si existe KMZ/KML, conservar la geometría original y su folio de origen.
+6. Enviar las coincidencias A/B a una cola de revisión.
+7. Persistir una ubicación oficial sólo después de validación humana.
+
+No se debe usar el centroide regional del icono GCR para calcular cercanía con
+convocatorias. Las distancias sólo se calculan a partir de coordenadas,
+geometrías KML/KMZ o elementos de red identificados.
+
+## 17. Control de cambios de representación y enriquecimiento
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| `PAM-MAPA-v1.1` | 2026-07-26 | Catálogo completo, icono regional clicable, detalle y análisis por GCR |
+| `PAM-EVIDENCIA-v1.0` | 2026-07-26 | Reglas de apoyo con convocatorias, municipio, interconexión y KML/KMZ |
