@@ -83,6 +83,15 @@ public sealed class PermisoEnergeticoDetalle
     public required string Fuente { get; init; }
     public required string NumeroPermiso { get; init; }
     public required string Nombre { get; init; }
+    public DateTime? FechaCorte { get; init; }
+    public DateTime FechaConsulta { get; init; }
+    public required string NivelAcceso { get; init; }
+    public bool EsDetalleInstitucional { get; init; }
+    public string Entidad { get; init; } = string.Empty;
+    public string Municipio { get; init; } = string.Empty;
+    public string Estatus { get; init; } = string.Empty;
+    public double? Latitud { get; init; }
+    public double? Longitud { get; init; }
     public required IReadOnlyList<PermisoEnergeticoDetalleCampo> Campos { get; init; }
 }
 
@@ -90,5 +99,33 @@ public sealed class PermisoEnergeticoDetalleCampo
 {
     public required string Clave { get; init; }
     public required string Etiqueta { get; init; }
+    public required string Categoria { get; init; }
     public required string Valor { get; init; }
+}
+
+public sealed record PermisoEnergeticoContextoAcceso(
+    bool EsInstitucional,
+    int RolId,
+    int MercadoId,
+    string NivelAcceso)
+{
+    public static PermisoEnergeticoContextoAcceso Publico { get; } =
+        new(false, 0, 0, "Consulta externa");
+}
+
+public sealed class PermisoEnergeticoFichaViewModel
+{
+    public required PermisoEnergeticoDetalle Detalle { get; init; }
+    public List<PamUsuarioDestinatario> Destinatarios { get; init; } = new();
+}
+
+public sealed class PermisoEnergeticoEnviarFichaInput
+{
+    public string Tipo { get; set; } = string.Empty;
+    public string NumeroPermiso { get; set; } = string.Empty;
+    public string Formato { get; set; } = "pdf";
+    public string ArchivoBase64 { get; set; } = string.Empty;
+    public string NombreArchivo { get; set; } = string.Empty;
+    public List<int> UsuarioIds { get; set; } = new();
+    public string MensajeAdicional { get; set; } = string.Empty;
 }

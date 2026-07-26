@@ -57,6 +57,7 @@
 
             const formato = form.querySelector("input[name='formato']:checked")?.value || "pdf";
             const clave = form.dataset.clave || "";
+            const endpoint = form.dataset.endpoint || "/InformePormenorizado/ProyectosIdentificados/Ficha/Enviar";
             const mensaje = document.getElementById("pam-envio-mensaje")?.value || "";
             const token = form.querySelector("input[name='__RequestVerificationToken']")?.value;
 
@@ -67,17 +68,21 @@
                 const archivo = await window.pamFichaGenerar(formato);
                 setEnviando(true, "Enviando…");
                 setFeedback(`Enviando la ficha a ${seleccion.length} destinatario(s)…`, "info");
-                const respuesta = await fetch("/InformePormenorizado/ProyectosIdentificados/Ficha/Enviar", {
+                const payload = {
+                    clavePem: clave,
+                    formato: formato,
+                    archivoBase64: archivo.base64,
+                    nombreArchivo: archivo.nombre,
+                    usuarioIds: seleccion,
+                    mensajeAdicional: mensaje
+                };
+                if (form.dataset.tipo) payload.tipo = form.dataset.tipo;
+                if (form.dataset.numeroPermiso) payload.numeroPermiso = form.dataset.numeroPermiso;
+
+                const respuesta = await fetch(endpoint, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "RequestVerificationToken": token },
-                    body: JSON.stringify({
-                        clavePem: clave,
-                        formato: formato,
-                        archivoBase64: archivo.base64,
-                        nombreArchivo: archivo.nombre,
-                        usuarioIds: seleccion,
-                        mensajeAdicional: mensaje
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 let data = {};

@@ -1758,6 +1758,7 @@ class Component extends DCLogic {
         return L.divIcon({className:'',html,iconSize:[44,44],iconAnchor:[22,22]});
       }
     };
+    if(cfg&&this.ENERGY_PERMIT_KEYS.includes(cfg.key)) options.clusterPane='permits';
     if(typeof L.markerClusterGroup==='function') return L.markerClusterGroup(options);
     if(!this._SimpleClusterLayer){
       this._SimpleClusterLayer=L.LayerGroup.extend({
@@ -1880,6 +1881,11 @@ class Component extends DCLogic {
       oscuro:   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19, crossOrigin:'anonymous' }),
     };
     this.bases[this.state.basemap].addTo(map);
+
+    // Los permisos deben recibir el clic aun cuando el contorno del análisis
+    // (pane draw) cubra la misma zona. También se usa para sus clústeres.
+    map.createPane('permits');
+    map.getPane('permits').style.zIndex = '630';
 
     // Grupos de capa
     this.groups = {}; this._built = {};
@@ -3525,7 +3531,13 @@ class Component extends DCLogic {
       if(this.ENERGY_PERMIT_KEYS.includes(key)){
         lyr.bindPopup(this._energyPermitPopup(cfg,p,nom,location),{maxWidth:370,minWidth:270});
       }
-      lyr.on('click', () => this._selectGeneric(cfg, p, nom, location));
+      lyr.on('click', event => {
+        if(this.ENERGY_PERMIT_KEYS.includes(key)){
+          try { lyr.openPopup(); } catch(error){}
+          try { if(event&&event.originalEvent) L.DomEvent.stopPropagation(event.originalEvent); } catch(error){}
+        }
+        this._selectGeneric(cfg, p, nom, location);
+      });
       if(clustered&&lyr instanceof L.Marker) pendingMarkers.push(lyr);
       else g.addLayer(lyr);
     };
@@ -3565,7 +3577,12 @@ class Component extends DCLogic {
         const icon=byTech
           ?this._techIcon(this._centralTech(p))
           :byPermit?this._energyPermitIcon(key,p):dot;
-        bind(L.marker([lat, lng], {icon}), p, [lat,lng]);
+        bind(L.marker([lat, lng], {
+          icon,
+          pane:byPermit?'permits':'markerPane',
+          riseOnHover:true,
+          bubblingMouseEvents:!byPermit
+        }), p, [lat,lng]);
       }
       else if (useCloud) { cloudPts.push({ lat, lng, props:p }); }
       else { bind(L.circleMarker([lat, lng], { radius:3.4, color:'#fff', weight:.8, fillColor:color, fillOpacity:.9, renderer:this._dataRenderer, pane:'data' }), p); }
@@ -3709,6 +3726,10 @@ class Component extends DCLogic {
       ?{type:'Feature',properties:{},geometry:{type:'Point',coordinates:[Number(location[1]),Number(location[0])]}}
       :null;
     const distance=feature?this._distanceFromAnalysisCentroidKm(this.state.analysis,feature):null;
+    const fichaUrl='/DashboardProyectos/PermisosEnergeticos/Ficha?'+new URLSearchParams({
+      tipo:String(cfg.api||cfg.key||''),
+      numeroPermiso:String(permit)
+    }).toString();
     return '<div style="font-family:Noto Sans,sans-serif;min-width:250px">'
       +'<div style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:'+esc(cfg.color)+';margin-bottom:5px">'+esc(market)+'</div>'
       +'<div style="font-family:Newsreader,serif;font-size:17px;font-weight:800;line-height:1.1;color:#1C1B1A;margin-bottom:8px">'+esc(this._permitValue(p,'nombre','Nombre')||nom||cfg.label)+'</div>'
@@ -3718,7 +3739,7 @@ class Component extends DCLogic {
       +'<span style="color:#77716B">Estatus</span><span>'+esc(status)+'</span>'
       +'<span style="color:#77716B">Capacidad</span><span>'+esc(this._energyPermitCapacity(p))+'</span>'
       +(Number.isFinite(distance)?'<span style="color:#77716B">Al centroide</span><strong>'+esc(distance.toLocaleString('es-MX',{minimumFractionDigits:1,maximumFractionDigits:1}))+' km</strong>':'')
-      +'</div><div style="margin-top:9px;padding-top:7px;border-top:1px solid #E6E1DA;color:#9B2247;font-size:10px;font-weight:700">Clic para abrir la ficha completa de base de datos</div></div>';
+      +'</div><a href="'+esc(fichaUrl)+'" target="_blank" rel="noopener" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:9px 11px;border-radius:6px;background:#9B2247;color:#fff;text-decoration:none;font-size:10px;font-weight:800;letter-spacing:.04em">Abrir ficha institucional completa <span aria-hidden="true">↗</span></a></div>';
   }
   _energyPermitRows(cfg,p,nom,location,detail){
     const value=(camel,pascal)=>this._permitValue(p,camel,pascal);
@@ -3751,6 +3772,13 @@ class Component extends DCLogic {
     }
     if(feature){
       rows.push(['Coordenadas',Number(location[0]).toFixed(5)+', '+Number(location[1]).toFixed(5)]);
+    }
+    const permit=value('numeroPermiso','NumeroPermiso');
+    if(permit&&cfg&&cfg.api){
+      rows.push(['Ficha institucional',window.location.origin+'/DashboardProyectos/PermisosEnergeticos/Ficha?'+new URLSearchParams({
+        tipo:String(cfg.api),
+        numeroPermiso:String(permit)
+      }).toString()]);
     }
     const used=new Set(rows.map(row=>this._norm(row[0])));
     ((detail&&detail.campos)||[]).forEach(field=>{

@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using NSIE.Models;
 using System.Globalization;
+using System.Text;
 
 namespace NSIE.Servicios;
 
@@ -18,6 +19,7 @@ public interface IRepositorioPermisosEnergeticos
     Task<PermisoEnergeticoDetalle?> ObtenerDetalleAsync(
         string tipo,
         string numeroPermiso,
+        PermisoEnergeticoContextoAcceso acceso,
         CancellationToken cancellationToken);
 }
 
@@ -36,6 +38,7 @@ public interface IServicioPermisosEnergeticos
     Task<PermisoEnergeticoDetalle?> ObtenerDetalleAsync(
         string tipo,
         string numeroPermiso,
+        PermisoEnergeticoContextoAcceso acceso,
         CancellationToken cancellationToken);
 }
 
@@ -101,6 +104,7 @@ WHERE LatitudGeo BETWEEN @MinLat AND @MaxLat
     public async Task<PermisoEnergeticoDetalle?> ObtenerDetalleAsync(
         string tipo,
         string numeroPermiso,
+        PermisoEnergeticoContextoAcceso acceso,
         CancellationToken cancellationToken)
     {
         var definition = ObtenerDefinicionDetalle(tipo);
@@ -110,30 +114,60 @@ WHERE LatitudGeo BETWEEN @MinLat AND @MaxLat
             return null;
         }
 
+        var detailQuery = $"""
+SELECT TOP (1) *
+FROM dbo.[{definition.ViewName}]
+WHERE [NumeroPermiso] = @NumeroPermiso
+ORDER BY [{definition.OrderColumn}] DESC;
+
+SELECT MAX([{definition.CutoffColumn}])
+FROM dbo.[{definition.ViewName}];
+""";
         var command = new CommandDefinition(
-            definition.Query,
+            detailQuery,
             new { NumeroPermiso = normalizedPermit },
             cancellationToken: cancellationToken);
 
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
-        var row = await connection.QueryFirstOrDefaultAsync(command);
+        using var multi = await connection.QueryMultipleAsync(command);
+        var row = await multi.ReadFirstOrDefaultAsync();
+        var cutoff = await multi.ReadFirstOrDefaultAsync<DateTime?>();
         if (row is not IDictionary<string, object> values)
         {
             return null;
         }
 
-        var fields = definition.Fields
-            .Select(field =>
+        HashSet<string>? allowedFields = null;
+        if (!acceso.EsInstitucional)
+        {
+            var configured = await ObtenerCamposVisiblesAsync(
+                connection,
+                definition.ViewName,
+                acceso.RolId,
+                acceso.MercadoId,
+                cancellationToken);
+            allowedFields = configured
+                .Select(NormalizeFieldName)
+                .ToHashSet(StringComparer.Ordinal);
+        }
+
+        var fields = values
+            .Where(pair =>
+                !IsTechnicalField(pair.Key) &&
+                (acceso.EsInstitucional ||
+                 IsIdentityField(pair.Key) ||
+                 allowedFields!.Contains(NormalizeFieldName(pair.Key))))
+            .Select(pair =>
             {
-                values.TryGetValue(field.Key, out var rawValue);
-                var formatted = FormatDetailValue(rawValue);
+                var formatted = FormatDetailValue(pair.Value);
                 return string.IsNullOrWhiteSpace(formatted)
                     ? null
                     : new PermisoEnergeticoDetalleCampo
                     {
-                        Clave = field.Key,
-                        Etiqueta = field.Label,
+                        Clave = pair.Key,
+                        Etiqueta = GetFieldLabel(pair.Key),
+                        Categoria = GetFieldCategory(pair.Key),
                         Valor = formatted
                     };
             })
@@ -147,17 +181,94 @@ WHERE LatitudGeo BETWEEN @MinLat AND @MaxLat
             Mercado = definition.Mercado,
             Fuente = definition.Fuente,
             NumeroPermiso = normalizedPermit,
-            Nombre = GetDetailValue(values, "Nombre") ?? normalizedPermit,
+            Nombre = GetFirstDetailValue(
+                values,
+                "RazonSocial",
+                "RazónSocial",
+                "Nombre",
+                "Titular",
+                "Permisionario") ?? normalizedPermit,
+            FechaCorte = cutoff,
+            FechaConsulta = DateTime.Now,
+            NivelAcceso = acceso.NivelAcceso,
+            EsDetalleInstitucional = acceso.EsInstitucional,
+            Entidad = GetFirstDetailValue(values, "EntidadFederativa", "Entidad", "EfId", "Estado") ?? string.Empty,
+            Municipio = GetFirstDetailValue(values, "Municipio", "MunicipioEs", "MunicipioId", "MpoId") ?? string.Empty,
+            Estatus = GetFirstDetailValue(values, "Estatus", "EstatusPermiso", "EstadoDePermiso", "EstatusInstalacion") ?? string.Empty,
+            Latitud = GetFirstDouble(values, "LatitudGeo", "Latitud"),
+            Longitud = GetFirstDouble(values, "LongitudGeo", "Longitud"),
             Campos = fields
         };
     }
 
-    private static string? GetDetailValue(
-        IDictionary<string, object> values,
-        string key)
+    private static async Task<IReadOnlyList<string>> ObtenerCamposVisiblesAsync(
+        SqlConnection connection,
+        string viewName,
+        int roleId,
+        int marketId,
+        CancellationToken cancellationToken)
     {
-        return values.TryGetValue(key, out var value)
-            ? FormatDetailValue(value)
+        const string query = """
+SELECT Nombre_Campo
+FROM dbo.CamposMapas
+WHERE REPLACE([Tabla], ' ', '') = @ViewName
+  AND Visible = 1
+  AND Rol_ID = @RoleId
+  AND Mercado_ID = @MarketId
+ORDER BY Nombre_Campo;
+""";
+        var command = new CommandDefinition(
+            query,
+            new { ViewName = viewName, RoleId = roleId, MarketId = marketId },
+            cancellationToken: cancellationToken);
+        var configured = (await connection.QueryAsync<string>(command)).ToList();
+
+        // El perfil público es únicamente un fallback. No se combina con una
+        // configuración externa existente porque podría reactivar un campo que
+        // ese rol o mercado ocultó expresamente.
+        if (configured.Count == 0 && (roleId != 0 || marketId != 0))
+        {
+            var fallback = new CommandDefinition(
+                query,
+                new { ViewName = viewName, RoleId = 0, MarketId = 0 },
+                cancellationToken: cancellationToken);
+            configured = (await connection.QueryAsync<string>(fallback)).ToList();
+        }
+
+        return configured
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? GetFirstDetailValue(
+        IDictionary<string, object> values,
+        params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            var pair = values.FirstOrDefault(item =>
+                string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase));
+            var formatted = FormatDetailValue(pair.Value);
+            if (!string.IsNullOrWhiteSpace(formatted))
+            {
+                return formatted;
+            }
+        }
+
+        return null;
+    }
+
+    private static double? GetFirstDouble(
+        IDictionary<string, object> values,
+        params string[] keys)
+    {
+        var raw = GetFirstDetailValue(values, keys);
+        return double.TryParse(
+            raw,
+            NumberStyles.Any,
+            CultureInfo.InvariantCulture,
+            out var parsed)
+            ? parsed
             : null;
     }
 
@@ -166,14 +277,170 @@ WHERE LatitudGeo BETWEEN @MinLat AND @MaxLat
         return value switch
         {
             null or DBNull => string.Empty,
+            DateTime date when date.Year <= 1900 => string.Empty,
             DateTime date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            DateTimeOffset date when date.Year <= 1900 => string.Empty,
             DateTimeOffset date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             decimal number => number.ToString("0.####", CultureInfo.InvariantCulture),
             double number => number.ToString("0.####", CultureInfo.InvariantCulture),
             float number => number.ToString("0.####", CultureInfo.InvariantCulture),
+            byte[] => string.Empty,
             _ => (Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty).Trim()
         };
     }
+
+    private static bool IsIdentityField(string key)
+    {
+        var normalized = NormalizeFieldName(key);
+        return normalized is
+            "numeropermiso" or
+            "razonsocial" or
+            "nombre" or
+            "titular" or
+            "permisionario";
+    }
+
+    private static bool IsTechnicalField(string key)
+    {
+        var normalized = NormalizeFieldName(key);
+        return normalized is
+            "shape" or
+            "geom" or
+            "geometry" or
+            "geografia" or
+            "geography" or
+            "ubicaciongeo" or
+            "objectid" or
+            "wkt" or
+            "geojson";
+    }
+
+    private static string NormalizeFieldName(string? value)
+    {
+        var source = (value ?? string.Empty).Normalize(NormalizationForm.FormD);
+        var result = new StringBuilder(source.Length);
+        foreach (var character in source)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark ||
+                !char.IsLetterOrDigit(character))
+            {
+                continue;
+            }
+
+            result.Append(char.ToLowerInvariant(character));
+        }
+
+        return result.ToString();
+    }
+
+    private static string GetFieldLabel(string key)
+    {
+        var normalized = NormalizeFieldName(key);
+        if (KnownFieldLabels.TryGetValue(normalized, out var label))
+        {
+            return label;
+        }
+
+        var result = new StringBuilder(key.Length + 8);
+        for (var index = 0; index < key.Length; index++)
+        {
+            var character = key[index] == '_' ? ' ' : key[index];
+            if (index > 0 &&
+                char.IsUpper(character) &&
+                char.IsLetterOrDigit(key[index - 1]) &&
+                char.IsLower(key[index - 1]))
+            {
+                result.Append(' ');
+            }
+
+            result.Append(character);
+        }
+
+        var humanized = string.Join(
+            " ",
+            result.ToString().Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return humanized.Length == 0
+            ? key
+            : char.ToUpperInvariant(humanized[0]) + humanized[1..];
+    }
+
+    private static string GetFieldCategory(string key)
+    {
+        var normalized = NormalizeFieldName(key);
+        if (normalized.Contains("latitud", StringComparison.Ordinal) ||
+            normalized.Contains("longitud", StringComparison.Ordinal) ||
+            normalized.Contains("calle", StringComparison.Ordinal) ||
+            normalized.Contains("colonia", StringComparison.Ordinal) ||
+            normalized.Contains("municipio", StringComparison.Ordinal) ||
+            normalized.Contains("entidad", StringComparison.Ordinal) ||
+            normalized.Contains("estado", StringComparison.Ordinal) ||
+            normalized.Contains("direccion", StringComparison.Ordinal) ||
+            normalized.Contains("domicilio", StringComparison.Ordinal) ||
+            normalized.Contains("postal", StringComparison.Ordinal))
+        {
+            return "Ubicación";
+        }
+
+        if (normalized.Contains("fecha", StringComparison.Ordinal) ||
+            normalized.Contains("vigencia", StringComparison.Ordinal) ||
+            normalized.Contains("estatus", StringComparison.Ordinal) ||
+            normalized.Contains("suspension", StringComparison.Ordinal) ||
+            normalized.Contains("otorgamiento", StringComparison.Ordinal) ||
+            normalized.Contains("acuse", StringComparison.Ordinal))
+        {
+            return "Situación regulatoria";
+        }
+
+        if (normalized.Contains("capacidad", StringComparison.Ordinal) ||
+            normalized.Contains("tecnologia", StringComparison.Ordinal) ||
+            normalized.Contains("combustible", StringComparison.Ordinal) ||
+            normalized.Contains("energetico", StringComparison.Ordinal) ||
+            normalized.Contains("producto", StringComparison.Ordinal) ||
+            normalized.Contains("tanque", StringComparison.Ordinal) ||
+            normalized.Contains("unidad", StringComparison.Ordinal) ||
+            normalized.Contains("despach", StringComparison.Ordinal) ||
+            normalized.Contains("servicio", StringComparison.Ordinal) ||
+            normalized.Contains("generacion", StringComparison.Ordinal) ||
+            normalized.Contains("interconexion", StringComparison.Ordinal))
+        {
+            return "Perfil técnico y operativo";
+        }
+
+        return "Identificación";
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> KnownFieldLabels =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["numeropermiso"] = "Número de permiso",
+            ["numerodeexpediente"] = "Expediente",
+            ["razonsocial"] = "Razón social",
+            ["efid"] = "Entidad federativa",
+            ["mpoid"] = "Municipio",
+            ["rfc"] = "RFC",
+            ["fechaotorgamiento"] = "Fecha de otorgamiento",
+            ["fechadeotorgamiento"] = "Fecha de otorgamiento",
+            ["fecharecepcion"] = "Fecha de recepción",
+            ["iniciovigencia"] = "Inicio de vigencia",
+            ["terminovigencia"] = "Término de vigencia",
+            ["estatusinstalacion"] = "Estatus de la instalación",
+            ["estadodepermiso"] = "Estado del permiso",
+            ["latitudgeo"] = "Latitud",
+            ["longitudgeo"] = "Longitud",
+            ["codigopostal"] = "Código postal",
+            ["energeticoprimario"] = "Energético primario",
+            ["generacionestimadaanual"] = "Generación estimada anual",
+            ["inversionestimadamdls"] = "Inversión estimada (MUSD)",
+            ["inversionestimada"] = "Inversión estimada",
+            ["capacidaddiseno"] = "Capacidad de diseño",
+            ["capacidadlitros"] = "Capacidad (litros)",
+            ["numerotanques"] = "Número de tanques",
+            ["numerounidades"] = "Número de unidades",
+            ["numerodemodulosdespachadores"] = "Módulos despachadores",
+            ["tiendadeconveniencia"] = "Tienda de conveniencia"
+        };
 
     private static PermisoQueryDefinition? ObtenerDefinicion(string tipo)
     {
@@ -567,7 +834,23 @@ ORDER BY FechaOtorgamiento DESC;",
         string Mercado,
         string Fuente,
         string Query,
-        IReadOnlyList<PermisoDetailField> Fields);
+        IReadOnlyList<PermisoDetailField> Fields)
+    {
+        public string ViewName => Tipo switch
+        {
+            "electricidad" => "vElectricidad_autorizado_mapa",
+            "gas-natural" => "vGasNatural_autorizado_mapa",
+            "gas-lp" => "vGasLP_autorizado_mapa",
+            "petroliferos" => "vExpendios_autorizado_mapa",
+            _ => throw new InvalidOperationException($"Tipo de permiso no soportado: {Tipo}.")
+        };
+
+        public string OrderColumn => Tipo == "gas-lp"
+            ? "FechaDeOtorgamiento"
+            : "FechaOtorgamiento";
+
+        public string CutoffColumn => OrderColumn;
+    }
 
     private sealed record PermisoDetailField(string Key, string Label);
 }
@@ -663,6 +946,7 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
     public Task<PermisoEnergeticoDetalle?> ObtenerDetalleAsync(
         string tipo,
         string numeroPermiso,
+        PermisoEnergeticoContextoAcceso acceso,
         CancellationToken cancellationToken)
     {
         var normalizedType = (tipo ?? string.Empty).Trim().ToLowerInvariant();
@@ -674,6 +958,7 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
         return _repository.ObtenerDetalleAsync(
             normalizedType,
             numeroPermiso,
+            acceso,
             cancellationToken);
     }
 }

@@ -115,6 +115,7 @@ builder.Services.AddTransient<IRepositorioEnergiasLimpias, RepositorioEnergiasLi
 builder.Services.AddTransient<IRepositorioTarifas, RepositorioTarifas>();
 builder.Services.AddScoped<IRepositorioPermisosEnergeticos, RepositorioPermisosEnergeticos>();
 builder.Services.AddScoped<IServicioPermisosEnergeticos, ServicioPermisosEnergeticos>();
+builder.Services.AddSingleton<IPoliticaAccesoPermisosEnergeticos, PoliticaAccesoPermisosEnergeticos>();
 builder.Services.AddTransient<FacturaExtractorService>();
 builder.Services.AddTransient<IRepositorioInscripcion, RepositorioInscripcion>();
 builder.Services.AddScoped<IRepositorioFinanzas, RepositorioFinanzas>();

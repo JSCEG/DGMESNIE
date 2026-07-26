@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
 using NSIE.Models;
 using NSIE.Servicios;
 
@@ -10,13 +11,16 @@ namespace NSIE.Controllers;
 public sealed class DashboardEnergiaController : ControllerBase
 {
     private readonly IServicioPermisosEnergeticos _service;
+    private readonly IPoliticaAccesoPermisosEnergeticos _accessPolicy;
     private readonly ILogger<DashboardEnergiaController> _logger;
 
     public DashboardEnergiaController(
         IServicioPermisosEnergeticos service,
+        IPoliticaAccesoPermisosEnergeticos accessPolicy,
         ILogger<DashboardEnergiaController> logger)
     {
         _service = service;
+        _accessPolicy = accessPolicy;
         _logger = logger;
     }
 
@@ -85,9 +89,7 @@ public sealed class DashboardEnergiaController : ControllerBase
     }
 
     [HttpGet("PermisosEnergeticos/Detalle")]
-    [ResponseCache(
-        Duration = 600,
-        Location = ResponseCacheLocation.Client)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     [ProducesResponseType(typeof(PermisoEnergeticoDetalle), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -118,9 +120,11 @@ public sealed class DashboardEnergiaController : ControllerBase
 
         try
         {
+            var acceso = _accessPolicy.Resolver(ObtenerPerfilUsuario());
             var result = await _service.ObtenerDetalleAsync(
                 normalizedType,
                 normalizedPermit,
+                acceso,
                 cancellationToken);
 
             return result is null
@@ -145,6 +149,25 @@ public sealed class DashboardEnergiaController : ControllerBase
                 statusCode: StatusCodes.Status503ServiceUnavailable,
                 title: "Fuente de permisos no disponible",
                 detail: "No fue posible consultar la ficha del permiso en este momento.");
+        }
+    }
+
+    private PerfilUsuario? ObtenerPerfilUsuario()
+    {
+        var json = HttpContext.Session.GetString("PerfilUsuario");
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonConvert.DeserializeObject<PerfilUsuario>(json);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "El perfil de sesión no pudo interpretarse para resolver el detalle de permisos.");
+            return null;
         }
     }
 

@@ -14,6 +14,8 @@ namespace NSIE.Controllers
         private readonly IInegiTerritorialService _inegiService;
         private readonly ICneFuelPriceService _cneFuelPriceService;
         private readonly IRepositorioTarifas _tarifasRepository;
+        private readonly IServicioPermisosEnergeticos _permisosService;
+        private readonly IPoliticaAccesoPermisosEnergeticos _permisosAccessPolicy;
         private readonly ILogger<DashboardProyectosController> _logger;
 
         [ActivatorUtilitiesConstructor]
@@ -23,6 +25,8 @@ namespace NSIE.Controllers
             IInegiTerritorialService inegiService,
             ICneFuelPriceService cneFuelPriceService,
             IRepositorioTarifas tarifasRepository,
+            IServicioPermisosEnergeticos permisosService,
+            IPoliticaAccesoPermisosEnergeticos permisosAccessPolicy,
             ILogger<DashboardProyectosController> logger)
         {
             _pamService = pamService;
@@ -30,6 +34,8 @@ namespace NSIE.Controllers
             _inegiService = inegiService;
             _cneFuelPriceService = cneFuelPriceService;
             _tarifasRepository = tarifasRepository;
+            _permisosService = permisosService;
+            _permisosAccessPolicy = permisosAccessPolicy;
             _logger = logger;
         }
 
@@ -233,6 +239,203 @@ namespace NSIE.Controllers
             }
         }
 
+        [HttpGet("DashboardProyectos/PermisosEnergeticos/Ficha")]
+        [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+        public async Task<IActionResult> FichaPermisoEnergetico(
+            [FromQuery] string tipo,
+            [FromQuery] string numeroPermiso,
+            CancellationToken cancellationToken)
+        {
+            var normalizedType = (tipo ?? string.Empty).Trim().ToLowerInvariant();
+            var normalizedPermit = (numeroPermiso ?? string.Empty).Trim();
+            if (!_permisosService.TiposSoportados.Contains(normalizedType, StringComparer.Ordinal) ||
+                string.IsNullOrWhiteSpace(normalizedPermit) ||
+                normalizedPermit.Length > 120 ||
+                normalizedPermit.Any(char.IsControl))
+            {
+                return BadRequest("El tipo o número de permiso no es válido.");
+            }
+
+            try
+            {
+                var acceso = _permisosAccessPolicy.Resolver(ObtenerPerfilUsuarioActual());
+                var detalle = await _permisosService.ObtenerDetalleAsync(
+                    normalizedType,
+                    normalizedPermit,
+                    acceso,
+                    cancellationToken);
+                if (detalle is null)
+                {
+                    return NotFound();
+                }
+
+                var model = new PermisoEnergeticoFichaViewModel
+                {
+                    Detalle = detalle,
+                    Destinatarios = await _pamService.ObtenerDestinatariosAsync()
+                };
+                return View("PermisoEnergeticoFicha", model);
+            }
+            catch (SqlException ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "No fue posible construir la ficha del permiso {NumeroPermiso} ({Tipo}).",
+                    normalizedPermit,
+                    normalizedType);
+                return StatusCode(
+                    StatusCodes.Status503ServiceUnavailable,
+                    "El inventario institucional de permisos no está disponible en este momento.");
+            }
+        }
+
+        [HttpPost("DashboardProyectos/PermisosEnergeticos/Ficha/Enviar")]
+        [ValidateAntiForgeryToken]
+        [RequestSizeLimit(67108864)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 67108864)]
+        public async Task<IActionResult> EnviarFichaPermisoEnergetico(
+            [FromBody] PermisoEnergeticoEnviarFichaInput input,
+            CancellationToken cancellationToken)
+        {
+            if (input is null ||
+                string.IsNullOrWhiteSpace(input.ArchivoBase64) ||
+                input.UsuarioIds is not { Count: > 0 })
+            {
+                return BadRequest(new
+                {
+                    ok = false,
+                    mensaje = "Selecciona al menos un destinatario y espera a que la ficha termine de generarse."
+                });
+            }
+
+            var normalizedType = (input.Tipo ?? string.Empty).Trim().ToLowerInvariant();
+            var normalizedPermit = (input.NumeroPermiso ?? string.Empty).Trim();
+            if (!_permisosService.TiposSoportados.Contains(normalizedType, StringComparer.Ordinal) ||
+                string.IsNullOrWhiteSpace(normalizedPermit) ||
+                normalizedPermit.Length > 120)
+            {
+                return BadRequest(new { ok = false, mensaje = "La ficha de permiso solicitada no es válida." });
+            }
+
+            var acceso = _permisosAccessPolicy.Resolver(ObtenerPerfilUsuarioActual());
+            var detalle = await _permisosService.ObtenerDetalleAsync(
+                normalizedType,
+                normalizedPermit,
+                acceso,
+                cancellationToken);
+            if (detalle is null)
+            {
+                return NotFound(new { ok = false, mensaje = "El permiso ya no está disponible en el inventario." });
+            }
+
+            var formato = string.Equals(input.Formato, "pptx", StringComparison.OrdinalIgnoreCase)
+                ? "pptx"
+                : "pdf";
+            byte[] adjunto;
+            try
+            {
+                var base64 = input.ArchivoBase64;
+                var comma = base64.IndexOf(',');
+                if (comma >= 0)
+                {
+                    base64 = base64[(comma + 1)..];
+                }
+
+                adjunto = Convert.FromBase64String(base64);
+            }
+            catch
+            {
+                return BadRequest(new
+                {
+                    ok = false,
+                    mensaje = "El archivo adjunto no se pudo procesar. Vuelve a generarlo."
+                });
+            }
+
+            const int maxAttachmentBytes = 20 * 1024 * 1024;
+            if (adjunto.Length == 0 || adjunto.Length > maxAttachmentBytes)
+            {
+                return BadRequest(new
+                {
+                    ok = false,
+                    mensaje = "La ficha está vacía o supera el límite seguro de 20 MB para correo."
+                });
+            }
+
+            var safePermit = string.Concat(
+                normalizedPermit.Select(character =>
+                    char.IsLetterOrDigit(character) || character is '-' or '_'
+                        ? character
+                        : '_'));
+            var nombreArchivo = string.IsNullOrWhiteSpace(input.NombreArchivo)
+                ? $"Ficha_permiso_{safePermit}_{DateTime.Now:yyyyMMdd}.{formato}"
+                : (input.NombreArchivo.EndsWith($".{formato}", StringComparison.OrdinalIgnoreCase)
+                    ? input.NombreArchivo
+                    : $"{input.NombreArchivo}.{formato}");
+
+            var destinatarios = await _pamService.ObtenerDestinatariosAsync();
+            var seleccionados = destinatarios
+                .Where(destino => input.UsuarioIds.Contains(destino.IdUsuario))
+                .ToList();
+            if (seleccionados.Count == 0)
+            {
+                return BadRequest(new { ok = false, mensaje = "Los destinatarios seleccionados no son válidos." });
+            }
+
+            var perfil = ObtenerPerfilUsuarioActual();
+            var remitente = string.IsNullOrWhiteSpace(perfil?.Nombre)
+                ? "el equipo de la DGMESNIE"
+                : perfil.Nombre;
+            var enviados = new List<string>();
+            var fallidos = new List<string>();
+
+            foreach (var destino in seleccionados)
+            {
+                try
+                {
+                    var cuerpo = ConstruirCorreoFichaPermiso(
+                        destino.Nombre,
+                        detalle,
+                        formato,
+                        remitente,
+                        input.MensajeAdicional);
+                    await _emailService.EnviarCorreo(
+                        destino.Correo,
+                        $"Ficha territorial del permiso {detalle.NumeroPermiso}",
+                        cuerpo,
+                        adjunto,
+                        nombreArchivo);
+                    enviados.Add(destino.Nombre);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "No fue posible enviar la ficha del permiso {NumeroPermiso} a {Correo}.",
+                        detalle.NumeroPermiso,
+                        destino.Correo);
+                    fallidos.Add(destino.Nombre);
+                }
+            }
+
+            if (enviados.Count == 0)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new
+                {
+                    ok = false,
+                    mensaje = "No fue posible enviar la ficha a ningún destinatario."
+                });
+            }
+
+            var message = $"Ficha enviada a {enviados.Count} destinatario(s): {string.Join(", ", enviados)}.";
+            if (fallidos.Count > 0)
+            {
+                message += $" No se pudo enviar a: {string.Join(", ", fallidos)}.";
+            }
+
+            return Ok(new { ok = true, mensaje = message });
+        }
+
         [HttpPost("DashboardProyectos/EnviarReporte")]
         [ValidateAntiForgeryToken]
         [RequestSizeLimit(67108864)]
@@ -321,6 +524,71 @@ namespace NSIE.Controllers
                 mensaje += $" No se pudo enviar a: {string.Join(", ", fallidos)}.{detalle}";
             }
             return Ok(new { ok = true, mensaje });
+        }
+
+        private PerfilUsuario? ObtenerPerfilUsuarioActual()
+        {
+            var json = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
+            try
+            {
+                return JsonConvert.DeserializeObject<PerfilUsuario>(json);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "No fue posible interpretar el perfil de sesión.");
+                return null;
+            }
+        }
+
+        private static string ConstruirCorreoFichaPermiso(
+            string nombreDestino,
+            PermisoEnergeticoDetalle detalle,
+            string formato,
+            string remitente,
+            string mensajeAdicional)
+        {
+            static string Encode(string? value) =>
+                System.Net.WebUtility.HtmlEncode(value ?? string.Empty);
+            var saludo = string.IsNullOrWhiteSpace(nombreDestino)
+                ? "Estimada(o)"
+                : $"Estimada(o) {Encode(nombreDestino)}";
+            var extra = string.IsNullOrWhiteSpace(mensajeAdicional)
+                ? string.Empty
+                : $"<p style=\"margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6\">{Encode(mensajeAdicional)}</p>";
+            var formatoLabel = formato == "pptx" ? "PowerPoint" : "PDF";
+
+            return $@"
+<div style=""font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #ece8e2;border-radius:12px;overflow:hidden"">
+  <div style=""background:#9B2247;padding:22px 28px"">
+    <div style=""color:#fff;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase"">Secretaría de Energía · DGMESNIE</div>
+    <div style=""color:#F5D9E2;font-size:12px;margin-top:4px"">Ficha territorial de permiso energético</div>
+  </div>
+  <div style=""padding:26px 28px"">
+    <p style=""margin:0 0 16px;color:#1c1b1a;font-size:15px"">{saludo}:</p>
+    <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
+      {Encode(remitente)} le comparte la ficha territorial del permiso
+      <strong>{Encode(detalle.NumeroPermiso)}</strong>, correspondiente a
+      <strong>{Encode(detalle.Nombre)}</strong>.
+    </p>
+    {extra}
+    <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
+      El archivo adjunto en formato <strong>{formatoLabel}</strong> incluye portada institucional,
+      índice navegable, datos autorizados por el perfil, localización, fuente y fecha de corte.
+    </p>
+    <div style=""margin:20px 0;padding:14px 18px;border-left:4px solid #E0A12E;background:#faf8f5;color:#5f5954;font-size:13px"">
+      Documento informativo de trabajo. La información corresponde al inventario institucional vigente a su fecha de corte.
+    </div>
+    <p style=""margin:16px 0 0;color:#6F6B66;font-size:13px"">Atentamente,<br><strong>{Encode(remitente)}</strong><br>Secretaría de Energía · DGMESNIE</p>
+  </div>
+  <div style=""background:#faf8f5;padding:14px 28px;border-top:1px solid #ece8e2;color:#9A958E;font-size:11px"">
+    Correo generado automáticamente por la plataforma DGMESNIE. Por favor no responda a este mensaje.
+  </div>
+</div>";
         }
 
         private static string DescribirFalloEnvio(Exception ex)

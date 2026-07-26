@@ -1,0 +1,401 @@
+@model NSIE.Models.PermisoEnergeticoFichaViewModel
+
+@{
+    var detail = Model.Detalle;
+    ViewData["Title"] = $"Ficha territorial {detail.NumeroPermiso}";
+    var culture = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    var safePermit = string.Concat(detail.NumeroPermiso.Select(character =>
+        char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '_'));
+    var fileName = $"Ficha_permiso_{safePermit}_{DateTime.Now:yyyyMMdd}";
+    var sourceDate = detail.FechaCorte?.ToString("dd 'de' MMMM 'de' yyyy", culture) ?? "Sin fecha de corte disponible";
+    var location = string.Join(" · ", new[] { detail.Municipio, detail.Entidad }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    var categories = new[] { "Identificación", "Situación regulatoria", "Ubicación", "Perfil técnico y operativo" };
+    var orderedFields = categories
+        .SelectMany(category => detail.Campos.Where(field => field.Categoria == category))
+        .Concat(detail.Campos.Where(field => !categories.Contains(field.Categoria)))
+        .ToList();
+    var detailSlideCount = Math.Max(1, (int)Math.Ceiling(orderedFields.Count / 12d));
+    var fieldsPerSlide = orderedFields.Count == 0
+        ? 12
+        : (int)Math.Ceiling(orderedFields.Count / (double)detailSlideCount);
+    var detailSlides = orderedFields.Chunk(fieldsPerSlide).Select(chunk => chunk.ToList()).ToList();
+    if (orderedFields.Count == 0)
+    {
+        detailSlides.Add(new List<NSIE.Models.PermisoEnergeticoDetalleCampo>());
+    }
+
+    Func<string[], string> fieldValue = keys =>
+    {
+        foreach (var key in keys)
+        {
+            var field = detail.Campos.FirstOrDefault(item =>
+                string.Equals(item.Clave, key, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(field?.Valor))
+            {
+                return field.Valor;
+            }
+        }
+
+        return "—";
+    };
+
+    var permitType = fieldValue(new[] { "TipoPermiso", "TipoDePermiso", "Tipo", "SubTipo", "Actividad" });
+    var technology = fieldValue(new[] { "Tecnologia", "Tecnología", "FuenteEnergía", "Energetico_primario", "Combustible", "Productos" });
+    var grantDate = fieldValue(new[] { "FechaOtorgamiento", "FechaDeOtorgamiento", "Otorgamiento" });
+    var capacity = fieldValue(new[] { "Capacidad", "CapacidadAutorizada", "CapacidadDiseño", "CapacidadLitros", "CapacidadOperativaReal" });
+}
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="~/Geovisualizador/css/leaflet.css" />
+<link rel="stylesheet" href="~/css/pam-ficha-presentacion.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/permiso-ficha-presentacion.css" asp-append-version="true" />
+
+<main class="pam-ficha-page permiso-ficha-page"
+      data-filename="@fileName"
+      data-project-key="@detail.NumeroPermiso">
+    <div class="pam-ficha-toolbar" aria-label="Acciones de la ficha">
+        <a asp-controller="DashboardProyectos" asp-action="Index" class="pam-ficha-toolbar__back">
+            <i class="fas fa-arrow-left" aria-hidden="true"></i><span>Dashboard territorial</span>
+        </a>
+        <div class="pam-ficha-toolbar__title">
+            <strong>@detail.NumeroPermiso</strong><span>Ficha territorial navegable</span>
+        </div>
+        <div class="pam-ficha-toolbar__actions">
+            <button type="button" data-export="pdf" title="Descargar ficha en PDF"><i class="fas fa-file-pdf"></i><span>PDF</span></button>
+            <button type="button" data-export="pptx" title="Descargar ficha en PowerPoint"><i class="fas fa-file-powerpoint"></i><span>PPT</span></button>
+            <button type="button" id="pam-btn-enviar" title="Enviar la ficha por correo"><i class="fas fa-paper-plane"></i><span>Enviar</span></button>
+            <button type="button" data-fullscreen title="Presentar en pantalla completa"><i class="fas fa-expand"></i><span>Presentar</span></button>
+        </div>
+    </div>
+
+    <div id="pam-envio-modal" class="pam-envio-modal" hidden>
+        <div class="pam-envio-backdrop" data-envio-cerrar></div>
+        <div class="pam-envio-dialog" role="dialog" aria-modal="true" aria-labelledby="pam-envio-titulo">
+            <div class="pam-envio-head">
+                <div>
+                    <h3 id="pam-envio-titulo">Enviar ficha por correo</h3>
+                    <p>Permiso <strong>@detail.NumeroPermiso</strong> · se adjunta el archivo generado.</p>
+                </div>
+                <button type="button" class="pam-envio-x" data-envio-cerrar aria-label="Cerrar"><i class="fas fa-xmark"></i></button>
+            </div>
+            <form id="pam-envio-form"
+                  data-clave="@detail.NumeroPermiso"
+                  data-tipo="@detail.Tipo"
+                  data-numero-permiso="@detail.NumeroPermiso"
+                  data-endpoint="/DashboardProyectos/PermisosEnergeticos/Ficha/Enviar"
+                  data-skip-page-preloader="true">
+                @Html.AntiForgeryToken()
+                <label class="pam-envio-label">Formato del archivo</label>
+                <div class="pam-envio-formato">
+                    <label><input type="radio" name="formato" value="pdf" checked /><span><i class="fas fa-file-pdf"></i> PDF</span></label>
+                    <label><input type="radio" name="formato" value="pptx" /><span><i class="fas fa-file-powerpoint"></i> PowerPoint</span></label>
+                </div>
+                <label class="pam-envio-label" for="pam-envio-buscar">Destinatarios <span>(uno o más)</span></label>
+                <input type="search" id="pam-envio-buscar" class="pam-envio-buscar" placeholder="Buscar por nombre o correo…" autocomplete="off" />
+                <div class="pam-envio-lista" id="pam-envio-lista" role="listbox" aria-multiselectable="true">
+                    @if (Model.Destinatarios.Count == 0)
+                    {
+                        <div class="pam-envio-vacio">No hay usuarios con correo registrado.</div>
+                    }
+                    else
+                    {
+                        @foreach (var user in Model.Destinatarios)
+                        {
+                            <label class="pam-envio-item" data-nombre="@user.Nombre.ToLowerInvariant()" data-correo="@user.Correo.ToLowerInvariant()">
+                                <input type="checkbox" name="usuario" value="@user.IdUsuario" />
+                                <span class="pam-envio-item__ini">@(string.IsNullOrWhiteSpace(user.Nombre) ? "?" : user.Nombre.Trim()[..1].ToUpperInvariant())</span>
+                                <span class="pam-envio-item__info">
+                                    <strong>@user.Nombre</strong>
+                                    <small>@user.Correo@(string.IsNullOrWhiteSpace(user.Cargo) ? "" : $" · {user.Cargo}")</small>
+                                </span>
+                            </label>
+                        }
+                    }
+                </div>
+                <label class="pam-envio-label" for="pam-envio-mensaje">Mensaje adicional <span>(opcional)</span></label>
+                <textarea id="pam-envio-mensaje" name="mensaje" rows="2" class="pam-envio-mensaje" placeholder="Ej. Se comparte para la reunión de seguimiento."></textarea>
+                <div class="pam-envio-feedback" id="pam-envio-feedback" hidden></div>
+                <div class="pam-envio-actions">
+                    <button type="button" class="pam-envio-btn pam-envio-btn--cancel" data-envio-cerrar>Cancelar</button>
+                    <button type="submit" class="pam-envio-btn pam-envio-btn--send" id="pam-envio-enviar">
+                        <i class="fas fa-paper-plane" aria-hidden="true"></i> Enviar ficha
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="pam-deck-shell" class="pam-deck-shell">
+        <div id="pam-deck" class="pam-deck" aria-live="polite">
+            <section class="pam-slide pam-slide--cover is-active" data-slide data-label="Portada" data-screen-label="01">
+                <div class="pam-cover__logos">
+                    <img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" />
+                    <i></i>
+                    <img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" />
+                </div>
+                <div class="pam-cover__head">
+                    <div class="pam-cover__eyebrow">Subsecretaría de Planeación y Transición Energética</div>
+                    <h1>Ficha territorial de permiso energético</h1>
+                    <div class="pam-cover__row">
+                        <div class="pam-cover__clave">@detail.NumeroPermiso</div>
+                        <span class="pam-cover__dash"></span>
+                        <p>@detail.Nombre</p>
+                    </div>
+                    <div class="pam-cover__estatus is-enoperacion">
+                        <i aria-hidden="true"></i>@(string.IsNullOrWhiteSpace(detail.Estatus) ? detail.Mercado : detail.Estatus)
+                    </div>
+                </div>
+                <div class="pam-cover__photo" style="background-image:url('/img/pamrnt/reno_portada.png')" role="img" aria-label="Infraestructura energética">
+                    <i class="pam-cover__goldline"></i>
+                    <i class="pam-cover__shade"></i>
+                </div>
+                <div class="pam-cover__meta">
+                    <div><span>Corte</span><strong>@sourceDate</strong></div>
+                    <div><span>Ámbito</span><strong>@(string.IsNullOrWhiteSpace(location) ? detail.Mercado : location)</strong></div>
+                    <div><span>Acceso</span><strong>@detail.NivelAcceso</strong></div>
+                    <div><span>Fuente</span><strong>SENER</strong></div>
+                </div>
+            </section>
+
+            <section class="pam-slide pam-slide--content pam-slide--index" data-slide data-label="Índice" data-screen-label="02">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker"><i class="fas fa-list" aria-hidden="true"></i> Contenido</span>
+                    <span class="pam-lamina-head__aside">Índice navegable</span>
+                </header>
+                <h2 class="pam-lamina-title is-guinda">Índice</h2>
+                <div class="pam-lamina-body pam-index permiso-index">
+                    <button type="button" class="pam-index__group" data-goto-label="03"><b>01</b><span>Permiso energético</span></button>
+                    <button type="button" class="pam-index__entry" data-goto-label="04"><span>Resumen ejecutivo</span><i></i><small>04</small></button>
+                    <button type="button" class="pam-index__entry" data-goto-label="05"><span>Localización territorial</span><i></i><small>05</small></button>
+                    <button type="button" class="pam-index__group" data-goto-label="06"><b>02</b><span>Detalle autorizado</span></button>
+                    @for (var index = 0; index < detailSlides.Count; index++)
+                    {
+                        var label = detailSlides.Count == 1 ? "06" : $"06-{index + 1}";
+                        var categoryLabel = string.Join(
+                            " · ",
+                            detailSlides[index].Select(field => field.Categoria).Distinct().Take(2));
+                        <button type="button" class="pam-index__entry" data-goto-label="@label">
+                            <span>@(string.IsNullOrWhiteSpace(categoryLabel) ? "Detalle del inventario" : categoryLabel)</span><i></i><small>@label.Replace("-", "·")</small>
+                        </button>
+                    }
+                    <button type="button" class="pam-index__group" data-goto-label="07"><b>03</b><span>Fuente y trazabilidad</span></button>
+                    <button type="button" class="pam-index__entry" data-goto-label="07"><span>Corte, consulta y nivel de acceso</span><i></i><small>07</small></button>
+                    <button type="button" class="pam-index__entry" data-goto-label="08"><span>Contraportada institucional</span><i></i><small>08</small></button>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Cada entrada del índice salta directamente a su lámina en pantalla y conserva navegación en PDF.</span>
+                    <span class="pam-lamina-foot__meta">02</span>
+                </div>
+            </section>
+
+            <section class="pam-slide pam-slide--divider" data-slide data-label="Permiso energético" data-screen-label="03">
+                <i class="pam-divider__bar" aria-hidden="true"></i>
+                <div class="pam-divider__logos">
+                    <img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" />
+                    <i></i>
+                    <img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" />
+                </div>
+                <button type="button" class="pam-home pam-divider__home" data-goto="1" title="Volver al índice">
+                    <i class="fas fa-house" aria-hidden="true"></i>
+                </button>
+                <div class="pam-divider__big" aria-hidden="true">01</div>
+                <div class="pam-divider__kicker"><span></span>Sección 01 · @detail.Mercado</div>
+                <h1>@detail.NumeroPermiso</h1>
+                <div class="pam-divider__sub"><i></i><p>@detail.Nombre</p></div>
+            </section>
+
+            <section class="pam-slide pam-slide--content" data-slide data-label="Resumen ejecutivo" data-screen-label="04">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">Sección 01 · Permiso energético</span>
+                    <span class="pam-lamina-head__aside">@detail.Mercado</span>
+                </header>
+                <h2 class="pam-lamina-title permiso-title">@detail.Nombre</h2>
+                <div class="pam-lamina-body permiso-summary">
+                    <div class="permiso-summary__hero">
+                        <span>Número de permiso</span>
+                        <strong>@detail.NumeroPermiso</strong>
+                        <small>@(string.IsNullOrWhiteSpace(location) ? "Ubicación no especificada" : location)</small>
+                    </div>
+                    <div class="pam-metrics pam-metrics--four permiso-metrics">
+                        <article><span>Tipo / actividad</span><strong>@permitType</strong><small>@detail.Mercado</small></article>
+                        <article><span>Estatus</span><strong>@(string.IsNullOrWhiteSpace(detail.Estatus) ? "—" : detail.Estatus)</strong><small>situación registrada</small></article>
+                        <article><span>Otorgamiento</span><strong>@grantDate</strong><small>fecha de referencia</small></article>
+                        <article><span>Capacidad</span><strong>@capacity</strong><small>según inventario</small></article>
+                    </div>
+                    <div class="permiso-summary__strip">
+                        <strong>Perfil tecnológico o energético</strong>
+                        <span>@technology</span>
+                    </div>
+                    <div class="permiso-summary__notice">
+                        <i class="fas @(detail.EsDetalleInstitucional ? "fa-shield-halved" : "fa-user-lock")" aria-hidden="true"></i>
+                        <span>Esta ficha contiene <strong>@detail.Campos.Count campos no vacíos</strong> autorizados para el nivel <strong>@detail.NivelAcceso</strong>.</span>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>@detail.Fuente · corte @sourceDate.</span>
+                    <span class="pam-lamina-foot__meta"><button type="button" class="pam-home" data-goto="1" title="Volver al índice"><i class="fas fa-house"></i></button>04</span>
+                </div>
+            </section>
+
+            <section class="pam-slide pam-slide--content" data-slide data-label="Localización territorial" data-screen-label="05">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">Sección 01 · Permiso energético</span>
+                    <span class="pam-lamina-head__aside">Localización territorial</span>
+                </header>
+                <h2 class="pam-lamina-title is-guinda">Ubicación registrada del permiso.</h2>
+                <div class="pam-lamina-body permiso-location">
+                    <div id="permiso-ficha-map" class="permiso-location__map" aria-label="Mapa del permiso"></div>
+                    <aside class="permiso-location__aside">
+                        <div><span>Entidad</span><strong>@(string.IsNullOrWhiteSpace(detail.Entidad) ? "—" : detail.Entidad)</strong></div>
+                        <div><span>Municipio</span><strong>@(string.IsNullOrWhiteSpace(detail.Municipio) ? "—" : detail.Municipio)</strong></div>
+                        <div><span>Latitud</span><strong>@(detail.Latitud?.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture) ?? "—")</strong></div>
+                        <div><span>Longitud</span><strong>@(detail.Longitud?.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture) ?? "—")</strong></div>
+                        @if (detail.Latitud.HasValue && detail.Longitud.HasValue)
+                        {
+                            <a href="https://www.google.com/maps/search/?api=1&query=@detail.Latitud.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),@detail.Longitud.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)" target="_blank" rel="noopener">
+                                Abrir coordenada en Google Maps <i class="fas fa-arrow-up-right-from-square"></i>
+                            </a>
+                        }
+                    </aside>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Coordenadas del inventario autorizado · mapa base OpenStreetMap.</span>
+                    <span class="pam-lamina-foot__meta"><button type="button" class="pam-home" data-goto="1" title="Volver al índice"><i class="fas fa-house"></i></button>05</span>
+                </div>
+            </section>
+
+            @for (var slideIndex = 0; slideIndex < detailSlides.Count; slideIndex++)
+            {
+                var fields = detailSlides[slideIndex];
+                var label = detailSlides.Count == 1 ? "06" : $"06-{slideIndex + 1}";
+                <section class="pam-slide pam-slide--content" data-slide data-label="Detalle autorizado" data-screen-label="@label">
+                    <header class="pam-lamina-head">
+                        <span class="pam-lamina-head__kicker">Sección 02 · Detalle autorizado</span>
+                        <span class="pam-lamina-head__aside">@(slideIndex + 1) de @detailSlides.Count</span>
+                    </header>
+                    <h2 class="pam-lamina-title is-guinda">Datos del inventario institucional.</h2>
+                    <div class="pam-lamina-body permiso-fields">
+                        @if (fields.Count == 0)
+                        {
+                            <div class="permiso-fields__empty">No hay campos adicionales visibles para este perfil.</div>
+                        }
+                        else
+                        {
+                            @foreach (var field in fields)
+                            {
+                                <article class="permiso-field">
+                                    <span>@field.Categoria</span>
+                                    <strong>@field.Etiqueta</strong>
+                                    <p>@field.Valor</p>
+                                </article>
+                            }
+                        }
+                    </div>
+                    <div class="pam-lamina-foot">
+                        <span>Vista institucional dbo · se omiten campos técnicos y valores vacíos.</span>
+                        <span class="pam-lamina-foot__meta"><button type="button" class="pam-home" data-goto="1" title="Volver al índice"><i class="fas fa-house"></i></button>@label.Replace("-", "·")</span>
+                    </div>
+                </section>
+            }
+
+            <section class="pam-slide pam-slide--content" data-slide data-label="Fuente y trazabilidad" data-screen-label="07">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">Sección 03 · Cierre</span>
+                    <span class="pam-lamina-head__aside">Fuente y trazabilidad</span>
+                </header>
+                <h2 class="pam-lamina-title">La ficha conserva fuente, corte y alcance de acceso.</h2>
+                <div class="pam-lamina-body permiso-trace">
+                    <div class="permiso-trace__source">
+                        <span>Fuente institucional</span>
+                        <strong>@detail.Fuente</strong>
+                        <p>Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información Energética.</p>
+                    </div>
+                    <div class="permiso-trace__timeline">
+                        <article><i></i><span>Fecha de corte</span><strong>@sourceDate</strong></article>
+                        <article><i></i><span>Fecha de consulta</span><strong>@detail.FechaConsulta.ToString("dd 'de' MMMM 'de' yyyy · HH:mm", culture)</strong></article>
+                        <article><i></i><span>Nivel de acceso</span><strong>@detail.NivelAcceso</strong></article>
+                        <article><i></i><span>Campos mostrados</span><strong>@detail.Campos.Count valores no vacíos</strong></article>
+                    </div>
+                    <div class="permiso-trace__note">
+                        La visibilidad se resuelve en el servidor. Las cuentas DGMESNIE/SENER consultan el detalle institucional;
+                        los perfiles externos reciben únicamente los campos habilitados para su combinación de rol y mercado en <strong>CamposMapas</strong>.
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Documento informativo de trabajo · los datos dependen del inventario y corte vigentes.</span>
+                    <span class="pam-lamina-foot__meta"><button type="button" class="pam-home" data-goto="1" title="Volver al índice"><i class="fas fa-house"></i></button>07</span>
+                </div>
+            </section>
+
+            <section class="pam-slide pam-slide--back" data-slide data-label="Contraportada" data-screen-label="08">
+                <div class="pam-back__top">
+                    <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><i class="fas fa-house"></i></button>
+                    <div class="pam-back__logos">
+                        <img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" />
+                        <i></i>
+                        <img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" />
+                    </div>
+                </div>
+                <div class="pam-back__body">
+                    <img class="pam-back__figure" src="~/img/pamrnt/mujer.png" alt="" aria-hidden="true" />
+                    <div class="pam-back__center">
+                        <div class="pam-back__band"><span>Gracias</span></div>
+                        <div class="pam-back__divider"><span></span><i></i><span></span></div>
+                        <p>A todas y todos los que hacen posible, con energía y compromiso, construir un México más justo, soberano y sostenible.</p>
+                    </div>
+                </div>
+                <div class="pam-back__goldline"></div>
+                <div class="pam-back__footer">
+                    <div class="pam-back__institution">
+                        <strong>Secretaría de Energía</strong>
+                        <span>Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información Energética</span>
+                        <div class="pam-back__social">
+                            <i></i><b>gob.mx/sener</b>
+                        </div>
+                        <div class="pam-back__barcode"></div>
+                        <div class="pam-back__code">SENER·DGMESNIE·@safePermit·@DateTime.Now.Year</div>
+                    </div>
+                    <div class="pam-back__qrblock">
+                        <div class="pam-back__qrtext"><strong>Sistema Nacional de Información Energética</strong><span>Ficha territorial de permiso energético.</span></div>
+                        <div class="pam-back__qr" aria-hidden="true">
+                            <span style="grid-column:1/3;grid-row:1/3;"></span><span style="grid-column:6/8;grid-row:1/3;"></span><span style="grid-column:4;grid-row:2;"></span><span style="grid-column:1/3;grid-row:6/8;"></span><span style="grid-column:3;grid-row:4;"></span><span style="grid-column:5;grid-row:5;"></span><span style="grid-column:4;grid-row:6;"></span><span style="grid-column:6;grid-row:5;"></span><span style="grid-column:7;grid-row:4;"></span><span style="grid-column:5;grid-row:7;"></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <nav id="pam-presentation-controls" class="pam-presentation-controls" aria-label="Controles de presentación">
+                <button type="button" data-prev title="Lámina anterior"><i class="fas fa-chevron-left"></i></button>
+                <button type="button" data-goto="1" title="Ir al índice"><i class="fas fa-list"></i></button>
+                <span data-counter>01 / 08</span>
+                <button type="button" data-export="pdf" title="Descargar PDF"><i class="fas fa-file-pdf"></i></button>
+                <button type="button" data-export="pptx" title="Descargar PowerPoint"><i class="fas fa-file-powerpoint"></i></button>
+                <button type="button" data-fullscreen title="Pantalla completa"><i class="fas fa-expand"></i></button>
+                <button type="button" data-next title="Lámina siguiente"><i class="fas fa-chevron-right"></i></button>
+            </nav>
+        </div>
+    </div>
+
+    <div id="pam-export-status" class="pam-export-status" hidden role="status" aria-live="polite">
+        <div class="pam-export-status__spinner"></div><strong>Preparando archivo</strong><span data-export-message></span>
+    </div>
+</main>
+
+<script>
+    window.permisoFichaMap = {
+        latitud: @(detail.Latitud?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "null"),
+        longitud: @(detail.Longitud?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "null"),
+        titulo: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(detail.Nombre)),
+        permiso: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(detail.NumeroPermiso)),
+        color: "#9B2247"
+    };
+</script>
+<script src="~/vendor/pam-export/html2canvas.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/jspdf.umd.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/pptxgen.bundle.js" asp-append-version="true"></script>
+<script src="~/Geovisualizador/dist/leaflet.js"></script>
+<script src="~/js/permiso-ficha-mapa.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-presentacion.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-envio.js" asp-append-version="true"></script>
