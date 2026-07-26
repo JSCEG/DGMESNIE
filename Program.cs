@@ -91,6 +91,7 @@ builder.Services.AddTransient<IRepositorioPODECOBIS, RepositorioPODECOBIS>();
 builder.Services.AddTransient<IRepositorioPODECOBIPolos, RepositorioPODECOBIPolos>();
 builder.Services.AddTransient<IRepositorioInformePormenorizado, RepositorioInformePormenorizado>();
 builder.Services.AddTransient<IPamrntProyectosIdentificadosService, PamrntProyectosIdentificadosService>();
+builder.Services.AddScoped<IPamTerritorialService, PamTerritorialService>();
 builder.Services.AddTransient<IPamActualizacionService, PamActualizacionService>();
 builder.Services.AddScoped<IPamFuenteExtractionService, PamFuenteExtractionService>();
 builder.Services.AddScoped<IPamAnalisisService, PamAnalisisService>();
@@ -127,6 +128,17 @@ builder.Services.AddTransient<IRepositorioGestor, RepositorioGestor>();
 builder.Services.AddTransient<IRepositorioProyectosPrivados, RepositorioProyectosPrivados>();
 builder.Services.AddTransient<IRepositorioGruposInteres, RepositorioGruposInteres>();
 builder.Services.AddMemoryCache();
+builder.Services.Configure<PamRedAssociationOptions>(
+    builder.Configuration.GetSection(PamRedAssociationOptions.SectionName));
+builder.Services.AddHttpClient<IPamRedAssociationService, PamRedAssociationService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(45);
+    client.DefaultRequestHeaders.Accept.Add(
+        new MediaTypeWithQualityHeaderValue("application/geo+json"));
+    client.DefaultRequestHeaders.Accept.Add(
+        new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-PAM-Red/1.0");
+});
 builder.Services.Configure<InegiOptions>(builder.Configuration.GetSection(InegiOptions.SectionName));
 builder.Services.AddHttpClient<IInegiTerritorialService, InegiTerritorialService>(client =>
 {

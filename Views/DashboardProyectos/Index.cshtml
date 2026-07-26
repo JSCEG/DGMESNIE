@@ -1537,6 +1537,7 @@ class Component extends DCLogic {
     { key:'anp',           cat:'Áreas naturales',        label:'ANP 2025',                   code:'AN', color:'#0E8A6E', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/ANP2025.geojson' },
     { key:'anp_est',       cat:'Áreas naturales',        label:'ANP estatales',              code:'AE', color:'#3BA98C', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Gabvy/anp_estatal.geojson' },
     { key:'podecobi',      cat:'PODECOBI',               label:'Polos de Desarrollo (PODECOBI)', code:'PO', color:'#9B2247', type:'podecobi', lazy:true, src:'/api/podecobi/geojson' },
+    { key:'pam',           cat:'PAM / PAMRNT',           label:'Proyectos PAM / PAMRNT',      code:'PA', color:'#6B3654', type:'pam', lazy:true, compactPoints:true, src:'/DashboardProyectos/PamTerritorial/GeoJson' },
     { key:'conserv',       cat:'Áreas naturales',        label:'Conservación voluntaria',    code:'CV', color:'#5B9A43', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Mapas/areas_destinadas_voluntariamentea_la_conservaci%C3%B3n.geojson' },
     { key:'ramsar',        cat:'Áreas naturales',        label:'Humedales RAMSAR',           code:'RA', color:'#1E9CB8', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/Gabvy/ramsar.geojson' },
     { key:'atlas_pi',      cat:'Pueblos indígenas',      label:'Atlas pueblos indígenas',    code:'PI', color:'#9B2247', type:'geo', analysis:true, lazy:true, heavy:'36 mil puntos', src:'https://cdn.sassoapps.com/Gabvy/atlaspueblosindigenas.geojson' },
@@ -1659,6 +1660,7 @@ class Component extends DCLogic {
     fields: null, keyField: '', layerTarget: 'permisos',
     selected: null,
     entidades: [],
+    pamCatalog: [],
     layers: this._initLayers(),
     // Análisis geoespacial: capas masivas acotadas a una zona (marcador + radio)
     analysis: {
@@ -1694,7 +1696,9 @@ class Component extends DCLogic {
   // ════════════════════ ciclo de vida ════════════════════
   componentDidMount() {
     this._loadCatalog();
+    this._fetchPamCache().catch(() => {});
     this._preloadLogos();
+    window.__dgPamAnalyze = (projectId) => this._analyzePamById(projectId);
     window.addEventListener('keydown', this.onGlobalKeyDown);
     this._waitFor(() => window.L && window.L.Control && window.L.Control.Draw, () => this._initMap());
     // Mientras el componente termina de inicializar, todo el árbol está oculto
@@ -1714,6 +1718,7 @@ class Component extends DCLogic {
   }
   componentWillUnmount() {
     window.removeEventListener('keydown', this.onGlobalKeyDown);
+    if (window.__dgPamAnalyze) delete window.__dgPamAnalyze;
     if (this._bootReadyPoll) { clearInterval(this._bootReadyPoll); this._bootReadyPoll = null; }
     if (this._reportFeedbackTimer) { clearTimeout(this._reportFeedbackTimer); this._reportFeedbackTimer = null; }
     if (this._analysisAbortController) { try { this._analysisAbortController.abort(); } catch(e){} }
@@ -1732,7 +1737,7 @@ class Component extends DCLogic {
   }
 
   _isClusterLayerKey(key){
-    return key==='centrales'||key==='permisos'||key==='proyectos'||this.ENERGY_PERMIT_KEYS.includes(key);
+    return key==='centrales'||key==='permisos'||key==='proyectos'||key==='pam'||this.ENERGY_PERMIT_KEYS.includes(key);
   }
   _clusterGroup(cfg){
     const L=window.L;
@@ -2069,11 +2074,279 @@ class Component extends DCLogic {
   }
   _centroid(g) {
     let sx=0, sy=0, n=0;
-    const acc = (ring) => ring.forEach(([x,y]) => { sx+=x; sy+=y; n++; });
+    const acc = (value) => {
+      if(!Array.isArray(value)) return;
+      if(value.length>=2&&isFinite(value[0])&&isFinite(value[1])){
+        sx+=Number(value[0]); sy+=Number(value[1]); n++; return;
+      }
+      value.forEach(acc);
+    };
     if (!g) return [23.6,-102];
-    if (g.type==='Polygon') g.coordinates.forEach(acc);
-    else if (g.type==='MultiPolygon') g.coordinates.forEach(p => p.forEach(acc));
+    if(g.type==='Feature') return this._centroid(g.geometry);
+    if(g.type==='FeatureCollection'){
+      (g.features||[]).forEach(f=>{ const c=this._centroid(f.geometry); if(c&&isFinite(c[0])&&isFinite(c[1])){ sx+=c[1];sy+=c[0];n++; } });
+    }else if(g.type==='GeometryCollection'){
+      (g.geometries||[]).forEach(item=>{ const c=this._centroid(item); if(c&&isFinite(c[0])&&isFinite(c[1])){ sx+=c[1];sy+=c[0];n++; } });
+    }else acc(g.coordinates);
     return n ? [sy/n, sx/n] : [23.6,-102];
+  }
+  _fetchPamCache(force){
+    if(!force&&this.state.pamCatalog&&this.state.pamCatalog.length) return Promise.resolve(this.state.pamCatalog);
+    if(!force&&this._pamCatalogPromise) return this._pamCatalogPromise;
+    this._pamCatalogPromise=fetch('/DashboardProyectos/PamTerritorial?limite=500',{
+      method:'GET',credentials:'same-origin',headers:{Accept:'application/json'}
+    }).then(async response=>{
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok) throw new Error(payload&&payload.detail?payload.detail:'HTTP '+response.status);
+      const items=Array.isArray(payload)?payload:[];
+      this._invalidateSearch();
+      this.setState({pamCatalog:items});
+      return items;
+    }).finally(()=>{ this._pamCatalogPromise=null; });
+    return this._pamCatalogPromise;
+  }
+  _pamValidLocations(item){
+    return ((item&&item.ubicaciones)||[]).filter(location=>location&&location.validada&&location.geometria);
+  }
+  _pamSuggestedLocations(item,highOnly){
+    return ((item&&item.ubicaciones)||[]).filter(location=>{
+      if(!location||!location.esAsociacionSugerida||!location.geometria) return false;
+      return !highOnly||String(location.nivelConfianza||'').toLowerCase()==='alta';
+    });
+  }
+  _pamOperationalLocations(item){
+    const validated=this._pamValidLocations(item);
+    return validated.length?validated:this._pamSuggestedLocations(item,true);
+  }
+  _storePamCatalogItem(item){
+    if(!item||!Number(item.proyectoId)) return;
+    const catalog=[...(this.state.pamCatalog||[])];
+    const index=catalog.findIndex(value=>Number(value.proyectoId)===Number(item.proyectoId));
+    if(index>=0) catalog[index]=item;
+    else catalog.push(item);
+    this._invalidateSearch();
+    this.setState({pamCatalog:catalog});
+  }
+  _fetchPamDetail(item){
+    const id=Number(item&&item.proyectoId||0);
+    if(!Number.isFinite(id)||id<=0) return Promise.resolve(item);
+    if(this._pamOperationalLocations(item).length) return Promise.resolve(item);
+    this._pamDetailPromises=this._pamDetailPromises||new Map();
+    if(this._pamDetailPromises.has(id)) return this._pamDetailPromises.get(id);
+    const request=fetch('/DashboardProyectos/PamTerritorial/'+encodeURIComponent(id),{
+      credentials:'same-origin',headers:{Accept:'application/json'}
+    }).then(async response=>{
+      const payload=await response.json().catch(()=>null);
+      if(!response.ok) throw new Error(payload&&payload.detail?payload.detail:'HTTP '+response.status);
+      this._storePamCatalogItem(payload);
+      return payload;
+    }).finally(()=>this._pamDetailPromises.delete(id));
+    this._pamDetailPromises.set(id,request);
+    return request;
+  }
+  _pamItemFromProperties(p){
+    const projectId=Number(p.proyectoId||p.ProyectoId||0);
+    const cached=(this.state.pamCatalog||[]).find(item=>Number(item.proyectoId)===projectId);
+    if(cached) return cached;
+    return {
+      proyectoId,
+      claveProyecto:p.claveProyecto||p.ClaveProyecto||'',
+      nombreProyecto:p.nombreProyecto||p.NombreProyecto||'Proyecto PAM',
+      gcr:p.gcr||p.Gcr||'',
+      tipoProyecto:p.tipoProyecto||p.TipoProyecto||'',
+      etapaProyecto:p.etapaProyecto||p.EtapaProyecto||'',
+      estatusLicitacion:p.estatusLicitacion||p.EstatusLicitacion||'',
+      zonaAtendida:p.zonaAtendida||p.ZonaAtendida||'',
+      elementosEquiposAsociados:p.elementosEquiposAsociados||p.ElementosEquiposAsociados||'',
+      fuenteDocumento:p.fuente||p.Fuente||'PAM / PAMRNT',
+      fechaCorte:p.fechaCorte||p.FechaCorte||null,
+      fichaUrl:p.fichaUrl||p.FichaUrl||'',
+      ubicaciones:[]
+    };
+  }
+  _pamShortcutOption(item){
+    if(!item) return null;
+    const validatedLocations=this._pamValidLocations(item);
+    const locations=this._pamOperationalLocations(item);
+    let geometry=null,lat=null,lng=null,located=locations.length>0,precision='regional',mode='territory',bufferKm=0,radiusKm=20;
+    let detailLocation=null;
+    if(located){
+      detailLocation=locations.find(location=>location.esPrincipal)||locations[0];
+      geometry=locations.length===1
+        ?detailLocation.geometria
+        :{type:'FeatureCollection',features:locations.map(location=>({
+          type:'Feature',
+          properties:{ubicacionId:location.ubicacionId,etiqueta:location.etiqueta||''},
+          geometry:location.geometria
+        }))};
+      const center=(isFinite(detailLocation.latitud)&&isFinite(detailLocation.longitud))
+        ?[Number(detailLocation.latitud),Number(detailLocation.longitud)]
+        :this._centroid(geometry);
+      lat=center[0]; lng=center[1];
+      precision=detailLocation.esAsociacionSugerida
+        ?'asociada al catálogo de red'
+        :(detailLocation.precisionUbicacion||'exacta');
+      const geometryType=String(detailLocation.tipoGeometria||(detailLocation.geometria&&detailLocation.geometria.type)||'');
+      const isSinglePoint=locations.length===1&&geometryType==='Point';
+      mode=isSinglePoint?'point':'territory';
+      radiusKm=Math.max(1,Number(detailLocation.radioSugeridoKm)||20);
+      bufferKm=locations.length>1
+        ?Math.max(0,Number(detailLocation.radioSugeridoKm)||10)
+        :(geometryType==='LineString'||geometryType==='MultiLineString'||geometryType==='MultiPoint'
+          ?Math.max(0,Number(detailLocation.radioSugeridoKm)||10)
+          :0);
+    }else{
+      const gcrKey=this._gcrKeyFromName(item.gcr||'');
+      geometry=gcrKey
+        ?this._anaGcrShortcutGeometry(gcrKey)
+        :(item.gcr&&this.geo&&this.geo.gerencias?this.geo.gerencias:null);
+      const center=gcrKey
+        ?this._anaGcrShortcutCenter(gcrKey)
+        :(geometry?this._centroid(geometry):null);
+      if(center){lat=center[0];lng=center[1];}
+    }
+    if(!geometry||!isFinite(lat)||!isFinite(lng)) return null;
+    const key=item.claveProyecto||('PAM '+item.proyectoId);
+    const detail=[
+      key,
+      item.tipoProyecto,
+      located
+        ?(validatedLocations.length
+          ?(locations.length>1?locations.length+' elementos · ubicación validada':'ubicación '+precision)
+          :(locations.length>1
+            ?locations.length+' elementos de red · confianza alta'
+            :'asociación de red '+(detailLocation.puntajeCoincidencia||'—')+'/100'))
+        :'sin coordenada validada · cobertura GCR aproximada'
+    ].filter(Boolean).join(' · ');
+    return {
+      kind:'pam',
+      label:item.nombreProyecto||key,
+      detail,
+      lat,lng,zoom:located?10:6,color:'#6B3654',code:'PA',
+      geometry,
+      bufferKm,
+      radiusKm,
+      analysisMode:mode,
+      located,
+      precision,
+      state:detailLocation&&detailLocation.entidad||'',
+      municipality:detailLocation&&detailLocation.municipio||'',
+      pamItem:item
+    };
+  }
+  _selectPamItem(item,location){
+    if(!item) return;
+    const validatedLocations=this._pamValidLocations(item);
+    const suggestedLocations=this._pamSuggestedLocations(item,false);
+    const highSuggestions=suggestedLocations.filter(value=>String(value.nivelConfianza||'').toLowerCase()==='alta');
+    const reviewSuggestions=suggestedLocations.filter(value=>String(value.nivelConfianza||'').toLowerCase()!=='alta');
+    const locations=this._pamOperationalLocations(item);
+    const primary=location||locations.find(value=>value.esPrincipal)||locations[0]||null;
+    const precise=!!primary;
+    const cut=primary&&primary.fechaCorte||item.fechaCorte;
+    const formatDate=value=>{
+      if(!value) return '—';
+      const parsed=new Date(value);
+      return Number.isNaN(parsed.getTime())?String(value):parsed.toLocaleDateString('es-MX');
+    };
+    const rows=[
+      ['Tipo de infraestructura','Proyecto del PAM / PAMRNT'],
+      ['Clave PAM',item.claveProyecto||'—'],
+      ['Claves alternas',item.clavesAlternas||'—'],
+      ['GCR',item.gcr||'—'],
+      ['Tipo de proyecto',item.tipoProyecto||'—'],
+      ['Etapa',item.etapaProyecto||'—'],
+      ['Estatus',item.estatusLicitacion||item.estadoVigenciaCartera||'—'],
+      ['Zona atendida',item.zonaAtendida||'—'],
+      ['Elementos asociados',item.elementosEquiposAsociados||'—'],
+      ['Ubicaciones validadas',String(validatedLocations.length)],
+      ['Asociaciones de red',suggestedLocations.length
+        ?highSuggestions.length+' confianza alta · '+reviewSuggestions.length+' por revisar'
+        :'0'],
+      ['Precisión',precise
+        ?(primary.esAsociacionSugerida?'asociada · pendiente de validación':(primary.precisionUbicacion||'validada'))
+        :'regional aproximada'],
+      ['Método de ubicación',precise?(primary.metodoUbicacion||'—'):'polígono de la GCR'],
+      ['Confianza',primary&&primary.puntajeCoincidencia!=null
+        ?primary.puntajeCoincidencia+'/100 · '+(primary.nivelConfianza||'—')
+        :'—'],
+      ['Evidencias',primary&&Array.isArray(primary.evidencias)&&primary.evidencias.length
+        ?primary.evidencias.join(' · ')
+        :'—'],
+      ['Entidad / municipio',precise?[primary.entidad,primary.municipio].filter(Boolean).join(' · ')||'—':'—'],
+      ['Dirección',precise?(primary.direccion||'—'):'—'],
+      ['Fuente geográfica',precise?(primary.fuente||'—'):'DGMESNIE · delimitación GCR'],
+      ['Corte',formatDate(cut)],
+      ['Ficha PAM',item.fichaUrl?window.location.origin+item.fichaUrl:'—']
+    ];
+    this.setState({
+      anaOpen:false,
+      menuOpen:null,
+      collapsed:{...this.state.collapsed,detalle:false},
+      selected:{
+        kicker:'PAM / PAMRNT · '+(item.claveProyecto||'proyecto'),
+        color:'#6B3654',
+        name:item.nombreProyecto||item.claveProyecto||'Proyecto PAM',
+        rows
+      }
+    });
+  }
+  _focusPamItem(item){
+    this._fetchPamDetail(item).then(fullItem=>{
+      const option=this._pamShortcutOption(fullItem);
+      if(!option) throw new Error('El proyecto PAM no tiene una ubicación ni una GCR reconocible');
+      if(option.located&&!this.state.layers.pam.on) this.toggleLayer('pam');
+      this._selectPamItem(fullItem);
+      this._setHighlight(option.lat,option.lng,'#6B3654');
+      try{
+        const bounds=window.L.geoJSON(option.geometry).getBounds();
+        if(bounds&&bounds.isValid()) this.map.fitBounds(bounds.pad(.18),{animate:true,maxZoom:13});
+        else this.map.setView([option.lat,option.lng],option.zoom||8,{animate:true});
+      }catch(e){ this.map.setView([option.lat,option.lng],option.zoom||8,{animate:true}); }
+      this._toast(option.located
+        ?(option.precision==='asociada al catálogo de red'
+          ?'Proyecto PAM asociado con la red · coincidencia de confianza alta pendiente de validación'
+          :'Proyecto PAM localizado · abre la ficha o analiza su entorno')
+        :'Proyecto PAM sin asociación de confianza alta · mostrando su GCR aproximada');
+    }).catch(error=>this._toast('No se pudo localizar el proyecto PAM: '+(error.message||error)));
+  }
+  _analyzePamOption(option){
+    if(!option||!option.pamItem) return;
+    const item=option.pamItem;
+    const key=item.claveProyecto||('PAM '+item.proyectoId);
+    if(option.analysisMode==='point'){
+      const radiusKm=Math.max(1,Number(option.radiusKm)||20);
+      this.setState({analysis:{...this.state.analysis,radiusKm}},()=>this._anaPlace(option.lat,option.lng,{
+        kind:'pam',
+        label:key+' · '+(item.nombreProyecto||'Proyecto PAM'),
+        detail:'Proyecto PAM con ubicación '+option.precision+' · radio sugerido '+radiusKm+' km',
+        state:option.state||'',
+        municipality:option.municipality||''
+      }));
+      return;
+    }
+    this._anaPlaceTerritory({
+      ...option,
+      kind:option.located?'pam':'pam-regional',
+      label:key+' · '+(item.nombreProyecto||'Proyecto PAM'),
+      detail:option.located
+        ?option.detail
+        :'Ubicación regional aproximada; falta validar coordenadas o geometría del proyecto'
+    });
+  }
+  _analyzePamById(projectId){
+    const id=Number(projectId);
+    if(!Number.isFinite(id)||id<=0) return;
+    const cached=(this.state.pamCatalog||[]).find(item=>Number(item.proyectoId)===id);
+    const load=cached
+      ?this._fetchPamDetail(cached)
+      :this._fetchPamDetail({proyectoId:id,ubicaciones:[]});
+    load.then(item=>{
+      const option=this._pamShortcutOption(item);
+      if(!option) throw new Error('El proyecto no tiene ubicación ni GCR reconocible');
+      try{ this.map.closePopup(); }catch(e){}
+      this._analyzePamOption(option);
+    }).catch(error=>this._toast('No se pudo preparar el análisis PAM: '+(error.message||error)));
   }
   _stateAt(lat, lng) {
     if (!this.geo || !this.geo.estados) return null;
@@ -2126,9 +2399,11 @@ class Component extends DCLogic {
   // Resuelve la clave GCR a partir del nombre del feature ("Gerencia de Control Regional Baja California Sur")
   _gcrKeyFromName(name){
     const n = this._norm(name); // ej. gerenciadecontrolregionalbajacaliforniasur
+    const aliases={bc:'bcalifornia',bs:'bcsur',no:'noroeste',ne:'noreste',nt:'norte',pe:'peninsular',or:'oriental',oc:'occidental',ce:'central',vm:'central',se:'oriental'};
+    if(aliases[n]) return aliases[n];
     const order = [['bcsur',['bajacaliforniasur']],['mulege',['mulege']],['bcalifornia',['bajacalifornia']],['noroeste',['noroeste']],['noreste',['noreste']],['norte',['norte']],['peninsular',['peninsular']],['oriental',['oriental']],['occidental',['occidental']],['central',['central']]];
     for(const [k,toks] of order){ if(toks.some(t=>n.includes(t))) return k; }
-    return 'central';
+    return '';
   }
   _selectGerencia(k, nom){
     this._clearHighlight(); this._syncMenu('', k);
@@ -2416,11 +2691,16 @@ class Component extends DCLogic {
           (geo.features||[]).forEach(f => { const n = f.properties && (f.properties.Numero || f.properties.numero); if (n) polosUnicos.add(n); });
           cnt = polosUnicos.size || cnt;
         }
+        if(key==='pam'&&geo.meta&&Number.isFinite(Number(geo.meta.proyectos))){
+          cnt=Number(geo.meta.proyectos);
+        }
         const l2 = { ...this.state.layers }; l2[key] = { ...l2[key], loading:false, count:cnt };
         this._invalidateSearch(); // el índice del buscador debe reconstruirse CON los features recién cargados
         this._hideBar();
-        this.setState({ layers:l2, blocking:null }, () => { this._recompute(); if (cfg.type==='geo') { try { this._fitToLayer(key); } catch(e){} } });
-        this._toast(cfg.label+' cargada · '+cnt.toLocaleString('es-MX')+' elementos');
+        this.setState({ layers:l2, blocking:null }, () => { this._recompute(); if (cfg.type==='geo'||cfg.type==='pam') { try { this._fitToLayer(key); } catch(e){} } });
+        this._toast(key==='pam'&&cnt===0&&geo.meta&&Number(geo.meta.catalogoProyectos)>0
+          ?Number(geo.meta.catalogoProyectos).toLocaleString('es-MX')+' proyectos PAM disponibles en buscador y atajo · faltan ubicaciones validadas para dibujarlos'
+          :cfg.label+' cargada · '+cnt.toLocaleString('es-MX')+' elementos');
       }, 180);
     };
     const fail = (e) => {
@@ -2761,7 +3041,7 @@ class Component extends DCLogic {
     if(!option||!option.geometry||!isFinite(option.lat)||!isFinite(option.lng)) return;
     const estado=option.state||this._insideMexico(option.lat,option.lng)||'México';
     const base=this._asFeatureCollection(option.geometry);
-    const bufferKm=0;
+    const bufferKm=Math.max(0,Number(option.bufferKm)||0);
     const effective=this._bufferTerritoryGeometry(base,bufferKm);
     if(!base||!effective){ this._toast('El territorio seleccionado no tiene una geometría válida'); return; }
     try{ if(this._anaMarker) this.map.removeLayer(this._anaMarker); }catch(e){}
@@ -2906,6 +3186,7 @@ class Component extends DCLogic {
     return {
       gcr:{ label:'GCR', code:'GC', color:'#9B2247', placeholder:'Buscar gerencia de control…' },
       podecobi:{ label:'PODECOBI', code:'PO', color:'#9B2247', placeholder:'Buscar polo de desarrollo…' },
+      pam:{ label:'PAM', code:'PA', color:'#6B3654', placeholder:'Buscar clave o proyecto PAM…' },
       municipality:{ label:'Municipio', code:'MU', color:'#C9A24B', placeholder:'Buscar municipio o entidad…' },
       state:{ label:'Estado', code:'ED', color:'#0E8A6E', placeholder:'Buscar entidad federativa…' },
     }[type] || { label:'Territorio', code:'TR', color:'#6F6B66', placeholder:'Buscar territorio…' };
@@ -2988,6 +3269,11 @@ class Component extends DCLogic {
           }:null;
         }).filter(Boolean).sort((a,b)=>a.label.localeCompare(b.label,'es'));
       });
+    } else if(selectedType==='pam'){
+      load=this._fetchPamCache().then(items=>(items||[])
+        .map(item=>this._pamShortcutOption(item))
+        .filter(Boolean)
+        .sort((a,b)=>a.label.localeCompare(b.label,'es')));
     } else {
       load=this._anaMunicipiosShortcutGeo().then(geo=>(geo.features||[]).map(f=>{
         const p=f.properties||{}, name=p.NOMGEO||p.nombre||'';
@@ -3018,6 +3304,10 @@ class Component extends DCLogic {
   anaShortcutPick = (option) => {
     if(!option||!isFinite(option.lat)||!isFinite(option.lng)) return;
     this.setState({ analysis:{ ...this.state.analysis, shortcutQuery:option.label } });
+    if(option.kind==='pam'){
+      this._analyzePamOption(option);
+      return;
+    }
     if(option.geometry){
       this._anaPlaceTerritory(option);
       return;
@@ -3043,6 +3333,11 @@ class Component extends DCLogic {
     if (!e || !e.ll || !isFinite(e.ll[0]) || !isFinite(e.ll[1])) return;
     const A = this.state.analysis;
     if (this.state.anaOpen || A.placing || A.lat) {
+      if(e.pamItem){
+        const option=this._pamShortcutOption(e.pamItem);
+        if(option) this._analyzePamOption(option);
+        return;
+      }
       const rawKind=String(e.kind||'').toLowerCase();
       const kind=rawKind.includes('gerencia')?'gcr':rawKind.includes('municipio')?'municipality':rawKind.includes('estado')?'state':rawKind.includes('podecobi')?'podecobi':'point';
       this._anaPlace(e.ll[0], e.ll[1], {
@@ -3530,9 +3825,11 @@ class Component extends DCLogic {
       lyr.bindTooltip(String(nom), { sticky:true });
       if(this.ENERGY_PERMIT_KEYS.includes(key)){
         lyr.bindPopup(this._energyPermitPopup(cfg,p,nom,location),{maxWidth:370,minWidth:270});
+      }else if(cfg.type==='pam'){
+        lyr.bindPopup(this._pamPopup(cfg,p,nom),{maxWidth:390,minWidth:285});
       }
       lyr.on('click', event => {
-        if(this.ENERGY_PERMIT_KEYS.includes(key)){
+        if(this.ENERGY_PERMIT_KEYS.includes(key)||cfg.type==='pam'){
           try { lyr.openPopup(); } catch(error){}
           try { if(event&&event.originalEvent) L.DomEvent.stopPropagation(event.originalEvent); } catch(error){}
         }
@@ -3561,7 +3858,8 @@ class Component extends DCLogic {
     // → nube en un solo canvas propio (ver _makePointCloud)
     const byTech = (cfg.key === 'centrales');
     const byPermit = this.ENERGY_PERMIT_KEYS.includes(key);
-    const domPoints = byTech || byPermit || pointCount <= (cfg.compactPoints ? 250 : 1200);
+    const byPam = cfg.type === 'pam';
+    const domPoints = byTech || byPermit || byPam || pointCount <= (cfg.compactPoints ? 250 : 1200);
     const useCloud = !domPoints && pointCount > 3000;
     if(!renderEnabled){
       const count=this._countGenericFeatures(geo);
@@ -3576,7 +3874,8 @@ class Component extends DCLogic {
       if (domPoints) {
         const icon=byTech
           ?this._techIcon(this._centralTech(p))
-          :byPermit?this._energyPermitIcon(key,p):dot;
+          :byPermit?this._energyPermitIcon(key,p)
+          :byPam?this._pamIcon(p):dot;
         bind(L.marker([lat, lng], {
           icon,
           pane:byPermit?'permits':'markerPane',
@@ -3663,6 +3962,47 @@ class Component extends DCLogic {
     // un <span> con border-radius no deja rastro capturable y desaparecía en PDF/PNG.
     return L.divIcon({ className:'', iconSize:[14,14], iconAnchor:[7,7], popupAnchor:[0,-7],
       html:'<svg width="14" height="14" viewBox="0 0 14 14" style="filter:drop-shadow(0 1px 2.5px rgba(0,0,0,.4))"><circle cx="7" cy="7" r="6" fill="'+color+'" stroke="#fff" stroke-width="2"/></svg>' });
+  }
+  _pamIcon(p){
+    const L=window.L;
+    const type=String((p&&p.tipoProyecto)||'').toLowerCase();
+    const color=type.includes('modern')?'#6B3654':type.includes('ampl')?'#9B2247':'#7E3B52';
+    const html='<svg width="32" height="38" viewBox="0 0 32 38" style="filter:drop-shadow(0 3px 4px rgba(0,0,0,.32))">'
+      +'<path d="M16 1.5 29 9v15L16 36.5 3 24V9z" fill="#fff" stroke="'+color+'" stroke-width="2"/>'
+      +'<path d="M16 5 25.5 10.5v11L16 31 6.5 21.5v-11z" fill="'+color+'"/>'
+      +'<path d="m17.4 8-6 10h4.3l-1 7 6-10h-4.2z" fill="#fff"/>'
+      +'</svg>';
+    return L.divIcon({className:'',html,iconSize:[32,38],iconAnchor:[16,34],popupAnchor:[0,-31]});
+  }
+  _pamPopup(cfg,p,nom){
+    const esc=value=>this._escapeMapHtml(value);
+    const item=this._pamItemFromProperties(p);
+    const projectId=Number(item.proyectoId||0);
+    const key=item.claveProyecto||'Sin clave';
+    const locationLabel=p.etiquetaUbicacion||p.EtiquetaUbicacion||'Ubicación principal';
+    const suggested=!!(p.esAsociacionSugerida||p.EsAsociacionSugerida);
+    const score=p.puntajeCoincidencia??p.PuntajeCoincidencia;
+    const precision=suggested
+      ?'Asociación de red · pendiente de validación'
+      :(p.precisionUbicacion||p.PrecisionUbicacion||'validada');
+    const fichaUrl=item.fichaUrl||p.fichaUrl||p.FichaUrl||'';
+    const ficha=fichaUrl
+      ?'<a href="'+esc(fichaUrl)+'" target="_blank" rel="noopener" style="display:flex;justify-content:space-between;align-items:center;padding:9px 11px;border-radius:6px;background:#6B3654;color:#fff;text-decoration:none;font-size:10px;font-weight:800;letter-spacing:.04em">Abrir ficha PAM completa <span aria-hidden="true">↗</span></a>'
+      :'';
+    const analyze=projectId>0
+      ?'<button type="button" onclick="window.__dgPamAnalyze&&window.__dgPamAnalyze('+projectId+')" style="width:100%;margin-top:7px;padding:8px 11px;border:1px solid #6B3654;border-radius:6px;background:#fff;color:#6B3654;font-family:inherit;font-size:10px;font-weight:800;cursor:pointer">Analizar entorno del proyecto</button>'
+      :'';
+    return '<div style="font-family:Noto Sans,sans-serif;min-width:265px">'
+      +'<div style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6B3654;margin-bottom:5px">PAM / PAMRNT · '+esc(key)+'</div>'
+      +'<div style="font-family:Newsreader,serif;font-size:17px;font-weight:800;line-height:1.1;color:#1C1B1A;margin-bottom:8px">'+esc(item.nombreProyecto||nom||cfg.label)+'</div>'
+      +'<div style="display:grid;grid-template-columns:92px 1fr;gap:4px 8px;font-size:11px;line-height:1.35;margin-bottom:10px">'
+      +'<span style="color:#77716B">GCR</span><strong>'+esc(item.gcr||'—')+'</strong>'
+      +'<span style="color:#77716B">Tipo</span><span>'+esc(item.tipoProyecto||'—')+'</span>'
+      +'<span style="color:#77716B">Etapa</span><span>'+esc(item.etapaProyecto||'—')+'</span>'
+      +'<span style="color:#77716B">Elemento</span><span>'+esc(locationLabel)+'</span>'
+      +'<span style="color:#77716B">Precisión</span><strong>'+esc(precision)+'</strong>'
+      +(score!=null?'<span style="color:#77716B">Confianza</span><strong>'+esc(score)+'/100</strong>':'')
+      +'</div>'+ficha+analyze+'</div>';
   }
   // Acorta una URL para mostrar en el panel de detalle (sin perder el destino).
   // - Quita protocolo, www., query y hash cuando ya hay un dominio limpio.
@@ -3823,6 +4163,31 @@ class Component extends DCLogic {
     this._clearHighlight();
     const ent = this.CVE_ENT[p.CVE_ENT||p.cve_ent] || this._propEnt(p) || p['Ubicación'] || p.Ubicacion || '';
     this._syncMenu(ent, ent?this._gerenciaOf(ent):'');
+    if(cfg.type==='pam'){
+      const item=this._pamItemFromProperties(p);
+      const locationId=Number(p.ubicacionId||p.UbicacionId||0);
+      const storedLocation=((item&&item.ubicaciones)||[]).find(value=>Number(value.ubicacionId)===locationId)||null;
+      const resolvedLocation=storedLocation||{
+        ubicacionId:locationId,
+        etiqueta:p.etiquetaUbicacion||p.EtiquetaUbicacion||nom||'Elemento de red',
+        latitud:p.latitud??p.Latitud??(location&&location[0]),
+        longitud:p.longitud??p.Longitud??(location&&location[1]),
+        precisionUbicacion:p.precisionUbicacion||p.PrecisionUbicacion||'asociada',
+        metodoUbicacion:p.metodoUbicacion||p.MetodoUbicacion||'cruce_catalogo_red_v1',
+        fuente:p.fuente||p.Fuente||'Catálogo de red DGMESNIE',
+        fechaCorte:p.fechaCorte||p.FechaCorte||null,
+        validada:!!(p.validada||p.Validada),
+        esAsociacionSugerida:!!(p.esAsociacionSugerida||p.EsAsociacionSugerida),
+        puntajeCoincidencia:p.puntajeCoincidencia??p.PuntajeCoincidencia??null,
+        nivelConfianza:p.nivelConfianza||p.NivelConfianza||'',
+        tipoElementoRed:p.tipoElementoRed||p.TipoElementoRed||'',
+        claveElementoRed:p.claveElementoRed||p.ClaveElementoRed||'',
+        evidencias:p.evidencias||p.Evidencias||[]
+      };
+      const detailItem=storedLocation?item:{...item,ubicaciones:[...((item&&item.ubicaciones)||[]),resolvedLocation]};
+      this._selectPamItem(detailItem,resolvedLocation);
+      return;
+    }
     // PODECOBI → ficha curada desde el backend (cabecera + vocaciones + contactos + fuentes).
     // El GeoJSON del mapa solo trae geometría + campos índice; el detalle se obtiene
     // consultando /api/podecobi/polos/{numero} que sirve datos estructurados desde la BD.
@@ -4558,7 +4923,8 @@ class Component extends DCLogic {
     // "Polos de Desarrollo (PODECOBI)" y las demás fuentes pueden activarse
     // directamente desde el autocompletado.
     this.LAYERS.forEach(cfg => {
-      const aliases = cfg.key==='podecobi' ? ' polos polo desarrollo podecobi ' : ' ';
+      const aliases = cfg.key==='podecobi' ? ' polos polo desarrollo podecobi '
+        :cfg.key==='pam'?' pam pamrnt proyectos ampliacion modernizacion ':' ';
       out.push({
         label:cfg.label,
         kind:cfg.cat+' · '+(L[cfg.key].on?'capa activa':'activar capa'),
@@ -4569,6 +4935,27 @@ class Component extends DCLogic {
           if (!this.state.layers[cfg.key].on) this.toggleLayer(cfg.key);
           else if (this._built[cfg.key]) { try { this._fitToLayer(cfg.key); } catch(e){} }
         }
+      });
+    });
+    (this.state.pamCatalog||[]).forEach(item=>{
+      const option=this._pamShortcutOption(item);
+      if(!option) return;
+      const key=item.claveProyecto||('PAM '+item.proyectoId);
+      const locationText=((item.ubicaciones)||[]).map(location=>[
+        location.etiqueta,location.direccion,location.entidad,location.municipio,
+        location.localidad,location.latitud,location.longitud
+      ].filter(value=>value!=null&&String(value).trim()).join(' ')).join(' ');
+      out.push({
+        label:key+' · '+(item.nombreProyecto||'Proyecto PAM'),
+        kind:'Proyecto PAM · '+(option.located?'ubicación validada':'GCR aproximada'),
+        color:'#6B3654',
+        n:this._norm([
+          key,item.clavesAlternas,item.nombreProyecto,item.gcr,item.tipoProyecto,
+          item.zonaAtendida,item.elementosEquiposAsociados,locationText
+        ].filter(Boolean).join(' ')),
+        ll:[option.lat,option.lng],
+        pamItem:item,
+        go:()=>this._focusPamItem(item)
       });
     });
     // Subestaciones/líneas acotadas al buffer del análisis geoespacial (si hay uno activo)
@@ -9551,7 +9938,7 @@ class Component extends DCLogic {
         this.LAYERS.forEach(cfg => {
           // El panel incluye división territorial + capas institucionales siempre-visibles
           // (PODECOBI). El resto se configura desde el buscador.
-          const visiblePanel = cfg.cat === 'División territorial' || cfg.key === 'podecobi';
+          const visiblePanel = cfg.cat === 'División territorial' || cfg.key === 'podecobi' || cfg.key === 'pam';
           if (cfg.analysis || !visiblePanel) return;
           const v = L[cfg.key]; if (!v) return;
           if (!byCat[cfg.cat]) { byCat[cfg.cat] = []; order.push(cfg.cat); }
@@ -9604,7 +9991,7 @@ class Component extends DCLogic {
           onAnaDirIn: this.onAnaDirIn, onAnaDirKey: this.onAnaDirKey, onAnaDirSearch: this.anaDirSearch,
           anaDirBtnLabel: A.dirBusy ? 'Buscando…' : 'Buscar',
           anaDirResults: (A.dirResults||[]).map(r => ({ label:r.label, onPick:()=>this.anaDirPick(r) })),
-          anaShortcutTypes: ['gcr','podecobi','municipality','state'].map(type=>{
+          anaShortcutTypes: ['gcr','podecobi','pam','municipality','state'].map(type=>{
             const info=this._anaShortcutInfo(type), active=(A.shortcutType||'gcr')===type;
             return {
               label:info.label,
