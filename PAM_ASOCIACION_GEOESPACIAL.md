@@ -269,6 +269,7 @@ automática como una ubicación oficialmente validada.
 |---|---|---|
 | `RED-GRAFO-v1.0` | 2026-07-26 | Nodos, aristas, adyacencia, componentes, ruta mínima, revisiones y subgrafo PAM |
 | `RED-GRAFO-v1.1` | 2026-07-27 | Equivalencias nominales conservadoras compartidas con Conv2, simulación no destructiva y publicación persistente después de comprobar cero regresiones |
+| `RED-GRAFO-v1.2` | 2026-07-27 | Reconoce una errata por transposición adyacente a menos de 250 m y acepta diferencias de tensión cuando el nombre del extremo es exacto, único espacialmente y está a 150 m o menos |
 
 ## 15. Representación del catálogo PAM completo
 
@@ -410,7 +411,7 @@ El diagnóstico completo descarga la hoja base, la trazabilidad, las
 subestaciones, las líneas y las GCR, y después reconstruye todos los candidatos.
 Para evitar que cada reinicio de `dotnet watch` deje la mesa esperando varios
 minutos, una ejecución exitosa conserva una fotografía versionada en
-`App_Data/cache/pam_convocatoria_coverage_v14.json`.
+`App_Data/cache/pam_convocatoria_coverage_v15.json`.
 
 La apertura normal usa esa fotografía durante un máximo configurable de 24
 horas. **Volver a consultar** envía `refrescar=true`, vuelve a leer las fuentes
@@ -680,6 +681,8 @@ pública no bloquea los iconos ni su interacción.
 | `PAM-CONV2-v1.13` | 2026-07-27 | Homologa líneas por pares de extremos en ambos sentidos y separa los corredores base identificados por código de los nuevos entronques; los códigos repetidos permanecen sin geometría y en revisión |
 | `PAM-CONV2-v1.14` | 2026-07-27 | Resuelve extremos con equivalencias nominales controladas únicamente sobre el extremo físico de la línea: corrige una errata o un nombre extendido a menos de 250 m, conserva empates y asociaciones sin respaldo como pendientes y no infiere conectividad por cruces visuales |
 | `RED-GRAFO-v1.1` | 2026-07-27 | Comparte las equivalencias nominales conservadoras con Conv2 y añade una simulación contra la versión activa de SQL Server; informa promociones, regresiones y cambios de nodo sin persistir ni reemplazar el grafo publicado |
+| `PAM-CONV2-v1.15` | 2026-07-27 | Usa la versión activa persistida como fuente de verdad de conectividad cuando el hash del GeoJSON coincide; conserva el diagnóstico local como fallback y el refresco explícito invalida realmente la caché |
+| `RED-GRAFO-v1.2` | 2026-07-27 | Modela la transformación RNT-distribución sin exigir igualdad de tensión cuando nombre, extremo y aislamiento espacial son firmes; añade erratas por transposición adyacente y conserva la tensión para desambiguar nodos homónimos próximos |
 
 La simulación se consulta en
 `GET /DashboardProyectos/RedElectrica/Grafo/Simulacion`. Reconstruye una
@@ -716,3 +719,40 @@ directos fueron:
   ruta navegable;
 - `P20-NE2`: L.T. Matamoros Potencia–Lauro Villar pasó de `sin_resolver` a
   `conectada`.
+
+La siguiente corrida comparó `RED-GRAFO-v1.2` contra la versión 3 con las
+mismas 3,036 aristas y hashes de fuente. Promovió 94 aristas a conectada y 21
+a parcial, redujo 121 revisiones y 49 nodos virtuales, sin aristas nuevas,
+retiradas ni regresiones. Las promociones nuevas se limitaron a:
+
+- nombres literales o canónicos exactos a 150 m o menos, sin otro nodo
+  competidor dentro de 500 m, aun cuando la tensión de la subestación refleja
+  el nivel de salida hacia distribución;
+- una errata de un carácter o una transposición adyacente en un único token,
+  a 250 m o menos, excluyendo números y numerales romanos.
+
+La reconstrucción persistente publicó esta corrida como `VersionId = 4`,
+clave `red:cd57cff3f0f9ee713bd0`, y conservó las versiones 2 y 3 publicadas
+pero inactivas. La versión 4 contiene 3,133 nodos, 873 virtuales, 2,048
+aristas conectadas, 731 parciales, 257 sin resolver, 859 componentes y 1,245
+revisiones pendientes.
+
+`PAM-CONV2-v1.15` eliminó la divergencia entre la mesa y el grafo: de las 56
+referencias de línea, las 23 con geometría quedaron conectadas y las 33 sin
+geometría permanecen separadas; ya no existen referencias con geometría
+parcial, ambigua o sin resolver. Esto cerró los casos Aeropuerto–El Cuchillo,
+Conín–El Sauz, El Sauz–La Manga, Norte–Kanasín Potencia y El Palmar–Olas
+Altas. Las tres líneas que la versión anterior mostraba incompletas aunque ya
+estaban resueltas en v3 ahora heredan correctamente el estado persistido.
+
+El recálculo PAM contra la versión 4 mantuvo 281 proyectos, 133 asociados y
+285 semillas. Las semillas conectadas aumentaron de 262 a 265, las parciales
+bajaron de 2 a 1 y las no resueltas de 21 a 19. Los proyectos con alguna ruta
+navegable aumentaron de 128 a 130 y los totalmente conectados de 117 a 119,
+sin regresiones. Los impactos directos fueron:
+
+- `P16-OC1`: L.T. Miravalle–Álamos pasó de `sin_resolver` a `conectada` y el
+  proyecto ganó ruta;
+- `P16-PE2`: L.T. Norte–Kanasín Potencia pasó de `parcial` a `conectada`;
+- `P17-BC3`: S.E. Universidad pasó de grado 0 a grado 1 y el proyecto ganó
+  ruta.

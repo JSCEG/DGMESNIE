@@ -70,10 +70,10 @@ public interface IRedElectricaGraphService
 
 public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
 {
-    public const string RulesVersion = "RED-GRAFO-v1.1";
-    private const string CacheKey = "red-electrica-graph-v2";
+    public const string RulesVersion = "RED-GRAFO-v1.2";
+    private const string CacheKey = "red-electrica-graph-v3";
     private const string SimulationCacheKey =
-        "red-electrica-graph-simulation-v1";
+        "red-electrica-graph-simulation-v2";
     private static readonly SemaphoreSlim BuildLock = new(1, 1);
 
     private readonly HttpClient _httpClient;
@@ -1826,6 +1826,51 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                     VoltageKv = nearest[0].VoltageKv,
                     Evidence = evidence
                 };
+            }
+        }
+
+        // Una subestación puede transformar de la RNT a un nivel menor de
+        // distribución. Por ello, una diferencia de tensión no invalida un
+        // extremo cuyo nombre es exacto, está a 150 m o menos y no compite
+        // con otro nodo cercano. La tensión sigue desambiguando duplicados
+        // próximos (por ejemplo, dos nodos homónimos de 115/400 kV).
+        if (nearest.Count > 0 &&
+            nearest[0].DistanceKm <= 0.15 &&
+            (nearest.Count == 1 || nearest[1].DistanceKm >= 0.5) &&
+            (string.Equals(
+                 nearest[0].NameMatchKind,
+                 literalExactKind,
+                 StringComparison.Ordinal) ||
+             string.Equals(
+                 nearest[0].NameMatchKind,
+                 canonicalExactKind,
+                 StringComparison.Ordinal)) &&
+            nearest[0].Score < _options.HighConfidenceThreshold)
+        {
+            var candidateIndex = candidates.FindIndex(candidate =>
+                string.Equals(
+                    candidate.NodeId,
+                    nearest[0].NodeId,
+                    StringComparison.Ordinal));
+            if (candidateIndex >= 0)
+            {
+                var evidence = nearest[0].Evidence
+                    .Concat(new[]
+                    {
+                        "piso transformador: nombre exacto y único a 150 m; la diferencia de tensión puede corresponder a transformación RNT-distribución"
+                    })
+                    .ToList();
+                candidates[candidateIndex] =
+                    new RedElectricaGraphCandidate
+                    {
+                        NodeId = nearest[0].NodeId,
+                        Name = nearest[0].Name,
+                        NameMatchKind = nearest[0].NameMatchKind,
+                        Score = _options.HighConfidenceThreshold,
+                        DistanceKm = nearest[0].DistanceKm,
+                        VoltageKv = nearest[0].VoltageKv,
+                        Evidence = evidence
+                    };
             }
         }
 

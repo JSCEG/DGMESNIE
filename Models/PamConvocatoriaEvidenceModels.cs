@@ -6,7 +6,7 @@ public sealed class PamConvocatoriaEvidenceResult
 {
     public long ProyectoId { get; init; }
     public string ClaveProyecto { get; init; } = string.Empty;
-    public string VersionReglas { get; init; } = "PAM-CONV2-v1.14";
+    public string VersionReglas { get; init; } = "PAM-CONV2-v1.15";
     public string Estado { get; init; } = "sin_coincidencias";
     public int CoincidenciasAltas { get; init; }
     public int RequierenRevision { get; init; }
@@ -45,7 +45,7 @@ public sealed class PamConvocatoriaProjectMatch
 
 public sealed class PamConvocatoriaCoverageReport
 {
-    public string VersionReglas { get; init; } = "PAM-CONV2-v1.14";
+    public string VersionReglas { get; init; } = "PAM-CONV2-v1.15";
     public DateTime GeneradoUtc { get; init; } = DateTime.UtcNow;
     public int ProyectosUniverso { get; init; }
     public int ProyectosConTrazabilidad { get; init; }
@@ -170,7 +170,7 @@ public sealed class PamConvocatoriaGeoJson
 
 public sealed class PamConvocatoriaGeoJsonMeta
 {
-    public string Version { get; init; } = "PAM-CONV2-v1.14";
+    public string Version { get; init; } = "PAM-CONV2-v1.15";
     public string Layer { get; init; } = "evidencia_segunda_convocatoria";
     public DateTime GeneratedUtc { get; init; } = DateTime.UtcNow;
     public int UniverseProjects { get; init; }

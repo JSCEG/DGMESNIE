@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualBasic.FileIO;
@@ -28,7 +29,7 @@ public sealed class PamConvocatoriaEvidenceOptions
     public int CacheMinutes { get; set; } = 30;
     public int SnapshotMaxAgeMinutes { get; set; } = 1440;
     public string SnapshotPath { get; set; } =
-        "App_Data/cache/pam_convocatoria_coverage_v14.json";
+        "App_Data/cache/pam_convocatoria_coverage_v15.json";
     public int HighConfidenceThreshold { get; set; } = 90;
     public int ReviewThreshold { get; set; } = 70;
     public int MaximumMatchesPerPam { get; set; } = 12;
@@ -63,9 +64,9 @@ public interface IPamConvocatoriaEvidenceService
 
 public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceService
 {
-    public const string RulesVersion = "PAM-CONV2-v1.14";
+    public const string RulesVersion = "PAM-CONV2-v1.15";
 
-    private const string CacheKey = "pam-conv2-evidence-catalog-v14";
+    private const string CacheKey = "pam-conv2-evidence-catalog-v15";
     private static readonly SemaphoreSlim CatalogLock = new(1, 1);
     private static readonly HashSet<string> EmptyValues = new(
         new[]
@@ -111,11 +112,13 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
     private readonly PamConvocatoriaEvidenceOptions _options;
     private readonly ILogger<PamConvocatoriaEvidenceService> _logger;
     private readonly string _snapshotPath;
+    private readonly string _connectionString;
 
     public PamConvocatoriaEvidenceService(
         HttpClient httpClient,
         IMemoryCache cache,
         IOptions<PamConvocatoriaEvidenceOptions> options,
+        IConfiguration configuration,
         IWebHostEnvironment environment,
         ILogger<PamConvocatoriaEvidenceService> logger)
     {
@@ -123,6 +126,9 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         _cache = cache;
         _options = options.Value;
         _logger = logger;
+        _connectionString =
+            configuration.GetConnectionString("DefaultConnection") ??
+            string.Empty;
         _snapshotPath = Path.IsPathRooted(_options.SnapshotPath)
             ? _options.SnapshotPath
             : Path.GetFullPath(
@@ -237,6 +243,11 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         CancellationToken cancellationToken,
         bool forceRefresh = false)
     {
+        if (forceRefresh)
+        {
+            _cache.Remove(CacheKey);
+        }
+
         if (!forceRefresh &&
             _cache.TryGetValue<EvidenceCatalog>(CacheKey, out var cached) &&
             cached is not null)
@@ -748,24 +759,49 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 linesTask,
                 gcrTask);
 
-            var gcrAreas = ParseGcrAreas(await gcrTask);
+            var baseCsv = await baseTask;
+            var traceCsv = await traceTask;
+            var substationsJson = await substationsTask;
+            var linesJson = await linesTask;
+            var gcrJson = await gcrTask;
+            var gcrAreas = ParseGcrAreas(gcrJson);
             var substations = ParseSubstations(
-                await substationsTask,
+                substationsJson,
                 gcrAreas);
             var lines = ParseLines(
-                await linesTask,
+                linesJson,
                 gcrAreas);
             var lineEndpoints = BuildLineEndpoints(
                 lines,
                 substations,
                 _options.TopologyEndpointClusterKm);
-            var lineTopology = BuildLineTopologyCatalog(
+            var inferredLineTopology = BuildLineTopologyCatalog(
                 lines,
                 substations,
                 _options.TopologyEndpointClusterKm);
+            PersistedLineGraph? graphSnapshot = null;
+            try
+            {
+                graphSnapshot = await LoadPersistedLineGraphAsync(
+                    cancellationToken);
+            }
+            catch (Exception exception) when (
+                exception is SqlException or
+                HttpRequestException or
+                JsonException)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "No fue posible reconciliar Conv2 con el grafo persistido; se conserva el diagnóstico inferido desde los GeoJSON.");
+            }
+            var lineTopology = ReconcileLineTopologyWithGraph(
+                lines,
+                inferredLineTopology,
+                linesJson,
+                graphSnapshot);
             var allRows = ParseSecondCallRows(
-                await baseTask,
-                await traceTask,
+                baseCsv,
+                traceCsv,
                 substations,
                 lines,
                 lineEndpoints,
@@ -3404,6 +3440,373 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             StringComparer.Ordinal);
     }
 
+    private async Task<PersistedLineGraph?> LoadPersistedLineGraphAsync(
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString))
+        {
+            return null;
+        }
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        long versionId;
+        string version;
+        string rulesVersion;
+        string hashLineas;
+        await using (var versionCommand = new SqlCommand(
+            """
+            SELECT TOP (1)
+                VersionId,
+                VersionClave,
+                VersionReglas,
+                HashLineas
+            FROM dgmesnie.RedElectricaVersion
+            WHERE Activa = 1
+              AND Estado = N'publicada'
+            ORDER BY VersionId DESC;
+            """,
+            connection))
+        await using (var reader = await versionCommand.ExecuteReaderAsync(
+            cancellationToken))
+        {
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            versionId = reader.GetInt64(0);
+            version = reader.GetString(1);
+            rulesVersion = reader.GetString(2);
+            hashLineas = reader.GetString(3);
+        }
+
+        var nodes = new Dictionary<string, PersistedLineNode>(
+            StringComparer.Ordinal);
+        await using (var nodeCommand = new SqlCommand(
+            """
+            SELECT
+                NodoClave,
+                Nombre,
+                Latitud,
+                Longitud,
+                EsVirtual
+            FROM dgmesnie.RedElectricaNodo
+            WHERE VersionId = @VersionId;
+            """,
+            connection))
+        {
+            nodeCommand.Parameters.AddWithValue("@VersionId", versionId);
+            await using var reader = await nodeCommand.ExecuteReaderAsync(
+                cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var node = new PersistedLineNode(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    Convert.ToDouble(
+                        reader.GetValue(2),
+                        CultureInfo.InvariantCulture),
+                    Convert.ToDouble(
+                        reader.GetValue(3),
+                        CultureInfo.InvariantCulture),
+                    reader.GetBoolean(4));
+                nodes[node.NodeId] = node;
+            }
+        }
+
+        var edges = new List<PersistedLineEdge>();
+        await using (var edgeCommand = new SqlCommand(
+            """
+            SELECT
+                AristaClave,
+                ClaveElementoCatalogo,
+                ExtremoNominalA,
+                ExtremoNominalB,
+                NodoOrigenClave,
+                NodoDestinoClave,
+                ConfianzaOrigen,
+                ConfianzaDestino,
+                ResolucionOrigen,
+                ResolucionDestino,
+                EstadoConexion,
+                GeometriaJson
+            FROM dgmesnie.RedElectricaArista
+            WHERE VersionId = @VersionId;
+            """,
+            connection))
+        {
+            edgeCommand.Parameters.AddWithValue("@VersionId", versionId);
+            await using var reader = await edgeCommand.ExecuteReaderAsync(
+                cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                using var geometryDocument =
+                    JsonDocument.Parse(reader.GetString(11));
+                edges.Add(new PersistedLineEdge(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                    reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                    reader.GetString(4),
+                    reader.GetString(5),
+                    reader.GetInt32(6),
+                    reader.GetInt32(7),
+                    reader.GetString(8),
+                    reader.GetString(9),
+                    reader.GetString(10),
+                    geometryDocument.RootElement.Clone()));
+            }
+        }
+
+        var reviews = new List<PersistedLineReview>();
+        await using (var reviewCommand = new SqlCommand(
+            """
+            SELECT
+                AristaClave,
+                LadoExtremo,
+                Motivo
+            FROM dgmesnie.RedElectricaRevision
+            WHERE VersionId = @VersionId
+              AND Resuelta = 0;
+            """,
+            connection))
+        {
+            reviewCommand.Parameters.AddWithValue("@VersionId", versionId);
+            await using var reader = await reviewCommand.ExecuteReaderAsync(
+                cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                reviews.Add(new PersistedLineReview(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2)));
+            }
+        }
+
+        return new PersistedLineGraph(
+            versionId,
+            version,
+            rulesVersion,
+            hashLineas,
+            nodes,
+            edges,
+            reviews);
+    }
+
+    private IReadOnlyDictionary<string, LineTopologyEvidence>
+        ReconcileLineTopologyWithGraph(
+            IReadOnlyList<NetworkElement> lines,
+            IReadOnlyDictionary<string, LineTopologyEvidence> inferred,
+            string linesJson,
+            PersistedLineGraph? graph)
+    {
+        if (graph is null)
+        {
+            return inferred;
+        }
+
+        var sourceHash = Sha256Lower(linesJson);
+        if (!string.Equals(
+                sourceHash,
+                graph.HashLineas,
+                StringComparison.Ordinal))
+        {
+            _logger.LogWarning(
+                "Conv2 no reutilizó el grafo {Version}: el hash de líneas activo {ActiveHash} difiere del GeoJSON consultado {CurrentHash}.",
+                graph.Version,
+                graph.HashLineas,
+                sourceHash);
+            return inferred;
+        }
+
+        var edgesByCatalogKey = graph.Edges
+            .GroupBy(edge => edge.CatalogElementKey, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<PersistedLineEdge>)group.ToList(),
+                StringComparer.Ordinal);
+        var output = inferred.ToDictionary(
+            item => item.Key,
+            item => item.Value,
+            StringComparer.Ordinal);
+        var reconciled = 0;
+        foreach (var line in lines)
+        {
+            var graphCatalogKey = CreateGraphLineCatalogKey(line);
+            if (!edgesByCatalogKey.TryGetValue(
+                    graphCatalogKey,
+                    out var graphEdges) ||
+                graphEdges.Count == 0)
+            {
+                continue;
+            }
+
+            output[line.Key] = CreateGraphLineTopology(
+                graph,
+                graphEdges);
+            reconciled++;
+        }
+
+        _logger.LogInformation(
+            "Topología Conv2 reconciliada con {GraphRules} versión SQL {VersionId}: {Reconciled}/{Lines} líneas comparten fuente y clave estable.",
+            graph.RulesVersion,
+            graph.VersionId,
+            reconciled,
+            lines.Count);
+        return output;
+    }
+
+    private static LineTopologyEvidence CreateGraphLineTopology(
+        PersistedLineGraph graph,
+        IReadOnlyList<PersistedLineEdge> edges)
+    {
+        var ordered = edges
+            .OrderBy(edge => ConnectionStateRank(edge.ConnectionState))
+            .ThenBy(edge => edge.FromConfidence + edge.ToConfidence)
+            .ThenBy(edge => edge.EdgeId, StringComparer.Ordinal)
+            .ToList();
+        var representative = ordered[0];
+        var relevantReviews = graph.Reviews
+            .Where(review => edges.Any(edge =>
+                string.Equals(
+                    edge.EdgeId,
+                    review.EdgeId,
+                    StringComparison.Ordinal)))
+            .ToList();
+        var ambiguous = relevantReviews.Any(review =>
+            review.Reason.Contains(
+                "Candidatos demasiado cercanos",
+                StringComparison.OrdinalIgnoreCase));
+        var allConnected = edges.All(edge =>
+            string.Equals(
+                edge.ConnectionState,
+                "conectada",
+                StringComparison.Ordinal));
+        var anyResolved = edges.Any(edge =>
+            !string.Equals(
+                edge.ConnectionState,
+                "sin_resolver",
+                StringComparison.Ordinal));
+        var state = allConnected
+            ? "conectada"
+            : ambiguous
+                ? "ambigua"
+                : anyResolved
+                    ? "parcial"
+                    : "sin_resolver";
+        var endpointA = CreateGraphEndpointTopology(
+            graph,
+            representative,
+            "A",
+            representative.NominalEndpointA,
+            representative.FromNodeId,
+            relevantReviews);
+        var endpointB = CreateGraphEndpointTopology(
+            graph,
+            representative,
+            "B",
+            representative.NominalEndpointB,
+            representative.ToNodeId,
+            relevantReviews);
+        var resolvedEndpoints =
+            (endpointA.IsResolved ? 1 : 0) +
+            (endpointB.IsResolved ? 1 : 0);
+        var versionId = $"VersionId {graph.VersionId}";
+        var evidence = endpointA.Evidence
+            .Concat(endpointB.Evidence)
+            .Append(
+                $"Grafo persistido {graph.RulesVersion}, {versionId}: conectividad {state}; {resolvedEndpoints} de 2 extremos resueltos en {edges.Count} segmento(s).")
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return new LineTopologyEvidence(
+            state,
+            allConnected && !ambiguous,
+            resolvedEndpoints,
+            endpointA,
+            endpointB,
+            evidence);
+    }
+
+    private static LineEndpointTopology CreateGraphEndpointTopology(
+        PersistedLineGraph graph,
+        PersistedLineEdge edge,
+        string side,
+        string declaredName,
+        string nodeId,
+        IReadOnlyList<PersistedLineReview> reviews)
+    {
+        if (graph.Nodes.TryGetValue(nodeId, out var node) &&
+            !node.IsVirtual)
+        {
+            var points = ExtractCoordinates(edge.Geometry).ToList();
+            var endpoint = points.Count == 0
+                ? default(GeoPoint?)
+                : string.Equals(side, "A", StringComparison.Ordinal)
+                    ? points[0]
+                    : points[^1];
+            var distance = endpoint.HasValue
+                ? HaversineKm(
+                    endpoint.Value,
+                    new GeoPoint(node.Latitude, node.Longitude))
+                : default(double?);
+            return new LineEndpointTopology(
+                declaredName,
+                node.Name,
+                distance,
+                true,
+                false,
+                new[]
+                {
+                    $"Extremo {side} «{declaredName}» → «{node.Name}» según el grafo activo{(distance.HasValue ? $" a {distance.Value:0.###} km del extremo GeoJSON" : string.Empty)}."
+                });
+        }
+
+        var review = reviews.FirstOrDefault(item =>
+            string.Equals(item.EdgeId, edge.EdgeId, StringComparison.Ordinal) &&
+            string.Equals(
+                item.EndpointSide,
+                side,
+                StringComparison.OrdinalIgnoreCase));
+        var ambiguous = review?.Reason.Contains(
+            "Candidatos demasiado cercanos",
+            StringComparison.OrdinalIgnoreCase) == true;
+        return new LineEndpointTopology(
+            declaredName,
+            string.Empty,
+            null,
+            false,
+            ambiguous,
+            new[]
+            {
+                $"Extremo {side} «{declaredName}»: {review?.Reason ?? "sin nodo físico resuelto en el grafo activo"}"
+            });
+    }
+
+    private static string CreateGraphLineCatalogKey(NetworkElement line)
+    {
+        var voltage = line.VoltageKv?.ToString(
+            "0.###",
+            CultureInfo.CurrentCulture) ?? string.Empty;
+        var source =
+            $"LT|{line.NormalizedName}|{voltage}|{line.Geometry.GetRawText()}";
+        return $"lt:{Sha256Lower(source)[..20]}";
+    }
+
+    private static int ConnectionStateRank(string state) =>
+        state switch
+        {
+            "conectada" => 2,
+            "parcial" => 1,
+            _ => 0
+        };
+
+    private static string Sha256Lower(string value) =>
+        Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(value)))
+            .ToLowerInvariant();
+
     private static LineEndpointTopology ResolveLineTopologyEndpoint(
         string side,
         string declaredName,
@@ -5085,6 +5488,41 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 false,
                 new[] { evidence });
     }
+
+    private sealed record PersistedLineGraph(
+        long VersionId,
+        string Version,
+        string RulesVersion,
+        string HashLineas,
+        IReadOnlyDictionary<string, PersistedLineNode> Nodes,
+        IReadOnlyList<PersistedLineEdge> Edges,
+        IReadOnlyList<PersistedLineReview> Reviews);
+
+    private sealed record PersistedLineNode(
+        string NodeId,
+        string Name,
+        double Latitude,
+        double Longitude,
+        bool IsVirtual);
+
+    private sealed record PersistedLineEdge(
+        string EdgeId,
+        string CatalogElementKey,
+        string NominalEndpointA,
+        string NominalEndpointB,
+        string FromNodeId,
+        string ToNodeId,
+        int FromConfidence,
+        int ToConfidence,
+        string FromResolution,
+        string ToResolution,
+        string ConnectionState,
+        JsonElement Geometry);
+
+    private sealed record PersistedLineReview(
+        string EdgeId,
+        string EndpointSide,
+        string Reason);
 
     private sealed record VoltageNetworkSupport(
         IReadOnlyList<double> LevelsKv,

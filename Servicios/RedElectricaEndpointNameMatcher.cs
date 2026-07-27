@@ -179,9 +179,30 @@ internal static partial class RedElectricaEndpointNameMatcher
             difference.Catalog.Length >= 4 &&
             !RomanOrNumberRegex().IsMatch(difference.Declared) &&
             !RomanOrNumberRegex().IsMatch(difference.Catalog) &&
-            LevenshteinDistance(
-                difference.Declared,
-                difference.Catalog) == 1;
+            (LevenshteinDistance(
+                 difference.Declared,
+                 difference.Catalog) == 1 ||
+             IsSingleAdjacentTransposition(
+                 difference.Declared,
+                 difference.Catalog));
+    }
+
+    private static bool IsSingleAdjacentTransposition(
+        string left,
+        string right)
+    {
+        if (left.Length != right.Length)
+        {
+            return false;
+        }
+
+        var differences = Enumerable.Range(0, left.Length)
+            .Where(index => left[index] != right[index])
+            .ToList();
+        return differences.Count == 2 &&
+            differences[1] == differences[0] + 1 &&
+            left[differences[0]] == right[differences[1]] &&
+            left[differences[1]] == right[differences[0]];
     }
 
     public static string NormalizeAlias(string value)
