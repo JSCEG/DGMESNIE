@@ -427,6 +427,23 @@ extremos observados forman un grupo de hasta 3 km y existe al menos una línea d
 soporte identificable. La geometría resultante es evidencia sugerida
 `Point/MultiPoint`; no se incorpora automáticamente al catálogo oficial.
 
+También puede registrarse como `faltante_confirmada` una referencia vigente que
+no coincide con el catálogo cuando todas sus filas vigentes incluyen nombre,
+tensión, GCR y coordenadas en los campos específicos de la subestación, y los
+puntos del grupo no se separan más de 3 km. Este criterio sólo confirma que la
+fuente georreferencia una subestación privada o propuesta ausente del catálogo.
+No demuestra conectividad, no sustituye la validación del propietario de la red
+y no crea ni promueve automáticamente un nodo CFE/CENACE. La geometría queda
+como candidata trazable para la etapa posterior de consolidación.
+
+La equivalencia nominal del catálogo elimina únicamente artículos y
+calificadores controlados de nomenclatura. Se consideran equivalentes, por
+ejemplo, `Presa El Cuchillo`/`Cuchillo`, `El Potosí`/`El Potosí Bcos 1 y 2` y
+`Soledad de Doblado`/`Soledad Doblado`, siempre que exista un solo candidato,
+el margen sea suficiente y GCR y tensión sean compatibles. Se conservan como
+significativos `Solar`, `Eólica`, `Maniobras`, `Potencia`, `Nueva`, numerales
+romanos y otros calificadores que puedan identificar instalaciones distintas.
+
 La coordenada de la subestación privada nunca aporta por sí sola una
 confirmación por cercanía. Cuando hay distancia declarada, la geometría privada
 sirve únicamente como origen para calcular la distancia hacia el nodo
@@ -466,3 +483,5 @@ pública no bloquea los iconos ni su interacción.
 | `PAM-CONV2-v1.1` | 2026-07-26 | Universo base completo para diagnóstico, subconjunto Continúa para PAM y mesa paginada de revisión |
 | `PAM-CONV2-v1.2` | 2026-07-26 | Bitácora persistente de dictamen humano, autorización DGMESNIE y validación por fases: subestaciones, líneas y PAM |
 | `PAM-CONV2-v1.3` | 2026-07-26 | Segunda pasada conservadora: GCR para desambiguar, similitud fuerte con margen y extremos nominales de línea para faltantes trazables |
+| `PAM-CONV2-v1.4` | 2026-07-26 | Tercera pasada conservadora: subestaciones privadas/propuestas georreferenciadas por la fuente vigente como faltantes confirmadas, sin inferir conectividad ni promoverlas al catálogo |
+| `PAM-CONV2-v1.5` | 2026-07-26 | Equivalencias de nomenclatura controladas para artículos, presa y bancos; conserva calificadores funcionales y numerales para evitar homologaciones incorrectas |

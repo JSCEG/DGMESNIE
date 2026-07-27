@@ -33,6 +33,7 @@ public sealed class PamConvocatoriaEvidenceOptions
     public double StrongNameSimilarity { get; set; } = 0.9;
     public int StrongNameMargin { get; set; } = 15;
     public double TopologyEndpointClusterKm { get; set; } = 3;
+    public double SourceSubstationClusterKm { get; set; } = 3;
 }
 
 public interface IPamConvocatoriaEvidenceService
@@ -54,9 +55,9 @@ public interface IPamConvocatoriaEvidenceService
 
 public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceService
 {
-    public const string RulesVersion = "PAM-CONV2-v1.3";
+    public const string RulesVersion = "PAM-CONV2-v1.5";
 
-    private const string CacheKey = "pam-conv2-evidence-catalog-v3";
+    private const string CacheKey = "pam-conv2-evidence-catalog-v5";
     private static readonly SemaphoreSlim CatalogLock = new(1, 1);
     private static readonly HashSet<string> EmptyValues = new(
         new[]
@@ -67,6 +68,19 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             "NA",
             "NULL",
             "-"
+        },
+        StringComparer.Ordinal);
+    private static readonly HashSet<string> SubstationEquivalenceStopWords =
+        new(
+            new[]
+            {
+                "DE", "DEL", "LA", "EL", "LOS", "LAS", "Y", "EN"
+            },
+            StringComparer.Ordinal);
+    private static readonly HashSet<string> SubstationBankQualifiers = new(
+        new[]
+        {
+            "BCO", "BCOS", "BANCO", "BANCOS"
         },
         StringComparer.Ordinal);
 
@@ -255,6 +269,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                             candidate.NombreCatalogoUnico,
                         ["nombre_coincidencia_fuerte"] =
                             candidate.NombreCoincidenciaFuerte,
+                        ["nombre_equivalente_catalogo"] =
+                            candidate.NombreEquivalenteCatalogo,
                         ["similitud_nombre"] =
                             candidate.SimilitudNombre,
                         ["margen_puntaje"] =
@@ -263,6 +279,14 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                             candidate.GcrCatalogo,
                         ["coincidencia_topologica_firme"] =
                             candidate.CoincidenciaTopologicaFirme,
+                        ["coincidencia_fuente_georreferenciada_firme"] =
+                            candidate.CoincidenciaFuenteGeorreferenciadaFirme,
+                        ["filas_fuente_georreferenciada"] =
+                            candidate.FilasFuenteGeorreferenciada,
+                        ["separacion_maxima_fuente_km"] =
+                            candidate.SeparacionMaximaFuenteKm,
+                        ["soportes_fuente"] =
+                            string.Join(" · ", candidate.SoportesFuente),
                         ["coincidencia_automatica_firme"] =
                             candidate.CoincidenciaAutomaticaFirme,
                         ["motivo_automatizacion"] =
@@ -676,9 +700,9 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         var header = csvRows[headerIndex];
         var indexes = SecondCallIndexes.Create(header);
         var substationNameCounts = substations
-            .Where(element => !string.IsNullOrWhiteSpace(element.NormalizedName))
+            .Where(element => !string.IsNullOrWhiteSpace(element.EquivalenceKey))
             .GroupBy(
-                element => NormalizeSubstationAlias(element.NormalizedName),
+                element => element.EquivalenceKey,
                 StringComparer.Ordinal)
             .ToDictionary(
                 group => group.Key,
@@ -690,7 +714,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                     .Select(gcr => new
                     {
                         Key =
-                            $"{gcr}|{NormalizeSubstationAlias(element.NormalizedName)}"
+                            $"{gcr}|{element.EquivalenceKey}"
                     }))
             .GroupBy(item => item.Key, StringComparer.Ordinal)
             .ToDictionary(
@@ -855,11 +879,14 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
 
         var declaredAlias =
             NormalizeSubstationAlias(row.NormalizedSubstation);
+        var declaredEquivalenceKey =
+            NormalizeSubstationEquivalenceKey(declaredAlias);
         var rowGcr = ResolveGcrKey(row.Gcr);
         var candidates = new List<(
             NetworkElement Element,
             int Score,
             bool NameExact,
+            bool NameEquivalent,
             bool NameStrong,
             double NameSimilarity,
             bool NameUnique,
@@ -874,6 +901,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             var score = 0;
             var catalogAlias =
                 NormalizeSubstationAlias(element.NormalizedName);
+            var catalogEquivalenceKey = element.EquivalenceKey;
             var nameSimilarity = CalculateNameSimilarity(
                 declaredAlias,
                 catalogAlias);
@@ -881,12 +909,24 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                     catalogAlias,
                     declaredAlias,
                     StringComparison.Ordinal);
+            var nameEquivalent =
+                !nameExact &&
+                !string.IsNullOrWhiteSpace(declaredEquivalenceKey) &&
+                string.Equals(
+                    declaredEquivalenceKey,
+                    catalogEquivalenceKey,
+                    StringComparison.Ordinal);
             var nameStrong =
                 nameExact ||
+                nameEquivalent ||
                 nameSimilarity >= _options.StrongNameSimilarity;
             if (nameExact)
             {
                 score += 55;
+            }
+            else if (nameEquivalent)
+            {
+                score += 50;
             }
             else if (ContainsWhole(
                          $" {catalogAlias} ",
@@ -907,19 +947,19 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             }
 
             var nameUnique =
-                nameExact &&
+                (nameExact || nameEquivalent) &&
                 substationNameCounts.GetValueOrDefault(
-                    catalogAlias) == 1;
+                    catalogEquivalenceKey) == 1;
             if (nameUnique)
             {
                 score += _options.UniqueSubstationNameBonus;
             }
             var nameScopeUnique =
-                nameExact &&
+                (nameExact || nameEquivalent) &&
                 !string.IsNullOrWhiteSpace(rowGcr) &&
                 element.GcrKeys.Contains(rowGcr) &&
                 substationScopeNameCounts.GetValueOrDefault(
-                    $"{rowGcr}|{catalogAlias}") == 1;
+                    $"{rowGcr}|{catalogEquivalenceKey}") == 1;
             if (!nameUnique && nameScopeUnique)
             {
                 score += 15;
@@ -989,6 +1029,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 element,
                 score,
                 nameExact,
+                nameEquivalent,
                 nameStrong,
                 nameSimilarity,
                 nameUnique,
@@ -1031,6 +1072,11 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             evidence.Add(best.NameUnique
                 ? "nombre exacto tras normalización documental y único en el catálogo"
                 : "nombre exacto tras normalización documental con homónimos o registros repetidos en el catálogo");
+        }
+        else if (best.NameEquivalent)
+        {
+            evidence.Add(
+                "nombre equivalente tras retirar artículos y calificadores controlados de nomenclatura; se conservaron numerales y calificadores funcionales");
         }
         else
         {
@@ -1092,6 +1138,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             row.NormalizedSubstation)
         {
             NameExact = best.NameExact,
+            NameEquivalent = best.NameEquivalent,
             NameStrong = best.NameStrong,
             NameSimilarity = best.NameSimilarity,
             NameUnique = best.NameUnique,
@@ -1361,6 +1408,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 catalogKeys.Count == 1 &&
                 resolutions.All(item => item.Element is not null);
             var allExactNames = resolutions.All(item => item.NameExact);
+            var allEquivalentNames = resolutions.All(item =>
+                item.NameExact || item.NameEquivalent);
             var allStrongNames = resolutions.All(item => item.NameStrong);
             var nameUnique = resolutions.All(item => item.NameUnique);
             var nameScopeUnique = resolutions.All(item =>
@@ -1406,7 +1455,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 oneCatalogResolution &&
                 allCatalogued &&
                 allStrongNames &&
-                minimumNameSimilarity >= _options.StrongNameSimilarity &&
+                (allEquivalentNames ||
+                 minimumNameSimilarity >= _options.StrongNameSimilarity) &&
                 minimumScoreMargin >= _options.StrongNameMargin &&
                 nameScopeUnique &&
                 gcrSupport &&
@@ -1417,10 +1467,42 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             var topologyFirm =
                 catalogKeys.Count == 0 &&
                 resolutions.All(item => item.TopologyFirm);
+            var activeRows = groupRows
+                .Where(row => row.IsActive)
+                .ToList();
+            var sourceGeoreferencedRows = activeRows
+                .Where(row =>
+                    row.SubstationGeometry.HasValue &&
+                    row.SubstationPoint.HasValue &&
+                    row.VoltageKv.HasValue &&
+                    !string.IsNullOrWhiteSpace(row.Gcr) &&
+                    !string.IsNullOrWhiteSpace(row.NormalizedSubstation))
+                .ToList();
+            var sourceGeoreferencedPoints = sourceGeoreferencedRows
+                .Select(row => row.SubstationPoint!.Value)
+                .Distinct()
+                .ToList();
+            var sourceMaximumSeparation =
+                MaximumSeparationKm(sourceGeoreferencedPoints);
+            var sourceGeoreferencedFirm =
+                catalogKeys.Count == 0 &&
+                activeRows.Count > 0 &&
+                sourceGeoreferencedRows.Count == activeRows.Count &&
+                sourceGeoreferencedPoints.Count > 0 &&
+                sourceMaximumSeparation <=
+                    _options.SourceSubstationClusterKm;
+            var sourceSupports = sourceGeoreferencedRows
+                .Select(row =>
+                    $"{NormalizeFolio(row.PreFolio)} · " +
+                    $"{row.Gcr} · {row.VoltageKv:0.##} kV")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
             var automaticFirm =
                 exactCatalogFirm ||
                 strongCatalogFirm ||
-                topologyFirm;
+                topologyFirm ||
+                sourceGeoreferencedFirm;
             var topologyPoints = resolutions
                 .SelectMany(item => item.TopologyPoints)
                 .Distinct()
@@ -1454,10 +1536,21 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 candidateEvidence.Add(
                     $"distancias declaradas compatibles: {compatibleDistanceRows} de {declaredDistanceRows}");
             }
+            if (sourceGeoreferencedRows.Count > 0)
+            {
+                candidateEvidence.Add(
+                    $"fuente vigente con geometría explícita de subestación, tensión y GCR: {sourceGeoreferencedRows.Count} de {activeRows.Count} fila(s)");
+                candidateEvidence.Add(
+                    $"separación máxima entre puntos de subestación de la fuente: {sourceMaximumSeparation:0.###} km");
+            }
 
             var automationReason = automaticFirm
                 ? topologyFirm
                     ? "Referencia faltante confirmable por extremo nominal de línea, GCR, tensión y agrupación geográfica compatibles."
+                    : sourceGeoreferencedFirm
+                        ? "Referencia faltante confirmable como subestación privada o propuesta georreferenciada en la fuente vigente; no confirma conexión eléctrica ni la convierte en nodo oficial."
+                    : allEquivalentNames && !allExactNames
+                        ? "Nombre equivalente tras normalización controlada de nomenclatura, candidato único, GCR y tensión compatibles."
                     : strongCatalogFirm && !allExactNames
                         ? "Nombre fuertemente similar, candidato único en GCR, tensión compatible y margen suficiente."
                         : nameUnique
@@ -1487,10 +1580,10 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             if (automaticFirm)
             {
                 candidateEvidence.Add(
-                    "coincidencia automática firme por criterio compuesto v2");
+                    "coincidencia automática firme por criterio compuesto v5");
             }
 
-            var candidateState = automaticFirm && !topologyFirm
+            var candidateState = automaticFirm && catalogKeys.Count > 0
                 ? "catalogada"
                 : catalogKeys.Count == 0
                     ? "faltante"
@@ -1515,7 +1608,9 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 NombreDeclarado = representative.DeclaredSubstation,
                 CoincidenciaCatalogo = resolution.Element?.Name ?? string.Empty,
                 ClaveCatalogo = resolution.Element?.Key ?? string.Empty,
-                Puntaje = Math.Clamp(resolution.Score, 0, 100),
+                Puntaje = sourceGeoreferencedFirm
+                    ? _options.HighConfidenceThreshold
+                    : Math.Clamp(resolution.Score, 0, 100),
                 TensionKv = representative.VoltageKv,
                 DistanciaCatalogoKm = resolution.DistanceKm,
                 GeometriasSubestacionPrivada =
@@ -1537,6 +1632,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 ResolucionesCatalogoDistintas = catalogKeys.Count,
                 NombreCatalogoUnico = nameUnique,
                 NombreCoincidenciaFuerte = allStrongNames,
+                NombreEquivalenteCatalogo =
+                    allEquivalentNames && !allExactNames,
                 SimilitudNombre = minimumNameSimilarity,
                 MargenPuntaje = minimumScoreMargin,
                 GcrCatalogo = resolution.Element is null
@@ -1547,6 +1644,15 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                             value => value,
                             StringComparer.Ordinal)),
                 CoincidenciaTopologicaFirme = topologyFirm,
+                CoincidenciaFuenteGeorreferenciadaFirme =
+                    sourceGeoreferencedFirm,
+                FilasFuenteGeorreferenciada =
+                    sourceGeoreferencedRows.Count,
+                SeparacionMaximaFuenteKm =
+                    sourceGeoreferencedRows.Count > 0
+                        ? sourceMaximumSeparation
+                        : null,
+                SoportesFuente = sourceSupports,
                 CoincidenciaAutomaticaFirme = automaticFirm,
                 MotivoAutomatizacion = automationReason,
                 LineasSoporte = supportingLines,
@@ -1767,6 +1873,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                         geometryClone.GetRawText()),
                     Name = name,
                     NormalizedName = normalized,
+                    EquivalenceKey =
+                        NormalizeSubstationEquivalenceKey(normalized),
                     VoltageKv = voltage,
                     GcrKeys = gcrAreas
                         .Where(area => AreaContains(area, point))
@@ -2204,6 +2312,29 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         return normalized.Trim();
     }
 
+    private static string NormalizeSubstationEquivalenceKey(string value)
+    {
+        var tokens = NormalizeText(value)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(token =>
+                !SubstationEquivalenceStopWords.Contains(token))
+            .ToList();
+        var hasBankQualifier = tokens.Any(
+            SubstationBankQualifiers.Contains);
+        tokens = tokens
+            .Where(token =>
+                !SubstationBankQualifiers.Contains(token) &&
+                !string.Equals(token, "PRESA", StringComparison.Ordinal) &&
+                (!hasBankQualifier ||
+                 !Regex.IsMatch(
+                     token,
+                     @"^(?:\d+|[IVXLCDM]+)$",
+                     RegexOptions.CultureInvariant)))
+            .OrderBy(token => token, StringComparer.Ordinal)
+            .ToList();
+        return string.Join("|", tokens);
+    }
+
     private static double CalculateNameSimilarity(
         string left,
         string right)
@@ -2472,6 +2603,22 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             Math.Cos(lat2) *
             Math.Pow(Math.Sin(deltaLon / 2), 2);
         return earthRadiusKm * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+    }
+
+    private static double MaximumSeparationKm(
+        IReadOnlyList<GeoPoint> points)
+    {
+        var maximum = 0d;
+        for (var first = 0; first < points.Count; first++)
+        {
+            for (var second = first + 1; second < points.Count; second++)
+            {
+                maximum = Math.Max(
+                    maximum,
+                    HaversineKm(points[first], points[second]));
+            }
+        }
+        return maximum;
     }
 
     private static double DegreesToRadians(double value) =>
@@ -2831,6 +2978,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         public string Key { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string NormalizedName { get; init; } = string.Empty;
+        public string EquivalenceKey { get; init; } = string.Empty;
         public double? VoltageKv { get; init; }
         public HashSet<string> GcrKeys { get; init; } =
             new(StringComparer.Ordinal);
@@ -2852,6 +3000,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         string NormalizedDeclaredName)
     {
         public bool NameExact { get; init; }
+        public bool NameEquivalent { get; init; }
         public bool NameStrong { get; init; }
         public double NameSimilarity { get; init; }
         public bool NameUnique { get; init; }

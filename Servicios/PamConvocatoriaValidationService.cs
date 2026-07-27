@@ -308,7 +308,8 @@ VALUES
             .Where(candidate =>
                 candidate.CoincidenciaAutomaticaFirme &&
                 (!string.IsNullOrWhiteSpace(candidate.ClaveCatalogo) ||
-                 candidate.CoincidenciaTopologicaFirme))
+                 candidate.CoincidenciaTopologicaFirme ||
+                 candidate.CoincidenciaFuenteGeorreferenciadaFirme))
             .GroupBy(candidate => candidate.CandidatoId, StringComparer.Ordinal)
             .Select(group => group.First())
             .OrderBy(candidate => candidate.CandidatoId, StringComparer.Ordinal)
@@ -426,10 +427,15 @@ VALUES
                         ? PamConvocatoriaValidationDecisions.FaltanteConfirmada
                         : PamConvocatoriaValidationDecisions.Confirmada;
                 var observation = candidate.CoincidenciaTopologicaFirme
-                    ? "Confirmación automática asistida por criterio compuesto v3: " +
+                    ? "Confirmación automática asistida por criterio compuesto v5: " +
                       "referencia ausente del catálogo puntual, pero confirmada como extremo nominal de línea mediante nombre, GCR, tensión y agrupación geográfica compatibles. " +
                       $"Líneas de soporte: {string.Join(" · ", candidate.LineasSoporte)}."
-                    : "Confirmación automática asistida por criterio compuesto v3: " +
+                    : candidate.CoincidenciaFuenteGeorreferenciadaFirme
+                        ? "Confirmación automática asistida por criterio compuesto v5: " +
+                          "referencia vigente ausente del catálogo, confirmada como subestación privada o propuesta porque la fuente aporta geometría explícita en los campos de subestación, tensión y GCR consistentes. " +
+                          "No confirma conectividad eléctrica ni promueve el punto al catálogo oficial. " +
+                          $"Soportes: {string.Join(" · ", candidate.SoportesFuente)}."
+                    : "Confirmación automática asistida por criterio compuesto v5: " +
                       candidate.MotivoAutomatizacion + " " +
                       $"{candidate.DistanciasCompatibles} de " +
                       $"{candidate.DistanciasDeclaradas} distancia(s) declarada(s) compatibles; " +
@@ -437,7 +443,7 @@ VALUES
                       $"GCR de catálogo: {candidate.GcrCatalogo}.";
                 var evidence = candidate.Evidencias
                     .Append(
-                        "confirmación automática asistida autorizada por usuario institucional; criterio compuesto v3")
+                        "confirmación automática asistida autorizada por usuario institucional; criterio compuesto v5")
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
                 var parameters = new
