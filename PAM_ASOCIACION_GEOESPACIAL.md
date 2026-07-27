@@ -379,14 +379,21 @@ geometrías KML/KMZ o elementos de red identificados.
   `POST /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones/ConfirmarCoincidenciasAutomaticas?tipoElemento=linea_transmision`
 
 La capa aparece como **Vacíos de red · 2ª convocatoria** y está apagada por
-defecto. Un elemento faltante sin geometría no se dibuja artificialmente; se
-conserva en el resumen para revisión.
+defecto. Un elemento faltante sin geometría no se dibuja artificialmente. Cuando
+la hoja aporta polígonos o puntos del proyecto y de su subestación declarada,
+éstos se muestran sólo como **contexto de revisión**; no representan el trazo
+físico de la línea ni confirman conectividad. La mesa también enlaza los KMZ
+fuente disponibles para que el revisor pueda contrastarlos.
 
 El menú de capas incluye una **Mesa de revisión · Segunda Convocatoria**. La
 mesa separa universo base, vigentes, otros estatus y folios sin decisión; permite
 filtrar subestaciones o líneas, estado de resolución, texto y presencia de
 proyectos vigentes. Los resultados se paginan en bloques de 50 y pueden
-localizarse en el mapa cuando existe geometría.
+localizarse en el mapa cuando existe geometría propia o contexto geográfico de
+la fuente. Para evitar que aliases textuales inflen el trabajo pendiente, la
+mesa conserva las 33 menciones originales y sus identificadores de decisión,
+pero las presenta además como 26 corredores lógicos; 10 de éstos tienen al
+menos un proyecto con estatus `Continúa`.
 
 La mesa distingue siempre el diagnóstico automático del dictamen humano. Las
 decisiones permitidas son:
@@ -683,6 +690,7 @@ pública no bloquea los iconos ni su interacción.
 | `RED-GRAFO-v1.1` | 2026-07-27 | Comparte las equivalencias nominales conservadoras con Conv2 y añade una simulación contra la versión activa de SQL Server; informa promociones, regresiones y cambios de nodo sin persistir ni reemplazar el grafo publicado |
 | `PAM-CONV2-v1.15` | 2026-07-27 | Usa la versión activa persistida como fuente de verdad de conectividad cuando el hash del GeoJSON coincide; conserva el diagnóstico local como fallback y el refresco explícito invalida realmente la caché |
 | `RED-GRAFO-v1.2` | 2026-07-27 | Modela la transformación RNT-distribución sin exigir igualdad de tensión cuando nombre, extremo y aislamiento espacial son firmes; añade erratas por transposición adyacente y conserva la tensión para desambiguar nodos homónimos próximos |
+| `PAM-CONV2-v1.16` | 2026-07-27 | Agrupa aliases conservadores sin reemplazar el candidato ni su historial: 33 menciones sin geometría se organizan en 26 corredores lógicos, 10 vigentes; expone geometrías de contexto y KMZ fuente sin inferir el trazo físico ni la conectividad |
 
 La simulación se consulta en
 `GET /DashboardProyectos/RedElectrica/Grafo/Simulacion`. Reconstruye una
@@ -744,6 +752,14 @@ parcial, ambigua o sin resolver. Esto cerró los casos Aeropuerto–El Cuchillo,
 Conín–El Sauz, El Sauz–La Manga, Norte–Kanasín Potencia y El Palmar–Olas
 Altas. Las tres líneas que la versión anterior mostraba incompletas aunque ya
 estaban resueltas en v3 ahora heredan correctamente el estado persistido.
+
+`PAM-CONV2-v1.16` organiza esas 33 menciones pendientes en 26 corredores
+lógicos sin fusionar los registros que soportan la trazabilidad humana. De
+ellos, 10 corresponden a proyectos vigentes. Treinta y dos menciones cuentan
+con geometría contextual de proyecto o subestación y las 33 conservan al menos
+un enlace KMZ de la fuente. Esa información sirve para priorizar y contrastar
+la revisión, pero no se convierte en geometría de línea, no se persiste en el
+grafo y no promueve una asociación PAM.
 
 El recálculo PAM contra la versión 4 mantuvo 281 proyectos, 133 asociados y
 285 semillas. Las semillas conectadas aumentaron de 262 a 265, las parciales

@@ -45,7 +45,7 @@ public sealed class PamConvocatoriaProjectMatch
 
 public sealed class PamConvocatoriaCoverageReport
 {
-    public string VersionReglas { get; init; } = "PAM-CONV2-v1.15";
+    public string VersionReglas { get; init; } = "PAM-CONV2-v1.16";
     public DateTime GeneradoUtc { get; init; } = DateTime.UtcNow;
     public int ProyectosUniverso { get; init; }
     public int ProyectosConTrazabilidad { get; init; }
@@ -61,6 +61,9 @@ public sealed class PamConvocatoriaCoverageReport
     public int LineasCorredorCatalogado { get; init; }
     public int LineasRevision { get; init; }
     public int LineasSinGeometria { get; init; }
+    public int LineasSinGeometriaLogicas { get; init; }
+    public int LineasSinGeometriaVigentes { get; init; }
+    public int LineasSinGeometriaLogicasVigentes { get; init; }
     public int LineasConectadasGrafo { get; init; }
     public int LineasParcialesGrafo { get; init; }
     public int LineasAmbiguasGrafo { get; init; }
@@ -143,6 +146,16 @@ public sealed class PamConvocatoriaInfrastructureCandidate
         Array.Empty<string>();
     public IReadOnlyList<string> CodigosCircuitoCatalogo { get; init; } =
         Array.Empty<string>();
+    public string ClaveAgrupacionLinea { get; init; } = string.Empty;
+    public int MencionesEquivalentesLinea { get; init; } = 1;
+    public IReadOnlyList<string> ReferenciasEquivalentesLinea { get; init; } =
+        Array.Empty<string>();
+    public JsonElement? GeometriaProyectoFuente { get; init; }
+    public JsonElement? GeometriaSubestacionFuente { get; init; }
+    public IReadOnlyList<string> ArchivosKmzProyecto { get; init; } =
+        Array.Empty<string>();
+    public IReadOnlyList<string> ArchivosKmzSubestacion { get; init; } =
+        Array.Empty<string>();
     public JsonElement? GeometriaSubestacionPrivada { get; init; }
     public JsonElement? GeometriaInterconexionPublica { get; init; }
     public JsonElement? GeometriaTopologicaSugerida { get; init; }
@@ -170,7 +183,7 @@ public sealed class PamConvocatoriaGeoJson
 
 public sealed class PamConvocatoriaGeoJsonMeta
 {
-    public string Version { get; init; } = "PAM-CONV2-v1.15";
+    public string Version { get; init; } = "PAM-CONV2-v1.16";
     public string Layer { get; init; } = "evidencia_segunda_convocatoria";
     public DateTime GeneratedUtc { get; init; } = DateTime.UtcNow;
     public int UniverseProjects { get; init; }

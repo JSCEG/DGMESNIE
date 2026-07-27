@@ -3097,7 +3097,14 @@ class Component extends DCLogic {
         const l2 = { ...this.state.layers }; l2[key] = { ...l2[key], loading:false, count:cnt };
         this._invalidateSearch(); // el índice del buscador debe reconstruirse CON los features recién cargados
         this._hideBar();
-        this.setState({ layers:l2, blocking:null }, () => { this._recompute(); if (cfg.type==='geo'||cfg.type==='pam'||cfg.type==='graph') { try { this._fitToLayer(key); } catch(e){} } });
+        const skipFit=!!(this._skipNextLayerFit&&this._skipNextLayerFit[key]);
+        if(skipFit) delete this._skipNextLayerFit[key];
+        this.setState({ layers:l2, blocking:null }, () => {
+          this._recompute();
+          if(!skipFit&&(cfg.type==='geo'||cfg.type==='pam'||cfg.type==='graph')){
+            try { this._fitToLayer(key); } catch(e){}
+          }
+        });
         const pamMeta=key==='pam'&&(geo.meta||{});
         this._toast(pamMeta
           ?cnt.toLocaleString('es-MX')+' proyectos PAM · '
@@ -5278,7 +5285,9 @@ class Component extends DCLogic {
     const privateSubstationGeometry=candidate&&candidate.geometriaSubestacionPrivada;
     const publicInterconnectionGeometry=candidate&&candidate.geometriaInterconexionPublica;
     const topologyGeometry=candidate&&candidate.geometriaTopologicaSugerida;
-    if((!catalogGeometry&&!privateSubstationGeometry&&!publicInterconnectionGeometry&&!topologyGeometry) || !window.L || !this.map){
+    const projectSourceGeometry=candidate&&candidate.geometriaProyectoFuente;
+    const substationSourceGeometry=candidate&&candidate.geometriaSubestacionFuente;
+    if((!catalogGeometry&&!privateSubstationGeometry&&!publicInterconnectionGeometry&&!topologyGeometry&&!projectSourceGeometry&&!substationSourceGeometry) || !window.L || !this.map){
       this._toast('Este candidato todavía no tiene geometría para localizar');
       return;
     }
@@ -5290,6 +5299,32 @@ class Component extends DCLogic {
       this._conv2ReviewFocus=L.featureGroup().addTo(this.map);
       let privateLayer=null;
       let publicLayer=null;
+      if(projectSourceGeometry){
+        L.geoJSON({
+          type:'Feature',
+          geometry:projectSourceGeometry,
+          properties:{}
+        },{
+          style:{color:'#6F6B66',weight:2,opacity:.8,fillColor:'#9A958E',fillOpacity:.08,dashArray:'3 6'},
+          pointToLayer:(_,latlng)=>L.circleMarker(latlng,{
+            radius:6,color:'#fff',weight:2,fillColor:'#6F6B66',fillOpacity:.9
+          }),
+          onEachFeature:(_,layer)=>layer.bindTooltip('Contexto del proyecto declarado · no representa el trazo físico de la LT')
+        }).addTo(this._conv2ReviewFocus);
+      }
+      if(substationSourceGeometry){
+        L.geoJSON({
+          type:'Feature',
+          geometry:substationSourceGeometry,
+          properties:{}
+        },{
+          style:{color:'#A57F2C',weight:3,opacity:.95,fillColor:'#E0A12E',fillOpacity:.14,dashArray:'6 4'},
+          pointToLayer:(_,latlng)=>L.circleMarker(latlng,{
+            radius:8,color:'#fff',weight:3,fillColor:'#A57F2C',fillOpacity:1
+          }),
+          onEachFeature:(_,layer)=>layer.bindTooltip('Contexto de subestación declarado · no confirma el corredor de la LT')
+        }).addTo(this._conv2ReviewFocus);
+      }
       if(privateSubstationGeometry){
         privateLayer=L.geoJSON({
           type:'Feature',
@@ -5362,6 +5397,7 @@ class Component extends DCLogic {
       const coordinateDistance=distanceMin!=null
         ? (Number(distanceMin).toFixed(3)+(distanceMax!=null&&Math.abs(Number(distanceMax)-Number(distanceMin))>.0005?'–'+Number(distanceMax).toFixed(3):'')+' km')
         : 'Sin distancia calculable';
+      const isLineCandidate=String(candidate.tipoElemento||'')==='linea_transmision';
       const rows=[
         ['Estado de revisión',meta.label],
         ['Coincidencia de catálogo',candidate.coincidenciaCatalogo||'Sin coincidencia'],
@@ -5402,10 +5438,20 @@ class Component extends DCLogic {
         ['Proyectos vigentes',String(candidate.proyectosVigentes||0)],
         ['Folios',(candidate.folios||[]).join(' · ')||'—'],
         ['Decisiones',(candidate.decisiones||[]).join(' · ')||'Sin decisión'],
+        ...(isLineCandidate?[
+          ['Corredor lógico',candidate.claveAgrupacionLinea||'—'],
+          ['Menciones equivalentes',String(candidate.mencionesEquivalentesLinea||1)],
+          ['Referencias equivalentes',(candidate.referenciasEquivalentesLinea||[]).join(' · ')||'—'],
+          ['Uso de geometría contextual',(projectSourceGeometry||substationSourceGeometry)?'Sólo orienta la revisión; no es el trazo físico de la línea':'Sin contexto georreferenciado'],
+          ...(candidate.archivosKmzProyecto||[]).slice(0,3).map((url,index)=>['KMZ del proyecto'+((candidate.archivosKmzProyecto||[]).length>1?' '+(index+1):''),url]),
+          ...(candidate.archivosKmzSubestacion||[]).slice(0,3).map((url,index)=>['KMZ de la subestación'+((candidate.archivosKmzSubestacion||[]).length>1?' '+(index+1):''),url])
+        ]:[]),
         ['Fuente',candidate.fuente||'Segunda Convocatoria']
       ];
       const layers={...this.state.layers};
       if(layers.conv2_red_gap&&!layers.conv2_red_gap.on){
+        this._skipNextLayerFit=this._skipNextLayerFit||{};
+        this._skipNextLayerFit.conv2_red_gap=true;
         this.toggleLayer('conv2_red_gap');
       }
       this.setState({
@@ -11168,7 +11214,9 @@ class Component extends DCLogic {
             {label:'Parciales · 1 extremo',value:Number(d.lineasParcialesGrafo||0).toLocaleString('es-MX'),color:'#1E9CB8'},
             {label:'Ambiguas',value:Number(d.lineasAmbiguasGrafo||0).toLocaleString('es-MX'),color:'#A57F2C'},
             {label:'Sin resolver',value:Number(d.lineasSinResolverGrafo||0).toLocaleString('es-MX'),color:'#9B2247'},
-            {label:'Sin geometría',value:Number(d.lineasSinGeometria||0).toLocaleString('es-MX'),color:'#8A9099'}
+            {label:'Menciones sin geometría',value:Number(d.lineasSinGeometria||0).toLocaleString('es-MX'),color:'#8A9099'},
+            {label:'Corredores pendientes',value:Number(d.lineasSinGeometriaLogicas||0).toLocaleString('es-MX'),color:'#9A3F27'},
+            {label:'Corredores vigentes',value:Number(d.lineasSinGeometriaLogicasVigentes||0).toLocaleString('es-MX'),color:'#9B2247'}
           ];
         }
         return [
@@ -11217,8 +11265,11 @@ class Component extends DCLogic {
               candidate.gcr,
               candidate.entidad,
               candidate.municipio,
+              candidate.claveAgrupacionLinea,
               ...(candidate.folios||[]),
               ...(candidate.decisiones||[]),
+              ...(candidate.referenciasEquivalentesLinea||[]),
+              ...(candidate.codigosCircuitoDeclarados||[]),
               validation.decision,
               validation.observacion,
               validation.usuarioNombre
@@ -11275,7 +11326,7 @@ class Component extends DCLogic {
                 ? 'B: '+candidate.extremoBDeclarado+(candidate.extremoBCatalogo?' → '+candidate.extremoBCatalogo:'')
                 : ''
             ].filter(Boolean).join(' · ');
-            const hasGeometry=!!candidate.geometria||!!candidate.geometriaSubestacionPrivada||!!candidate.geometriaInterconexionPublica||!!candidate.geometriaTopologicaSugerida;
+            const hasGeometry=!!candidate.geometria||!!candidate.geometriaSubestacionPrivada||!!candidate.geometriaInterconexionPublica||!!candidate.geometriaTopologicaSugerida||!!candidate.geometriaProyectoFuente||!!candidate.geometriaSubestacionFuente;
             const candidateType=String(candidate.tipoElemento||'');
             const canValidate=candidateType==='subestacion'||candidateType==='linea_transmision';
             const hasCatalog=!!candidate.claveCatalogo;
@@ -11305,14 +11356,18 @@ class Component extends DCLogic {
                   ? 'Privada no catalogada · nodo público: '+(candidate.coincidenciaInterconexionCatalogo||candidate.nombreInterconexionPublica||'—')
                   : 'Sin coincidencia de catálogo'
               ))+(graphEndpoints?' · '+graphEndpoints:''),
-              puntaje:String(candidate.puntaje||0)+' / 100 · '+tension+distance+lineMatchLabel+graphLabel+(candidate.coincidenciaAnexoTecnicoFirme?' · ANEXO TÉCNICO FIRME':(candidate.coincidenciaCorroboracionMultifuenteFirme?' · MULTIFUENTE FIRME':(candidate.homonimoTerritorialDescartado?' · HOMÓNIMO DESCARTADO':(candidate.coincidenciaInterconexionPublicaFirme?' · INTERCONEXIÓN FIRME':(candidate.coincidenciaTopologicaFirme?' · TOPO FIRME':(candidate.coincidenciaTensionTopologicaFirme?' · kV POR RED':(candidate.coincidenciaFuenteGeorreferenciadaFirme?' · FUENTE GEO FIRME':(candidate.coincidenciaAutomaticaFirme?' · AUTO FIRME':'')))))))),
+              puntaje:String(candidate.puntaje||0)+' / 100 · '+tension+distance+(Number(candidate.mencionesEquivalentesLinea||1)>1?' · '+String(candidate.mencionesEquivalentesLinea)+' MENCIONES EQUIVALENTES':'')+lineMatchLabel+graphLabel+(candidate.coincidenciaAnexoTecnicoFirme?' · ANEXO TÉCNICO FIRME':(candidate.coincidenciaCorroboracionMultifuenteFirme?' · MULTIFUENTE FIRME':(candidate.homonimoTerritorialDescartado?' · HOMÓNIMO DESCARTADO':(candidate.coincidenciaInterconexionPublicaFirme?' · INTERCONEXIÓN FIRME':(candidate.coincidenciaTopologicaFirme?' · TOPO FIRME':(candidate.coincidenciaTensionTopologicaFirme?' · kV POR RED':(candidate.coincidenciaFuenteGeorreferenciadaFirme?' · FUENTE GEO FIRME':(candidate.coincidenciaAutomaticaFirme?' · AUTO FIRME':'')))))))),
               territorio:[candidate.gcr,candidate.entidad,candidate.municipio].filter(Boolean).join(' · ')||'—',
               proyectos:String(candidate.proyectosRelacionados||0)+' total · '+String(candidate.proyectosVigentes||0)+' vigentes',
               decisiones:(candidate.decisiones||[]).join(' · ')||'Sin decisión',
               validationDetail,
               bg:index%2?'#FCFBF9':'#fff',
               locateDisabled:!hasGeometry,
-              locateTitle:hasGeometry?'Localizar evidencia en el mapa':'Sin geometría disponible',
+              locateTitle:hasGeometry
+                ? ((candidate.geometriaProyectoFuente||candidate.geometriaSubestacionFuente)&&!candidate.geometria
+                    ? 'Localizar el contexto declarado; no representa el trazo físico de la línea'
+                    : 'Localizar evidencia en el mapa')
+                : 'Sin geometría disponible',
               locateStyle:'padding:5px 8px;border:1px solid '+(hasGeometry?'#9B2247':'#D8D3CC')+';background:'+(hasGeometry?'#fff':'#F2F0ED')+';color:'+(hasGeometry?'#9B2247':'#9A958E')+';border-radius:7px;font-size:9.5px;font-weight:800;cursor:'+(hasGeometry?'pointer':'not-allowed')+';font-family:inherit',
               onLocate:()=>this.locateConv2Candidate(candidate),
               canValidate,

@@ -29,7 +29,7 @@ public sealed class PamConvocatoriaEvidenceOptions
     public int CacheMinutes { get; set; } = 30;
     public int SnapshotMaxAgeMinutes { get; set; } = 1440;
     public string SnapshotPath { get; set; } =
-        "App_Data/cache/pam_convocatoria_coverage_v15.json";
+        "App_Data/cache/pam_convocatoria_coverage_v16.json";
     public int HighConfidenceThreshold { get; set; } = 90;
     public int ReviewThreshold { get; set; } = 70;
     public int MaximumMatchesPerPam { get; set; } = 12;
@@ -64,9 +64,9 @@ public interface IPamConvocatoriaEvidenceService
 
 public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceService
 {
-    public const string RulesVersion = "PAM-CONV2-v1.15";
+    public const string RulesVersion = "PAM-CONV2-v1.16";
 
-    private const string CacheKey = "pam-conv2-evidence-catalog-v15";
+    private const string CacheKey = "pam-conv2-evidence-catalog-v16";
     private static readonly SemaphoreSlim CatalogLock = new(1, 1);
     private static readonly HashSet<string> EmptyValues = new(
         new[]
@@ -3043,21 +3043,55 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             .Where(item => !string.IsNullOrWhiteSpace(item.Line.NormalizedDeclaredName))
             .GroupBy(
                 item => $"{item.Line.NormalizedDeclaredName}|{item.Row.VoltageKv:0.##}",
-                StringComparer.Ordinal);
-        foreach (var group in lineGroups)
-        {
-            var representative = group
-                .OrderByDescending(item => item.Line.Score)
-                .First();
-            var resolution = representative.Line;
-            candidates.Add(new PamConvocatoriaInfrastructureCandidate
+                StringComparer.Ordinal)
+            .Select(group =>
             {
-                CandidatoId = StableKey(
+                var items = group.ToList();
+                var representative = items
+                    .OrderByDescending(item => item.Line.Score)
+                    .First();
+                var candidateId = StableKey(
                     "C2-LT",
-                    resolution.NormalizedDeclaredName,
+                    representative.Line.NormalizedDeclaredName,
                     representative.Row.VoltageKv?.ToString(
                         "0.##",
-                        CultureInfo.InvariantCulture) ?? string.Empty),
+                        CultureInfo.InvariantCulture) ?? string.Empty);
+                return new LineCoverageGroup(
+                    candidateId,
+                    items,
+                    representative);
+            })
+            .ToList();
+        var logicalLineGroups =
+            BuildLogicalLineGroups(lineGroups);
+        foreach (var lineGroup in lineGroups)
+        {
+            var group = lineGroup.Items;
+            var representative = lineGroup.Representative;
+            var resolution = representative.Line;
+            var logicalGroup =
+                logicalLineGroups[lineGroup.CandidateId];
+            var evidence = resolution.Evidence
+                .Concat(
+                    logicalGroup.Mentions > 1
+                        ? new[]
+                        {
+                            $"{logicalGroup.Mentions} menciones equivalentes se consolidan en el corredor lógico {logicalGroup.GroupKey}; se conservan por separado para no perder la trazabilidad de origen."
+                        }
+                        : Array.Empty<string>())
+                .Concat(
+                    logicalGroup.ProjectGeometry.HasValue ||
+                    logicalGroup.SubstationGeometry.HasValue
+                        ? new[]
+                        {
+                            "La geometría contextual proviene de los vértices declarados del proyecto o de su subestación; sirve para revisar el entorno, pero no representa ni confirma el trazo físico de la línea."
+                        }
+                        : Array.Empty<string>())
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            candidates.Add(new PamConvocatoriaInfrastructureCandidate
+            {
+                CandidatoId = lineGroup.CandidateId,
                 TipoElemento = "linea_transmision",
                 Estado = resolution.State,
                 NombreDeclarado = resolution.DeclaredName,
@@ -3092,6 +3126,20 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                     resolution.DeclaredCircuitCodes,
                 CodigosCircuitoCatalogo =
                     resolution.CatalogCircuitCodes,
+                ClaveAgrupacionLinea =
+                    logicalGroup.GroupKey,
+                MencionesEquivalentesLinea =
+                    logicalGroup.Mentions,
+                ReferenciasEquivalentesLinea =
+                    logicalGroup.DeclaredReferences,
+                GeometriaProyectoFuente =
+                    logicalGroup.ProjectGeometry,
+                GeometriaSubestacionFuente =
+                    logicalGroup.SubstationGeometry,
+                ArchivosKmzProyecto =
+                    logicalGroup.ProjectKml,
+                ArchivosKmzSubestacion =
+                    logicalGroup.SubstationKml,
                 Gcr = FirstNonEmpty(group.Select(item => item.Row.Gcr).ToArray()),
                 Entidad = FirstNonEmpty(group.Select(item => item.Row.State).ToArray()),
                 Municipio = FirstNonEmpty(group.Select(item => item.Row.Municipality).ToArray()),
@@ -3118,7 +3166,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Take(20)
                     .ToList(),
-                Evidencias = resolution.Evidence,
+                Evidencias = evidence,
                 Geometria = resolution.Element?.Geometry,
                 Latitud = resolution.Element?.Point?.Latitude,
                 Longitud = resolution.Element?.Point?.Longitude,
@@ -3176,6 +3224,31 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             LineasSinGeometria = candidates.Count(candidate =>
                 string.Equals(candidate.TipoElemento, "linea_transmision", StringComparison.Ordinal) &&
                 !candidate.Geometria.HasValue),
+            LineasSinGeometriaLogicas = candidates
+                .Where(candidate =>
+                    string.Equals(candidate.TipoElemento, "linea_transmision", StringComparison.Ordinal) &&
+                    !candidate.Geometria.HasValue)
+                .Select(candidate =>
+                    FirstNonEmpty(
+                        candidate.ClaveAgrupacionLinea,
+                        candidate.CandidatoId))
+                .Distinct(StringComparer.Ordinal)
+                .Count(),
+            LineasSinGeometriaVigentes = candidates.Count(candidate =>
+                string.Equals(candidate.TipoElemento, "linea_transmision", StringComparison.Ordinal) &&
+                !candidate.Geometria.HasValue &&
+                candidate.ProyectosVigentes > 0),
+            LineasSinGeometriaLogicasVigentes = candidates
+                .Where(candidate =>
+                    string.Equals(candidate.TipoElemento, "linea_transmision", StringComparison.Ordinal) &&
+                    !candidate.Geometria.HasValue &&
+                    candidate.ProyectosVigentes > 0)
+                .Select(candidate =>
+                    FirstNonEmpty(
+                        candidate.ClaveAgrupacionLinea,
+                        candidate.CandidatoId))
+                .Distinct(StringComparer.Ordinal)
+                .Count(),
             LineasConectadasGrafo = candidates.Count(candidate =>
                 string.Equals(candidate.TipoElemento, "linea_transmision", StringComparison.Ordinal) &&
                 string.Equals(candidate.EstadoConexionGrafo, "conectada", StringComparison.Ordinal)),
@@ -3196,6 +3269,311 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 .ToList()
         };
     }
+
+    private static IReadOnlyDictionary<string, LogicalLineGroupEvidence>
+        BuildLogicalLineGroups(
+            IReadOnlyList<LineCoverageGroup> groups)
+    {
+        var parents = Enumerable.Range(0, groups.Count).ToArray();
+
+        int Find(int index)
+        {
+            while (parents[index] != index)
+            {
+                parents[index] = parents[parents[index]];
+                index = parents[index];
+            }
+            return index;
+        }
+
+        void Union(int left, int right)
+        {
+            var leftRoot = Find(left);
+            var rightRoot = Find(right);
+            if (leftRoot != rightRoot)
+            {
+                parents[rightRoot] = leftRoot;
+            }
+        }
+
+        for (var left = 0; left < groups.Count; left++)
+        {
+            for (var right = left + 1; right < groups.Count; right++)
+            {
+                if (AreLogicalLineGroupsEquivalent(
+                        groups[left],
+                        groups[right]))
+                {
+                    Union(left, right);
+                }
+            }
+        }
+
+        var components = Enumerable.Range(0, groups.Count)
+            .GroupBy(Find)
+            .Select(component => component
+                .Select(index => groups[index])
+                .ToList())
+            .ToList();
+        var output =
+            new Dictionary<string, LogicalLineGroupEvidence>(
+                StringComparer.Ordinal);
+        foreach (var component in components)
+        {
+            var componentRows = component
+                .SelectMany(group => group.Items)
+                .ToList();
+            var stableAnchor = component
+                .Select(group => group.CandidateId)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .First();
+            var evidence = new LogicalLineGroupEvidence(
+                StableKey("C2-LTG", stableAnchor),
+                component.Count,
+                component
+                    .Select(group =>
+                        group.Representative.Line.DeclaredName)
+                    .Where(value =>
+                        !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(value =>
+                        value.Length)
+                    .ThenBy(value =>
+                        value,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                CreateGeometryCollection(
+                    componentRows.Select(item =>
+                        item.Row.ProjectGeometry)),
+                CreateGeometryCollection(
+                    componentRows.Select(item =>
+                        item.Row.SubstationGeometry)),
+                DistinctSourceLinks(
+                    componentRows.Select(item =>
+                        item.Row.ProjectKml)),
+                DistinctSourceLinks(
+                    componentRows.Select(item =>
+                        item.Row.SubstationKml)));
+            foreach (var group in component)
+            {
+                output[group.CandidateId] = evidence;
+            }
+        }
+        return output;
+    }
+
+    private static bool AreLogicalLineGroupsEquivalent(
+        LineCoverageGroup left,
+        LineCoverageGroup right)
+    {
+        var leftResolution = left.Representative.Line;
+        var rightResolution = right.Representative.Line;
+        var leftCatalogKey =
+            leftResolution.Element?.Key ?? string.Empty;
+        var rightCatalogKey =
+            rightResolution.Element?.Key ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(leftCatalogKey) ||
+            !string.IsNullOrWhiteSpace(rightCatalogKey))
+        {
+            return !string.IsNullOrWhiteSpace(leftCatalogKey) &&
+                string.Equals(
+                    leftCatalogKey,
+                    rightCatalogKey,
+                    StringComparison.Ordinal);
+        }
+
+        var leftVoltage = left.Representative.Row.VoltageKv;
+        var rightVoltage = right.Representative.Row.VoltageKv;
+        if (leftVoltage.HasValue &&
+            rightVoltage.HasValue &&
+            Math.Abs(leftVoltage.Value - rightVoltage.Value) >= 0.6)
+        {
+            return false;
+        }
+
+        var leftGcr =
+            ResolveGcrKey(left.Representative.Row.Gcr);
+        var rightGcr =
+            ResolveGcrKey(right.Representative.Row.Gcr);
+        if (!string.IsNullOrWhiteSpace(leftGcr) &&
+            !string.IsNullOrWhiteSpace(rightGcr) &&
+            !string.Equals(
+                leftGcr,
+                rightGcr,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var leftSignature = NormalizeLogicalLineSignature(
+            leftResolution.DeclaredName);
+        var rightSignature = NormalizeLogicalLineSignature(
+            rightResolution.DeclaredName);
+        if (!string.IsNullOrWhiteSpace(leftSignature) &&
+            (string.Equals(
+                 leftSignature,
+                 rightSignature,
+                 StringComparison.Ordinal) ||
+             AreLineSignaturesEquivalent(
+                 leftSignature,
+                 rightSignature)))
+        {
+            return true;
+        }
+
+        var leftFolios = left.Items
+            .Select(item =>
+                NormalizeFolio(item.Row.PreFolio))
+            .Where(value =>
+                !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.Ordinal);
+        var rightFolios = right.Items
+            .Select(item =>
+                NormalizeFolio(item.Row.PreFolio))
+            .Where(value =>
+                !string.IsNullOrWhiteSpace(value))
+            .ToHashSet(StringComparer.Ordinal);
+        var sharesFolio =
+            leftFolios.Overlaps(rightFolios);
+        var leftCodes = left.Items
+            .SelectMany(item =>
+                item.Line.DeclaredCircuitCodes)
+            .ToHashSet(StringComparer.Ordinal);
+        var rightCodes = right.Items
+            .SelectMany(item =>
+                item.Line.DeclaredCircuitCodes)
+            .ToHashSet(StringComparer.Ordinal);
+        if (leftCodes.Overlaps(rightCodes) &&
+            (sharesFolio ||
+             CountSignatureTokenOverlap(
+                 leftSignature,
+                 rightSignature) >= 2))
+        {
+            return true;
+        }
+
+        if (!sharesFolio ||
+            string.IsNullOrWhiteSpace(leftSignature) ||
+            string.IsNullOrWhiteSpace(rightSignature))
+        {
+            return false;
+        }
+
+        var leftTokens = leftSignature
+            .Split(
+                '|',
+                StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.Ordinal);
+        var rightTokens = rightSignature
+            .Split(
+                '|',
+                StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.Ordinal);
+        var minimumTokens =
+            Math.Min(leftTokens.Count, rightTokens.Count);
+        var commonTokens = leftTokens
+            .Intersect(rightTokens, StringComparer.Ordinal)
+            .Count();
+        if (minimumTokens >= 2 &&
+            (double)commonTokens / minimumTokens >= 0.75)
+        {
+            return true;
+        }
+
+        var maximumLength =
+            Math.Max(leftSignature.Length, rightSignature.Length);
+        return maximumLength > 0 &&
+            1d -
+            (double)LevenshteinDistance(
+                leftSignature,
+                rightSignature) /
+            maximumLength >= 0.86;
+    }
+
+    private static string NormalizeLogicalLineSignature(
+        string value)
+    {
+        var normalizedKilometers = Regex.Replace(
+            value ?? string.Empty,
+            @"\b(?:KIL[ÓO]METRO|KM)\s*[-:]?\s*(\d+)\b",
+            "KM$1",
+            RegexOptions.IgnoreCase |
+            RegexOptions.CultureInvariant);
+        return NormalizeLineMatchSignature(
+            normalizedKilometers);
+    }
+
+    private static int CountSignatureTokenOverlap(
+        string leftSignature,
+        string rightSignature)
+    {
+        if (string.IsNullOrWhiteSpace(leftSignature) ||
+            string.IsNullOrWhiteSpace(rightSignature))
+        {
+            return 0;
+        }
+
+        var rightTokens = rightSignature
+            .Split(
+                '|',
+                StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.Ordinal);
+        return leftSignature
+            .Split(
+                '|',
+                StringSplitOptions.RemoveEmptyEntries)
+            .Count(rightTokens.Contains);
+    }
+
+    private static JsonElement? CreateGeometryCollection(
+        IEnumerable<JsonElement?> source)
+    {
+        var geometries = source
+            .Where(value => value.HasValue)
+            .Select(value => value!.Value.Clone())
+            .GroupBy(
+                value => value.GetRawText(),
+                StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToList();
+        if (geometries.Count == 0)
+        {
+            return null;
+        }
+        if (geometries.Count == 1)
+        {
+            return geometries[0];
+        }
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            type = "GeometryCollection",
+            geometries
+        });
+    }
+
+    private static IReadOnlyList<string> DistinctSourceLinks(
+        IEnumerable<string> values) =>
+        values
+            .Select(Clean)
+            .Where(value =>
+                Uri.TryCreate(
+                    value,
+                    UriKind.Absolute,
+                    out var uri) &&
+                (string.Equals(
+                     uri.Scheme,
+                     Uri.UriSchemeHttps,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(
+                     uri.Scheme,
+                     Uri.UriSchemeHttp,
+                     StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value =>
+                value,
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private List<GcrArea> ParseGcrAreas(string json)
     {
@@ -5308,6 +5686,24 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 string.Empty,
                 string.Empty);
     }
+
+    private sealed record LineCoverageGroup(
+        string CandidateId,
+        IReadOnlyList<(
+            SecondCallRow Row,
+            NetworkResolution Line)> Items,
+        (
+            SecondCallRow Row,
+            NetworkResolution Line) Representative);
+
+    private sealed record LogicalLineGroupEvidence(
+        string GroupKey,
+        int Mentions,
+        IReadOnlyList<string> DeclaredReferences,
+        JsonElement? ProjectGeometry,
+        JsonElement? SubstationGeometry,
+        IReadOnlyList<string> ProjectKml,
+        IReadOnlyList<string> SubstationKml);
 
     private sealed class PamSpec
     {
