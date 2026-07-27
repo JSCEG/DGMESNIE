@@ -148,7 +148,6 @@ public sealed class PamTerritorialService : IPamTerritorialService
 
         var projects = baseProjects.ToList();
         var associationLocations = new Dictionary<long, IReadOnlyList<PamTerritorialUbicacion>>();
-        var convocatoriaLocations = new Dictionary<long, IReadOnlyList<PamTerritorialUbicacion>>();
         var projectsWithoutValidatedLocation = projects
             .Where(project => !project.TieneUbicacionValidada)
             .ToList();
@@ -177,31 +176,6 @@ public sealed class PamTerritorialService : IPamTerritorialService
             }
         }
 
-        if (projectsWithoutValidatedLocation.Count > 0)
-        {
-            try
-            {
-                var evidence = await _convocatoriaEvidenceService.ResolverPamAsync(
-                    projectsWithoutValidatedLocation,
-                    cancellationToken);
-                convocatoriaLocations = evidence.ToDictionary(
-                    result => result.ProyectoId,
-                    result => _convocatoriaEvidenceService.CrearUbicaciones(
-                        result,
-                        soloConfianzaAlta: true));
-            }
-            catch (Exception ex) when (
-                ex is HttpRequestException or
-                JsonException or
-                InvalidDataException or
-                TaskCanceledException)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "No fue posible enriquecer el GeoJSON PAM con Segunda Convocatoria.");
-            }
-        }
-
         var resolvedProjects = projects
             .Select(project =>
             {
@@ -213,12 +187,9 @@ public sealed class PamTerritorialService : IPamTerritorialService
                 var suggested = associationLocations.GetValueOrDefault(
                     project.ProyectoId,
                     Array.Empty<PamTerritorialUbicacion>());
-                var convocatoria = convocatoriaLocations.GetValueOrDefault(
-                    project.ProyectoId,
-                    Array.Empty<PamTerritorialUbicacion>());
                 var merged = MergeSuggestedLocations(
                     project.Ubicaciones,
-                    suggested.Concat(convocatoria));
+                    suggested);
                 return merged.Count == project.Ubicaciones.Count
                     ? project
                     : WithLocations(project, merged);

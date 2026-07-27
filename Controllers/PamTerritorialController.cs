@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Newtonsoft.Json;
 using NSIE.Models;
 using NSIE.Servicios;
 
@@ -12,17 +13,23 @@ public sealed class PamTerritorialController : ControllerBase
     private readonly IPamTerritorialService _service;
     private readonly IPamRedAssociationService _redAssociationService;
     private readonly IPamConvocatoriaEvidenceService _convocatoriaEvidenceService;
+    private readonly IPamConvocatoriaValidationService _convocatoriaValidationService;
+    private readonly IPoliticaAccesoPermisosEnergeticos _accessPolicy;
     private readonly ILogger<PamTerritorialController> _logger;
 
     public PamTerritorialController(
         IPamTerritorialService service,
         IPamRedAssociationService redAssociationService,
         IPamConvocatoriaEvidenceService convocatoriaEvidenceService,
+        IPamConvocatoriaValidationService convocatoriaValidationService,
+        IPoliticaAccesoPermisosEnergeticos accessPolicy,
         ILogger<PamTerritorialController> logger)
     {
         _service = service;
         _redAssociationService = redAssociationService;
         _convocatoriaEvidenceService = convocatoriaEvidenceService;
+        _convocatoriaValidationService = convocatoriaValidationService;
+        _accessPolicy = accessPolicy;
         _logger = logger;
     }
 
@@ -222,6 +229,205 @@ public sealed class PamTerritorialController : ControllerBase
         }
     }
 
+    [HttpGet("EvidenciaConvocatoria/Validaciones")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    [ProducesResponseType(
+        typeof(PamConvocatoriaValidationSnapshot),
+        StatusCodes.Status200OK)]
+    public async Task<ActionResult<PamConvocatoriaValidationSnapshot>>
+        ValidacionesEvidenciaConvocatoria(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _convocatoriaValidationService.ObtenerActualesAsync(
+                cancellationToken));
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Falló la consulta de validaciones de Segunda Convocatoria.");
+            return Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Registro de validaciones no disponible",
+                detail: "No fue posible consultar las decisiones humanas en este momento.");
+        }
+    }
+
+    [HttpPost("EvidenciaConvocatoria/Validaciones")]
+    [ValidateAntiForgeryToken]
+    [ProducesResponseType(
+        typeof(PamConvocatoriaValidationRecord),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PamConvocatoriaValidationRecord>>
+        GuardarValidacionEvidenciaConvocatoria(
+            [FromBody] PamConvocatoriaValidationCommand command,
+            CancellationToken cancellationToken)
+    {
+        var profile = ObtenerPerfilUsuario();
+        if (profile is null)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "Sesión requerida",
+                detail: "Inicia sesión para registrar una decisión de validación.");
+        }
+        if (!PuedeValidarEvidencia(profile))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status403Forbidden,
+                title: "Validación no autorizada",
+                detail: "La validación de red está reservada a cuentas institucionales autorizadas.");
+        }
+
+        var candidateId = command?.CandidatoId?.Trim() ?? string.Empty;
+        var type = command?.TipoElemento?.Trim().ToLowerInvariant() ??
+            string.Empty;
+        var decision = command?.Decision?.Trim().ToLowerInvariant() ??
+            string.Empty;
+        var observation = command?.Observacion?.Trim() ?? string.Empty;
+        if (candidateId.Length is < 10 or > 80 ||
+            !candidateId.StartsWith("C2-", StringComparison.Ordinal) ||
+            !string.Equals(type, "subestacion", StringComparison.Ordinal) ||
+            !PamConvocatoriaValidationDecisions.Permitidas.Contains(decision) ||
+            observation.Length is < 5 or > 2000)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Decisión de validación no válida",
+                detail: "Selecciona una subestación, una decisión permitida y escribe una observación de 5 a 2000 caracteres.");
+        }
+
+        try
+        {
+            var coverage =
+                await _convocatoriaEvidenceService.ObtenerCoberturaAsync(
+                    cancellationToken);
+            var candidate = coverage.Candidatos.FirstOrDefault(item =>
+                string.Equals(
+                    item.CandidatoId,
+                    candidateId,
+                    StringComparison.Ordinal));
+            if (candidate is null)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status404NotFound,
+                    title: "Candidato no encontrado",
+                    detail: "La evidencia cambió o el candidato ya no forma parte del diagnóstico actual.");
+            }
+            if (!string.Equals(
+                    candidate.TipoElemento,
+                    type,
+                    StringComparison.Ordinal))
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "Tipo de candidato inconsistente");
+            }
+
+            var actor = CrearActorValidacion(profile);
+            return Ok(await _convocatoriaValidationService.GuardarAsync(
+                candidate,
+                decision,
+                observation,
+                actor,
+                cancellationToken));
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "La decisión no corresponde al candidato",
+                detail: ex.Message);
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Falló el registro de validación {CandidateId}.",
+                candidateId);
+            return Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "No fue posible guardar la validación",
+                detail: "La decisión no se registró. Inténtalo nuevamente.");
+        }
+    }
+
+    [HttpPost(
+        "EvidenciaConvocatoria/Validaciones/ConfirmarCoincidenciasAutomaticas")]
+    [ValidateAntiForgeryToken]
+    [ProducesResponseType(
+        typeof(PamConvocatoriaBulkValidationResult),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<PamConvocatoriaBulkValidationResult>>
+        ConfirmarCoincidenciasAutomaticas(
+            CancellationToken cancellationToken)
+    {
+        var profile = ObtenerPerfilUsuario();
+        if (profile is null)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "Sesión requerida",
+                detail: "Inicia sesión para confirmar coincidencias automáticas.");
+        }
+        if (!PuedeValidarEvidencia(profile))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status403Forbidden,
+                title: "Validación no autorizada",
+                detail: "La validación de red está reservada a cuentas institucionales autorizadas.");
+        }
+
+        try
+        {
+            var coverage =
+                await _convocatoriaEvidenceService.ObtenerCoberturaAsync(
+                    cancellationToken);
+            return Ok(await _convocatoriaValidationService
+                .ConfirmarCoincidenciasAutomaticasAsync(
+                    coverage.Candidatos,
+                    CrearActorValidacion(profile),
+                    cancellationToken));
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception ex) when (
+            ex is SqlException or
+            HttpRequestException or
+            InvalidDataException or
+            TaskCanceledException or
+            System.Text.Json.JsonException)
+        {
+            _logger.LogError(
+                ex,
+                "Falló la confirmación automática en lote de Segunda Convocatoria.");
+            return Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "No fue posible confirmar las coincidencias",
+                detail: "El lote no se registró. Verifica las fuentes e inténtalo nuevamente.");
+        }
+    }
+
     [HttpGet("EvidenciaConvocatoria/GeoJson")]
     [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]
     [Produces("application/geo+json", "application/json")]
@@ -255,6 +461,57 @@ public sealed class PamTerritorialController : ControllerBase
                 detail: "No fue posible construir la capa de evidencia en este momento.");
         }
     }
+
+    private PerfilUsuario? ObtenerPerfilUsuario()
+    {
+        var json = HttpContext.Session.GetString("PerfilUsuario");
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonConvert.DeserializeObject<PerfilUsuario>(json);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "No fue posible interpretar el perfil para validar evidencia Conv2.");
+            return null;
+        }
+    }
+
+    private bool PuedeValidarEvidencia(PerfilUsuario profile)
+    {
+        if (string.Equals(
+                profile.Rol,
+                "Administrador",
+                StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(
+                profile.Rol_Nombre,
+                "Administrador",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return _accessPolicy.Resolver(profile).EsInstitucional;
+    }
+
+    private static PamConvocatoriaValidationActor CrearActorValidacion(
+        PerfilUsuario profile) =>
+        new()
+        {
+            UsuarioId = int.TryParse(profile.IdUsuario, out var userId)
+                ? userId
+                : null,
+            Nombre = string.IsNullOrWhiteSpace(profile.Nombre)
+                ? profile.Correo
+                : profile.Nombre.Trim(),
+            Unidad = profile.Unidad_de_Adscripcion?.Trim() ?? string.Empty
+        };
 
     [HttpGet("GeoJson")]
     [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]

@@ -339,7 +339,11 @@ subestación elevadora o colectora perteneciente al proyecto privado.
 ### Procedimiento propuesto
 
 1. Cargar y cachear la hoja base y la trazabilidad.
-2. Conservar sólo folios cuya última decisión sea `Continúa`.
+2. Mantener dos universos explícitos:
+   - **universo base completo**, para descubrir subestaciones y líneas que
+     todavía no aparecen en los catálogos geoespaciales;
+   - **subconjunto vigente**, limitado a folios cuya última decisión sea
+     `Continúa`, para cruzar evidencia con proyectos PAM.
 3. Normalizar folios, nombres de subestación, referencias de línea y tensión.
 4. Comparar la subestación declarada con el catálogo de nodos.
 5. Cuando exista distancia declarada, calcularla desde la subestación propia
@@ -363,10 +367,93 @@ geometrías KML/KMZ o elementos de red identificados.
   `GET /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Resumen`
 - Capa GeoJSON de elementos revisables con geometría conocida:
   `GET /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/GeoJson`
+- Decisiones humanas vigentes:
+  `GET /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones`
+- Registro de una decisión:
+  `POST /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones`
+- Confirmación institucional en lote de coincidencias firmes:
+  `POST /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones/ConfirmarCoincidenciasAutomaticas`
 
 La capa aparece como **Vacíos de red · 2ª convocatoria** y está apagada por
 defecto. Un elemento faltante sin geometría no se dibuja artificialmente; se
 conserva en el resumen para revisión.
+
+El menú de capas incluye una **Mesa de revisión · Segunda Convocatoria**. La
+mesa separa universo base, vigentes, otros estatus y folios sin decisión; permite
+filtrar subestaciones o líneas, estado de resolución, texto y presencia de
+proyectos vigentes. Los resultados se paginan en bloques de 50 y pueden
+localizarse en el mapa cuando existe geometría.
+
+La mesa distingue siempre el diagnóstico automático del dictamen humano. Las
+decisiones permitidas son:
+
+| Decisión | Significado |
+|---|---|
+| `confirmada` | La referencia corresponde al elemento de catálogo mostrado |
+| `faltante_confirmada` | La fuente es válida, pero el elemento no está representado en el catálogo actual |
+| `rechazada` | La referencia no corresponde o no debe usarse |
+| `pendiente` | Se registró una revisión sin resolución concluyente |
+
+Cada cambio requiere una observación y conserva candidato, fotografía de la
+evidencia, usuario, unidad, fecha y fuente. La nueva decisión deja de marcar
+como vigente a la anterior, pero no la elimina; la tabla
+`dgmesnie.PamConvocatoriaValidacionRed` conserva el historial completo. El
+registro está protegido con sesión, antiforgery y autorización para personal
+DGMESNIE o administración.
+
+### Automatización conservadora de subestaciones
+
+Para reducir la revisión manual sin convertir una proximidad visual en evidencia
+eléctrica, una referencia de catálogo sólo se marca como **automática firme**
+cuando:
+
+1. todas las filas del grupo resuelven a una sola clave de catálogo;
+2. el nombre coincide de forma exacta o alcanza similitud fuerte `>= 0.90`;
+3. no existe conflicto de tensión ni de distancia declarada;
+4. existe por lo menos una evidencia independiente compatible:
+   tensión o distancia declarada;
+5. existe un margen mínimo de 15 puntos sobre el segundo candidato;
+6. el nombre es único en el catálogo o queda desambiguado dentro de la GCR.
+
+La GCR se usa para separar homónimos o respaldar una coincidencia fuerte. No
+anula por sí sola una coincidencia exacta y globalmente única, porque la región
+informada por la convocatoria y la región espacial del catálogo pueden provenir
+de cortes distintos.
+
+Si la subestación no existe en el catálogo de puntos, sólo puede registrarse
+automáticamente como `faltante_confirmada` cuando su nombre coincide exactamente
+con un extremo nominal de línea, la GCR y la tensión son compatibles, los
+extremos observados forman un grupo de hasta 3 km y existe al menos una línea de
+soporte identificable. La geometría resultante es evidencia sugerida
+`Point/MultiPoint`; no se incorpora automáticamente al catálogo oficial.
+
+La coordenada de la subestación privada nunca aporta por sí sola una
+confirmación por cercanía. Cuando hay distancia declarada, la geometría privada
+sirve únicamente como origen para calcular la distancia hacia el nodo
+catalogado y contrastar ambas magnitudes.
+
+El lote conserva el usuario institucional que lo autorizó, la regla aplicada,
+la evidencia y el historial. Las coincidencias con homónimos, claves múltiples,
+conflictos o evidencia insuficiente permanecen en la mesa de revisión. Una
+confirmación de esta mesa tampoco cambia automáticamente
+`PAMProyectoUbicacion.Validada`; esa promoción sigue siendo una etapa separada.
+
+El orden obligatorio de consolidación es:
+
+1. subestaciones;
+2. líneas de transmisión, usando ya los nodos consolidados;
+3. asociaciones y ubicación PAM.
+
+Por ello, la primera fase permite confirmar o rechazar únicamente
+subestaciones. Las líneas permanecen visibles en modo lectura hasta cerrar los
+nodos. Ninguna decisión de esta bitácora modifica por sí sola el catálogo
+oficial, crea geometría o cambia `Validada = 0` en un PAM.
+
+La capa principal **Proyectos PAM / PAMRNT** no espera la descarga de Google
+Sheets. Carga primero el catálogo PAM y las asociaciones del catálogo eléctrico;
+la evidencia de Segunda Convocatoria se consulta de forma independiente al abrir
+el detalle o al encender su capa de revisión. Así, una demora o falla de la hoja
+pública no bloquea los iconos ni su interacción.
 
 ## 17. Control de cambios de representación y enriquecimiento
 
@@ -375,3 +462,7 @@ conserva en el resumen para revisión.
 | `PAM-MAPA-v1.1` | 2026-07-26 | Catálogo completo, icono regional clicable, detalle y análisis por GCR |
 | `PAM-EVIDENCIA-v1.0` | 2026-07-26 | Reglas de apoyo con convocatorias, municipio, interconexión y KML/KMZ |
 | `PAM-CONV2-v1.0` | 2026-07-26 | Segunda Convocatoria en línea, filtro por última decisión, cruce PAM y diagnóstico de vacíos de red |
+| `PAM-MAPA-v1.2` | 2026-07-26 | Pane interactivo propio, limpieza completa y carga PAM desacoplada de Google Sheets |
+| `PAM-CONV2-v1.1` | 2026-07-26 | Universo base completo para diagnóstico, subconjunto Continúa para PAM y mesa paginada de revisión |
+| `PAM-CONV2-v1.2` | 2026-07-26 | Bitácora persistente de dictamen humano, autorización DGMESNIE y validación por fases: subestaciones, líneas y PAM |
+| `PAM-CONV2-v1.3` | 2026-07-26 | Segunda pasada conservadora: GCR para desambiguar, similitud fuerte con margen y extremos nominales de línea para faltantes trazables |

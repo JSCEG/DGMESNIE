@@ -6,7 +6,7 @@ public sealed class PamConvocatoriaEvidenceResult
 {
     public long ProyectoId { get; init; }
     public string ClaveProyecto { get; init; } = string.Empty;
-    public string VersionReglas { get; init; } = "PAM-CONV2-v1.0";
+    public string VersionReglas { get; init; } = "PAM-CONV2-v1.3";
     public string Estado { get; init; } = "sin_coincidencias";
     public int CoincidenciasAltas { get; init; }
     public int RequierenRevision { get; init; }
@@ -45,9 +45,13 @@ public sealed class PamConvocatoriaProjectMatch
 
 public sealed class PamConvocatoriaCoverageReport
 {
-    public string VersionReglas { get; init; } = "PAM-CONV2-v1.0";
+    public string VersionReglas { get; init; } = "PAM-CONV2-v1.3";
     public DateTime GeneradoUtc { get; init; } = DateTime.UtcNow;
+    public int ProyectosUniverso { get; init; }
+    public int ProyectosConTrazabilidad { get; init; }
     public int ProyectosContinuan { get; init; }
+    public int ProyectosOtrosEstatus { get; init; }
+    public int ProyectosSinDecision { get; init; }
     public int ReferenciasSubestacion { get; init; }
     public int SubestacionesCatalogadas { get; init; }
     public int SubestacionesRevision { get; init; }
@@ -72,10 +76,31 @@ public sealed class PamConvocatoriaInfrastructureCandidate
     public int Puntaje { get; init; }
     public double? TensionKv { get; init; }
     public double? DistanciaCatalogoKm { get; init; }
+    public int GeometriasSubestacionPrivada { get; init; }
+    public int DistanciasDeclaradas { get; init; }
+    public int DistanciasCompatibles { get; init; }
+    public double? DistanciaInterconexionCalculadaMinimaKm { get; init; }
+    public double? DistanciaInterconexionCalculadaMaximaKm { get; init; }
+    public double? DiferenciaDistanciaMaximaKm { get; init; }
+    public int ResolucionesCatalogoDistintas { get; init; }
+    public bool NombreCatalogoUnico { get; init; }
+    public bool NombreCoincidenciaFuerte { get; init; }
+    public double SimilitudNombre { get; init; }
+    public int MargenPuntaje { get; init; }
+    public string GcrCatalogo { get; init; } = string.Empty;
+    public bool CoincidenciaTopologicaFirme { get; init; }
+    public bool CoincidenciaAutomaticaFirme { get; init; }
+    public string MotivoAutomatizacion { get; init; } = string.Empty;
+    public IReadOnlyList<string> LineasSoporte { get; init; } =
+        Array.Empty<string>();
+    public JsonElement? GeometriaSubestacionPrivada { get; init; }
+    public JsonElement? GeometriaTopologicaSugerida { get; init; }
     public string Gcr { get; init; } = string.Empty;
     public string Entidad { get; init; } = string.Empty;
     public string Municipio { get; init; } = string.Empty;
     public int ProyectosRelacionados { get; init; }
+    public int ProyectosVigentes { get; init; }
+    public IReadOnlyList<string> Decisiones { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Folios { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Evidencias { get; init; } = Array.Empty<string>();
     public JsonElement? Geometria { get; init; }
@@ -93,9 +118,10 @@ public sealed class PamConvocatoriaGeoJson
 
 public sealed class PamConvocatoriaGeoJsonMeta
 {
-    public string Version { get; init; } = "PAM-CONV2-v1.0";
+    public string Version { get; init; } = "PAM-CONV2-v1.3";
     public string Layer { get; init; } = "evidencia_segunda_convocatoria";
     public DateTime GeneratedUtc { get; init; } = DateTime.UtcNow;
+    public int UniverseProjects { get; init; }
     public int Projects { get; init; }
     public int Candidates { get; init; }
     public int MissingSubstations { get; init; }

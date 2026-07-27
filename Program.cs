@@ -152,6 +152,9 @@ builder.Services.AddHttpClient<IPamConvocatoriaEvidenceService, PamConvocatoriaE
         new MediaTypeWithQualityHeaderValue("application/json"));
     client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-PAM-Conv2/1.0");
 });
+builder.Services.AddScoped<
+    IPamConvocatoriaValidationService,
+    PamConvocatoriaValidationService>();
 builder.Services.Configure<RedElectricaGraphOptions>(
     builder.Configuration.GetSection(RedElectricaGraphOptions.SectionName));
 builder.Services.AddHttpClient<IRedElectricaGraphService, RedElectricaGraphService>(client =>

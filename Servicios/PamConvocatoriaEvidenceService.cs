@@ -22,11 +22,17 @@ public sealed class PamConvocatoriaEvidenceOptions
         "https://cdn.sassoapps.com/dgmesnie/geojson/dgmesnie_subestaciones2.geojson";
     public string LinesUrl { get; set; } =
         "https://cdn.sassoapps.com/dgmesnie/geojson/dgmesnie_lt.geojson";
+    public string GerenciasUrl { get; set; } =
+        "https://cdn.sassoapps.com/Mapas/gerencias_javs_2.geojson";
     public int CacheMinutes { get; set; } = 30;
     public int HighConfidenceThreshold { get; set; } = 90;
     public int ReviewThreshold { get; set; } = 70;
     public int MaximumMatchesPerPam { get; set; } = 12;
     public double SubstationCoordinateToleranceKm { get; set; } = 3;
+    public int UniqueSubstationNameBonus { get; set; } = 20;
+    public double StrongNameSimilarity { get; set; } = 0.9;
+    public int StrongNameMargin { get; set; } = 15;
+    public double TopologyEndpointClusterKm { get; set; } = 3;
 }
 
 public interface IPamConvocatoriaEvidenceService
@@ -48,9 +54,9 @@ public interface IPamConvocatoriaEvidenceService
 
 public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceService
 {
-    public const string RulesVersion = "PAM-CONV2-v1.0";
+    public const string RulesVersion = "PAM-CONV2-v1.3";
 
-    private const string CacheKey = "pam-conv2-evidence-catalog-v1";
+    private const string CacheKey = "pam-conv2-evidence-catalog-v3";
     private static readonly SemaphoreSlim CatalogLock = new(1, 1);
     private static readonly HashSet<string> EmptyValues = new(
         new[]
@@ -196,7 +202,9 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         var report = await ObtenerCoberturaAsync(cancellationToken);
         var candidates = report.Candidatos
             .Where(candidate =>
-                candidate.Geometria.HasValue &&
+                (candidate.GeometriaSubestacionPrivada.HasValue ||
+                 candidate.GeometriaTopologicaSugerida.HasValue ||
+                 candidate.Geometria.HasValue) &&
                 !string.Equals(candidate.Estado, "catalogada", StringComparison.Ordinal))
             .ToList();
 
@@ -204,6 +212,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         {
             Meta = new PamConvocatoriaGeoJsonMeta
             {
+                UniverseProjects = report.ProyectosUniverso,
                 Projects = report.ProyectosContinuan,
                 Candidates = candidates.Count,
                 MissingSubstations = report.SubestacionesFaltantes,
@@ -214,7 +223,10 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             Features = candidates
                 .Select(candidate => new PamConvocatoriaGeoJsonFeature
                 {
-                    Geometry = candidate.Geometria!.Value,
+                    Geometry = (
+                        candidate.GeometriaSubestacionPrivada ??
+                        candidate.GeometriaTopologicaSugerida ??
+                        candidate.Geometria)!.Value,
                     Properties = new Dictionary<string, object?>
                     {
                         ["candidato_id"] = candidate.CandidatoId,
@@ -225,16 +237,57 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                         ["puntaje"] = candidate.Puntaje,
                         ["tension_kv"] = candidate.TensionKv,
                         ["distancia_catalogo_km"] = candidate.DistanciaCatalogoKm,
+                        ["geometrias_subestacion_privada"] =
+                            candidate.GeometriasSubestacionPrivada,
+                        ["distancias_declaradas"] =
+                            candidate.DistanciasDeclaradas,
+                        ["distancias_compatibles"] =
+                            candidate.DistanciasCompatibles,
+                        ["distancia_interconexion_min_km"] =
+                            candidate.DistanciaInterconexionCalculadaMinimaKm,
+                        ["distancia_interconexion_max_km"] =
+                            candidate.DistanciaInterconexionCalculadaMaximaKm,
+                        ["diferencia_distancia_max_km"] =
+                            candidate.DiferenciaDistanciaMaximaKm,
+                        ["resoluciones_catalogo_distintas"] =
+                            candidate.ResolucionesCatalogoDistintas,
+                        ["nombre_catalogo_unico"] =
+                            candidate.NombreCatalogoUnico,
+                        ["nombre_coincidencia_fuerte"] =
+                            candidate.NombreCoincidenciaFuerte,
+                        ["similitud_nombre"] =
+                            candidate.SimilitudNombre,
+                        ["margen_puntaje"] =
+                            candidate.MargenPuntaje,
+                        ["gcr_catalogo"] =
+                            candidate.GcrCatalogo,
+                        ["coincidencia_topologica_firme"] =
+                            candidate.CoincidenciaTopologicaFirme,
+                        ["coincidencia_automatica_firme"] =
+                            candidate.CoincidenciaAutomaticaFirme,
+                        ["motivo_automatizacion"] =
+                            candidate.MotivoAutomatizacion,
+                        ["lineas_soporte"] =
+                            string.Join(" · ", candidate.LineasSoporte),
+                        ["origen_geometria"] =
+                            candidate.GeometriaSubestacionPrivada.HasValue
+                                ? "subestacion_privada_proyecto"
+                                : candidate.GeometriaTopologicaSugerida.HasValue
+                                    ? "extremo_real_linea"
+                                : "catalogo_referencia",
                         ["gcr"] = candidate.Gcr,
                         ["entidad"] = candidate.Entidad,
                         ["municipio"] = candidate.Municipio,
                         ["proyectos_relacionados"] = candidate.ProyectosRelacionados,
+                        ["proyectos_vigentes"] = candidate.ProyectosVigentes,
+                        ["incluye_vigentes"] = candidate.ProyectosVigentes > 0,
+                        ["decisiones"] = string.Join(" · ", candidate.Decisiones),
                         ["folios"] = string.Join(" · ", candidate.Folios),
                         ["evidencias"] = string.Join(" · ", candidate.Evidencias),
                         ["fuente"] = candidate.Fuente,
                         ["validada"] = false,
                         ["advertencia"] =
-                            "Evidencia automática pendiente de validación; no forma parte del grafo oficial."
+                            "La geometría de Segunda Convocatoria representa la subestación privada del proyecto; no constituye por sí misma un nodo CFE/CENACE."
                     }
                 })
                 .ToList()
@@ -371,8 +424,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             {
                 score += 10;
                 evidence.Add("subestación confirmada en el catálogo geoespacial (+10)");
-                if (row.SubstationResolution.DistanceKm.HasValue &&
-                    row.DeclaredDistanceKm.HasValue)
+                if (row.SubstationResolution.DistanceCompatible == true)
                 {
                     score += 10;
                     evidence.Add(
@@ -536,25 +588,49 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             var linesTask = _httpClient.GetStringAsync(
                 _options.LinesUrl,
                 cancellationToken);
-            await Task.WhenAll(baseTask, traceTask, substationsTask, linesTask);
+            var gcrTask = _httpClient.GetStringAsync(
+                _options.GerenciasUrl,
+                cancellationToken);
+            await Task.WhenAll(
+                baseTask,
+                traceTask,
+                substationsTask,
+                linesTask,
+                gcrTask);
 
-            var substations = ParseSubstations(await substationsTask);
-            var lines = ParseLines(await linesTask);
-            var rows = ParseSecondCallRows(
+            var gcrAreas = ParseGcrAreas(await gcrTask);
+            var substations = ParseSubstations(
+                await substationsTask,
+                gcrAreas);
+            var lines = ParseLines(
+                await linesTask,
+                gcrAreas);
+            var lineEndpoints = BuildLineEndpoints(lines);
+            var allRows = ParseSecondCallRows(
                 await baseTask,
                 await traceTask,
                 substations,
-                lines);
-            var coverage = BuildCoverage(rows);
-            var catalog = new EvidenceCatalog(rows, substations, lines, coverage);
+                lines,
+                lineEndpoints);
+            var activeRows = allRows
+                .Where(row => row.IsActive)
+                .ToList();
+            var coverage = BuildCoverage(allRows);
+            var catalog = new EvidenceCatalog(
+                activeRows,
+                allRows,
+                substations,
+                lines,
+                coverage);
 
             _cache.Set(
                 CacheKey,
                 catalog,
                 TimeSpan.FromMinutes(Math.Max(5, _options.CacheMinutes)));
             _logger.LogInformation(
-                "Segunda Convocatoria cargada: {Projects} proyectos con decisión Continúa, {Substations} subestaciones declaradas y {LineRefs} referencias de línea.",
-                rows.Count,
+                "Segunda Convocatoria cargada: {Universe} proyectos base, {Active} con decisión Continúa, {Substations} subestaciones declaradas y {LineRefs} referencias de línea.",
+                coverage.ProyectosUniverso,
+                coverage.ProyectosContinuan,
                 coverage.ReferenciasSubestacion,
                 coverage.ReferenciasLinea);
             return catalog;
@@ -569,13 +645,14 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         string baseCsv,
         string traceCsv,
         IReadOnlyList<NetworkElement> substations,
-        IReadOnlyList<NetworkElement> lines)
+        IReadOnlyList<NetworkElement> lines,
+        IReadOnlyList<LineEndpointReference> lineEndpoints)
     {
-        var activeDecisions = ParseActiveDecisions(traceCsv);
-        if (activeDecisions.Count == 0)
+        var latestDecisions = ParseLatestDecisions(traceCsv);
+        if (latestDecisions.Count == 0)
         {
             throw new InvalidDataException(
-                "La trazabilidad de Segunda Convocatoria no contiene decisiones vigentes Continúa.");
+                "La trazabilidad de Segunda Convocatoria no contiene decisiones.");
         }
 
         var csvRows = ParseCsv(baseCsv);
@@ -598,17 +675,39 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
 
         var header = csvRows[headerIndex];
         var indexes = SecondCallIndexes.Create(header);
+        var substationNameCounts = substations
+            .Where(element => !string.IsNullOrWhiteSpace(element.NormalizedName))
+            .GroupBy(
+                element => NormalizeSubstationAlias(element.NormalizedName),
+                StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Count(),
+                StringComparer.Ordinal);
+        var substationScopeNameCounts = substations
+            .SelectMany(element =>
+                element.GcrKeys.DefaultIfEmpty(string.Empty)
+                    .Select(gcr => new
+                    {
+                        Key =
+                            $"{gcr}|{NormalizeSubstationAlias(element.NormalizedName)}"
+                    }))
+            .GroupBy(item => item.Key, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Count(),
+                StringComparer.Ordinal);
         var output = new List<SecondCallRow>();
 
         foreach (var values in csvRows.Skip(headerIndex + 1))
         {
             var preFolio = Clean(Read(values, indexes.PreFolio));
             var decisionKey = NormalizeFolio(preFolio);
-            if (string.IsNullOrWhiteSpace(decisionKey) ||
-                !activeDecisions.TryGetValue(decisionKey, out var decision))
+            if (string.IsNullOrWhiteSpace(decisionKey))
             {
                 continue;
             }
+            latestDecisions.TryGetValue(decisionKey, out var decision);
 
             var projectPoints = ParsePoints(
                 values,
@@ -646,7 +745,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 Description = description,
                 Gcr = FirstNonEmpty(
                     Clean(Read(values, indexes.Gcr)),
-                    decision.Gcr),
+                    decision?.Gcr ?? string.Empty),
                 State = Clean(Read(values, indexes.State)),
                 Municipality = Clean(Read(values, indexes.Municipality)),
                 DeclaredSubstation = declaredSubstation,
@@ -663,9 +762,19 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 SubstationPoint = substationPoint,
                 ProjectKml = Clean(Read(values, indexes.ProjectKml)),
                 SubstationKml = Clean(Read(values, indexes.SubstationKml)),
-                DecisionDate = decision.Timestamp
+                Decision = decision?.Decision ?? string.Empty,
+                DecisionDate = decision?.Timestamp ?? string.Empty,
+                IsActive = string.Equals(
+                    NormalizeText(decision?.Decision ?? string.Empty),
+                    "CONTINUA",
+                    StringComparison.Ordinal)
             };
-            row.SubstationResolution = ResolveSubstation(row, substations);
+            row.SubstationResolution = ResolveSubstation(
+                row,
+                substations,
+                substationNameCounts,
+                substationScopeNameCounts,
+                lineEndpoints);
             row.LineResolutions = ResolveLines(row, lines);
             output.Add(row);
         }
@@ -673,7 +782,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         return output;
     }
 
-    private Dictionary<string, TraceDecision> ParseActiveDecisions(string csv)
+    private Dictionary<string, TraceDecision> ParseLatestDecisions(string csv)
     {
         var rows = ParseCsv(csv);
         var headerIndex = rows.FindIndex(row =>
@@ -729,96 +838,185 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             }
         }
 
-        return latest
-            .Where(pair =>
-                string.Equals(
-                    NormalizeText(pair.Value.Decision),
-                    "CONTINUA",
-                    StringComparison.Ordinal))
-            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        return latest;
     }
 
     private NetworkResolution ResolveSubstation(
         SecondCallRow row,
-        IReadOnlyList<NetworkElement> substations)
+        IReadOnlyList<NetworkElement> substations,
+        IReadOnlyDictionary<string, int> substationNameCounts,
+        IReadOnlyDictionary<string, int> substationScopeNameCounts,
+        IReadOnlyList<LineEndpointReference> lineEndpoints)
     {
         if (string.IsNullOrWhiteSpace(row.NormalizedSubstation))
         {
             return NetworkResolution.Empty("sin_referencia");
         }
 
-        var candidates = new List<(NetworkElement Element, int Score, double? Distance)>();
+        var declaredAlias =
+            NormalizeSubstationAlias(row.NormalizedSubstation);
+        var rowGcr = ResolveGcrKey(row.Gcr);
+        var candidates = new List<(
+            NetworkElement Element,
+            int Score,
+            bool NameExact,
+            bool NameStrong,
+            double NameSimilarity,
+            bool NameUnique,
+            bool NameScopeUnique,
+            bool? GcrCompatible,
+            bool? VoltageCompatible,
+            double? CalculatedDistance,
+            bool? DistanceCompatible,
+            double? DistanceDifference)>();
         foreach (var element in substations)
         {
             var score = 0;
-            if (string.Equals(
-                    element.NormalizedName,
-                    row.NormalizedSubstation,
-                    StringComparison.Ordinal))
+            var catalogAlias =
+                NormalizeSubstationAlias(element.NormalizedName);
+            var nameSimilarity = CalculateNameSimilarity(
+                declaredAlias,
+                catalogAlias);
+            var nameExact = string.Equals(
+                    catalogAlias,
+                    declaredAlias,
+                    StringComparison.Ordinal);
+            var nameStrong =
+                nameExact ||
+                nameSimilarity >= _options.StrongNameSimilarity;
+            if (nameExact)
             {
                 score += 55;
             }
             else if (ContainsWhole(
-                         $" {element.NormalizedName} ",
-                         row.NormalizedSubstation) ||
+                         $" {catalogAlias} ",
+                         declaredAlias) ||
                      ContainsWhole(
-                         $" {row.NormalizedSubstation} ",
-                         element.NormalizedName))
+                         $" {declaredAlias} ",
+                         catalogAlias))
             {
                 score += 35;
+            }
+            else if (nameStrong)
+            {
+                score += 30;
             }
             else
             {
                 continue;
             }
 
-            if (row.VoltageKv.HasValue && element.VoltageKv.HasValue)
+            var nameUnique =
+                nameExact &&
+                substationNameCounts.GetValueOrDefault(
+                    catalogAlias) == 1;
+            if (nameUnique)
             {
-                score += Math.Abs(row.VoltageKv.Value - element.VoltageKv.Value) < 0.6
-                    ? 15
-                    : -15;
+                score += _options.UniqueSubstationNameBonus;
+            }
+            var nameScopeUnique =
+                nameExact &&
+                !string.IsNullOrWhiteSpace(rowGcr) &&
+                element.GcrKeys.Contains(rowGcr) &&
+                substationScopeNameCounts.GetValueOrDefault(
+                    $"{rowGcr}|{catalogAlias}") == 1;
+            if (!nameUnique && nameScopeUnique)
+            {
+                score += 15;
             }
 
-            double? distance = null;
-            var origin = row.SubstationPoint ?? row.ProjectPoint;
-            if (origin.HasValue &&
+            bool? gcrCompatible = null;
+            if (!string.IsNullOrWhiteSpace(rowGcr) &&
+                element.GcrKeys.Count > 0)
+            {
+                gcrCompatible = element.GcrKeys.Contains(rowGcr);
+                if (gcrCompatible.Value)
+                {
+                    score += 20;
+                }
+                else if (!nameUnique)
+                {
+                    score -= 30;
+                }
+            }
+
+            bool? voltageCompatible = null;
+            if (row.VoltageKv.HasValue && element.VoltageKv.HasValue)
+            {
+                voltageCompatible =
+                    Math.Abs(
+                        row.VoltageKv.Value -
+                        element.VoltageKv.Value) < 0.6;
+                score += voltageCompatible.Value ? 15 : -15;
+            }
+
+            double? calculatedDistance = null;
+            bool? distanceCompatible = null;
+            double? distanceDifference = null;
+            var privateSubstationPoint =
+                row.SubstationPoint ?? row.ProjectPoint;
+            if (privateSubstationPoint.HasValue &&
                 element.Point.HasValue &&
                 row.DeclaredDistanceKm.HasValue)
             {
-                distance = HaversineKm(origin.Value, element.Point.Value);
+                calculatedDistance = HaversineKm(
+                    privateSubstationPoint.Value,
+                    element.Point.Value);
                 var tolerance = Math.Max(
                     _options.SubstationCoordinateToleranceKm,
                     row.DeclaredDistanceKm.Value * 0.25);
-                var difference = Math.Abs(distance.Value - row.DeclaredDistanceKm.Value);
-                if (difference <= tolerance)
+                distanceDifference = Math.Abs(
+                    calculatedDistance.Value -
+                    row.DeclaredDistanceKm.Value);
+                if (distanceDifference.Value <= tolerance)
                 {
+                    distanceCompatible = true;
                     score += 25;
                 }
-                else if (difference <= tolerance * 2)
+                else if (distanceDifference.Value <= tolerance * 2)
                 {
-                    score += 10;
+                    distanceCompatible = null;
+                    score += 5;
                 }
                 else
                 {
+                    distanceCompatible = false;
                     score -= 20;
                 }
             }
 
-            candidates.Add((element, score, distance));
+            candidates.Add((
+                element,
+                score,
+                nameExact,
+                nameStrong,
+                nameSimilarity,
+                nameUnique,
+                nameScopeUnique,
+                gcrCompatible,
+                voltageCompatible,
+                calculatedDistance,
+                distanceCompatible,
+                distanceDifference));
         }
 
         var ordered = candidates
             .OrderByDescending(candidate => candidate.Score)
-            .ThenBy(candidate => candidate.Distance ?? double.MaxValue)
+            .ThenBy(candidate =>
+                candidate.DistanceDifference ?? double.MaxValue)
+            .ThenBy(candidate => candidate.Element.Key, StringComparer.Ordinal)
             .ToList();
         if (ordered.Count == 0)
         {
-            return NetworkResolution.Empty("faltante");
+            return ResolveTopologyEndpoint(row, lineEndpoints);
         }
 
         var best = ordered[0];
-        var ambiguous = ordered.Count > 1 &&
-            best.Score - ordered[1].Score < 10;
+        var scoreMargin = ordered.Count > 1
+            ? best.Score - ordered[1].Score
+            : 100;
+        var ambiguous =
+            scoreMargin < _options.StrongNameMargin;
         var state = best.Score >= 85 && !ambiguous
             ? "catalogada"
             : best.Score >= 40
@@ -828,29 +1026,193 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         {
             $"nombre comparado con catálogo ({best.Score} puntos)"
         };
-        if (best.Distance.HasValue)
+        if (best.NameExact)
+        {
+            evidence.Add(best.NameUnique
+                ? "nombre exacto tras normalización documental y único en el catálogo"
+                : "nombre exacto tras normalización documental con homónimos o registros repetidos en el catálogo");
+        }
+        else
         {
             evidence.Add(
-                $"distancia calculada desde la subestación del proyecto al catálogo: {best.Distance:0.##} km");
-            if (row.DeclaredDistanceKm.HasValue)
+                $"similitud nominal: {best.NameSimilarity:P0}");
+        }
+        if (best.NameScopeUnique)
+        {
+            evidence.Add(
+                $"nombre único dentro de la GCR {row.Gcr}");
+        }
+        if (best.GcrCompatible.HasValue)
+        {
+            evidence.Add(best.GcrCompatible.Value
+                ? $"GCR compatible: {row.Gcr}"
+                : $"GCR incompatible: {row.Gcr}");
+        }
+        if (best.VoltageCompatible.HasValue)
+        {
+            evidence.Add(best.VoltageCompatible.Value
+                ? $"tensión compatible: {row.VoltageKv:0.##} kV"
+                : $"tensión incompatible: convocatoria {row.VoltageKv:0.##} kV / catálogo {best.Element.VoltageKv:0.##} kV");
+        }
+        if (best.CalculatedDistance.HasValue &&
+            row.DeclaredDistanceKm.HasValue)
+        {
+            evidence.Add(
+                $"distancia calculada desde la subestación privada del proyecto al nodo de catálogo: {best.CalculatedDistance:0.##} km");
+            evidence.Add(
+                $"distancia declarada hacia la interconexión: {row.DeclaredDistanceKm:0.##} km");
+            evidence.Add(best.DistanceCompatible switch
             {
-                evidence.Add(
-                    $"distancia declarada hacia la interconexión: {row.DeclaredDistanceKm:0.##} km");
-            }
+                true => $"distancia compatible; diferencia {best.DistanceDifference:0.##} km",
+                false => $"distancia incompatible; diferencia {best.DistanceDifference:0.##} km",
+                _ => $"distancia aproximada; diferencia {best.DistanceDifference:0.##} km"
+            });
         }
         if (ambiguous)
         {
-            evidence.Add("existen candidatos con puntaje similar");
+            evidence.Add(
+                $"existen candidatos con puntaje similar; margen {scoreMargin}");
+        }
+        if (string.Equals(state, "faltante", StringComparison.Ordinal))
+        {
+            var topology = ResolveTopologyEndpoint(row, lineEndpoints);
+            if (topology.TopologyFirm)
+            {
+                return topology;
+            }
         }
 
         return new NetworkResolution(
             state,
             best.Element,
             best.Score,
-            best.Distance,
+            best.CalculatedDistance,
             evidence,
             row.DeclaredSubstation,
-            row.NormalizedSubstation);
+            row.NormalizedSubstation)
+        {
+            NameExact = best.NameExact,
+            NameStrong = best.NameStrong,
+            NameSimilarity = best.NameSimilarity,
+            NameUnique = best.NameUnique,
+            NameScopeUnique = best.NameScopeUnique,
+            GcrCompatible = best.GcrCompatible,
+            VoltageCompatible = best.VoltageCompatible,
+            DistanceCompatible = best.DistanceCompatible,
+            DistanceDifferenceKm = best.DistanceDifference,
+            ScoreMargin = scoreMargin
+        };
+    }
+
+    private NetworkResolution ResolveTopologyEndpoint(
+        SecondCallRow row,
+        IReadOnlyList<LineEndpointReference> lineEndpoints)
+    {
+        var declaredAlias =
+            NormalizeSubstationAlias(row.NormalizedSubstation);
+        var rowGcr = ResolveGcrKey(row.Gcr);
+        var exactReferences = lineEndpoints
+            .Where(reference => string.Equals(
+                reference.NormalizedName,
+                declaredAlias,
+                StringComparison.Ordinal))
+            .ToList();
+        if (exactReferences.Count == 0)
+        {
+            return NetworkResolution.Empty("faltante");
+        }
+
+        var scopedReferences = !string.IsNullOrWhiteSpace(rowGcr)
+            ? exactReferences
+                .Where(reference => reference.GcrKeys.Contains(rowGcr))
+                .ToList()
+            : exactReferences;
+        var references = scopedReferences.Count > 0
+            ? scopedReferences
+            : exactReferences;
+        var gcrCompatible = !string.IsNullOrWhiteSpace(rowGcr) &&
+            scopedReferences.Count > 0;
+        bool? voltageCompatible = null;
+        var referencesWithVoltage = references
+            .Where(reference => reference.VoltageKv.HasValue)
+            .ToList();
+        if (row.VoltageKv.HasValue && referencesWithVoltage.Count > 0)
+        {
+            voltageCompatible = referencesWithVoltage.Any(reference =>
+                Math.Abs(
+                    reference.VoltageKv!.Value -
+                    row.VoltageKv.Value) < 0.6);
+        }
+
+        var points = references
+            .Select(reference => reference.Point)
+            .Distinct()
+            .ToList();
+        var maximumSeparation = 0d;
+        for (var first = 0; first < points.Count; first++)
+        {
+            for (var second = first + 1; second < points.Count; second++)
+            {
+                maximumSeparation = Math.Max(
+                    maximumSeparation,
+                    HaversineKm(points[first], points[second]));
+            }
+        }
+        var clustered =
+            points.Count > 0 &&
+            maximumSeparation <= _options.TopologyEndpointClusterKm;
+        var supportingLines = references
+            .Select(reference => reference.LineName)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var topologyFirm =
+            gcrCompatible &&
+            voltageCompatible == true &&
+            clustered &&
+            supportingLines.Count > 0;
+        var score =
+            55 +
+            (gcrCompatible ? 20 : 0) +
+            (voltageCompatible == true ? 15 : 0) +
+            (clustered ? 10 : 0);
+        var evidence = new List<string>
+        {
+            $"nombre exacto en {supportingLines.Count} línea(s) del catálogo",
+            $"extremos topológicos encontrados: {points.Count}",
+            $"separación máxima entre extremos homónimos: {maximumSeparation:0.###} km"
+        };
+        evidence.Add(gcrCompatible
+            ? $"extremo compatible con GCR {row.Gcr}"
+            : "el extremo no pudo desambiguarse por GCR");
+        evidence.Add(voltageCompatible switch
+        {
+            true => $"tensión de línea compatible: {row.VoltageKv:0.##} kV",
+            false => "la tensión de las líneas de soporte es incompatible",
+            _ => "sin tensión suficiente para confirmar el extremo"
+        });
+
+        return new NetworkResolution(
+            "faltante",
+            null,
+            Math.Clamp(score, 0, 100),
+            null,
+            evidence,
+            row.DeclaredSubstation,
+            row.NormalizedSubstation)
+        {
+            NameExact = true,
+            NameStrong = true,
+            NameSimilarity = 1,
+            NameScopeUnique = gcrCompatible,
+            GcrCompatible = gcrCompatible,
+            VoltageCompatible = voltageCompatible,
+            ScoreMargin = 100,
+            TopologyFirm = topologyFirm,
+            TopologyPoints = points,
+            SupportingLines = supportingLines
+        };
     }
 
     private List<NetworkResolution> ResolveLines(
@@ -976,13 +1338,164 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 StringComparer.Ordinal);
         foreach (var group in substationGroups)
         {
-            var representative = group
+            var groupRows = group.ToList();
+            var representative = groupRows
                 .OrderByDescending(row => row.SubstationResolution.Score)
                 .ThenByDescending(row => row.SubstationGeometry.HasValue)
                 .First();
             var resolution = representative.SubstationResolution;
-            var mayPublishCatalogGeometry =
-                !string.Equals(resolution.State, "faltante", StringComparison.Ordinal);
+            var resolutions = groupRows
+                .Select(row => row.SubstationResolution)
+                .ToList();
+            var catalogKeys = resolutions
+                .Select(item => item.Element?.Key ?? string.Empty)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var allCatalogued = resolutions.All(item =>
+                string.Equals(
+                    item.State,
+                    "catalogada",
+                    StringComparison.Ordinal));
+            var oneCatalogResolution =
+                catalogKeys.Count == 1 &&
+                resolutions.All(item => item.Element is not null);
+            var allExactNames = resolutions.All(item => item.NameExact);
+            var allStrongNames = resolutions.All(item => item.NameStrong);
+            var nameUnique = resolutions.All(item => item.NameUnique);
+            var nameScopeUnique = resolutions.All(item =>
+                item.NameUnique || item.NameScopeUnique);
+            var voltageConflict = resolutions.Any(item =>
+                item.VoltageCompatible == false);
+            var distanceConflict = resolutions.Any(item =>
+                item.DistanceCompatible == false);
+            var gcrConflict = resolutions.Any(item =>
+                item.GcrCompatible == false);
+            var effectiveGcrConflict =
+                gcrConflict && !nameUnique;
+            var gcrSupport = resolutions.Any(item =>
+                item.GcrCompatible == true);
+            var voltageSupport = resolutions.Any(item =>
+                item.VoltageCompatible == true);
+            var minimumNameSimilarity = resolutions.Min(item =>
+                item.NameSimilarity);
+            var minimumScoreMargin = resolutions.Min(item =>
+                item.ScoreMargin);
+            var independentEvidence = resolutions.Any(item =>
+                item.VoltageCompatible == true ||
+                item.DistanceCompatible == true);
+            var declaredDistanceRows = groupRows.Count(row =>
+                row.DeclaredDistanceKm.HasValue);
+            var compatibleDistanceRows = resolutions.Count(item =>
+                item.DistanceCompatible == true);
+            var allDeclaredDistancesCompatible =
+                declaredDistanceRows > 0 &&
+                compatibleDistanceRows == declaredDistanceRows;
+            var exactCatalogFirm =
+                oneCatalogResolution &&
+                allCatalogued &&
+                allExactNames &&
+                !voltageConflict &&
+                !distanceConflict &&
+                !effectiveGcrConflict &&
+                independentEvidence &&
+                (nameUnique ||
+                 allDeclaredDistancesCompatible ||
+                 (nameScopeUnique && gcrSupport));
+            var strongCatalogFirm =
+                oneCatalogResolution &&
+                allCatalogued &&
+                allStrongNames &&
+                minimumNameSimilarity >= _options.StrongNameSimilarity &&
+                minimumScoreMargin >= _options.StrongNameMargin &&
+                nameScopeUnique &&
+                gcrSupport &&
+                (voltageSupport || allDeclaredDistancesCompatible) &&
+                !voltageConflict &&
+                !distanceConflict &&
+                !effectiveGcrConflict;
+            var topologyFirm =
+                catalogKeys.Count == 0 &&
+                resolutions.All(item => item.TopologyFirm);
+            var automaticFirm =
+                exactCatalogFirm ||
+                strongCatalogFirm ||
+                topologyFirm;
+            var topologyPoints = resolutions
+                .SelectMany(item => item.TopologyPoints)
+                .Distinct()
+                .ToList();
+            var supportingLines = resolutions
+                .SelectMany(item => item.SupportingLines)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var calculatedDistances = resolutions
+                .Where(item => item.DistanceKm.HasValue)
+                .Select(item => item.DistanceKm!.Value)
+                .ToList();
+            var distanceDifferences = resolutions
+                .Where(item => item.DistanceDifferenceKm.HasValue)
+                .Select(item => item.DistanceDifferenceKm!.Value)
+                .ToList();
+            var privateSubstationPoints = groupRows
+                .Where(row => row.SubstationPoint.HasValue)
+                .Select(row => row.SubstationPoint!.Value)
+                .Distinct()
+                .ToList();
+            var candidateEvidence = resolutions
+                .SelectMany(item => item.Evidence)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            candidateEvidence.Add(
+                $"consistencia del grupo: {catalogKeys.Count} resolución(es) de catálogo distinta(s), {groupRows.Count} fila(s)");
+            if (declaredDistanceRows > 0)
+            {
+                candidateEvidence.Add(
+                    $"distancias declaradas compatibles: {compatibleDistanceRows} de {declaredDistanceRows}");
+            }
+
+            var automationReason = automaticFirm
+                ? topologyFirm
+                    ? "Referencia faltante confirmable por extremo nominal de línea, GCR, tensión y agrupación geográfica compatibles."
+                    : strongCatalogFirm && !allExactNames
+                        ? "Nombre fuertemente similar, candidato único en GCR, tensión compatible y margen suficiente."
+                        : nameUnique
+                            ? "Nombre exacto único, misma clave de catálogo, evidencia independiente y sin conflictos."
+                            : nameScopeUnique && gcrSupport
+                                ? "Nombre exacto desambiguado por GCR y evidencia eléctrica compatible."
+                                : "Nombre exacto repetido, pero todas las distancias declaradas son compatibles con la misma clave y no hay conflictos."
+                : catalogKeys.Count == 0
+                    ? supportingLines.Count > 0
+                        ? "Existe como extremo nominal de línea, pero falta evidencia suficiente para confirmarlo automáticamente."
+                        : "Sin coincidencia en el catálogo."
+                    : catalogKeys.Count > 1
+                        ? "El grupo resuelve a más de una clave de catálogo."
+                        : voltageConflict ||
+                          distanceConflict ||
+                          effectiveGcrConflict
+                            ? "Existe conflicto de tensión, distancia declarada o GCR."
+                            : !allStrongNames
+                                ? "La coincidencia nominal no alcanza el umbral fuerte."
+                                : minimumScoreMargin < _options.StrongNameMargin
+                                    ? "El margen entre candidatos es insuficiente."
+                                : !independentEvidence
+                                    ? "Falta una segunda evidencia independiente."
+                                    : !nameScopeUnique && !allDeclaredDistancesCompatible
+                                        ? "El nombre tiene homónimos sin desambiguación territorial o por distancia."
+                                        : "La evidencia agregada requiere revisión.";
+            if (automaticFirm)
+            {
+                candidateEvidence.Add(
+                    "coincidencia automática firme por criterio compuesto v2");
+            }
+
+            var candidateState = automaticFirm && !topologyFirm
+                ? "catalogada"
+                : catalogKeys.Count == 0
+                    ? "faltante"
+                    : "revision";
+            var mayPublishCatalogGeometry = catalogKeys.Count > 0;
             var geometry = mayPublishCatalogGeometry
                 ? resolution.Element?.Geometry
                 : null;
@@ -998,24 +1511,75 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                         "0.##",
                         CultureInfo.InvariantCulture) ?? string.Empty),
                 TipoElemento = "subestacion",
-                Estado = resolution.State,
+                Estado = candidateState,
                 NombreDeclarado = representative.DeclaredSubstation,
                 CoincidenciaCatalogo = resolution.Element?.Name ?? string.Empty,
                 ClaveCatalogo = resolution.Element?.Key ?? string.Empty,
                 Puntaje = Math.Clamp(resolution.Score, 0, 100),
                 TensionKv = representative.VoltageKv,
                 DistanciaCatalogoKm = resolution.DistanceKm,
-                Gcr = FirstNonEmpty(group.Select(row => row.Gcr).ToArray()),
-                Entidad = FirstNonEmpty(group.Select(row => row.State).ToArray()),
-                Municipio = FirstNonEmpty(group.Select(row => row.Municipality).ToArray()),
-                ProyectosRelacionados = group.Count(),
-                Folios = group
+                GeometriasSubestacionPrivada =
+                    privateSubstationPoints.Count,
+                DistanciasDeclaradas = declaredDistanceRows,
+                DistanciasCompatibles = compatibleDistanceRows,
+                DistanciaInterconexionCalculadaMinimaKm =
+                    calculatedDistances.Count > 0
+                        ? calculatedDistances.Min()
+                        : null,
+                DistanciaInterconexionCalculadaMaximaKm =
+                    calculatedDistances.Count > 0
+                        ? calculatedDistances.Max()
+                        : null,
+                DiferenciaDistanciaMaximaKm =
+                    distanceDifferences.Count > 0
+                        ? distanceDifferences.Max()
+                        : null,
+                ResolucionesCatalogoDistintas = catalogKeys.Count,
+                NombreCatalogoUnico = nameUnique,
+                NombreCoincidenciaFuerte = allStrongNames,
+                SimilitudNombre = minimumNameSimilarity,
+                MargenPuntaje = minimumScoreMargin,
+                GcrCatalogo = resolution.Element is null
+                    ? string.Empty
+                    : string.Join(
+                        ", ",
+                        resolution.Element.GcrKeys.OrderBy(
+                            value => value,
+                            StringComparer.Ordinal)),
+                CoincidenciaTopologicaFirme = topologyFirm,
+                CoincidenciaAutomaticaFirme = automaticFirm,
+                MotivoAutomatizacion = automationReason,
+                LineasSoporte = supportingLines,
+                GeometriaSubestacionPrivada =
+                    CreateGeometry(privateSubstationPoints),
+                GeometriaTopologicaSugerida =
+                    CreatePointCollectionGeometry(topologyPoints),
+                Gcr = FirstNonEmpty(groupRows.Select(row => row.Gcr).ToArray()),
+                Entidad = FirstNonEmpty(groupRows.Select(row => row.State).ToArray()),
+                Municipio = FirstNonEmpty(groupRows.Select(row => row.Municipality).ToArray()),
+                ProyectosRelacionados = groupRows
+                    .Select(row => NormalizeFolio(row.PreFolio))
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.Ordinal)
+                    .Count(),
+                ProyectosVigentes = groupRows
+                    .Where(row => row.IsActive)
+                    .Select(row => NormalizeFolio(row.PreFolio))
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.Ordinal)
+                    .Count(),
+                Decisiones = groupRows
+                    .Select(row => FirstNonEmpty(row.Decision, "Sin decisión"))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                Folios = groupRows
                     .Select(row => row.PreFolio)
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Take(20)
                     .ToList(),
-                Evidencias = resolution.Evidence,
+                Evidencias = candidateEvidence,
                 Geometria = geometry,
                 Latitud = point?.Latitude,
                 Longitud = point?.Longitude,
@@ -1057,6 +1621,19 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                     .Select(item => item.Row.PreFolio)
                     .Distinct(StringComparer.Ordinal)
                     .Count(),
+                ProyectosVigentes = group
+                    .Where(item => item.Row.IsActive)
+                    .Select(item => NormalizeFolio(item.Row.PreFolio))
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.Ordinal)
+                    .Count(),
+                Decisiones = group
+                    .Select(item => FirstNonEmpty(
+                        item.Row.Decision,
+                        "Sin decisión"))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
                 Folios = group
                     .Select(item => item.Row.PreFolio)
                     .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -1071,9 +1648,31 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             });
         }
 
+        var projectKeys = rows
+            .Select(row => NormalizeFolio(row.PreFolio))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToHashSet(StringComparer.Ordinal);
+        var tracedProjectKeys = rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.Decision))
+            .Select(row => NormalizeFolio(row.PreFolio))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToHashSet(StringComparer.Ordinal);
+        var activeProjectKeys = rows
+            .Where(row => row.IsActive)
+            .Select(row => NormalizeFolio(row.PreFolio))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .ToHashSet(StringComparer.Ordinal);
+
         return new PamConvocatoriaCoverageReport
         {
-            ProyectosContinuan = rows.Count,
+            ProyectosUniverso = projectKeys.Count,
+            ProyectosConTrazabilidad = tracedProjectKeys.Count,
+            ProyectosContinuan = activeProjectKeys.Count,
+            ProyectosOtrosEstatus = tracedProjectKeys.Count - activeProjectKeys.Count,
+            ProyectosSinDecision = projectKeys.Count - tracedProjectKeys.Count,
             ReferenciasSubestacion = candidates.Count(candidate =>
                 string.Equals(candidate.TipoElemento, "subestacion", StringComparison.Ordinal)),
             SubestacionesCatalogadas = candidates.Count(candidate =>
@@ -1105,7 +1704,35 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         };
     }
 
-    private List<NetworkElement> ParseSubstations(string json)
+    private List<GcrArea> ParseGcrAreas(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return GetFeatures(document.RootElement)
+            .Select(feature =>
+            {
+                var properties = GetProperty(feature, "properties");
+                var geometry = GetProperty(feature, "geometry");
+                var key = ResolveGcrKey(
+                    GetString(properties, "Field1", "nombre", "name"));
+                var polygons = ParsePolygonShapes(geometry);
+                return string.IsNullOrWhiteSpace(key) || polygons.Count == 0
+                    ? null
+                    : new GcrArea(
+                        key,
+                        polygons,
+                        polygons.Min(polygon => polygon.MinLongitude),
+                        polygons.Min(polygon => polygon.MinLatitude),
+                        polygons.Max(polygon => polygon.MaxLongitude),
+                        polygons.Max(polygon => polygon.MaxLatitude));
+            })
+            .Where(area => area is not null)
+            .Cast<GcrArea>()
+            .ToList();
+    }
+
+    private List<NetworkElement> ParseSubstations(
+        string json,
+        IReadOnlyList<GcrArea> gcrAreas)
     {
         using var document = JsonDocument.Parse(json);
         return GetFeatures(document.RootElement)
@@ -1141,6 +1768,10 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                     Name = name,
                     NormalizedName = normalized,
                     VoltageKv = voltage,
+                    GcrKeys = gcrAreas
+                        .Where(area => AreaContains(area, point))
+                        .Select(area => area.Key)
+                        .ToHashSet(StringComparer.Ordinal),
                     Geometry = geometryClone,
                     Point = point
                 };
@@ -1150,7 +1781,9 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             .ToList();
     }
 
-    private List<NetworkElement> ParseLines(string json)
+    private List<NetworkElement> ParseLines(
+        string json,
+        IReadOnlyList<GcrArea> gcrAreas)
     {
         using var document = JsonDocument.Parse(json);
         return GetFeatures(document.RootElement)
@@ -1168,6 +1801,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
 
                 var geometryClone = geometry.Clone();
                 var points = ExtractCoordinates(geometry).ToList();
+                var (endpointA, endpointB) =
+                    ParseLineEndpointNames(name);
                 var representative = points.Count == 0
                     ? default(GeoPoint?)
                     : new GeoPoint(
@@ -1187,6 +1822,19 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                         "voltaje_KV",
                         "voltaje_kv",
                         "tension_kv"),
+                    GcrKeys = gcrAreas
+                        .Where(area => SamplePoints(points, 5).Any(point =>
+                            AreaContains(area, point)))
+                        .Select(area => area.Key)
+                        .ToHashSet(StringComparer.Ordinal),
+                    EndpointAName = endpointA,
+                    EndpointBName = endpointB,
+                    EndpointAPoint = points.Count > 0
+                        ? points[0]
+                        : null,
+                    EndpointBPoint = points.Count > 0
+                        ? points[^1]
+                        : null,
                     Geometry = geometryClone,
                     Point = representative
                 };
@@ -1194,6 +1842,34 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             .Where(element => element is not null)
             .Cast<NetworkElement>()
             .ToList();
+    }
+
+    private static IReadOnlyList<LineEndpointReference> BuildLineEndpoints(
+        IReadOnlyList<NetworkElement> lines)
+    {
+        var output = new List<LineEndpointReference>(lines.Count * 2);
+        foreach (var line in lines)
+        {
+            Add(line.EndpointAName, line.EndpointAPoint);
+            Add(line.EndpointBName, line.EndpointBPoint);
+
+            void Add(string name, GeoPoint? point)
+            {
+                if (string.IsNullOrWhiteSpace(name) || !point.HasValue)
+                {
+                    return;
+                }
+                output.Add(new LineEndpointReference(
+                    name,
+                    NormalizeSubstationAlias(name),
+                    line.Key,
+                    line.Name,
+                    line.VoltageKv,
+                    point.Value,
+                    line.GcrKeys));
+            }
+        }
+        return output;
     }
 
     private static List<string[]> ParseCsv(string text)
@@ -1327,6 +2003,39 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         {
             type = "Polygon",
             coordinates = new[] { ring.ToArray() }
+        });
+    }
+
+    private static JsonElement? CreatePointCollectionGeometry(
+        IReadOnlyList<GeoPoint> points)
+    {
+        if (points.Count == 0)
+        {
+            return null;
+        }
+        if (points.Count == 1)
+        {
+            return JsonSerializer.SerializeToElement(new
+            {
+                type = "Point",
+                coordinates = new[]
+                {
+                    points[0].Longitude,
+                    points[0].Latitude
+                }
+            });
+        }
+
+        return JsonSerializer.SerializeToElement(new
+        {
+            type = "MultiPoint",
+            coordinates = points
+                .Select(point => new[]
+                {
+                    point.Longitude,
+                    point.Latitude
+                })
+                .ToArray()
         });
     }
 
@@ -1474,6 +2183,109 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         return normalized.Trim();
     }
 
+    private static string NormalizeSubstationAlias(string value)
+    {
+        var normalized = NormalizeText(value);
+        normalized = Regex.Replace(
+            normalized,
+            @"^(?:SET|CFE)\s+",
+            string.Empty,
+            RegexOptions.CultureInvariant);
+        normalized = Regex.Replace(
+            normalized,
+            @"\s+DE\s+LA\s+CFE$",
+            string.Empty,
+            RegexOptions.CultureInvariant);
+        normalized = Regex.Replace(
+            normalized,
+            @"\s+\d{2}[A-Z]{3}\s+\d{2,3}$",
+            string.Empty,
+            RegexOptions.CultureInvariant);
+        return normalized.Trim();
+    }
+
+    private static double CalculateNameSimilarity(
+        string left,
+        string right)
+    {
+        if (string.Equals(left, right, StringComparison.Ordinal))
+        {
+            return 1;
+        }
+
+        var tokenSimilarity = TokenSimilarity(left, right);
+        var leftTokens = TokenSet(left);
+        var rightTokens = TokenSet(right);
+        var shouldCompareCharacters =
+            tokenSimilarity >= 0.75 ||
+            (leftTokens.Count == 1 &&
+             rightTokens.Count == 1 &&
+             left.Length >= 7 &&
+             right.Length >= 7 &&
+             left[0] == right[0] &&
+             Math.Abs(left.Length - right.Length) <= 2);
+        if (!shouldCompareCharacters)
+        {
+            return tokenSimilarity;
+        }
+
+        var maximumLength = Math.Max(left.Length, right.Length);
+        return maximumLength == 0
+            ? 1
+            : Math.Max(
+                tokenSimilarity,
+                1d - (double)LevenshteinDistance(left, right) /
+                    maximumLength);
+    }
+
+    private static int LevenshteinDistance(string left, string right)
+    {
+        var previous = new int[right.Length + 1];
+        var current = new int[right.Length + 1];
+        for (var column = 0; column <= right.Length; column++)
+        {
+            previous[column] = column;
+        }
+
+        for (var row = 1; row <= left.Length; row++)
+        {
+            current[0] = row;
+            for (var column = 1; column <= right.Length; column++)
+            {
+                var substitutionCost =
+                    left[row - 1] == right[column - 1] ? 0 : 1;
+                current[column] = Math.Min(
+                    Math.Min(
+                        current[column - 1] + 1,
+                        previous[column] + 1),
+                    previous[column - 1] + substitutionCost);
+            }
+            (previous, current) = (current, previous);
+        }
+        return previous[right.Length];
+    }
+
+    private static (string EndpointA, string EndpointB)
+        ParseLineEndpointNames(string name)
+    {
+        var withoutPrefix = Regex.Replace(
+            name ?? string.Empty,
+            @"^\s*(?:L\s*\.\s*T\s*\.?|LT|LINEA(?:\s+DE\s+TRANSMISION)?)\s*",
+            string.Empty,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var parts = Regex.Split(
+                withoutPrefix,
+                @"\s*[-–—]\s*",
+                RegexOptions.CultureInvariant)
+            .Select(NormalizeSubstationName)
+            .Select(NormalizeSubstationAlias)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        return parts.Length >= 2
+            ? (parts[0], parts[^1])
+            : (string.Empty, string.Empty);
+    }
+
     private static string NormalizeLineName(string value)
     {
         var normalized = NormalizeText(value);
@@ -1608,11 +2420,44 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             ["ORIENTAL"] = "oriental",
             ["OC"] = "occidental",
             ["OCCIDENTAL"] = "occidental",
+            ["OCCIDENTE"] = "occidental",
             ["CE"] = "central",
             ["VM"] = "central",
             ["CENTRAL"] = "central"
         };
-        return aliases.GetValueOrDefault(normalized, string.Empty);
+        if (aliases.TryGetValue(normalized, out var alias))
+        {
+            return alias;
+        }
+        if (normalized.Contains(
+                "BAJACALIFORNIASUR",
+                StringComparison.Ordinal))
+        {
+            return "bcsur";
+        }
+        if (normalized.Contains(
+                "BAJACALIFORNIA",
+                StringComparison.Ordinal))
+        {
+            return "bcalifornia";
+        }
+        var names = new (string Match, string Key)[]
+        {
+            ("NOROESTE", "noroeste"),
+            ("NORESTE", "noreste"),
+            ("PENINSULAR", "peninsular"),
+            ("ORIENTAL", "oriental"),
+            ("OCCIDENTAL", "occidental"),
+            ("OCCIDENTE", "occidental"),
+            ("CENTRAL", "central"),
+            ("NORTE", "norte")
+        };
+        return names
+            .FirstOrDefault(item =>
+                normalized.Contains(
+                    item.Match,
+                    StringComparison.Ordinal))
+            .Key ?? string.Empty;
     }
 
     private static double HaversineKm(GeoPoint left, GeoPoint right)
@@ -1791,8 +2636,162 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         }
     }
 
+    private static IReadOnlyList<GeoPoint> SamplePoints(
+        IReadOnlyList<GeoPoint> points,
+        int maximum)
+    {
+        if (points.Count <= maximum)
+        {
+            return points;
+        }
+        var output = new List<GeoPoint>(maximum)
+        {
+            points[0]
+        };
+        var step = (double)(points.Count - 1) / (maximum - 1);
+        for (var index = 1; index < maximum - 1; index++)
+        {
+            output.Add(points[(int)Math.Round(index * step)]);
+        }
+        output.Add(points[^1]);
+        return output;
+    }
+
+    private static IReadOnlyList<PolygonShape> ParsePolygonShapes(
+        JsonElement geometry)
+    {
+        var type = GetString(geometry, "type");
+        var coordinates = GetProperty(geometry, "coordinates");
+        var output = new List<PolygonShape>();
+        if (string.Equals(type, "Polygon", StringComparison.OrdinalIgnoreCase))
+        {
+            var polygon = ParsePolygonShape(coordinates);
+            if (polygon is not null)
+            {
+                output.Add(polygon);
+            }
+        }
+        else if (string.Equals(
+                     type,
+                     "MultiPolygon",
+                     StringComparison.OrdinalIgnoreCase) &&
+                 coordinates.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var polygonCoordinates in coordinates.EnumerateArray())
+            {
+                var polygon = ParsePolygonShape(polygonCoordinates);
+                if (polygon is not null)
+                {
+                    output.Add(polygon);
+                }
+            }
+        }
+        return output;
+    }
+
+    private static PolygonShape? ParsePolygonShape(JsonElement rings)
+    {
+        if (rings.ValueKind != JsonValueKind.Array ||
+            rings.GetArrayLength() == 0)
+        {
+            return null;
+        }
+        var parsedRings = rings
+            .EnumerateArray()
+            .Select(ParseRing)
+            .Where(ring => ring.Count >= 3)
+            .ToArray();
+        if (parsedRings.Length == 0)
+        {
+            return null;
+        }
+        var exterior = parsedRings[0];
+        return new PolygonShape(
+            exterior,
+            parsedRings.Skip(1).Cast<IReadOnlyList<GeoPoint>>().ToArray(),
+            exterior.Min(point => point.Longitude),
+            exterior.Min(point => point.Latitude),
+            exterior.Max(point => point.Longitude),
+            exterior.Max(point => point.Latitude));
+    }
+
+    private static IReadOnlyList<GeoPoint> ParseRing(JsonElement ring)
+    {
+        if (ring.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<GeoPoint>();
+        }
+        var output = new List<GeoPoint>(ring.GetArrayLength());
+        foreach (var coordinate in ring.EnumerateArray())
+        {
+            if (TryPoint(coordinate, out var point))
+            {
+                output.Add(point);
+            }
+        }
+        return output;
+    }
+
+    private static bool AreaContains(GcrArea area, GeoPoint point)
+    {
+        if (point.Longitude < area.MinLongitude ||
+            point.Longitude > area.MaxLongitude ||
+            point.Latitude < area.MinLatitude ||
+            point.Latitude > area.MaxLatitude)
+        {
+            return false;
+        }
+        foreach (var polygon in area.Polygons)
+        {
+            if (point.Longitude < polygon.MinLongitude ||
+                point.Longitude > polygon.MaxLongitude ||
+                point.Latitude < polygon.MinLatitude ||
+                point.Latitude > polygon.MaxLatitude ||
+                !RingContains(polygon.Exterior, point))
+            {
+                continue;
+            }
+            if (!polygon.Holes.Any(hole => RingContains(hole, point)))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool RingContains(
+        IReadOnlyList<GeoPoint> ring,
+        GeoPoint point)
+    {
+        if (ring.Count < 3)
+        {
+            return false;
+        }
+        var inside = false;
+        var previous = ring[^1];
+        foreach (var current in ring)
+        {
+            var intersects =
+                (current.Latitude > point.Latitude) !=
+                    (previous.Latitude > point.Latitude) &&
+                point.Longitude <
+                    (previous.Longitude - current.Longitude) *
+                    (point.Latitude - current.Latitude) /
+                    ((previous.Latitude - current.Latitude) +
+                     double.Epsilon) +
+                    current.Longitude;
+            if (intersects)
+            {
+                inside = !inside;
+            }
+            previous = current;
+        }
+        return inside;
+    }
+
     private sealed record EvidenceCatalog(
         IReadOnlyList<SecondCallRow> Rows,
+        IReadOnlyList<SecondCallRow> AllRows,
         IReadOnlyList<NetworkElement> Substations,
         IReadOnlyList<NetworkElement> Lines,
         PamConvocatoriaCoverageReport Coverage);
@@ -1817,7 +2816,9 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         public GeoPoint? SubstationPoint { get; init; }
         public string ProjectKml { get; init; } = string.Empty;
         public string SubstationKml { get; init; } = string.Empty;
+        public string Decision { get; init; } = string.Empty;
         public string DecisionDate { get; init; } = string.Empty;
+        public bool IsActive { get; init; }
         public NetworkResolution SubstationResolution { get; set; } =
             NetworkResolution.Empty("sin_referencia");
         public IReadOnlyList<NetworkResolution> LineResolutions { get; set; } =
@@ -1831,6 +2832,12 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         public string Name { get; init; } = string.Empty;
         public string NormalizedName { get; init; } = string.Empty;
         public double? VoltageKv { get; init; }
+        public HashSet<string> GcrKeys { get; init; } =
+            new(StringComparer.Ordinal);
+        public string EndpointAName { get; init; } = string.Empty;
+        public string EndpointBName { get; init; } = string.Empty;
+        public GeoPoint? EndpointAPoint { get; init; }
+        public GeoPoint? EndpointBPoint { get; init; }
         public required JsonElement Geometry { get; init; }
         public GeoPoint? Point { get; init; }
     }
@@ -1844,6 +2851,22 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         string DeclaredName,
         string NormalizedDeclaredName)
     {
+        public bool NameExact { get; init; }
+        public bool NameStrong { get; init; }
+        public double NameSimilarity { get; init; }
+        public bool NameUnique { get; init; }
+        public bool NameScopeUnique { get; init; }
+        public bool? GcrCompatible { get; init; }
+        public bool? VoltageCompatible { get; init; }
+        public bool? DistanceCompatible { get; init; }
+        public double? DistanceDifferenceKm { get; init; }
+        public int ScoreMargin { get; init; }
+        public bool TopologyFirm { get; init; }
+        public IReadOnlyList<GeoPoint> TopologyPoints { get; init; } =
+            Array.Empty<GeoPoint>();
+        public IReadOnlyList<string> SupportingLines { get; init; } =
+            Array.Empty<string>();
+
         public static NetworkResolution Empty(string state) =>
             new(
                 state,
@@ -1905,6 +2928,31 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         long SortValue);
 
     private readonly record struct GeoPoint(double Latitude, double Longitude);
+
+    private sealed record LineEndpointReference(
+        string Name,
+        string NormalizedName,
+        string LineKey,
+        string LineName,
+        double? VoltageKv,
+        GeoPoint Point,
+        IReadOnlySet<string> GcrKeys);
+
+    private sealed record GcrArea(
+        string Key,
+        IReadOnlyList<PolygonShape> Polygons,
+        double MinLongitude,
+        double MinLatitude,
+        double MaxLongitude,
+        double MaxLatitude);
+
+    private sealed record PolygonShape(
+        IReadOnlyList<GeoPoint> Exterior,
+        IReadOnlyList<IReadOnlyList<GeoPoint>> Holes,
+        double MinLongitude,
+        double MinLatitude,
+        double MaxLongitude,
+        double MaxLatitude);
 
     private sealed class SecondCallIndexes
     {
