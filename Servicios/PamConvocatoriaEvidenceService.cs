@@ -28,7 +28,7 @@ public sealed class PamConvocatoriaEvidenceOptions
     public int CacheMinutes { get; set; } = 30;
     public int SnapshotMaxAgeMinutes { get; set; } = 1440;
     public string SnapshotPath { get; set; } =
-        "App_Data/cache/pam_convocatoria_coverage_v13.json";
+        "App_Data/cache/pam_convocatoria_coverage_v14.json";
     public int HighConfidenceThreshold { get; set; } = 90;
     public int ReviewThreshold { get; set; } = 70;
     public int MaximumMatchesPerPam { get; set; } = 12;
@@ -63,9 +63,9 @@ public interface IPamConvocatoriaEvidenceService
 
 public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceService
 {
-    public const string RulesVersion = "PAM-CONV2-v1.13";
+    public const string RulesVersion = "PAM-CONV2-v1.14";
 
-    private const string CacheKey = "pam-conv2-evidence-catalog-v13";
+    private const string CacheKey = "pam-conv2-evidence-catalog-v14";
     private static readonly SemaphoreSlim CatalogLock = new(1, 1);
     private static readonly HashSet<string> EmptyValues = new(
         new[]
@@ -3419,22 +3419,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 $"Extremo {side}: la línea GeoJSON no aporta nombre y coordenada suficientes.");
         }
 
-        var alias = NormalizeSubstationAlias(declaredName);
-        var equivalenceKey =
-            NormalizeSubstationEquivalenceKey(alias);
         var candidates = substations
-            .Where(substation =>
-                substation.Point.HasValue &&
-                (string.Equals(
-                     NormalizeSubstationAlias(
-                         substation.NormalizedName),
-                     alias,
-                     StringComparison.Ordinal) ||
-                 (!string.IsNullOrWhiteSpace(equivalenceKey) &&
-                  string.Equals(
-                      substation.EquivalenceKey,
-                      equivalenceKey,
-                      StringComparison.Ordinal))))
+            .Where(substation => substation.Point.HasValue)
             .Select(substation => new
             {
                 Element = substation,
@@ -3444,18 +3430,32 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             })
             .Where(candidate =>
                 candidate.DistanceKm <= endpointToleranceKm)
+            .Select(candidate => new
+            {
+                candidate.Element,
+                candidate.DistanceKm,
+                NameMatch = EvaluateTopologyEndpointNameMatch(
+                    declaredName,
+                    candidate.Element,
+                    candidate.DistanceKm)
+            })
+            .Where(candidate => candidate.NameMatch.IsMatch)
             .GroupBy(candidate =>
                 $"{candidate.Element.EquivalenceKey}|" +
                 $"{candidate.Element.Point!.Value.Latitude:0.0000}|" +
                 $"{candidate.Element.Point!.Value.Longitude:0.0000}",
                 StringComparer.Ordinal)
             .Select(group => group
-                .OrderBy(candidate => candidate.DistanceKm)
+                .OrderByDescending(candidate =>
+                    candidate.NameMatch.Priority)
+                .ThenBy(candidate => candidate.DistanceKm)
                 .ThenBy(
                     candidate => candidate.Element.Name,
                     StringComparer.OrdinalIgnoreCase)
                 .First())
-            .OrderBy(candidate => candidate.DistanceKm)
+            .OrderByDescending(candidate =>
+                candidate.NameMatch.Priority)
+            .ThenBy(candidate => candidate.DistanceKm)
             .ToList();
 
         if (candidates.Count == 0)
@@ -3467,6 +3467,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
 
         var best = candidates[0];
         if (candidates.Count > 1 &&
+            candidates[1].NameMatch.Priority ==
+                best.NameMatch.Priority &&
             candidates[1].DistanceKm - best.DistanceKm < 0.25)
         {
             return new LineEndpointTopology(
@@ -3489,8 +3491,107 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             false,
             new[]
             {
-                $"Extremo {side} «{declaredName}» → «{best.Element.Name}» a {best.DistanceKm:0.###} km del extremo real del GeoJSON."
+                $"Extremo {side} «{declaredName}» → «{best.Element.Name}» a {best.DistanceKm:0.###} km del extremo real del GeoJSON; {best.NameMatch.Evidence}."
             });
+    }
+
+    private static TopologyEndpointNameMatch
+        EvaluateTopologyEndpointNameMatch(
+            string declaredName,
+            NetworkElement substation,
+            double distanceKm)
+    {
+        var declaredAlias =
+            NormalizeTopologyEndpointAlias(declaredName);
+        var catalogAlias =
+            NormalizeTopologyEndpointAlias(
+                substation.NormalizedName);
+        if (string.IsNullOrWhiteSpace(declaredAlias) ||
+            string.IsNullOrWhiteSpace(catalogAlias))
+        {
+            return TopologyEndpointNameMatch.None;
+        }
+
+        if (string.Equals(
+                declaredAlias,
+                catalogAlias,
+                StringComparison.Ordinal))
+        {
+            return new(
+                true,
+                4,
+                "coincidencia nominal exacta");
+        }
+
+        var declaredEquivalence =
+            NormalizeSubstationEquivalenceKey(declaredAlias);
+        var catalogEquivalence =
+            NormalizeSubstationEquivalenceKey(catalogAlias);
+        if (!string.IsNullOrWhiteSpace(declaredEquivalence) &&
+            string.Equals(
+                declaredEquivalence,
+                catalogEquivalence,
+                StringComparison.Ordinal))
+        {
+            return new(
+                true,
+                3,
+                "equivalencia nominal controlada");
+        }
+
+        const double strictDistanceKm = 0.25;
+        if (distanceKm > strictDistanceKm)
+        {
+            return TopologyEndpointNameMatch.None;
+        }
+
+        var declaredTokens = declaredAlias.Split(
+            ' ',
+            StringSplitOptions.RemoveEmptyEntries);
+        var catalogTokens = catalogAlias.Split(
+            ' ',
+            StringSplitOptions.RemoveEmptyEntries);
+        if (declaredTokens.Length == catalogTokens.Length &&
+            Math.Min(declaredAlias.Length, catalogAlias.Length) >= 8 &&
+            LevenshteinDistance(
+                declaredAlias,
+                catalogAlias) == 1)
+        {
+            return new(
+                true,
+                2,
+                "variante ortográfica controlada a menos de 250 m");
+        }
+
+        var isCatalogExtension =
+            catalogTokens.Length == declaredTokens.Length + 1 &&
+            catalogAlias.StartsWith(
+                $"{declaredAlias} ",
+                StringComparison.Ordinal);
+        if (!isCatalogExtension)
+        {
+            return TopologyEndpointNameMatch.None;
+        }
+
+        var addedToken = catalogTokens[^1];
+        if (string.Equals(
+                addedToken,
+                "POTENCIA",
+                StringComparison.Ordinal))
+        {
+            return new(
+                true,
+                2,
+                "calificador POTENCIA corroborado a menos de 250 m");
+        }
+
+        return declaredTokens.Length >= 2 &&
+               declaredAlias.Length >= 10
+            ? new(
+                true,
+                1,
+                "nombre extendido único corroborado a menos de 250 m")
+            : TopologyEndpointNameMatch.None;
     }
 
     private static (GeoPoint? EndpointA, GeoPoint? EndpointB)
@@ -5082,6 +5183,15 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 false,
                 false,
                 new[] { evidence });
+    }
+
+    private sealed record TopologyEndpointNameMatch(
+        bool IsMatch,
+        int Priority,
+        string Evidence)
+    {
+        public static TopologyEndpointNameMatch None { get; } =
+            new(false, 0, string.Empty);
     }
 
     private sealed record VoltageNetworkSupport(

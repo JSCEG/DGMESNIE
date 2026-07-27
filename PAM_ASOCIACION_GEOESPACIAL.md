@@ -409,7 +409,7 @@ El diagnóstico completo descarga la hoja base, la trazabilidad, las
 subestaciones, las líneas y las GCR, y después reconstruye todos los candidatos.
 Para evitar que cada reinicio de `dotnet watch` deje la mesa esperando varios
 minutos, una ejecución exitosa conserva una fotografía versionada en
-`App_Data/cache/pam_convocatoria_coverage_v13.json`.
+`App_Data/cache/pam_convocatoria_coverage_v14.json`.
 
 La apertura normal usa esa fotografía durante un máximo configurable de 24
 horas. **Volver a consultar** envía `refrescar=true`, vuelve a leer las fuentes
@@ -677,3 +677,4 @@ pública no bloquea los iconos ni su interacción.
 | `PAM-CONV2-v1.11` | 2026-07-27 | Incorpora anexos técnicos públicos con URL y SHA-256: confirma nodos multivoltaje sólo con coincidencia geométrica y conserva como faltantes distintas las subestaciones de maniobras documentadas |
 | `PAM-CONV2-v1.12` | 2026-07-27 | Consolida referencias de línea contra su GeoJSON completo y clasifica la conectividad de sus extremos como conectada, parcial, ambigua, sin resolver o sin geometría; la Segunda Convocatoria permanece como evidencia |
 | `PAM-CONV2-v1.13` | 2026-07-27 | Homologa líneas por pares de extremos en ambos sentidos y separa los corredores base identificados por código de los nuevos entronques; los códigos repetidos permanecen sin geometría y en revisión |
+| `PAM-CONV2-v1.14` | 2026-07-27 | Resuelve extremos con equivalencias nominales controladas únicamente sobre el extremo físico de la línea: corrige una errata o un nombre extendido a menos de 250 m, conserva empates y asociaciones sin respaldo como pendientes y no infiere conectividad por cruces visuales |
