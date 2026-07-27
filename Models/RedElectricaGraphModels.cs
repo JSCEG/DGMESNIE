@@ -36,6 +36,58 @@ public sealed class RedElectricaGraphSnapshot
     public required IReadOnlyList<RedElectricaGraphReview> Reviews { get; init; }
 }
 
+public sealed class RedElectricaGraphSimulation
+{
+    public required RedElectricaGraphSummary BasePersistida { get; init; }
+    public required RedElectricaGraphSummary Candidata { get; init; }
+    public bool MismasFuentes { get; init; }
+    public int AristasComparables { get; init; }
+    public int AristasNuevas { get; init; }
+    public int AristasRetiradas { get; init; }
+    public int AristasConCambio { get; init; }
+    public int PromovidasAConectada { get; init; }
+    public int PromovidasAParcial { get; init; }
+    public int Regresiones { get; init; }
+    public int RevisionesReducidas { get; init; }
+    public required IReadOnlyList<RedElectricaGraphSimulationChange> Cambios
+    {
+        get;
+        init;
+    }
+    public required IReadOnlyList<RedElectricaGraphSimulationChange>
+        RegresionesDetalle
+    {
+        get;
+        init;
+    }
+    public required IReadOnlyList<RedElectricaGraphReview>
+        RevisionesRegresion
+    {
+        get;
+        init;
+    }
+}
+
+public sealed class RedElectricaGraphSimulationChange
+{
+    public string EdgeId { get; init; } = string.Empty;
+    public string NombreLinea { get; init; } = string.Empty;
+    public string EstadoAnterior { get; init; } = string.Empty;
+    public string EstadoCandidato { get; init; } = string.Empty;
+    public string ExtremoOrigenNominal { get; init; } = string.Empty;
+    public string ExtremoDestinoNominal { get; init; } = string.Empty;
+    public string OrigenAnterior { get; init; } = string.Empty;
+    public string OrigenCandidato { get; init; } = string.Empty;
+    public string DestinoAnterior { get; init; } = string.Empty;
+    public string DestinoCandidato { get; init; } = string.Empty;
+    public int ConfianzaOrigenAnterior { get; init; }
+    public int ConfianzaOrigenCandidata { get; init; }
+    public int ConfianzaDestinoAnterior { get; init; }
+    public int ConfianzaDestinoCandidata { get; init; }
+    public string ResolucionOrigenCandidata { get; init; } = string.Empty;
+    public string ResolucionDestinoCandidata { get; init; } = string.Empty;
+}
+
 public sealed class RedElectricaGraphNode
 {
     public string NodeId { get; init; } = string.Empty;
@@ -89,6 +141,7 @@ public sealed class RedElectricaGraphCandidate
 {
     public string NodeId { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
+    public string NameMatchKind { get; init; } = string.Empty;
     public int Score { get; init; }
     public double DistanceKm { get; init; }
     public double? VoltageKv { get; init; }

@@ -268,6 +268,7 @@ automática como una ubicación oficialmente validada.
 | Versión | Fecha | Cambio |
 |---|---|---|
 | `RED-GRAFO-v1.0` | 2026-07-26 | Nodos, aristas, adyacencia, componentes, ruta mínima, revisiones y subgrafo PAM |
+| `RED-GRAFO-v1.1` | 2026-07-27 | Equivalencias nominales conservadoras compartidas con Conv2, simulación no destructiva y publicación persistente después de comprobar cero regresiones |
 
 ## 15. Representación del catálogo PAM completo
 
@@ -678,3 +679,40 @@ pública no bloquea los iconos ni su interacción.
 | `PAM-CONV2-v1.12` | 2026-07-27 | Consolida referencias de línea contra su GeoJSON completo y clasifica la conectividad de sus extremos como conectada, parcial, ambigua, sin resolver o sin geometría; la Segunda Convocatoria permanece como evidencia |
 | `PAM-CONV2-v1.13` | 2026-07-27 | Homologa líneas por pares de extremos en ambos sentidos y separa los corredores base identificados por código de los nuevos entronques; los códigos repetidos permanecen sin geometría y en revisión |
 | `PAM-CONV2-v1.14` | 2026-07-27 | Resuelve extremos con equivalencias nominales controladas únicamente sobre el extremo físico de la línea: corrige una errata o un nombre extendido a menos de 250 m, conserva empates y asociaciones sin respaldo como pendientes y no infiere conectividad por cruces visuales |
+| `RED-GRAFO-v1.1` | 2026-07-27 | Comparte las equivalencias nominales conservadoras con Conv2 y añade una simulación contra la versión activa de SQL Server; informa promociones, regresiones y cambios de nodo sin persistir ni reemplazar el grafo publicado |
+
+La simulación se consulta en
+`GET /DashboardProyectos/RedElectrica/Grafo/Simulacion`. Reconstruye una
+versión candidata desde los GeoJSON vigentes y la compara por `EdgeId` contra
+la versión activa de `dgmesnie.RedElectricaVersion`. La respuesta muestra si
+los hashes de fuente son iguales, promociones a conectada/parcial, regresiones,
+el detalle completo de cualquier regresión y hasta 250 cambios generales
+trazables. Esta operación no actualiza la caché operativa, no escribe en SQL
+Server y no activa una versión nueva.
+
+La corrida de control del 27 de julio de 2026 comparó las mismas 3,036
+aristas y hashes idénticos contra `RED-GRAFO-v1.0`: la candidata v1.1 promovió
+125 aristas a conectada y 57 a parcial, redujo 192 revisiones y 102 nodos
+virtuales, sin aristas nuevas, retiradas ni regresiones. La regla excluye
+numerales romanos y números de las correcciones ortográficas para no confundir
+subestaciones I/II.
+
+Después de esta comprobación, la reconstrucción persistente publicó
+`RED-GRAFO-v1.1` como `VersionId = 3`, clave
+`red:f944006b26c08a3daff7`. La versión 3 quedó activa y la versión 2
+`RED-GRAFO-v1.0` se conservó publicada e inactiva para trazabilidad. El grafo
+activo contiene 3,182 nodos, 3,036 aristas, 1,954 aristas conectadas, 798
+parciales, 284 sin resolver y 892 componentes.
+
+El recálculo PAM posterior mantuvo el universo de 281 proyectos, con 133
+proyectos y 285 elementos asociados con confianza alta. Las 285 semillas están
+presentes tanto en v2 como en v3. La nueva versión elevó de 260 a 262 las
+semillas conectadas, redujo de 23 a 21 las no resueltas y no produjo
+regresiones. Los proyectos con alguna ruta navegable aumentaron de 127 a 128 y
+los que tienen todas sus semillas conectadas, de 115 a 117. Los impactos
+directos fueron:
+
+- `P16-NT1`: S.E. La Laguna pasó de grado 0 a grado 5 y el proyecto ganó una
+  ruta navegable;
+- `P20-NE2`: L.T. Matamoros Potencia–Lauro Villar pasó de `sin_resolver` a
+  `conectada`.

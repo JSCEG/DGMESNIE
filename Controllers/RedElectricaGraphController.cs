@@ -46,6 +46,33 @@ public sealed class RedElectricaGraphController : ControllerBase
         }
     }
 
+    [HttpGet("Simulacion")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    [ProducesResponseType(
+        typeof(RedElectricaGraphSimulation),
+        StatusCodes.Status200OK)]
+    public async Task<ActionResult<RedElectricaGraphSimulation>> Simulation(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _service.SimulateAsync(cancellationToken));
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception ex) when (
+            IsDataSourceException(ex) ||
+            ex is InvalidOperationException)
+        {
+            return GraphUnavailable(
+                ex,
+                "simular la nueva versión del grafo");
+        }
+    }
+
     [HttpGet("Json")]
     [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]
     [ProducesResponseType(

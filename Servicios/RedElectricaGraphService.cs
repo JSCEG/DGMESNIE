@@ -41,6 +41,9 @@ public interface IRedElectricaGraphService
         bool persist,
         CancellationToken cancellationToken = default);
 
+    Task<RedElectricaGraphSimulation> SimulateAsync(
+        CancellationToken cancellationToken = default);
+
     Task<RedElectricaGraphNeighborResult?> GetNeighborsAsync(
         string nodeId,
         int depth,
@@ -67,8 +70,10 @@ public interface IRedElectricaGraphService
 
 public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
 {
-    public const string RulesVersion = "RED-GRAFO-v1.0";
-    private const string CacheKey = "red-electrica-graph-v1";
+    public const string RulesVersion = "RED-GRAFO-v1.1";
+    private const string CacheKey = "red-electrica-graph-v2";
+    private const string SimulationCacheKey =
+        "red-electrica-graph-simulation-v1";
     private static readonly SemaphoreSlim BuildLock = new(1, 1);
 
     private readonly HttpClient _httpClient;
@@ -163,11 +168,51 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
             {
                 await PersistAsync(snapshot, cancellationToken);
             }
+            _cache.Remove(SimulationCacheKey);
             _cache.Set(
                 CacheKey,
                 snapshot,
                 TimeSpan.FromMinutes(Math.Max(5, _options.CacheMinutes)));
             return snapshot;
+        }
+        finally
+        {
+            BuildLock.Release();
+        }
+    }
+
+    public async Task<RedElectricaGraphSimulation> SimulateAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_cache.TryGetValue<RedElectricaGraphSimulation>(
+                SimulationCacheKey,
+                out var cached) &&
+            cached is not null)
+        {
+            return cached;
+        }
+
+        await BuildLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_cache.TryGetValue<RedElectricaGraphSimulation>(
+                    SimulationCacheKey,
+                    out cached) &&
+                cached is not null)
+            {
+                return cached;
+            }
+
+            var baseline = await LoadPersistedAsync(cancellationToken) ??
+                throw new InvalidOperationException(
+                    "No existe una versión activa persistida para comparar.");
+            var candidate = await BuildAsync(cancellationToken);
+            var simulation = CompareSnapshots(baseline, candidate);
+            _cache.Set(
+                SimulationCacheKey,
+                simulation,
+                TimeSpan.FromMinutes(10));
+            return simulation;
         }
         finally
         {
@@ -461,6 +506,166 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                 edgeIds.Count)
         };
     }
+
+    private static RedElectricaGraphSimulation CompareSnapshots(
+        RedElectricaGraphSnapshot baseline,
+        RedElectricaGraphSnapshot candidate)
+    {
+        var commonEdgeIds = baseline.Edges.Keys
+            .Intersect(candidate.Edges.Keys, StringComparer.Ordinal)
+            .ToList();
+        var changes = new List<RedElectricaGraphSimulationChange>();
+        var promotedToConnected = 0;
+        var promotedToPartial = 0;
+        var regressions = 0;
+
+        foreach (var edgeId in commonEdgeIds)
+        {
+            var previous = baseline.Edges[edgeId];
+            var current = candidate.Edges[edgeId];
+            var previousRank = ConnectionStateRank(
+                previous.ConnectionState);
+            var currentRank = ConnectionStateRank(
+                current.ConnectionState);
+            if (currentRank == 2 && previousRank < 2)
+            {
+                promotedToConnected++;
+            }
+            else if (currentRank == 1 && previousRank == 0)
+            {
+                promotedToPartial++;
+            }
+            else if (currentRank < previousRank)
+            {
+                regressions++;
+            }
+
+            var changed =
+                !string.Equals(
+                    previous.ConnectionState,
+                    current.ConnectionState,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    previous.FromNodeId,
+                    current.FromNodeId,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    previous.ToNodeId,
+                    current.ToNodeId,
+                    StringComparison.Ordinal) ||
+                previous.FromConfidence != current.FromConfidence ||
+                previous.ToConfidence != current.ToConfidence;
+            if (!changed)
+            {
+                continue;
+            }
+
+            changes.Add(new RedElectricaGraphSimulationChange
+            {
+                EdgeId = edgeId,
+                NombreLinea = current.Name,
+                EstadoAnterior = previous.ConnectionState,
+                EstadoCandidato = current.ConnectionState,
+                ExtremoOrigenNominal = current.NominalEndpointA,
+                ExtremoDestinoNominal = current.NominalEndpointB,
+                OrigenAnterior = ResolveNodeName(
+                    baseline,
+                    previous.FromNodeId),
+                OrigenCandidato = ResolveNodeName(
+                    candidate,
+                    current.FromNodeId),
+                DestinoAnterior = ResolveNodeName(
+                    baseline,
+                    previous.ToNodeId),
+                DestinoCandidato = ResolveNodeName(
+                    candidate,
+                    current.ToNodeId),
+                ConfianzaOrigenAnterior = previous.FromConfidence,
+                ConfianzaOrigenCandidata = current.FromConfidence,
+                ConfianzaDestinoAnterior = previous.ToConfidence,
+                ConfianzaDestinoCandidata = current.ToConfidence,
+                ResolucionOrigenCandidata = current.FromResolution,
+                ResolucionDestinoCandidata = current.ToResolution
+            });
+        }
+
+        var regressionEdgeIds = changes
+            .Where(change =>
+                ConnectionStateRank(change.EstadoCandidato) <
+                ConnectionStateRank(change.EstadoAnterior))
+            .Select(change => change.EdgeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return new RedElectricaGraphSimulation
+        {
+            BasePersistida = baseline.Summary,
+            Candidata = candidate.Summary,
+            MismasFuentes =
+                string.Equals(
+                    baseline.Summary.HashSubestaciones,
+                    candidate.Summary.HashSubestaciones,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    baseline.Summary.HashLineas,
+                    candidate.Summary.HashLineas,
+                    StringComparison.Ordinal),
+            AristasComparables = commonEdgeIds.Count,
+            AristasNuevas = candidate.Edges.Keys
+                .Except(baseline.Edges.Keys, StringComparer.Ordinal)
+                .Count(),
+            AristasRetiradas = baseline.Edges.Keys
+                .Except(candidate.Edges.Keys, StringComparer.Ordinal)
+                .Count(),
+            AristasConCambio = changes.Count,
+            PromovidasAConectada = promotedToConnected,
+            PromovidasAParcial = promotedToPartial,
+            Regresiones = regressions,
+            RevisionesReducidas = Math.Max(
+                0,
+                baseline.Summary.RevisionesPendientes -
+                candidate.Summary.RevisionesPendientes),
+            Cambios = changes
+                .OrderByDescending(change =>
+                    ConnectionStateRank(change.EstadoCandidato) -
+                    ConnectionStateRank(change.EstadoAnterior))
+                .ThenBy(
+                    change => change.NombreLinea,
+                    StringComparer.OrdinalIgnoreCase)
+                .Take(250)
+                .ToList(),
+            RegresionesDetalle = changes
+                .Where(change =>
+                    ConnectionStateRank(change.EstadoCandidato) <
+                    ConnectionStateRank(change.EstadoAnterior))
+                .OrderBy(
+                    change => change.NombreLinea,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            RevisionesRegresion = candidate.Reviews
+                .Where(review =>
+                    regressionEdgeIds.Contains(review.EdgeId))
+                .OrderBy(
+                    review => review.LineName,
+                    StringComparer.OrdinalIgnoreCase)
+                .ThenBy(review => review.EndpointSide)
+                .ToList()
+        };
+    }
+
+    private static int ConnectionStateRank(string state) =>
+        state switch
+        {
+            "conectada" => 2,
+            "parcial" => 1,
+            _ => 0
+        };
+
+    private static string ResolveNodeName(
+        RedElectricaGraphSnapshot snapshot,
+        string nodeId) =>
+        snapshot.Nodes.TryGetValue(nodeId, out var node)
+            ? node.Name
+            : nodeId;
 
     private async Task PersistAsync(
         RedElectricaGraphSnapshot snapshot,
@@ -1426,30 +1631,48 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                 continue;
             }
 
-            var exactName =
-                !string.IsNullOrWhiteSpace(nominalName) &&
-                string.Equals(
-                    nominalName,
-                    node.NormalizedName,
-                    StringComparison.Ordinal);
             var distance = HaversineKm(
                 endpoint,
                 new GeoPoint(node.Latitude, node.Longitude));
-            if (!exactName && distance > _options.SearchRadiusKm)
+            var nameMatch =
+                RedElectricaEndpointNameMatcher.Evaluate(
+                    nominalName,
+                    node.NormalizedName,
+                    distance);
+            if (!nameMatch.IsMatch &&
+                distance > _options.SearchRadiusKm)
             {
                 continue;
             }
 
             var score = 0;
             var evidence = new List<string>();
-            if (exactName)
+            if (nameMatch.IsMatch)
             {
-                score += 55;
-                evidence.Add("nombre nominal exacto (+55)");
-                if (nameCounts.GetValueOrDefault(nominalName) == 1)
+                var nameScore =
+                    nameMatch.Kind ==
+                        RedElectricaEndpointNameMatchKind.LiteralExact
+                        ? 55
+                        : 45;
+                score += nameScore;
+                evidence.Add(
+                    $"{nameMatch.Evidence} (+{nameScore})");
+                var uniqueCatalogName =
+                    nameCounts.GetValueOrDefault(
+                        node.NormalizedName) == 1;
+                if (uniqueCatalogName)
                 {
                     score += 10;
                     evidence.Add("nombre único en el catálogo (+10)");
+                }
+                if (nameMatch.Kind !=
+                        RedElectricaEndpointNameMatchKind.LiteralExact &&
+                    distance <= 0.25 &&
+                    uniqueCatalogName)
+                {
+                    score += 10;
+                    evidence.Add(
+                        "equivalencia controlada única a 250 m (+10)");
                 }
             }
 
@@ -1497,12 +1720,58 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                 {
                     NodeId = node.NodeId,
                     Name = node.Name,
+                    NameMatchKind = nameMatch.Kind.ToString(),
                     Score = Math.Clamp(score, 0, 100),
                     DistanceKm = distance,
                     VoltageKv = node.VoltageKv,
                     Evidence = evidence
                 });
             }
+        }
+
+        // Una coincidencia nominal exacta en el extremo conserva precedencia
+        // sobre variantes ortográficas o nombres extendidos cercanos. Así se
+        // evita que estaciones numeradas contiguas (I/II, POT/DIST) empaten
+        // artificialmente y degraden una conexión ya firme.
+        var literalExactKind = nameof(
+            RedElectricaEndpointNameMatchKind.LiteralExact);
+        var canonicalExactKind = nameof(
+            RedElectricaEndpointNameMatchKind.Exact);
+        if (candidates.Any(candidate =>
+                string.Equals(
+                    candidate.NameMatchKind,
+                    literalExactKind,
+                    StringComparison.Ordinal) &&
+                candidate.Score >=
+                    _options.HighConfidenceThreshold))
+        {
+            candidates = candidates
+                .Where(candidate =>
+                    string.IsNullOrWhiteSpace(
+                        candidate.NameMatchKind) ||
+                    string.Equals(
+                        candidate.NameMatchKind,
+                        literalExactKind,
+                        StringComparison.Ordinal))
+                .ToList();
+        }
+        else if (candidates.Any(candidate =>
+                     string.Equals(
+                         candidate.NameMatchKind,
+                         canonicalExactKind,
+                         StringComparison.Ordinal) &&
+                     candidate.Score >=
+                        _options.HighConfidenceThreshold))
+        {
+            candidates = candidates
+                .Where(candidate =>
+                    string.IsNullOrWhiteSpace(
+                        candidate.NameMatchKind) ||
+                    string.Equals(
+                        candidate.NameMatchKind,
+                        canonicalExactKind,
+                        StringComparison.Ordinal))
+                .ToList();
         }
 
         // Un extremo de LT que cae prácticamente sobre una única subestación
@@ -1516,10 +1785,10 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
         if (nearest.Count > 0 &&
             nearest[0].DistanceKm <= 0.15 &&
             (nearest.Count == 1 || nearest[1].DistanceKm >= 0.5) &&
-            !nearest[0].Evidence.Any(value =>
-                value.StartsWith(
-                    "nombre nominal exacto",
-                    StringComparison.Ordinal)))
+            !string.Equals(
+                nearest[0].NameMatchKind,
+                literalExactKind,
+                StringComparison.Ordinal))
         {
             var candidateIndex = candidates.FindIndex(candidate =>
                 string.Equals(
@@ -1528,17 +1797,31 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                     StringComparison.Ordinal));
             if (candidateIndex >= 0)
             {
+                var topologyOnlyScore = 75;
+                if (line.VoltageKv.HasValue &&
+                    nearest[0].VoltageKv.HasValue)
+                {
+                    topologyOnlyScore +=
+                        Math.Abs(
+                            line.VoltageKv.Value -
+                            nearest[0].VoltageKv.Value) <= 0.5
+                            ? 10
+                            : -5;
+                }
                 var evidence = nearest[0].Evidence
                     .Concat(new[]
                     {
-                        "única subestación a 150 m del extremo geométrico (+50)"
+                        "piso topológico: única subestación a 150 m del extremo geométrico"
                     })
                     .ToList();
                 candidates[candidateIndex] = new RedElectricaGraphCandidate
                 {
                     NodeId = nearest[0].NodeId,
                     Name = nearest[0].Name,
-                    Score = Math.Clamp(nearest[0].Score + 50, 0, 100),
+                    NameMatchKind = nearest[0].NameMatchKind,
+                    Score = Math.Max(
+                        nearest[0].Score,
+                        Math.Clamp(topologyOnlyScore, 0, 100)),
                     DistanceKm = nearest[0].DistanceKm,
                     VoltageKv = nearest[0].VoltageKv,
                     Evidence = evidence
