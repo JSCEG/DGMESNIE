@@ -202,12 +202,15 @@ public sealed class PamTerritorialController : ControllerBase
         typeof(PamConvocatoriaCoverageReport),
         StatusCodes.Status200OK)]
     public async Task<ActionResult<PamConvocatoriaCoverageReport>>
-        ResumenEvidenciaConvocatoria(CancellationToken cancellationToken)
+        ResumenEvidenciaConvocatoria(
+            CancellationToken cancellationToken,
+            [FromQuery] bool refrescar = false)
     {
         try
         {
             return Ok(await _convocatoriaEvidenceService.ObtenerCoberturaAsync(
-                cancellationToken));
+                cancellationToken,
+                refrescar));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -377,8 +380,20 @@ public sealed class PamTerritorialController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<PamConvocatoriaBulkValidationResult>>
         ConfirmarCoincidenciasAutomaticas(
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            [FromQuery] string tipoElemento = "subestacion")
     {
+        var normalizedType = (tipoElemento ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant();
+        if (normalizedType is not ("subestacion" or "linea_transmision"))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Fase de validación no válida",
+                detail: "Usa tipoElemento=subestacion o tipoElemento=linea_transmision.");
+        }
+
         var profile = ObtenerPerfilUsuario();
         if (profile is null)
         {
@@ -403,6 +418,7 @@ public sealed class PamTerritorialController : ControllerBase
             return Ok(await _convocatoriaValidationService
                 .ConfirmarCoincidenciasAutomaticasAsync(
                     coverage.Candidatos,
+                    normalizedType,
                     CrearActorValidacion(profile),
                     cancellationToken));
         }

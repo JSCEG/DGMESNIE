@@ -73,6 +73,7 @@ public sealed class PamConvocatoriaValidationSnapshot
 public sealed class PamConvocatoriaBulkValidationResult
 {
     public DateTime EjecutadoUtc { get; init; } = DateTime.UtcNow;
+    public string TipoElemento { get; init; } = string.Empty;
     public int CandidatosEvaluados { get; init; }
     public int CoincidenciasFirmes { get; init; }
     public int ConfirmadasNuevas { get; init; }

@@ -21,6 +21,7 @@ public interface IPamConvocatoriaValidationService
     Task<PamConvocatoriaBulkValidationResult>
         ConfirmarCoincidenciasAutomaticasAsync(
             IReadOnlyCollection<PamConvocatoriaInfrastructureCandidate> candidatos,
+            string tipoElemento,
             PamConvocatoriaValidationActor actor,
             CancellationToken cancellationToken);
 }
@@ -292,24 +293,33 @@ VALUES
     public async Task<PamConvocatoriaBulkValidationResult>
         ConfirmarCoincidenciasAutomaticasAsync(
             IReadOnlyCollection<PamConvocatoriaInfrastructureCandidate> candidatos,
+            string tipoElemento,
             PamConvocatoriaValidationActor actor,
             CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(candidatos);
         ArgumentNullException.ThrowIfNull(actor);
 
-        var substationCandidates = candidatos
+        var normalizedType = (tipoElemento ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant();
+        if (normalizedType is not ("subestacion" or "linea_transmision"))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(tipoElemento),
+                "La fase debe ser subestacion o linea_transmision.");
+        }
+
+        var phaseCandidates = candidatos
             .Where(candidate => string.Equals(
                 candidate.TipoElemento,
-                "subestacion",
+                normalizedType,
                 StringComparison.Ordinal))
             .ToList();
-        var eligible = substationCandidates
-            .Where(candidate =>
-                candidate.CoincidenciaAutomaticaFirme &&
-                (!string.IsNullOrWhiteSpace(candidate.ClaveCatalogo) ||
-                 candidate.CoincidenciaTopologicaFirme ||
-                 candidate.CoincidenciaFuenteGeorreferenciadaFirme))
+        var eligible = phaseCandidates
+            .Where(candidate => normalizedType == "linea_transmision"
+                ? EsLineaAutomaticaFirme(candidate)
+                : EsSubestacionAutomaticaFirme(candidate))
             .GroupBy(candidate => candidate.CandidatoId, StringComparer.Ordinal)
             .Select(group => group.First())
             .OrderBy(candidate => candidate.CandidatoId, StringComparer.Ordinal)
@@ -319,7 +329,8 @@ VALUES
         {
             return new PamConvocatoriaBulkValidationResult
             {
-                CandidatosEvaluados = substationCandidates.Count
+                TipoElemento = normalizedType,
+                CandidatosEvaluados = phaseCandidates.Count
             };
         }
 
@@ -426,16 +437,52 @@ VALUES
                     candidate.ClaveCatalogo)
                         ? PamConvocatoriaValidationDecisions.FaltanteConfirmada
                         : PamConvocatoriaValidationDecisions.Confirmada;
-                var observation = candidate.CoincidenciaTopologicaFirme
-                    ? "Confirmación automática asistida por criterio compuesto v5: " +
+                var isLine = string.Equals(
+                    candidate.TipoElemento,
+                    "linea_transmision",
+                    StringComparison.Ordinal);
+                var observation = isLine
+                    ? CrearObservacionLineaAutomatica(candidate)
+                    : candidate.CoincidenciaAnexoTecnicoFirme
+                    ? "Confirmación automática asistida por criterio compuesto v11: " +
+                      (string.Equals(
+                          candidate.ModoAnexoTecnico,
+                          "catalogo_multitension",
+                          StringComparison.OrdinalIgnoreCase)
+                          ? "el anexo técnico identifica el nodo público, documenta su nivel de tensión y aporta una geometría coincidente con el catálogo. "
+                          : "el anexo técnico distingue funcional y espacialmente la subestación de maniobras del homónimo de catálogo; se registra como referencia faltante sin homologarla. ") +
+                      $"Documento SHA-256: {candidate.Sha256AnexoTecnico}. Fuente: {candidate.FuenteAnexoTecnico}."
+                    : candidate.CoincidenciaCorroboracionMultifuenteFirme
+                    ? "Confirmación automática asistida por criterio compuesto v11: " +
+                      $"la referencia ausente del catálogo aparece de forma consistente en {candidate.ProyectosIndependientesCorroborados} proyectos vigentes independientes, con la misma GCR y tensión. " +
+                      "Se confirma únicamente la referencia documental faltante; no se asigna ubicación, geometría ni conectividad eléctrica. " +
+                      $"Soportes: {string.Join(" · ", candidate.SoportesCorroboracion)}."
+                    : candidate.HomonimoTerritorialDescartado &&
+                    candidate.CoincidenciaFuenteGeorreferenciadaFirme
+                    ? "Confirmación automática asistida por criterio compuesto v11: " +
+                      "la coincidencia nominal de catálogo fue descartada por GCR incompatible y distancia extrema. La referencia vigente se conserva como infraestructura georreferenciada faltante y no se homologa con el homónimo descartado. " +
+                      $"Agrupación territorial: {candidate.ClaveAgrupacionTerritorial}. Soportes: {string.Join(" · ", candidate.SoportesFuente)}."
+                    : candidate.CoincidenciaTopologicaFirme
+                    ? "Confirmación automática asistida por criterio compuesto v11: " +
                       "referencia ausente del catálogo puntual, pero confirmada como extremo nominal de línea mediante nombre, GCR, tensión y agrupación geográfica compatibles. " +
                       $"Líneas de soporte: {string.Join(" · ", candidate.LineasSoporte)}."
+                    : candidate.CoincidenciaInterconexionPublicaFirme
+                        ? "Confirmación automática asistida por criterio compuesto v11: " +
+                          "la fuente vigente distingue una subestación privada o propuesta georreferenciada de su nodo público de interconexión. " +
+                          $"La instalación {candidate.NombreDeclarado} se registra como faltante del catálogo; " +
+                          $"la interconexión declarada resuelve por separado a {candidate.CoincidenciaInterconexionCatalogo} ({candidate.ClaveInterconexionCatalogo}). " +
+                          "La relación procede del campo de interconexión de la fuente, no de proximidad ni de un cruce visual; no promueve la instalación privada al catálogo oficial."
+                    : candidate.CoincidenciaTensionTopologicaFirme
+                        ? "Confirmación automática asistida por criterio compuesto v11: " +
+                          "el nombre y la GCR resuelven a una subestación única del catálogo. La subestación puede operar como nodo transformador: la tensión declarada está respaldada por líneas que terminan nominal y espacialmente en ese mismo nodo, aunque el punto GeoJSON publique otro nivel. " +
+                          $"Niveles observados: {string.Join(", ", candidate.NivelesTensionRedKv.Select(value => $"{value:0.##} kV"))}. " +
+                          $"Líneas de soporte: {string.Join(" · ", candidate.LineasSoporte)}."
                     : candidate.CoincidenciaFuenteGeorreferenciadaFirme
-                        ? "Confirmación automática asistida por criterio compuesto v5: " +
+                        ? "Confirmación automática asistida por criterio compuesto v11: " +
                           "referencia vigente ausente del catálogo, confirmada como subestación privada o propuesta porque la fuente aporta geometría explícita en los campos de subestación, tensión y GCR consistentes. " +
                           "No confirma conectividad eléctrica ni promueve el punto al catálogo oficial. " +
                           $"Soportes: {string.Join(" · ", candidate.SoportesFuente)}."
-                    : "Confirmación automática asistida por criterio compuesto v5: " +
+                    : "Confirmación automática asistida por criterio compuesto v11: " +
                       candidate.MotivoAutomatizacion + " " +
                       $"{candidate.DistanciasCompatibles} de " +
                       $"{candidate.DistanciasDeclaradas} distancia(s) declarada(s) compatibles; " +
@@ -443,7 +490,9 @@ VALUES
                       $"GCR de catálogo: {candidate.GcrCatalogo}.";
                 var evidence = candidate.Evidencias
                     .Append(
-                        "confirmación automática asistida autorizada por usuario institucional; criterio compuesto v5")
+                        isLine
+                            ? "confirmación automática asistida autorizada por usuario institucional; criterio de líneas v13"
+                            : "confirmación automática asistida autorizada por usuario institucional; criterio compuesto v11")
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
                 var parameters = new
@@ -510,7 +559,8 @@ VALUES
 
             await transaction.CommitAsync(cancellationToken);
             _logger.LogInformation(
-                "Confirmación automática Conv2: {Inserted} nuevas, {Skipped} omitidas con decisión, {Eligible} firmes, por {UserId} {UserName}.",
+                "Confirmación automática Conv2 de {Type}: {Inserted} nuevas, {Skipped} omitidas con decisión, {Eligible} firmes, por {UserId} {UserName}.",
+                normalizedType,
                 inserted.Count,
                 skipped,
                 eligible.Count,
@@ -519,7 +569,8 @@ VALUES
 
             return new PamConvocatoriaBulkValidationResult
             {
-                CandidatosEvaluados = substationCandidates.Count,
+                TipoElemento = normalizedType,
+                CandidatosEvaluados = phaseCandidates.Count,
                 CoincidenciasFirmes = eligible.Count,
                 ConfirmadasNuevas = inserted.Count,
                 OmitidasConDecision = skipped,
@@ -531,6 +582,74 @@ VALUES
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    private static bool EsSubestacionAutomaticaFirme(
+        PamConvocatoriaInfrastructureCandidate candidate) =>
+        candidate.ProyectosVigentes > 0 &&
+        candidate.CoincidenciaAutomaticaFirme &&
+        (!string.IsNullOrWhiteSpace(candidate.ClaveCatalogo) ||
+         candidate.CoincidenciaTopologicaFirme ||
+         candidate.CoincidenciaFuenteGeorreferenciadaFirme ||
+         candidate.CoincidenciaCorroboracionMultifuenteFirme ||
+         candidate.CoincidenciaAnexoTecnicoFirme);
+
+    private static bool EsLineaAutomaticaFirme(
+        PamConvocatoriaInfrastructureCandidate candidate)
+    {
+        if (candidate.ProyectosVigentes <= 0 ||
+            string.IsNullOrWhiteSpace(candidate.ClaveCatalogo) ||
+            !string.Equals(
+                candidate.Estado,
+                "catalogada",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                candidate.EstadoConexionGrafo,
+                "conectada",
+                StringComparison.Ordinal) ||
+            candidate.ExtremosResueltosGrafo != 2)
+        {
+            return false;
+        }
+
+        if (candidate.CoincidenciaParExtremosFirme)
+        {
+            return true;
+        }
+
+        return string.Equals(
+                candidate.ModoCoincidenciaLinea,
+                "nombre_catalogo",
+                StringComparison.Ordinal) &&
+            candidate.Puntaje >= 90 &&
+            candidate.CoincidenciaGrafoFirme;
+    }
+
+    private static string CrearObservacionLineaAutomatica(
+        PamConvocatoriaInfrastructureCandidate candidate)
+    {
+        var mode = candidate.CoincidenciaParExtremosFirme
+            ? "el par de extremos declarado resuelve en ambos sentidos contra los nodos reales del GeoJSON"
+            : "el nombre de catálogo es firme y sus dos extremos están resueltos en el grafo";
+        var endpointA = string.IsNullOrWhiteSpace(candidate.ExtremoACatalogo)
+            ? candidate.ExtremoADeclarado
+            : candidate.ExtremoACatalogo;
+        var endpointB = string.IsNullOrWhiteSpace(candidate.ExtremoBCatalogo)
+            ? candidate.ExtremoBDeclarado
+            : candidate.ExtremoBCatalogo;
+        var endpoints = new[] { endpointA, endpointB }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+
+        return
+            "Confirmación automática asistida por criterio de líneas v13: " +
+            $"{mode}. " +
+            (endpoints.Length == 2
+                ? $"Extremos: {endpoints[0]} ↔ {endpoints[1]}. "
+                : string.Empty) +
+            $"Línea de catálogo: {candidate.CoincidenciaCatalogo} " +
+            $"({candidate.ClaveCatalogo}). " +
+            "La geometría procede del GeoJSON maestro; esta decisión confirma la homologación documental, no el sentido del flujo, la capacidad disponible ni el estado operativo.";
     }
 
     private async Task EnsureStorageAsync(CancellationToken cancellationToken)

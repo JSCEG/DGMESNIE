@@ -1203,6 +1203,7 @@
           <select value="{{ conv2ReviewStatus }}" onChange="{{ onConv2ReviewStatus }}" style="padding:8px 10px;border:1px solid #ECE8E2;border-radius:8px;background:#fff;color:#3a3a3a;font-size:11.5px;font-family:inherit">
             <option value="todos">Todos los estados</option>
             <option value="catalogada">Catalogada</option>
+            <option value="corredor_catalogado">Corredor base</option>
             <option value="revision">Requiere revisión</option>
             <option value="faltante">Faltante</option>
             <option value="tramo_sin_geometria">Sin geometría</option>
@@ -1263,13 +1264,16 @@
           </sc-if>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 18px;border-top:1px solid #ECE8E2;background:#FCFBF9">
-          <span style="font-size:9.5px;color:#7B7771">Ninguna fila se considera validada hasta registrar una decisión humana con su fuente.</span>
+          <span style="font-size:9.5px;color:#7B7771">Cada decisión conserva usuario, regla, evidencia y fuente; los faltantes no se promueven automáticamente al catálogo.</span>
           <div style="display:flex;align-items:center;gap:7px">
             <button onClick="{{ onConv2ReviewPrev }}" disabled="{{ conv2ReviewPrevDisabled }}" style="{{ conv2ReviewPrevStyle }}">Anterior</button>
             <span style="font-size:9.5px;font-family:'IBM Plex Mono',monospace;color:#6F6B66">{{ conv2ReviewPageLabel }}</span>
             <button onClick="{{ onConv2ReviewNext }}" disabled="{{ conv2ReviewNextDisabled }}" style="{{ conv2ReviewNextStyle }}">Siguiente</button>
           </div>
-          <button onClick="{{ onReloadConv2Review }}" style="padding:7px 11px;border:1px solid #A57F2C;background:#fff;color:#7A5D1D;border-radius:8px;font-size:10.5px;font-weight:800;cursor:pointer;font-family:inherit">Volver a consultar</button>
+          <div style="display:flex;align-items:center;gap:7px">
+            <button onClick="{{ onConfirmConv2Firmes }}" disabled="{{ conv2BulkDisabled }}" title="{{ conv2BulkTitle }}" style="{{ conv2BulkStyle }}">{{ conv2BulkLabel }}</button>
+            <button onClick="{{ onReloadConv2Review }}" style="padding:7px 11px;border:1px solid #A57F2C;background:#fff;color:#7A5D1D;border-radius:8px;font-size:10.5px;font-weight:800;cursor:pointer;font-family:inherit">Volver a consultar</button>
+          </div>
         </div>
         </sc-if>
 
@@ -1861,6 +1865,7 @@ class Component extends DCLogic {
     conv2DecisionNote: '',
     conv2DecisionBusy: false,
     conv2DecisionError: '',
+    conv2BulkBusy: false,
   };
 
   // ════════════════════ ciclo de vida ════════════════════
@@ -4992,6 +4997,12 @@ class Component extends DCLogic {
         ['Tipo de elemento',p.tipo_elemento||'—'],
         ['Referencia declarada',p.nombre||nom||'—'],
         ['Coincidencia de catálogo',p.coincidencia_catalogo||'—'],
+        ['Nodo público de interconexión',p.coincidencia_interconexion_catalogo||p.nombre_interconexion_publica||'—'],
+        ['Relación privada / pública',p.coincidencia_interconexion_publica_firme?'Declarada por la fuente y resuelta por separado':'—'],
+        ['Tensión respaldada por red',p.coincidencia_tension_topologica_firme?'Sí · línea nominal y espacialmente conectada':'—'],
+        ['Niveles observados',Array.isArray(p.niveles_tension_red_kv)?p.niveles_tension_red_kv.map(v=>Number(v).toLocaleString('es-MX')+' kV').join(' · '):'—'],
+        ['Homónimo territorial',p.homonimo_territorial_descartado?'Descartado por GCR y distancia extrema':'—'],
+        ['Agrupación territorial',p.grupo_territorial_separado?(p.clave_agrupacion_territorial||'Separada'):'—'],
         ['Puntaje',p.puntaje!=null?String(p.puntaje)+'/100':'—'],
         ['Tensión',p.tension_kv!=null?Number(p.tension_kv).toLocaleString('es-MX',{maximumFractionDigits:2})+' kV':'—'],
         ['GCR',p.gcr||'—'],
@@ -5083,11 +5094,13 @@ class Component extends DCLogic {
     conv2DecisionNote:'',
     conv2DecisionError:''
   });
-  loadConv2Review = () => {
+  loadConv2Review = (forceRefresh=false) => {
     this.setState({
       conv2ReviewLoading:true,
       conv2ReviewError:''
     });
+    const summaryUrl='/DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Resumen'
+      +(forceRefresh?'?refrescar=true&ts='+Date.now():'');
     const requestJson=(url)=>fetch(url,{
       cache:'no-store',
       headers:{'Accept':'application/json','Cache-Control':'no-cache'}
@@ -5096,7 +5109,7 @@ class Component extends DCLogic {
       return response.json();
     });
     Promise.all([
-      requestJson('/DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Resumen'),
+      requestJson(summaryUrl),
       requestJson('/DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones')
     ])
       .then(([data,validation])=>this.setState({
@@ -5110,9 +5123,57 @@ class Component extends DCLogic {
         conv2ReviewError:'No fue posible cargar la evidencia: '+String(error.message||error)
       }));
   };
+  confirmConv2Firmes = () => {
+    if(this.state.conv2BulkBusy) return;
+    const type=this.state.conv2ReviewType==='linea_transmision'
+      ? 'linea_transmision'
+      : 'subestacion';
+    const label=type==='linea_transmision'
+      ? 'líneas con dos extremos firmes'
+      : 'subestaciones con evidencia firme';
+    if(!window.confirm('Se registrarán únicamente '+label+' de proyectos vigentes y se conservará la trazabilidad. ¿Continuar?')){
+      return;
+    }
+    this.setState({conv2BulkBusy:true,conv2ReviewError:''});
+    fetch(
+      '/DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones/ConfirmarCoincidenciasAutomaticas?tipoElemento='+encodeURIComponent(type),
+      {
+        method:'POST',
+        cache:'no-store',
+        headers:{
+          'Accept':'application/json',
+          'Cache-Control':'no-cache',
+          'RequestVerificationToken':this.REPORT_CSRF
+        }
+      }
+    )
+      .then(async response=>{
+        let payload=null;
+        try{ payload=await response.json(); }catch(_){}
+        if(!response.ok){
+          const message=payload&&(payload.detail||payload.title);
+          throw new Error(message||('HTTP '+response.status));
+        }
+        return payload;
+      })
+      .then(result=>{
+        this.setState({conv2BulkBusy:false});
+        this._toast(
+          String(result.confirmadasNuevas||0)+' nuevas · '+
+          String(result.omitidasConDecision||0)+' ya decididas · '+
+          String(result.coincidenciasFirmes||0)+' firmes'
+        );
+        this.loadConv2Review();
+      })
+      .catch(error=>this.setState({
+        conv2BulkBusy:false,
+        conv2ReviewError:String(error.message||error)
+      }));
+  };
   _conv2StatusMeta(state){
     const key=String(state||'').toLowerCase();
     if(key==='catalogada') return {label:'Catalogada',color:'#0E735C',bg:'rgba(14,138,110,.12)'};
+    if(key==='corredor_catalogado') return {label:'Corredor base',color:'#1E7188',bg:'rgba(30,156,184,.12)'};
     if(key==='revision') return {label:'Revisión',color:'#7A5D1D',bg:'rgba(224,161,46,.18)'};
     if(key==='faltante') return {label:'Faltante',color:'#9B2247',bg:'rgba(155,34,71,.11)'};
     if(key==='tramo_sin_geometria') return {label:'Sin geometría',color:'#9A3F27',bg:'rgba(192,85,46,.12)'};
@@ -5127,7 +5188,8 @@ class Component extends DCLogic {
     return {label:'Pendiente humana',color:'#6F6B66',bg:'#F0ECE6'};
   }
   openConv2Decision = (candidate,decision) => {
-    if(!candidate||String(candidate.tipoElemento||'')!=='subestacion') return;
+    const type=String(candidate&&candidate.tipoElemento||'');
+    if(!candidate||(type!=='subestacion'&&type!=='linea_transmision')) return;
     this.setState({
       conv2DecisionTarget:candidate,
       conv2DecisionKind:decision,
@@ -5214,8 +5276,9 @@ class Component extends DCLogic {
   locateConv2Candidate = (candidate) => {
     const catalogGeometry=candidate&&candidate.geometria;
     const privateSubstationGeometry=candidate&&candidate.geometriaSubestacionPrivada;
+    const publicInterconnectionGeometry=candidate&&candidate.geometriaInterconexionPublica;
     const topologyGeometry=candidate&&candidate.geometriaTopologicaSugerida;
-    if((!catalogGeometry&&!privateSubstationGeometry&&!topologyGeometry) || !window.L || !this.map){
+    if((!catalogGeometry&&!privateSubstationGeometry&&!publicInterconnectionGeometry&&!topologyGeometry) || !window.L || !this.map){
       this._toast('Este candidato todavía no tiene geometría para localizar');
       return;
     }
@@ -5225,8 +5288,10 @@ class Component extends DCLogic {
         this._conv2ReviewFocus=null;
       }
       this._conv2ReviewFocus=L.featureGroup().addTo(this.map);
+      let privateLayer=null;
+      let publicLayer=null;
       if(privateSubstationGeometry){
-        L.geoJSON({
+        privateLayer=L.geoJSON({
           type:'Feature',
           geometry:privateSubstationGeometry,
           properties:{}
@@ -5237,6 +5302,31 @@ class Component extends DCLogic {
           }),
           onEachFeature:(_,layer)=>layer.bindTooltip('Subestación privada del proyecto · no es nodo CFE/CENACE')
         }).addTo(this._conv2ReviewFocus);
+      }
+      if(publicInterconnectionGeometry){
+        publicLayer=L.geoJSON({
+          type:'Feature',
+          geometry:publicInterconnectionGeometry,
+          properties:{}
+        },{
+          style:{color:'#0E735C',weight:4,opacity:1,fillColor:'#0E735C',fillOpacity:.16},
+          pointToLayer:(_,latlng)=>L.circleMarker(latlng,{
+            radius:8,color:'#fff',weight:3,fillColor:'#0E735C',fillOpacity:1
+          }),
+          onEachFeature:(_,layer)=>layer.bindTooltip('Nodo público de interconexión · catálogo GeoJSON')
+        }).addTo(this._conv2ReviewFocus);
+      }
+      if(privateLayer&&publicLayer&&candidate.coincidenciaInterconexionPublicaFirme){
+        const privateBounds=privateLayer.getBounds();
+        const publicBounds=publicLayer.getBounds();
+        if(privateBounds.isValid()&&publicBounds.isValid()){
+          L.polyline(
+            [privateBounds.getCenter(),publicBounds.getCenter()],
+            {color:'#0E735C',weight:2,opacity:.9,dashArray:'4 7'}
+          )
+            .bindTooltip('Relación de interconexión declarada por la fuente · no representa el trazo físico de una línea')
+            .addTo(this._conv2ReviewFocus);
+        }
       }
       if(catalogGeometry){
         L.geoJSON({
@@ -5275,6 +5365,12 @@ class Component extends DCLogic {
       const rows=[
         ['Estado de revisión',meta.label],
         ['Coincidencia de catálogo',candidate.coincidenciaCatalogo||'Sin coincidencia'],
+        ['Subestación privada / propuesta',candidate.coincidenciaInterconexionPublicaFirme?'Sí · se conserva como instalación distinta':'—'],
+        ['Interconexión pública declarada',candidate.nombreInterconexionPublica||'—'],
+        ['Nodo público resuelto',candidate.coincidenciaInterconexionCatalogo||'—'],
+        ['Clave del nodo público',candidate.claveInterconexionCatalogo||'—'],
+        ['Distancia privada → nodo público',candidate.distanciaInterconexionPublicaKm!=null?Number(candidate.distanciaInterconexionPublicaKm).toFixed(3)+' km':'—'],
+        ['Criterio privada / pública',candidate.coincidenciaInterconexionPublicaFirme?'Firme · campo de interconexión, GCR y tensión compatibles':'—'],
         ['Puntaje automático',String(candidate.puntaje||0)+' / 100'],
         ['Tensión',candidate.tensionKv!=null?Number(candidate.tensionKv).toLocaleString('es-MX')+' kV':'—'],
         ['Geometrías de subestación privada',String(candidate.geometriasSubestacionPrivada||0)],
@@ -5286,11 +5382,18 @@ class Component extends DCLogic {
         ['Margen entre candidatos',candidate.margenPuntaje!=null?String(candidate.margenPuntaje)+' puntos':'—'],
         ['GCR del catálogo',candidate.gcrCatalogo||'—'],
         ['Soporte topológico',candidate.coincidenciaTopologicaFirme?'Firme por extremo de línea':'—'],
+        ['Tensión respaldada por red',candidate.coincidenciaTensionTopologicaFirme?'Firme · línea nominal y espacialmente conectada':'—'],
+        ['Niveles observados en el nodo',(candidate.nivelesTensionRedKv||[]).map(v=>Number(v).toLocaleString('es-MX')+' kV').join(' · ')||'—'],
+        ['Homónimo territorial',candidate.homonimoTerritorialDescartado?'Descartado por GCR incompatible y distancia extrema':'—'],
+        ['Agrupación territorial',candidate.grupoTerritorialSeparado?(candidate.claveAgrupacionTerritorial||'Separada'):'—'],
         ['Líneas de soporte',(candidate.lineasSoporte||[]).join(' · ')||'—'],
         ['Fuente georreferenciada',candidate.coincidenciaFuenteGeorreferenciadaFirme?'Firme como subestación privada/propuesta; no confirma conectividad':'—'],
         ['Filas vigentes con geometría de subestación',String(candidate.filasFuenteGeorreferenciada||0)],
         ['Separación máxima de la fuente',candidate.separacionMaximaFuenteKm!=null?Number(candidate.separacionMaximaFuenteKm).toFixed(3)+' km':'—'],
         ['Soportes de la fuente',(candidate.soportesFuente||[]).join(' · ')||'—'],
+        ['Corroboración multifuente',candidate.coincidenciaCorroboracionMultifuenteFirme?'Firme como referencia documental; no confirma ubicación ni conectividad':'—'],
+        ['Proyectos independientes corroborados',String(candidate.proyectosIndependientesCorroborados||0)],
+        ['Soportes de corroboración',(candidate.soportesCorroboracion||[]).join(' · ')||'—'],
         ['Motivo',candidate.motivoAutomatizacion||'—'],
         ['GCR',candidate.gcr||'—'],
         ['Entidad',candidate.entidad||'—'],
@@ -10969,7 +11072,8 @@ class Component extends DCLogic {
       })(),
       onOpenConv2Review:this.openConv2Review,
       onCloseConv2Review:this.closeConv2Review,
-      onReloadConv2Review:this.loadConv2Review,
+      onReloadConv2Review:()=>this.loadConv2Review(true),
+      onConfirmConv2Firmes:this.confirmConv2Firmes,
       conv2ReviewOpen:!!S.conv2ReviewOpen,
       conv2ReviewLoading:!!S.conv2ReviewLoading,
       conv2ReviewReady:!!S.conv2ReviewData&&!S.conv2ReviewLoading,
@@ -10979,9 +11083,19 @@ class Component extends DCLogic {
       conv2ReviewOnlyActive:!!S.conv2ReviewOnlyActive,
       conv2ReviewOnlyUnresolved:S.conv2ReviewOnlyUnresolved!==false,
       conv2ReviewQuery:S.conv2ReviewQuery||'',
+      conv2BulkDisabled:!!S.conv2BulkBusy||!!S.conv2ReviewLoading,
+      conv2BulkLabel:S.conv2BulkBusy
+        ? 'Registrando…'
+        : (S.conv2ReviewType==='linea_transmision'
+            ? 'Confirmar líneas firmes'
+            : 'Confirmar subestaciones firmes'),
+      conv2BulkTitle:S.conv2ReviewType==='linea_transmision'
+        ? 'Sólo confirma líneas vigentes catalogadas con dos extremos firmes'
+        : 'Sólo confirma subestaciones vigentes que cumplen las reglas automáticas',
+      conv2BulkStyle:'padding:7px 11px;border:1px solid '+((S.conv2BulkBusy||S.conv2ReviewLoading)?'#D8D3CC':'#0E735C')+';background:'+((S.conv2BulkBusy||S.conv2ReviewLoading)?'#F2F0ED':'#0E735C')+';color:'+((S.conv2BulkBusy||S.conv2ReviewLoading)?'#9A958E':'#fff')+';border-radius:8px;font-size:10.5px;font-weight:800;cursor:'+((S.conv2BulkBusy||S.conv2ReviewLoading)?'not-allowed':'pointer')+';font-family:inherit',
       conv2ReviewPhase:S.conv2ReviewType==='subestacion'
         ? 'FASE 1 · SUBESTACIONES'
-        : 'FASE 2 · LÍNEAS EN LECTURA',
+        : 'FASE 2 · LÍNEAS Y GRAFO GEOJSON',
       conv2ValidationSummary:(()=>{
         const values=S.conv2ReviewValidations||[];
         const count=decision=>values.filter(item=>item.decision===decision).length;
@@ -11016,11 +11130,21 @@ class Component extends DCLogic {
           conv2DecisionColor:color,
           conv2DecisionKicker:isReject
             ? 'Rechazar evidencia'
-            : (isMissing?'Confirmar ausencia en catálogo':'Confirmar subestación'),
-          conv2DecisionName:target.nombreDeclarado||'Subestación',
+            : (isMissing
+                ? 'Confirmar ausencia en catálogo'
+                : (String(target.tipoElemento||'')==='linea_transmision'
+                    ? 'Confirmar línea de transmisión'
+                    : 'Confirmar subestación')),
+          conv2DecisionName:target.nombreDeclarado||(
+            String(target.tipoElemento||'')==='linea_transmision'
+              ? 'Línea de transmisión'
+              : 'Subestación'
+          ),
           conv2DecisionCatalog:target.claveCatalogo
             ? 'Coincidencia propuesta: '+(target.coincidenciaCatalogo||target.claveCatalogo)+' · '+String(target.puntaje||0)+' / 100'
-            : 'No existe coincidencia de catálogo; la decisión la registrará como faltante confirmada.',
+            : (target.coincidenciaInterconexionPublicaFirme
+                ? 'Instalación privada no catalogada. Interconexión pública resuelta por separado: '+(target.coincidenciaInterconexionCatalogo||target.nombreInterconexionPublica||'sin nombre')+'.'
+                : 'No existe coincidencia de catálogo; la decisión la registrará como faltante confirmada.'),
           conv2DecisionPlaceholder:isReject
             ? 'Explica por qué la referencia no corresponde o no debe utilizarse…'
             : 'Indica el documento, criterio técnico o revisión cartográfica que sustenta la decisión…',
@@ -11035,6 +11159,18 @@ class Component extends DCLogic {
       ],
       conv2ReviewStats:(()=>{
         const d=S.conv2ReviewData||{};
+        if(S.conv2ReviewType==='linea_transmision'){
+          return [
+            {label:'Referencias LT',value:Number(d.referenciasLinea||0).toLocaleString('es-MX'),color:'#E0A12E'},
+            {label:'Líneas homologadas',value:Number(d.lineasCatalogadas||0).toLocaleString('es-MX'),color:'#0E735C'},
+            {label:'Corredor base',value:Number(d.lineasCorredorCatalogado||0).toLocaleString('es-MX'),color:'#1E7188'},
+            {label:'Conectadas · 2 extremos',value:Number(d.lineasConectadasGrafo||0).toLocaleString('es-MX'),color:'#0E8A6E'},
+            {label:'Parciales · 1 extremo',value:Number(d.lineasParcialesGrafo||0).toLocaleString('es-MX'),color:'#1E9CB8'},
+            {label:'Ambiguas',value:Number(d.lineasAmbiguasGrafo||0).toLocaleString('es-MX'),color:'#A57F2C'},
+            {label:'Sin resolver',value:Number(d.lineasSinResolverGrafo||0).toLocaleString('es-MX'),color:'#9B2247'},
+            {label:'Sin geometría',value:Number(d.lineasSinGeometria||0).toLocaleString('es-MX'),color:'#8A9099'}
+          ];
+        }
         return [
           {label:'Universo base',value:Number(d.proyectosUniverso||0).toLocaleString('es-MX'),color:'#6B3654'},
           {label:'Vigentes · Continúa',value:Number(d.proyectosContinuan||0).toLocaleString('es-MX'),color:'#0E8A6E'},
@@ -11075,6 +11211,9 @@ class Component extends DCLogic {
             const source=[
               candidate.nombreDeclarado,
               candidate.coincidenciaCatalogo,
+              candidate.nombreInterconexionPublica,
+              candidate.coincidenciaInterconexionCatalogo,
+              candidate.claveInterconexionCatalogo,
               candidate.gcr,
               candidate.entidad,
               candidate.municipio,
@@ -11089,7 +11228,7 @@ class Component extends DCLogic {
           .sort((a,b)=>{
             const active=Number(b.proyectosVigentes||0)-Number(a.proyectosVigentes||0);
             if(active) return active;
-            const priority={revision:0,faltante:1,tramo_sin_geometria:1,catalogada:2};
+            const priority={revision:0,faltante:1,tramo_sin_geometria:1,corredor_catalogado:2,catalogada:3};
             const status=(priority[String(a.estado||'')]??9)-(priority[String(b.estado||'')]??9);
             if(status) return status;
             return Number(b.puntaje||0)-Number(a.puntaje||0);
@@ -11119,8 +11258,26 @@ class Component extends DCLogic {
             const distance=candidate.distanciaInterconexionCalculadaMinimaKm!=null
               ? ' · '+Number(candidate.distanciaInterconexionCalculadaMinimaKm).toFixed(2)+'–'+Number(candidate.distanciaInterconexionCalculadaMaximaKm??candidate.distanciaInterconexionCalculadaMinimaKm).toFixed(2)+' km'
               : '';
-            const hasGeometry=!!candidate.geometria||!!candidate.geometriaSubestacionPrivada||!!candidate.geometriaTopologicaSugerida;
-            const canValidate=String(candidate.tipoElemento||'')==='subestacion';
+            const graphState=String(candidate.estadoConexionGrafo||'');
+            const graphLabel=graphState
+              ? ' · GRAFO '+graphState.replaceAll('_',' ').toUpperCase()+' · '+String(candidate.extremosResueltosGrafo||0)+'/2 EXTREMOS'
+              : '';
+            const lineMatchLabel=candidate.coincidenciaParExtremosFirme
+              ? ' · PAR DE EXTREMOS FIRME'
+              : (candidate.coincidenciaCodigoCircuitoFirme
+                  ? ' · CÓDIGO '+(candidate.codigosCircuitoDeclarados||[]).join('/')+' · CORREDOR BASE'
+                  : '');
+            const graphEndpoints=[
+              candidate.extremoADeclarado
+                ? 'A: '+candidate.extremoADeclarado+(candidate.extremoACatalogo?' → '+candidate.extremoACatalogo:'')
+                : '',
+              candidate.extremoBDeclarado
+                ? 'B: '+candidate.extremoBDeclarado+(candidate.extremoBCatalogo?' → '+candidate.extremoBCatalogo:'')
+                : ''
+            ].filter(Boolean).join(' · ');
+            const hasGeometry=!!candidate.geometria||!!candidate.geometriaSubestacionPrivada||!!candidate.geometriaInterconexionPublica||!!candidate.geometriaTopologicaSugerida;
+            const candidateType=String(candidate.tipoElemento||'');
+            const canValidate=candidateType==='subestacion'||candidateType==='linea_transmision';
             const hasCatalog=!!candidate.claveCatalogo;
             const confirmDecision=hasCatalog?'confirmada':'faltante_confirmada';
             let validationDetail='Sin decisión humana';
@@ -11143,8 +11300,12 @@ class Component extends DCLogic {
               validationStatus:validationMeta.label,
               validationBg:validationMeta.bg,
               validationColor:validationMeta.color,
-              catalogo:candidate.coincidenciaCatalogo||'Sin coincidencia de catálogo',
-              puntaje:String(candidate.puntaje||0)+' / 100 · '+tension+distance+(candidate.coincidenciaTopologicaFirme?' · TOPO FIRME':(candidate.coincidenciaFuenteGeorreferenciadaFirme?' · FUENTE GEO FIRME':(candidate.coincidenciaAutomaticaFirme?' · AUTO FIRME':''))),
+              catalogo:(candidate.coincidenciaCatalogo||(
+                candidate.coincidenciaInterconexionPublicaFirme
+                  ? 'Privada no catalogada · nodo público: '+(candidate.coincidenciaInterconexionCatalogo||candidate.nombreInterconexionPublica||'—')
+                  : 'Sin coincidencia de catálogo'
+              ))+(graphEndpoints?' · '+graphEndpoints:''),
+              puntaje:String(candidate.puntaje||0)+' / 100 · '+tension+distance+lineMatchLabel+graphLabel+(candidate.coincidenciaAnexoTecnicoFirme?' · ANEXO TÉCNICO FIRME':(candidate.coincidenciaCorroboracionMultifuenteFirme?' · MULTIFUENTE FIRME':(candidate.homonimoTerritorialDescartado?' · HOMÓNIMO DESCARTADO':(candidate.coincidenciaInterconexionPublicaFirme?' · INTERCONEXIÓN FIRME':(candidate.coincidenciaTopologicaFirme?' · TOPO FIRME':(candidate.coincidenciaTensionTopologicaFirme?' · kV POR RED':(candidate.coincidenciaFuenteGeorreferenciadaFirme?' · FUENTE GEO FIRME':(candidate.coincidenciaAutomaticaFirme?' · AUTO FIRME':'')))))))),
               territorio:[candidate.gcr,candidate.entidad,candidate.municipio].filter(Boolean).join(' · ')||'—',
               proyectos:String(candidate.proyectosRelacionados||0)+' total · '+String(candidate.proyectosVigentes||0)+' vigentes',
               decisiones:(candidate.decisiones||[]).join(' · ')||'Sin decisión',
@@ -11158,7 +11319,7 @@ class Component extends DCLogic {
               validationLocked:!canValidate,
               confirmLabel:hasCatalog?'Confirmar':'Confirmar faltante',
               confirmTitle:hasCatalog
-                ? 'Confirmar que la referencia corresponde a esta subestación del catálogo'
+                ? 'Confirmar que la referencia corresponde a este elemento del catálogo'
                 : 'Confirmar que la referencia no está representada en el catálogo actual',
               confirmStyle:actionStyle(hasCatalog?'#0E735C':'#7A5D1D','#fff'),
               rejectStyle:actionStyle('#9B2247','#fff'),

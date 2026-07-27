@@ -372,7 +372,9 @@ geometrías KML/KMZ o elementos de red identificados.
 - Registro de una decisión:
   `POST /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones`
 - Confirmación institucional en lote de coincidencias firmes:
-  `POST /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones/ConfirmarCoincidenciasAutomaticas`
+  `POST /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones/ConfirmarCoincidenciasAutomaticas?tipoElemento=subestacion`
+- Confirmación institucional separada de líneas firmes:
+  `POST /DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones/ConfirmarCoincidenciasAutomaticas?tipoElemento=linea_transmision`
 
 La capa aparece como **Vacíos de red · 2ª convocatoria** y está apagada por
 defecto. Un elemento faltante sin geometría no se dibuja artificialmente; se
@@ -401,6 +403,20 @@ como vigente a la anterior, pero no la elimina; la tabla
 registro está protegido con sesión, antiforgery y autorización para personal
 DGMESNIE o administración.
 
+### Fotografía de arranque
+
+El diagnóstico completo descarga la hoja base, la trazabilidad, las
+subestaciones, las líneas y las GCR, y después reconstruye todos los candidatos.
+Para evitar que cada reinicio de `dotnet watch` deje la mesa esperando varios
+minutos, una ejecución exitosa conserva una fotografía versionada en
+`App_Data/cache/pam_convocatoria_coverage_v13.json`.
+
+La apertura normal usa esa fotografía durante un máximo configurable de 24
+horas. **Volver a consultar** envía `refrescar=true`, vuelve a leer las fuentes
+y reemplaza la fotografía de forma atómica. El archivo es sólo caché
+reconstruible: las decisiones institucionales continúan almacenadas en
+`dgmesnie.PamConvocatoriaValidacionRed`.
+
 ### Automatización conservadora de subestaciones
 
 Para reducir la revisión manual sin convertir una proximidad visual en evidencia
@@ -419,6 +435,16 @@ La GCR se usa para separar homónimos o respaldar una coincidencia fuerte. No
 anula por sí sola una coincidencia exacta y globalmente única, porque la región
 informada por la convocatoria y la región espacial del catálogo pueden provenir
 de cortes distintos.
+
+Un homónimo de catálogo se descarta cuando la GCR es incompatible y su punto
+queda a 100 km o más de la geometría declarada. El descarte no convierte el
+homónimo en una asociación: si la fuente vigente aporta una referencia
+georreferenciada consistente, ésta se conserva como `faltante_confirmada`.
+
+Los grupos con el mismo nombre y tensión se separan por GCR y entidad antes de
+resolverlos. El subgrupo principal conserva el identificador histórico y los
+subgrupos territoriales adicionales reciben un discriminador estable. Así, dos
+referencias llamadas `Moctezuma` en entidades distintas no comparten decisión.
 
 Si la subestación no existe en el catálogo de puntos, sólo puede registrarse
 automáticamente como `faltante_confirmada` cuando su nombre coincide exactamente
@@ -449,11 +475,114 @@ confirmación por cercanía. Cuando hay distancia declarada, la geometría priva
 sirve únicamente como origen para calcular la distancia hacia el nodo
 catalogado y contrastar ambas magnitudes.
 
+Cuando la fuente distingue explícitamente una instalación privada o propuesta
+de un punto público de interconexión, ambos se modelan por separado. El criterio
+automático sólo es firme si:
+
+1. todas las filas vigentes del grupo aportan geometría específica de la
+   subestación privada, tensión y GCR;
+2. el nombre privado contiene un calificador funcional controlado, como
+   `Solar`, `Eólica`, `Fotovoltaica`, `Maniobras`, `Privada`, `Colectora` o
+   `Elevadora`;
+3. el campo de interconexión declara una subestación con nombre distinto;
+4. el nodo público resuelve a una sola clave de catálogo por nombre exacto o
+   equivalente, con GCR, tensión y margen compatibles; y
+5. no existe conflicto con una distancia declarada.
+
+En ese caso, la instalación privada queda como `faltante_confirmada` y conserva
+su geometría de fuente. El nodo público se registra únicamente como referencia
+de interconexión independiente, con su propia clave y geometría. La aplicación
+puede dibujar una línea discontinua entre ambos para explicar la relación
+declarada, pero esa línea no representa el trazo físico de una línea de
+transmisión ni demuestra conectividad por proximidad. Por ejemplo,
+`SE Tecamachalco Solar` no se homologa con `SE Tecamachalco`; permanece como
+instalación privada y su interconexión declarada se resuelve contra
+`SE Tecamachalco II`.
+
+La tensión de una subestación se modela como un conjunto de niveles y no como
+un valor único. El punto GeoJSON puede representar el nivel de entrada de la
+RNT, mientras que las líneas conectadas al mismo nodo nominal y espacial
+documentan niveles de salida hacia transmisión regional o distribución. Un
+nivel distinto al publicado en el punto sólo deja de considerarse conflicto
+cuando existe al menos una línea que:
+
+1. usa exactamente el mismo nombre normalizado de la subestación;
+2. termina a no más de 3 km del punto catalogado;
+3. pertenece a la misma GCR;
+4. tiene la tensión declarada por la convocatoria; y
+5. cuando la fuente aporta coordenada de subestación, el punto declarado queda
+   a no más de 15 km del nodo catalogado.
+
+La evidencia conserva todos los niveles observados en el punto y en sus líneas.
+No se presupone el sentido del flujo ni la relación de transformación; sólo se
+reconoce que el mismo nodo geoespacial tiene infraestructura documentada en más
+de un nivel de tensión.
+
+Cuando los vértices capturados para la subestación son exactamente los mismos
+que los del proyecto, esa geometría se marca como repetida. Puede conservarse
+como evidencia de la fuente, pero no se usa como coordenada independiente para
+descartar una coincidencia exacta de catálogo respaldada por GCR y por un
+extremo de línea compatible.
+
+El orden de los vértices de una línea GeoJSON no se presume igual al orden de
+los nombres `origen - destino`. Cuando uno o ambos nombres de extremo existen
+en el catálogo de subestaciones, la orientación se resuelve comparando los dos
+sentidos y exigiendo que al menos un extremo quede a no más de 3 km de su punto
+nominal. Si no existe ese anclaje, se conserva el orden de fuente sin convertir
+un cruce visual en conectividad.
+
 El lote conserva el usuario institucional que lo autorizó, la regla aplicada,
 la evidencia y el historial. Las coincidencias con homónimos, claves múltiples,
 conflictos o evidencia insuficiente permanecen en la mesa de revisión. Una
 confirmación de esta mesa tampoco cambia automáticamente
 `PAMProyectoUbicacion.Validada`; esa promoción sigue siendo una etapa separada.
+La confirmación automática en lote sólo persiste candidatos con al menos un
+proyecto cuya última decisión sea `Continúa`; el resto del universo permanece
+disponible como evidencia histórica sin generar decisiones automáticas.
+
+Para grupos que mezclan folios vigentes e históricos, la resolución automática
+se calcula exclusivamente con las filas cuya última decisión sea `Continúa`.
+Las filas históricas permanecen en el universo, los folios y la trazabilidad,
+pero no pueden introducir una clave, tensión o geometría que bloquee o altere
+el dictamen del subconjunto vigente. Si el grupo no tiene proyectos vigentes,
+se conserva la evaluación histórica únicamente como diagnóstico.
+
+Una referencia sin coincidencia de catálogo y sin geometría firme también puede
+registrarse como `faltante_confirmada` por **corroboración multifuente** cuando:
+
+1. aparece con el mismo nombre normalizado en al menos tres folios vigentes;
+2. esos folios corresponden a por lo menos tres proyectos independientes;
+3. todas las filas pertenecen a una sola GCR;
+4. todas declaran el mismo nivel de tensión; y
+5. ninguna resolución del grupo se promueve a una clave de catálogo.
+
+Este criterio confirma únicamente que varias solicitudes independientes
+documentan la misma referencia ausente. Las geometrías ausentes, incompletas o
+espacialmente inconsistentes se conservan como evidencia, pero no se publican
+como ubicación. El criterio no crea geometría, no localiza la subestación, no
+confirma el entronque y no demuestra conectividad eléctrica.
+
+Los anexos técnicos públicos pueden cerrar una discrepancia sólo cuando su
+evidencia queda registrada en
+`wwwroot/data/pam_convocatoria_evidencia_anexos.json` con folio, nombre
+declarado, GCR, tensión, coordenadas, URL pública y SHA-256 del archivo y del
+documento revisado. El motor vuelve a comprobar esos campos contra la fila
+vigente antes de aplicar la regla.
+
+Hay dos modalidades:
+
+1. `catalogo_multitension`: el anexo identifica el nodo público y su tensión, y
+   la geometría técnica queda dentro de la tolerancia del punto de catálogo;
+2. `referencia_faltante_distinta`: el anexo distingue por función, tensión y
+   coordenadas una subestación de maniobras o propuesta respecto del homónimo
+   de catálogo.
+
+La primera modalidad permite homologar el mismo nodo físico aun cuando el
+GeoJSON publique sólo uno de sus niveles de tensión. La segunda registra una
+`faltante_confirmada`, publica exclusivamente el punto documentado por el anexo
+y elimina la clave del homónimo; no crea una conexión eléctrica. Un KMZ que
+sólo delimita el parque o una ruta, sin identificar el nodo público, no satisface
+esta regla.
 
 El orden obligatorio de consolidación es:
 
@@ -465,6 +594,61 @@ Por ello, la primera fase permite confirmar o rechazar únicamente
 subestaciones. Las líneas permanecen visibles en modo lectura hasta cerrar los
 nodos. Ninguna decisión de esta bitácora modifica por sí sola el catálogo
 oficial, crea geometría o cambia `Validada = 0` en un PAM.
+
+Para la fase de líneas, el GeoJSON de líneas es la fuente geométrica maestra y
+la Segunda Convocatoria funciona sólo como evidencia nominal, de tensión y de
+proyecto. Cada referencia se contrasta contra la geometría completa y contra
+sus dos extremos reales:
+
+1. `conectada`: ambos extremos nominales resuelven por nombre exacto o
+   equivalencia controlada a subestaciones catalogadas situadas a no más de
+   3 km del extremo real;
+2. `parcial`: sólo uno de los dos extremos cumple esa regla;
+3. `ambigua`: un extremo tiene más de una subestación homónima prácticamente
+   equidistante y no existe margen espacial suficiente;
+4. `sin_resolver`: la línea existe en el GeoJSON, pero ninguno de sus extremos
+   puede anclarse de forma firme; y
+5. `sin_geometria`: la convocatoria menciona el tramo, pero no existe una
+   geometría homóloga en el catálogo.
+
+Una línea `conectada` recibe soporte topológico adicional en el puntaje; una
+línea `parcial` recibe únicamente soporte débil. La tensión no se usa para
+rechazar un extremo, porque una subestación puede recibir una tensión de la RNT
+y entregar otra hacia transmisión regional o distribución. La tensión se
+conserva como atributo y evidencia. Ni la cercanía al centroide, ni el cruce
+visual con otra línea, ni el paso por un punto intermedio crean conectividad.
+
+La homologación nominal de líneas admite el sentido inverso `A–B`/`B–A`,
+artículos equivalentes, los calificadores `Pot.`/`Potencia`, códigos insertados
+entre los extremos y un único calificador adicional, siempre que tensión y
+territorio no estén en conflicto. La firma se construye con tokens
+normalizados; no se usa similitud abierta.
+
+Los códigos como `A3190`, `73490` o `93580` no son identificadores nacionales
+únicos. Sólo pueden identificar un **corredor base** cuando:
+
+1. el código aparece en la fuente y en las características del GeoJSON;
+2. queda un solo nombre de línea compatible por tensión y GCR; y
+3. la referencia comparte al menos un token nominal con ese corredor.
+
+`corredor_catalogado` significa que se identificó la línea preexistente sobre
+la cual la convocatoria declara un entronque, maniobra o entrada/salida. Su
+geometría sirve como contexto, pero no se presenta como la geometría del nuevo
+tramo. Si el código se repite, carece de anclaje nominal o entra en conflicto,
+la referencia queda en `revision`, sin seleccionar una geometría arbitraria.
+
+El lote automático de líneas se ejecuta como fase separada y sólo admite una
+referencia de un proyecto vigente cuando:
+
+1. resuelve a una clave de línea del catálogo;
+2. su estado es `catalogada`, nunca `corredor_catalogado`;
+3. el grafo resuelve sus dos extremos como nodos reales;
+4. el par de extremos es firme, o el nombre de catálogo alcanza 90 puntos y la
+   conectividad de ambos extremos es firme.
+
+Las líneas parciales, ambiguas, sin resolver, sin geometría y los corredores
+base permanecen en revisión. La confirmación registra la homologación
+documental; no afirma flujo, capacidad disponible ni condición operativa.
 
 La capa principal **Proyectos PAM / PAMRNT** no espera la descarga de Google
 Sheets. Carga primero el catálogo PAM y las asociaciones del catálogo eléctrico;
@@ -485,3 +669,11 @@ pública no bloquea los iconos ni su interacción.
 | `PAM-CONV2-v1.3` | 2026-07-26 | Segunda pasada conservadora: GCR para desambiguar, similitud fuerte con margen y extremos nominales de línea para faltantes trazables |
 | `PAM-CONV2-v1.4` | 2026-07-26 | Tercera pasada conservadora: subestaciones privadas/propuestas georreferenciadas por la fuente vigente como faltantes confirmadas, sin inferir conectividad ni promoverlas al catálogo |
 | `PAM-CONV2-v1.5` | 2026-07-26 | Equivalencias de nomenclatura controladas para artículos, presa y bancos; conserva calificadores funcionales y numerales para evitar homologaciones incorrectas |
+| `PAM-CONV2-v1.6` | 2026-07-27 | Separa la subestación privada/propuesta del nodo público de interconexión, conserva ambas geometrías y evita homologar por contención instalaciones distintas |
+| `PAM-CONV2-v1.7` | 2026-07-27 | Modela múltiples niveles de tensión por nodo usando el punto y las líneas conectadas; resuelve discrepancias sólo con nombre, GCR, extremo espacial y distancia fuente compatibles |
+| `PAM-CONV2-v1.8` | 2026-07-27 | Descarta homónimos territoriales extremos, separa grupos por GCR y entidad, prioriza evidencia topológica trazable y limita el lote automático a proyectos vigentes |
+| `PAM-CONV2-v1.9` | 2026-07-27 | Confirma como faltantes únicamente referencias sin geometría corroboradas por tres o más proyectos vigentes independientes con GCR y tensión consistentes |
+| `PAM-CONV2-v1.10` | 2026-07-27 | Separa el universo histórico de las filas vigentes al resolver cada grupo; conserva toda la trazabilidad pero sólo `Continúa` participa en decisiones automáticas |
+| `PAM-CONV2-v1.11` | 2026-07-27 | Incorpora anexos técnicos públicos con URL y SHA-256: confirma nodos multivoltaje sólo con coincidencia geométrica y conserva como faltantes distintas las subestaciones de maniobras documentadas |
+| `PAM-CONV2-v1.12` | 2026-07-27 | Consolida referencias de línea contra su GeoJSON completo y clasifica la conectividad de sus extremos como conectada, parcial, ambigua, sin resolver o sin geometría; la Segunda Convocatoria permanece como evidencia |
+| `PAM-CONV2-v1.13` | 2026-07-27 | Homologa líneas por pares de extremos en ambos sentidos y separa los corredores base identificados por código de los nuevos entronques; los códigos repetidos permanecen sin geometría y en revisión |
