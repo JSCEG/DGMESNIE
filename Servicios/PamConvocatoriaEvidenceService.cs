@@ -129,12 +129,67 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         _connectionString =
             configuration.GetConnectionString("DefaultConnection") ??
             string.Empty;
-        _snapshotPath = Path.IsPathRooted(_options.SnapshotPath)
-            ? _options.SnapshotPath
+        var configuredSnapshotPath =
+            ResolveVersionedSnapshotPath(_options.SnapshotPath);
+        if (!string.Equals(
+                configuredSnapshotPath,
+                _options.SnapshotPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation(
+                "La fotografía de Segunda Convocatoria se alineó con {Version}: {ConfiguredPath} → {ResolvedPath}.",
+                RulesVersion,
+                _options.SnapshotPath,
+                configuredSnapshotPath);
+        }
+        _snapshotPath = Path.IsPathRooted(configuredSnapshotPath)
+            ? configuredSnapshotPath
             : Path.GetFullPath(
                 Path.Combine(
                     environment.ContentRootPath,
-                    _options.SnapshotPath));
+                    configuredSnapshotPath));
+    }
+
+    private static string ResolveVersionedSnapshotPath(
+        string configuredPath)
+    {
+        var normalizedPath = string.IsNullOrWhiteSpace(configuredPath)
+            ? "App_Data/cache/pam_convocatoria_coverage.json"
+            : configuredPath.Trim();
+        var fileName = Path.GetFileName(normalizedPath);
+        if (!Regex.IsMatch(
+                fileName,
+                @"^pam_convocatoria_coverage_v\d+\.json$",
+                RegexOptions.IgnoreCase |
+                RegexOptions.CultureInvariant))
+        {
+            return normalizedPath;
+        }
+
+        var ruleVersion = Regex.Match(
+            RulesVersion,
+            @"v\d+\.(\d+)$",
+            RegexOptions.IgnoreCase |
+            RegexOptions.CultureInvariant);
+        if (!ruleVersion.Success)
+        {
+            return normalizedPath;
+        }
+
+        var expectedFileName =
+            $"pam_convocatoria_coverage_v{ruleVersion.Groups[1].Value}.json";
+        if (string.Equals(
+                fileName,
+                expectedFileName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return normalizedPath;
+        }
+
+        var directory = Path.GetDirectoryName(normalizedPath);
+        return string.IsNullOrWhiteSpace(directory)
+            ? expectedFileName
+            : Path.Combine(directory, expectedFileName);
     }
 
     public async Task<IReadOnlyList<PamConvocatoriaEvidenceResult>> ResolverPamAsync(

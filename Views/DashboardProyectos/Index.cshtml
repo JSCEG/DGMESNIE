@@ -1278,7 +1278,10 @@
         </sc-if>
 
         <sc-if value="{{ conv2ReviewErrorOn }}" hint-placeholder-val="{{ false }}">
-          <div style="margin:16px 20px;padding:11px 13px;border:1px solid rgba(192,85,46,.32);background:rgba(192,85,46,.07);color:#9A3F27;border-radius:9px;font-size:11.5px">{{ conv2ReviewError }}</div>
+          <div style="margin:16px 20px;padding:11px 13px;border:1px solid rgba(192,85,46,.32);background:rgba(192,85,46,.07);color:#9A3F27;border-radius:9px;font-size:11.5px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <span>{{ conv2ReviewError }}</span>
+            <button onClick="{{ onRetryConv2Review }}" disabled="{{ conv2ReviewLoading }}" style="padding:7px 11px;border:1px solid #9A3F27;background:#fff;color:#9A3F27;border-radius:8px;font-size:10.5px;font-weight:800;cursor:pointer;font-family:inherit">Reintentar</button>
+          </div>
         </sc-if>
 
         <sc-if value="{{ conv2DecisionOpen }}" hint-placeholder-val="{{ false }}">
@@ -5115,20 +5118,33 @@ class Component extends DCLogic {
       if(!response.ok) throw new Error('HTTP '+response.status);
       return response.json();
     });
+    const validationsUrl='/DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones';
     Promise.all([
       requestJson(summaryUrl),
-      requestJson('/DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/Validaciones')
+      requestJson(validationsUrl)
+        .then(data=>({data,error:null}))
+        .catch(error=>({data:{validaciones:[]},error}))
     ])
-      .then(([data,validation])=>this.setState({
+      .then(([data,validationResult])=>this.setState({
         conv2ReviewData:data,
-        conv2ReviewValidations:Array.isArray(validation.validaciones)?validation.validaciones:[],
+        conv2ReviewValidations:Array.isArray(validationResult.data.validaciones)
+          ?validationResult.data.validaciones
+          :[],
         conv2ReviewLoading:false,
-        conv2ReviewError:''
+        conv2ReviewError:validationResult.error
+          ?'La evidencia cargó, pero la bitácora de decisiones no está disponible. Puedes consultar la mesa y reintentar después.'
+          :''
       }))
-      .catch(error => this.setState({
-        conv2ReviewLoading:false,
-        conv2ReviewError:'No fue posible cargar la evidencia: '+String(error.message||error)
-      }));
+      .catch(error => {
+        const message=String(error.message||error);
+        const networkError=/failed to fetch|networkerror|load failed/i.test(message);
+        this.setState({
+          conv2ReviewLoading:false,
+          conv2ReviewError:networkError
+            ?'El servicio dejó de responder. Verifica que la aplicación siga activa y pulsa Reintentar.'
+            :'No fue posible cargar la evidencia: '+message
+        });
+      });
   };
   confirmConv2Firmes = () => {
     if(this.state.conv2BulkBusy) return;
@@ -11119,6 +11135,7 @@ class Component extends DCLogic {
       onOpenConv2Review:this.openConv2Review,
       onCloseConv2Review:this.closeConv2Review,
       onReloadConv2Review:()=>this.loadConv2Review(true),
+      onRetryConv2Review:()=>this.loadConv2Review(false),
       onConfirmConv2Firmes:this.confirmConv2Firmes,
       conv2ReviewOpen:!!S.conv2ReviewOpen,
       conv2ReviewLoading:!!S.conv2ReviewLoading,
