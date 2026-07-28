@@ -6,7 +6,7 @@ public sealed class PamConvocatoriaEvidenceResult
 {
     public long ProyectoId { get; init; }
     public string ClaveProyecto { get; init; } = string.Empty;
-    public string VersionReglas { get; init; } = "PAM-CONV2-v1.15";
+    public string VersionReglas { get; init; } = "PAM-CONV2-v1.18";
     public string Estado { get; init; } = "sin_coincidencias";
     public int CoincidenciasAltas { get; init; }
     public int RequierenRevision { get; init; }
@@ -45,7 +45,7 @@ public sealed class PamConvocatoriaProjectMatch
 
 public sealed class PamConvocatoriaCoverageReport
 {
-    public string VersionReglas { get; init; } = "PAM-CONV2-v1.16";
+    public string VersionReglas { get; init; } = "PAM-CONV2-v1.18";
     public DateTime GeneradoUtc { get; init; } = DateTime.UtcNow;
     public int ProyectosUniverso { get; init; }
     public int ProyectosConTrazabilidad { get; init; }
@@ -56,6 +56,10 @@ public sealed class PamConvocatoriaCoverageReport
     public int SubestacionesCatalogadas { get; init; }
     public int SubestacionesRevision { get; init; }
     public int SubestacionesFaltantes { get; init; }
+    public int SubestacionesCfeRgdRespaldadas { get; init; }
+    public int SubestacionesCfeRgdRevision { get; init; }
+    public int SubestacionesCfeRgdTerritorioIncompatible { get; init; }
+    public int SubestacionesCfeRgdRespaldadasVigentes { get; init; }
     public int ReferenciasLinea { get; init; }
     public int LineasCatalogadas { get; init; }
     public int LineasCorredorCatalogado { get; init; }
@@ -172,6 +176,7 @@ public sealed class PamConvocatoriaInfrastructureCandidate
     public double? Latitud { get; init; }
     public double? Longitud { get; init; }
     public string Fuente { get; init; } = string.Empty;
+    public CfeRgdSubstationAudit? AuditoriaCfeRgd { get; init; }
 }
 
 public sealed class PamConvocatoriaGeoJson
@@ -183,7 +188,7 @@ public sealed class PamConvocatoriaGeoJson
 
 public sealed class PamConvocatoriaGeoJsonMeta
 {
-    public string Version { get; init; } = "PAM-CONV2-v1.16";
+    public string Version { get; init; } = "PAM-CONV2-v1.18";
     public string Layer { get; init; } = "evidencia_segunda_convocatoria";
     public DateTime GeneratedUtc { get; init; } = DateTime.UtcNow;
     public int UniverseProjects { get; init; }

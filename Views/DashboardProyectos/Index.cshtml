@@ -5210,6 +5210,31 @@ class Component extends DCLogic {
     if(key==='pendiente') return {label:'Pendiente registrada',color:'#6F6B66',bg:'#F0ECE6'};
     return {label:'Pendiente humana',color:'#6F6B66',bg:'#F0ECE6'};
   }
+  _conv2ValidationName(value){
+    return this._norm(value)
+      .replace(/^(?:cfe)?(?:se|subestacionelectrica)/,'');
+  }
+  _conv2ValidationMatchesCandidate(validation,candidate){
+    if(!validation||!candidate) return false;
+    const sameVoltage=validation.tensionKv==null||candidate.tensionKv==null||
+      Math.abs(Number(validation.tensionKv)-Number(candidate.tensionKv))<=.11;
+    const sameTerritory=
+      this._norm(validation.entidad)===this._norm(candidate.entidad)&&
+      this._norm(validation.gcr)===this._norm(candidate.gcr);
+    const sameName=
+      this._conv2ValidationName(validation.nombreDeclarado)===
+      this._conv2ValidationName(candidate.nombreDeclarado);
+    if(!sameVoltage||!sameTerritory||!sameName) return false;
+    const decision=String(validation.decision||'').toLowerCase();
+    if(decision==='confirmada'){
+      return Boolean(candidate.claveCatalogo)&&
+        String(validation.claveCatalogo||'')===String(candidate.claveCatalogo);
+    }
+    if(decision==='faltante_confirmada'){
+      return !candidate.claveCatalogo;
+    }
+    return true;
+  }
   openConv2Decision = (candidate,decision) => {
     const type=String(candidate&&candidate.tipoElemento||'');
     if(!candidate||(type!=='subestacion'&&type!=='linea_transmision')) return;
@@ -5414,6 +5439,29 @@ class Component extends DCLogic {
         ? (Number(distanceMin).toFixed(3)+(distanceMax!=null&&Math.abs(Number(distanceMax)-Number(distanceMin))>.0005?'–'+Number(distanceMax).toFixed(3):'')+' km')
         : 'Sin distancia calculable';
       const isLineCandidate=String(candidate.tipoElemento||'')==='linea_transmision';
+      const cfeAudit=candidate.auditoriaCfeRgd||null;
+      const cfeAuditLabel=!cfeAudit
+        ? 'Sin auditoría'
+        : cfeAudit.estado==='respaldada'
+          ? 'Respaldo documental · requiere validación humana'
+          : cfeAudit.estado==='revision'
+            ? 'Coincidencia parcial · requiere revisión'
+            : cfeAudit.estado==='territorio_incompatible'
+              ? 'Homónimo descartado por territorio'
+              : 'Sin coincidencia';
+      const cfeBanks=cfeAudit
+        ? (cfeAudit.coincidencias||[]).map(match=>
+            [
+              match.division,
+              match.zona,
+              match.subestacion,
+              match.banco,
+              Number(match.tensionAtKv).toLocaleString('es-MX')+'/'+
+                Number(match.tensionMtKv).toLocaleString('es-MX')+' kV',
+              'p. '+String(match.paginaFuente||'—')
+            ].filter(Boolean).join(' · ')
+          ).join(' | ')
+        : '';
       const rows=[
         ['Estado de revisión',meta.label],
         ['Coincidencia de catálogo',candidate.coincidenciaCatalogo||'Sin coincidencia'],
@@ -5425,6 +5473,14 @@ class Component extends DCLogic {
         ['Criterio privada / pública',candidate.coincidenciaInterconexionPublicaFirme?'Firme · campo de interconexión, GCR y tensión compatibles':'—'],
         ['Puntaje automático',String(candidate.puntaje||0)+' / 100'],
         ['Tensión',candidate.tensionKv!=null?Number(candidate.tensionKv).toLocaleString('es-MX')+' kV':'—'],
+        ['Auditoría CFE RGD 2026',cfeAuditLabel],
+        ['Bancos CFE RGD',cfeBanks||'—'],
+        ['Hallazgos CFE RGD',cfeAudit?(cfeAudit.hallazgos||[]).join(' · ')||'—':'—'],
+        ['Regla y fuente CFE RGD',cfeAudit
+          ? (cfeAudit.regla||'CFE-RGD-AUDIT-v1')+' · '+(cfeAudit.fuente||'—')+
+            ' · horizonte '+String(cfeAudit.anioHorizonte||'—')+
+            ' · SHA-256 '+(cfeAudit.sha256Fuente||'—')
+          : '—'],
         ['Geometrías de subestación privada',String(candidate.geometriasSubestacionPrivada||0)],
         ['Distancias declaradas compatibles',String(candidate.distanciasCompatibles||0)+' de '+String(candidate.distanciasDeclaradas||0)],
         ['Distancia calculada hacia el nodo',coordinateDistance],
@@ -11242,7 +11298,11 @@ class Component extends DCLogic {
           {label:'Otros estatus',value:Number(d.proyectosOtrosEstatus||0).toLocaleString('es-MX'),color:'#A57F2C'},
           {label:'Sin decisión',value:Number(d.proyectosSinDecision||0).toLocaleString('es-MX'),color:'#8A9099'},
           {label:'Referencias SE',value:Number(d.referenciasSubestacion||0).toLocaleString('es-MX'),color:'#9B2247'},
-          {label:'Referencias LT',value:Number(d.referenciasLinea||0).toLocaleString('es-MX'),color:'#E0A12E'}
+          {label:'Referencias LT',value:Number(d.referenciasLinea||0).toLocaleString('es-MX'),color:'#E0A12E'},
+          {label:'CFE RGD respalda',value:Number(d.subestacionesCfeRgdRespaldadas||0).toLocaleString('es-MX'),color:'#0E735C'},
+          {label:'CFE RGD · vigentes',value:Number(d.subestacionesCfeRgdRespaldadasVigentes||0).toLocaleString('es-MX'),color:'#0E8A6E'},
+          {label:'CFE RGD · revisión',value:Number(d.subestacionesCfeRgdRevision||0).toLocaleString('es-MX'),color:'#A57F2C'},
+          {label:'CFE · territorio incompatible',value:Number(d.subestacionesCfeRgdTerritorioIncompatible||0).toLocaleString('es-MX'),color:'#9B2247'}
         ];
       })(),
       conv2ReviewHeaders:[
@@ -11257,9 +11317,18 @@ class Component extends DCLogic {
       ],
       ...(()=>{
         const data=S.conv2ReviewData||{};
+        const validations=S.conv2ReviewValidations||[];
         const validationByCandidate=new Map(
-          (S.conv2ReviewValidations||[]).map(item=>[item.candidatoId,item])
+          validations.map(item=>[item.candidatoId,item])
         );
+        const validationForCandidate=candidate=>{
+          const direct=validationByCandidate.get(candidate.candidatoId);
+          if(this._conv2ValidationMatchesCandidate(direct,candidate)) return direct;
+          const compatible=validations.filter(item=>
+            this._conv2ValidationMatchesCandidate(item,candidate)
+          );
+          return compatible.length===1?compatible[0]:null;
+        };
         const query=this._norm(S.conv2ReviewQuery||'');
         const candidates=(data.candidatos||[])
           .filter(candidate=>String(candidate.tipoElemento||'')===(S.conv2ReviewType||'subestacion'))
@@ -11267,12 +11336,12 @@ class Component extends DCLogic {
           .filter(candidate=>!S.conv2ReviewOnlyActive||Number(candidate.proyectosVigentes||0)>0)
           .filter(candidate=>{
             if(S.conv2ReviewOnlyUnresolved===false) return true;
-            const validation=validationByCandidate.get(candidate.candidatoId);
+            const validation=validationForCandidate(candidate);
             return !validation||validation.decision==='pendiente';
           })
           .filter(candidate=>{
             if(!query) return true;
-            const validation=validationByCandidate.get(candidate.candidatoId)||{};
+            const validation=validationForCandidate(candidate)||{};
             const source=[
               candidate.nombreDeclarado,
               candidate.coincidenciaCatalogo,
@@ -11287,6 +11356,15 @@ class Component extends DCLogic {
               ...(candidate.decisiones||[]),
               ...(candidate.referenciasEquivalentesLinea||[]),
               ...(candidate.codigosCircuitoDeclarados||[]),
+              candidate.auditoriaCfeRgd&&candidate.auditoriaCfeRgd.estado,
+              ...((candidate.auditoriaCfeRgd&&candidate.auditoriaCfeRgd.hallazgos)||[]),
+              ...((candidate.auditoriaCfeRgd&&candidate.auditoriaCfeRgd.coincidencias)||[])
+                .flatMap(match=>[
+                  match.division,
+                  match.zona,
+                  match.subestacion,
+                  match.banco
+                ]),
               validation.decision,
               validation.observacion,
               validation.usuarioNombre
@@ -11320,7 +11398,7 @@ class Component extends DCLogic {
           onConv2ReviewNext:()=>this.setState({conv2ReviewPage:Math.min(maxPage,page+1)}),
           conv2ReviewRows:pageCandidates.map((candidate,index)=>{
             const meta=this._conv2StatusMeta(candidate.estado);
-            const validation=validationByCandidate.get(candidate.candidatoId)||null;
+            const validation=validationForCandidate(candidate);
             const validationMeta=this._conv2ValidationMeta(validation&&validation.decision);
             const tension=candidate.tensionKv!=null?Number(candidate.tensionKv).toLocaleString('es-MX')+' kV':'—';
             const distance=candidate.distanciaInterconexionCalculadaMinimaKm!=null
@@ -11335,6 +11413,16 @@ class Component extends DCLogic {
               : (candidate.coincidenciaCodigoCircuitoFirme
                   ? ' · CÓDIGO '+(candidate.codigosCircuitoDeclarados||[]).join('/')+' · CORREDOR BASE'
                   : '');
+            const cfeState=String(
+              candidate.auditoriaCfeRgd&&candidate.auditoriaCfeRgd.estado||''
+            );
+            const cfeLabel=cfeState==='respaldada'
+              ? ' · CFE RGD RESPALDA · VALIDACIÓN PENDIENTE'
+              : cfeState==='revision'
+                ? ' · CFE RGD REVISIÓN'
+                : cfeState==='territorio_incompatible'
+                  ? ' · CFE RGD HOMÓNIMO TERRITORIAL'
+                  : '';
             const graphEndpoints=[
               candidate.extremoADeclarado
                 ? 'A: '+candidate.extremoADeclarado+(candidate.extremoACatalogo?' → '+candidate.extremoACatalogo:'')
@@ -11373,7 +11461,7 @@ class Component extends DCLogic {
                   ? 'Privada no catalogada · nodo público: '+(candidate.coincidenciaInterconexionCatalogo||candidate.nombreInterconexionPublica||'—')
                   : 'Sin coincidencia de catálogo'
               ))+(graphEndpoints?' · '+graphEndpoints:''),
-              puntaje:String(candidate.puntaje||0)+' / 100 · '+tension+distance+(Number(candidate.mencionesEquivalentesLinea||1)>1?' · '+String(candidate.mencionesEquivalentesLinea)+' MENCIONES EQUIVALENTES':'')+lineMatchLabel+graphLabel+(candidate.coincidenciaAnexoTecnicoFirme?' · ANEXO TÉCNICO FIRME':(candidate.coincidenciaCorroboracionMultifuenteFirme?' · MULTIFUENTE FIRME':(candidate.homonimoTerritorialDescartado?' · HOMÓNIMO DESCARTADO':(candidate.coincidenciaInterconexionPublicaFirme?' · INTERCONEXIÓN FIRME':(candidate.coincidenciaTopologicaFirme?' · TOPO FIRME':(candidate.coincidenciaTensionTopologicaFirme?' · kV POR RED':(candidate.coincidenciaFuenteGeorreferenciadaFirme?' · FUENTE GEO FIRME':(candidate.coincidenciaAutomaticaFirme?' · AUTO FIRME':'')))))))),
+              puntaje:String(candidate.puntaje||0)+' / 100 · '+tension+distance+(Number(candidate.mencionesEquivalentesLinea||1)>1?' · '+String(candidate.mencionesEquivalentesLinea)+' MENCIONES EQUIVALENTES':'')+lineMatchLabel+graphLabel+cfeLabel+(candidate.coincidenciaAnexoTecnicoFirme?' · ANEXO TÉCNICO FIRME':(candidate.coincidenciaCorroboracionMultifuenteFirme?' · MULTIFUENTE FIRME':(candidate.homonimoTerritorialDescartado?' · HOMÓNIMO DESCARTADO':(candidate.coincidenciaInterconexionPublicaFirme?' · INTERCONEXIÓN FIRME':(candidate.coincidenciaTopologicaFirme?' · TOPO FIRME':(candidate.coincidenciaTensionTopologicaFirme?' · kV POR RED':(candidate.coincidenciaFuenteGeorreferenciadaFirme?' · FUENTE GEO FIRME':(candidate.coincidenciaAutomaticaFirme?' · AUTO FIRME':'')))))))),
               territorio:[candidate.gcr,candidate.entidad,candidate.municipio].filter(Boolean).join(' · ')||'—',
               proyectos:String(candidate.proyectosRelacionados||0)+' total · '+String(candidate.proyectosVigentes||0)+' vigentes',
               decisiones:(candidate.decisiones||[]).join(' · ')||'Sin decisión',

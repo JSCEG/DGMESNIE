@@ -29,7 +29,7 @@ public sealed class PamConvocatoriaEvidenceOptions
     public int CacheMinutes { get; set; } = 30;
     public int SnapshotMaxAgeMinutes { get; set; } = 1440;
     public string SnapshotPath { get; set; } =
-        "App_Data/cache/pam_convocatoria_coverage_v16.json";
+        "App_Data/cache/pam_convocatoria_coverage_v18.json";
     public int HighConfidenceThreshold { get; set; } = 90;
     public int ReviewThreshold { get; set; } = 70;
     public int MaximumMatchesPerPam { get; set; } = 12;
@@ -42,6 +42,8 @@ public sealed class PamConvocatoriaEvidenceOptions
     public double SourceToCatalogSubstationKm { get; set; } = 15;
     public string TechnicalAnnexEvidencePath { get; set; } =
         "wwwroot/data/pam_convocatoria_evidencia_anexos.json";
+    public string CfeRgdCatalogPath { get; set; } =
+        "wwwroot/data/cfe_rgd_subestaciones_2026.json";
 }
 
 public interface IPamConvocatoriaEvidenceService
@@ -64,9 +66,9 @@ public interface IPamConvocatoriaEvidenceService
 
 public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceService
 {
-    public const string RulesVersion = "PAM-CONV2-v1.16";
+    public const string RulesVersion = "PAM-CONV2-v1.18";
 
-    private const string CacheKey = "pam-conv2-evidence-catalog-v16";
+    private const string CacheKey = "pam-conv2-evidence-catalog-v18";
     private static readonly SemaphoreSlim CatalogLock = new(1, 1);
     private static readonly HashSet<string> EmptyValues = new(
         new[]
@@ -111,6 +113,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
     private readonly IMemoryCache _cache;
     private readonly PamConvocatoriaEvidenceOptions _options;
     private readonly ILogger<PamConvocatoriaEvidenceService> _logger;
+    private readonly ICfeRgdSubstationAuditService _cfeRgdAuditService;
     private readonly string _snapshotPath;
     private readonly string _connectionString;
 
@@ -120,12 +123,14 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         IOptions<PamConvocatoriaEvidenceOptions> options,
         IConfiguration configuration,
         IWebHostEnvironment environment,
+        ICfeRgdSubstationAuditService cfeRgdAuditService,
         ILogger<PamConvocatoriaEvidenceService> logger)
     {
         _httpClient = httpClient;
         _cache = cache;
         _options = options.Value;
         _logger = logger;
+        _cfeRgdAuditService = cfeRgdAuditService;
         _connectionString =
             configuration.GetConnectionString("DefaultConnection") ??
             string.Empty;
@@ -2302,16 +2307,11 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 continue;
             }
 
-            for (var index = 0;
-                 index < territoryGroups.Count;
-                 index++)
+            foreach (var territoryGroup in territoryGroups)
             {
-                var territoryGroup = territoryGroups[index];
                 output.Add(new SubstationCandidateGroup(
                     territoryGroup.ToList(),
-                    index == 0
-                        ? string.Empty
-                        : $"TERRITORIO:{territoryGroup.Key}",
+                    $"TERRITORIO:{territoryGroup.Key}",
                     true,
                     territoryGroup.Key));
             }
@@ -2492,6 +2492,15 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             var resolutions = evaluationRows
                 .Select(row => row.SubstationResolution)
                 .ToList();
+            var cfeRgdAudit = _cfeRgdAuditService.Auditar(
+                representative.DeclaredSubstation,
+                representative.VoltageKv,
+                FirstNonEmpty(
+                    evaluationRows.Select(row => row.Gcr).ToArray()),
+                FirstNonEmpty(
+                    evaluationRows.Select(row => row.State).ToArray()),
+                FirstNonEmpty(
+                    evaluationRows.Select(row => row.Municipality).ToArray()));
             var territorialHomonymRejected = resolutions.Any(item =>
                 item.TerritorialHomonymRejected);
             var directCatalogKeys = resolutions
@@ -2676,6 +2685,27 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 technicalMissingFirm
                 ? new List<string>()
                 : directCatalogKeys;
+            var cfeRgdTerritorialCorrection =
+                string.Equals(
+                    cfeRgdAudit.Estado,
+                    CfeRgdAuditStates.Backed,
+                    StringComparison.Ordinal) &&
+                cfeRgdAudit.NombreExacto &&
+                oneCatalogResolution &&
+                gcrConflict &&
+                !gcrSupport &&
+                !resolutions.Any(item =>
+                    item.DistanceKm.HasValue &&
+                    item.DistanceKm.Value <=
+                        _options.SourceToCatalogSubstationKm);
+            if (cfeRgdTerritorialCorrection)
+            {
+                catalogKeys.Clear();
+                exactCatalogFirm = false;
+                strongCatalogFirm = false;
+                topologyFirm = false;
+                territorialHomonymRejected = true;
+            }
             var sourceGeoreferencedFirm =
                 catalogKeys.Count == 0 &&
                 !technicalAnnexFirm &&
@@ -2845,6 +2875,11 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                         ? "el anexo confirma el mismo nodo de catálogo y documenta un nivel de tensión adicional"
                         : "el anexo confirma una subestación de maniobras distinta del homónimo de catálogo; no se homologa ni se infiere conectividad por proximidad");
             }
+            if (cfeRgdTerritorialCorrection)
+            {
+                candidateEvidence.Add(
+                    "CFE RGD confirma el nombre y la tensión en el territorio declarado, mientras la sugerencia de catálogo pertenece a una GCR incompatible; el homónimo se retira de la coincidencia propuesta.");
+            }
 
             var automationReason = automaticFirm
                 ? technicalCatalogFirm
@@ -2872,7 +2907,9 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                                 ? "Nombre exacto desambiguado por GCR y evidencia eléctrica compatible."
                                 : "Nombre exacto repetido, pero todas las distancias declaradas son compatibles con la misma clave y no hay conflictos."
                 : catalogKeys.Count == 0
-                    ? supportingLines.Count > 0
+                    ? cfeRgdTerritorialCorrection
+                        ? "CFE RGD respalda la subestación en el territorio declarado y descarta la sugerencia de catálogo de una GCR incompatible; la ubicación oficial permanece pendiente."
+                      : supportingLines.Count > 0
                         ? "Existe como extremo nominal de línea, pero falta evidencia suficiente para confirmarlo automáticamente."
                         : "Sin coincidencia en el catálogo."
                     : catalogKeys.Count > 1
@@ -3089,7 +3126,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                         : null),
                 Latitud = point?.Latitude,
                 Longitud = point?.Longitude,
-                Fuente = _options.BaseUrl
+                Fuente = _options.BaseUrl,
+                AuditoriaCfeRgd = cfeRgdAudit
             });
         }
 
@@ -3265,6 +3303,31 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             SubestacionesFaltantes = candidates.Count(candidate =>
                 string.Equals(candidate.TipoElemento, "subestacion", StringComparison.Ordinal) &&
                 string.Equals(candidate.Estado, "faltante", StringComparison.Ordinal)),
+            SubestacionesCfeRgdRespaldadas = candidates.Count(candidate =>
+                string.Equals(candidate.TipoElemento, "subestacion", StringComparison.Ordinal) &&
+                string.Equals(
+                    candidate.AuditoriaCfeRgd?.Estado,
+                    CfeRgdAuditStates.Backed,
+                    StringComparison.Ordinal)),
+            SubestacionesCfeRgdRevision = candidates.Count(candidate =>
+                string.Equals(candidate.TipoElemento, "subestacion", StringComparison.Ordinal) &&
+                string.Equals(
+                    candidate.AuditoriaCfeRgd?.Estado,
+                    CfeRgdAuditStates.Review,
+                    StringComparison.Ordinal)),
+            SubestacionesCfeRgdTerritorioIncompatible = candidates.Count(candidate =>
+                string.Equals(candidate.TipoElemento, "subestacion", StringComparison.Ordinal) &&
+                string.Equals(
+                    candidate.AuditoriaCfeRgd?.Estado,
+                    CfeRgdAuditStates.TerritoryMismatch,
+                    StringComparison.Ordinal)),
+            SubestacionesCfeRgdRespaldadasVigentes = candidates.Count(candidate =>
+                string.Equals(candidate.TipoElemento, "subestacion", StringComparison.Ordinal) &&
+                candidate.ProyectosVigentes > 0 &&
+                string.Equals(
+                    candidate.AuditoriaCfeRgd?.Estado,
+                    CfeRgdAuditStates.Backed,
+                    StringComparison.Ordinal)),
             ReferenciasLinea = candidates.Count(candidate =>
                 string.Equals(candidate.TipoElemento, "linea_transmision", StringComparison.Ordinal)),
             LineasCatalogadas = candidates.Count(candidate =>

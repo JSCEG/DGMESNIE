@@ -141,6 +141,9 @@ builder.Services.AddHttpClient<IPamRedAssociationService, PamRedAssociationServi
 });
 builder.Services.Configure<PamConvocatoriaEvidenceOptions>(
     builder.Configuration.GetSection(PamConvocatoriaEvidenceOptions.SectionName));
+builder.Services.AddSingleton<
+    ICfeRgdSubstationAuditService,
+    CfeRgdSubstationAuditService>();
 builder.Services.AddHttpClient<IPamConvocatoriaEvidenceService, PamConvocatoriaEvidenceService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(180);

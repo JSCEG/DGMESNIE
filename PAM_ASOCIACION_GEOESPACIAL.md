@@ -691,6 +691,8 @@ pública no bloquea los iconos ni su interacción.
 | `PAM-CONV2-v1.15` | 2026-07-27 | Usa la versión activa persistida como fuente de verdad de conectividad cuando el hash del GeoJSON coincide; conserva el diagnóstico local como fallback y el refresco explícito invalida realmente la caché |
 | `RED-GRAFO-v1.2` | 2026-07-27 | Modela la transformación RNT-distribución sin exigir igualdad de tensión cuando nombre, extremo y aislamiento espacial son firmes; añade erratas por transposición adyacente y conserva la tensión para desambiguar nodos homónimos próximos |
 | `PAM-CONV2-v1.16` | 2026-07-27 | Agrupa aliases conservadores sin reemplazar el candidato ni su historial: 33 menciones sin geometría se organizan en 26 corredores lógicos, 10 vigentes; expone geometrías de contexto y KMZ fuente sin inferir el trazo físico ni la conectividad |
+| `PAM-CONV2-v1.17` | 2026-07-27 | Contrasta candidatos de subestación con las 2,797 filas del PDF CFE RGD 2026 mediante nombre, territorio y tensión; muestra evidencia y página fuente, pero mantiene cada resultado pendiente de validación humana |
+| `PAM-CONV2-v1.18` | 2026-07-27 | Hace territorial el identificador de todos los grupos nominales separados para impedir que una validación histórica migre entre entidades cuando cambia el territorio principal |
 
 La simulación se consulta en
 `GET /DashboardProyectos/RedElectrica/Grafo/Simulacion`. Reconstruye una
@@ -760,6 +762,75 @@ con geometría contextual de proyecto o subestación y las 33 conservan al menos
 un enlace KMZ de la fuente. Esa información sirve para priorizar y contrastar
 la revisión, pero no se convierte en geometría de línea, no se persiste en el
 grafo y no promueve una asociación PAM.
+
+`PAM-CONV2-v1.17` incorpora como fuente de contraste el documento
+`Valores de Corto Circuito en las RGD 2026.pdf`, publicado en 2026 con
+horizonte 2028. El catálogo reproducible contiene 2,797 bancos de 16 divisiones
+y conserva para cada fila división, zona, subestación, banco, tensiones AT/MT,
+capacidad y página fuente. El SHA-256 del PDF auditado es
+`5a5d28076023f4be8ebce637201dbcb3956700d9b920477428ca972a4a314a19`.
+La conversión Markdown se usa únicamente como índice de búsqueda porque sus
+tablas separan columnas; la extracción estructurada se genera directamente del
+PDF con diseño preservado y se verifican visualmente los casos ambiguos.
+
+La corrida de control sobre 297 candidatos clasificó 41 como respaldados por
+CFE RGD, 12 en revisión y 13 con territorio incompatible; 10 de los respaldados
+pertenecen a proyectos vigentes. Entre los controles dirigidos, ORIZABA
+(13.8 kV), CUQUIO (115 kV), Teziutlán II (13.8 kV) y Magdalena (23 kV)
+quedaron respaldados. FRONTERA en Coahuila y San Carlos Potencia en Tamaulipas
+quedaron como territorio incompatible; Monclova a 230 kV, San Martin Potencia a
+230 kV, Chapultepec a 34.5 kV y Teziutlán II a 34.5 kV permanecen en revisión
+por tensión o alias. Esta auditoría no escribe en
+`dgmesnie.PamConvocatoriaValidacionRed`, no activa `Validada` y no promueve por
+sí sola una asociación al catálogo o al grafo.
+
+La revisión humana de las 10 coincidencias CFE RGD vigentes detectó que el
+identificador nominal sin territorio podía cambiar de dueño cuando variaba el
+número de proyectos activos de un grupo homónimo. En particular, una decisión
+histórica de Santa Fe, Guanajuato, aparecía asociada al candidato Santa Fe,
+Veracruz; el mismo patrón se observó entre Zopo, Chiapas, y Zopo, Tabasco.
+`PAM-CONV2-v1.18` asigna el discriminador `TERRITORIO:{GCR|ENTIDAD}` a todos
+los candidatos de cualquier grupo separado. Las decisiones históricas
+afectadas deben migrarse por nombre, tensión, GCR y entidad antes de volver a
+mostrarse como vigentes; la versión no reescribe SQL Server automáticamente.
+La mesa ignora además una decisión si cambió la identidad territorial, la
+tensión o la clave de catálogo del candidato. Cuando CFE RGD respalda el nombre
+exacto en el territorio declarado y la sugerencia del catálogo pertenece a una
+GCR incompatible, la sugerencia se retira y el caso vuelve a pendiente sin
+promover automáticamente el punto CFE. Esta regla corrigió el caso San Felipe
+del Progreso, cuya confirmación anterior apuntaba a un homónimo de Baja
+California.
+
+La mesa visual de las 10 coincidencias vigentes produjo el siguiente dictamen
+propuesto. `Conservar` no requiere una decisión nueva; `migrar` conserva el
+dictamen, pero lo mueve al identificador territorial v1.18. Ninguna operación
+se persiste hasta contar con autorización:
+
+| Referencia | Evidencia CFE RGD | Dictamen propuesto |
+|---|---|---|
+| ORIZABA | p. 77, `02-ORI-115-1/2`, 115/13.8 kV | Confirmar la coincidencia `SE ORIZABA` |
+| S.E. La Vega | p. 56, `03-LVG-69-1`, 69/23 kV | Conservar `confirmada` |
+| SAN FELIPE DEL PROGRESO | p. 67, `01-FPG-115-1`, 115/13.8 kV | Retirar la confirmación contra Baja California y registrar `faltante_confirmada` |
+| San Martin | p. 72, `02-MAR-115-1/2`, 115/13.8 y 115/34.5 kV | Conservar `confirmada` |
+| SE CUQUIO | p. 56, `03-CUQ-115-1`, 115/23 kV | Conservar `faltante_confirmada` |
+| SE Ébano | p. 43, `06-EBA-115-1`, 115/13.8 kV | Conservar `confirmada` |
+| SE MOCTEZUMA | p. 41, `03-MZM-115-1`, 115/13.8 kV | Migrar `confirmada` al identificador territorial |
+| SE Santa FE, Veracruz | p. 79, `02-SNF-115-1`, 115/13.8 kV | Confirmar; no reutilizar el dictamen de Guanajuato |
+| SE Villa Juarez | p. 47, `03-VJU-115-1`, 115/13.8 kV | Conservar `faltante_confirmada` |
+| TAMARINDO II | p. 79, `02-TDD-115-1`, 115/13.8 kV | Migrar `confirmada` al identificador territorial |
+
+La migración técnica v1.18 tiene siete decisiones históricas con destino
+territorial único:
+
+| Referencia | Identificador anterior | Identificador v1.18 | Acción |
+|---|---|---|---|
+| SE MOCTEZUMA, San Luis Potosí | `C2-SE-66313ED90B5D33BB` | `C2-SE-AA166FFFB86FC369` | Migrar |
+| SE CFE EL POTOSI, San Luis Potosí | `C2-SE-21D04ABE947C7428` | `C2-SE-77BD83304EE2D9C6` | Migrar |
+| SE Zopo, Chiapas | `C2-SE-AA9F181BC6D9F738` | `C2-SE-216123CA29CF6ED7` | Migrar |
+| SE NADADORES, Coahuila | `C2-SE-C66590D33498AC2C` | `C2-SE-3BBD113A9EFAA3BE` | Migrar |
+| Ojuelos, Ciudad de México | `C2-SE-52250B6BC1E44667` | `C2-SE-A319B79B5FB23645` | Migrar |
+| TAMARINDO II, Veracruz | `C2-SE-7916F95191EAEF58` | `C2-SE-E3786F94C0C2619E` | Migrar |
+| Santa Fe, Guanajuato | `C2-SE-377929129AD0F0B2` | `C2-SE-E985BAFE0DE6237B` | Retirar el registro anterior; el destino ya tiene una confirmación vigente |
 
 El recálculo PAM contra la versión 4 mantuvo 281 proyectos, 133 asociados y
 285 semillas. Las semillas conectadas aumentaron de 262 a 265, las parciales
