@@ -231,6 +231,169 @@ public sealed class AtlasSenController : ControllerBase
         }
     }
 
+    [HttpGet("Divisiones/Series")]
+    [ResponseCache(Duration = 600, Location = ResponseCacheLocation.Client)]
+    [ProducesResponseType(
+        typeof(AtlasSenTariffSeriesResponse),
+        StatusCodes.Status200OK)]
+    public async Task<ActionResult<AtlasSenTariffSeriesResponse>>
+        TariffDivisionSeries(
+            CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return Ok(await _service.GetTariffSeriesAsync(
+                cancellationToken));
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception exception) when (IsSourceException(exception))
+        {
+            return AtlasUnavailable(
+                exception,
+                "consultar las series tarifarias");
+        }
+    }
+
+    [HttpGet("Demanda")]
+    [ResponseCache(Duration = 120, Location = ResponseCacheLocation.Client)]
+    [ProducesResponseType(
+        typeof(AtlasSenDemandResponse),
+        StatusCodes.Status200OK)]
+    public async Task<ActionResult<AtlasSenDemandResponse>> Demand(
+        [FromQuery] string? region = null,
+        [FromQuery] bool hourly = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (region is { Length: > 100 })
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Región de demanda no válida");
+        }
+
+        try
+        {
+            var snapshot = await _service.GetDemandAsync(cancellationToken);
+            var selected = string.IsNullOrWhiteSpace(region)
+                ? snapshot.Regions
+                : snapshot.Regions
+                    .Where(pair => pair.Key.Contains(
+                        region.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToDictionary(
+                        pair => pair.Key,
+                        pair => pair.Value,
+                        StringComparer.OrdinalIgnoreCase);
+            var regions = selected.ToDictionary(
+                pair => pair.Key,
+                pair => hourly
+                    ? pair.Value
+                    : new AtlasSenDemandRegion
+                    {
+                        ManagementId = pair.Value.ManagementId,
+                        Latest = pair.Value.Latest
+                    },
+                StringComparer.OrdinalIgnoreCase);
+            return Ok(new AtlasSenDemandResponse
+            {
+                UpdatedAt = snapshot.UpdatedAt,
+                OperatingDate = snapshot.OperatingDate,
+                Source = snapshot.Source,
+                IncludesHourlyDetail = hourly,
+                Regions = regions
+            });
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception exception) when (IsSourceException(exception))
+        {
+            return AtlasUnavailable(exception, "consultar la demanda");
+        }
+    }
+
+    [HttpGet("Demanda/GeoJson")]
+    [ResponseCache(Duration = 120, Location = ResponseCacheLocation.Client)]
+    [Produces("application/geo+json", "application/json")]
+    [ProducesResponseType(
+        typeof(AtlasSenGeoJson),
+        StatusCodes.Status200OK)]
+    public async Task<ActionResult<AtlasSenGeoJson>> DemandGeoJson(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return Ok(await _service.GetDemandRegionsGeoJsonAsync(
+                cancellationToken));
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception exception) when (IsSourceException(exception))
+        {
+            return AtlasUnavailable(
+                exception,
+                "exportar la demanda regional");
+        }
+    }
+
+    [HttpGet("Clima")]
+    [ResponseCache(Duration = 900, Location = ResponseCacheLocation.Client)]
+    [ProducesResponseType(
+        typeof(AtlasSenWeatherResponse),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AtlasSenWeatherResponse>> Weather(
+        [FromQuery] string region,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(region) ||
+            region.Length > 100)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Región meteorológica no válida");
+        }
+
+        try
+        {
+            var weather = await _service.GetWeatherAsync(
+                region,
+                cancellationToken);
+            if (weather is null)
+            {
+                return NotFound(new ProblemDetails
+                {
+                    Status = StatusCodes.Status404NotFound,
+                    Title = "Región meteorológica no encontrada",
+                    Detail =
+                        "La temperatura se ofrece únicamente para las regiones de control CENACE."
+                });
+            }
+
+            return Ok(weather);
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception exception) when (IsSourceException(exception))
+        {
+            return AtlasUnavailable(
+                exception,
+                "consultar la temperatura regional");
+        }
+    }
+
     [HttpGet("Mda")]
     [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]
     [ProducesResponseType(
@@ -290,6 +453,35 @@ public sealed class AtlasSenController : ControllerBase
         catch (Exception exception) when (IsSourceException(exception))
         {
             return AtlasUnavailable(exception, "consultar el MDA");
+        }
+    }
+
+    [HttpGet("GeneracionPrivada/GeoJson")]
+    [ResponseCache(Duration = 600, Location = ResponseCacheLocation.Client)]
+    [Produces("application/geo+json", "application/json")]
+    [ProducesResponseType(
+        typeof(AtlasSenGeoJson),
+        StatusCodes.Status200OK)]
+    public async Task<ActionResult<AtlasSenGeoJson>>
+        PrivateGenerationGeoJson(
+            CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return Ok(
+                await _service.GetPrivateGenerationGeoJsonAsync(
+                    cancellationToken));
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception exception) when (IsSourceException(exception))
+        {
+            return AtlasUnavailable(
+                exception,
+                "exportar la generación privada planeada");
         }
     }
 

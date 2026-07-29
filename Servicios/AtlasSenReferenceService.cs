@@ -14,6 +14,8 @@ namespace NSIE.Servicios;
 public sealed class AtlasSenOptions
 {
     public const string SectionName = "AtlasSen";
+    private const string DefaultSnapshotDirectory =
+        "App_Data/cache/atlas-sen";
 
     public bool Enabled { get; set; } = true;
     public string AtlasUrl { get; set; } =
@@ -24,11 +26,18 @@ public sealed class AtlasSenOptions
         "https://raw.githubusercontent.com/batuenergy/atlas-sen/main/public/data/cfe_users_ts.json";
     public string TariffEnergyUrl { get; set; } =
         "https://raw.githubusercontent.com/batuenergy/atlas-sen/main/public/data/cfe_energy_ts.json";
+    public string DemandUrl { get; set; } =
+        "https://raw.githubusercontent.com/batuenergy/atlas-sen/data/public/data/demand/today.json";
     public string MdaUrl { get; set; } =
         "https://raw.githubusercontent.com/batuenergy/atlas-sen/data/public/data/pnd/today.json";
+    public string WeatherUrl { get; set; } =
+        "https://api.open-meteo.com/v1/forecast";
+    public string PrivateGenerationUrl { get; set; } =
+        "https://raw.githubusercontent.com/batuenergy/atlas-sen/main/public/data/private_generation.json";
     public string SnapshotDirectory { get; set; } =
-        "App_Data/cache/atlas-sen";
+        DefaultSnapshotDirectory;
     public int CacheMinutes { get; set; } = 360;
+    public int LiveDataCacheMinutes { get; set; } = 5;
     public int UpdateCheckHours { get; set; } = 24;
 }
 
@@ -56,10 +65,26 @@ public interface IAtlasSenReferenceService
     Task<AtlasSenTariffOverview> GetTariffOverviewAsync(
         CancellationToken cancellationToken = default);
 
+    Task<AtlasSenTariffSeriesResponse> GetTariffSeriesAsync(
+        CancellationToken cancellationToken = default);
+
     Task<AtlasSenGeoJson> GetTariffDivisionsGeoJsonAsync(
         CancellationToken cancellationToken = default);
 
+    Task<AtlasSenDemandSnapshot> GetDemandAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<AtlasSenGeoJson> GetDemandRegionsGeoJsonAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<AtlasSenWeatherResponse?> GetWeatherAsync(
+        string region,
+        CancellationToken cancellationToken = default);
+
     Task<AtlasSenMdaSnapshot> GetMdaAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<AtlasSenGeoJson> GetPrivateGenerationGeoJsonAsync(
         CancellationToken cancellationToken = default);
 
     Task<AtlasSenStatus> AcknowledgeDatasetAsync(
@@ -74,13 +99,34 @@ public sealed partial class AtlasSenReferenceService :
     private const string SubstationsCacheKey = "atlas-sen-substations-v1";
     private const string TariffGeoJsonCacheKey = "atlas-sen-tariff-geojson-v1";
     private const string TariffOverviewCacheKey = "atlas-sen-tariff-overview-v1";
+    private const string TariffSeriesCacheKey = "atlas-sen-tariff-series-v1";
+    private const string DemandCacheKey = "atlas-sen-demand-v1";
+    private const string DemandGeoJsonCacheKey = "atlas-sen-demand-geojson-v1";
+    private const string WeatherCacheKeyPrefix = "atlas-sen-weather-v1";
     private const string MdaCacheKey = "atlas-sen-mda-v1";
+    private const string PrivateGenerationGeoJsonCacheKey =
+        "atlas-sen-private-generation-geojson-v1";
     private static readonly SemaphoreSlim RefreshLock = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
         WriteIndented = true
     };
+    private static readonly IReadOnlyDictionary<string, (double Latitude, double Longitude)>
+        DemandRegionWeatherPoints =
+            new Dictionary<string, (double Latitude, double Longitude)>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                ["Baja California"] = (30.15, -115.15),
+                ["Baja California Sur"] = (25.70, -111.75),
+                ["Central"] = (19.43, -99.13),
+                ["Noreste"] = (25.67, -100.31),
+                ["Noroeste"] = (28.90, -110.95),
+                ["Norte"] = (28.63, -106.08),
+                ["Occidental"] = (20.67, -103.35),
+                ["Oriental"] = (19.17, -96.13),
+                ["Peninsular"] = (20.97, -89.62)
+            };
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMemoryCache _cache;
@@ -100,12 +146,9 @@ public sealed partial class AtlasSenReferenceService :
         _cache = cache;
         _options = options.Value;
         _logger = logger;
-        _snapshotDirectory = Path.IsPathRooted(_options.SnapshotDirectory)
-            ? Path.GetFullPath(_options.SnapshotDirectory)
-            : Path.GetFullPath(
-                Path.Combine(
-                    environment.ContentRootPath,
-                    _options.SnapshotDirectory));
+        _snapshotDirectory = ResolveSnapshotDirectory(
+            _options.SnapshotDirectory,
+            environment.ContentRootPath);
         _manifestPath = Path.Combine(
             _snapshotDirectory,
             "manifest.json");
@@ -185,11 +228,12 @@ public sealed partial class AtlasSenReferenceService :
                 TimeSpan.FromMinutes(Math.Max(5, _options.CacheMinutes)));
 
             _logger.LogInformation(
-                "Atlas SEN revisado: {Transmission} subestaciones de transmisión, {Distribution} de distribución/subtransmisión, {Lines} trazos de línea, {Divisions} divisiones y {MdaZones} zonas MDA; {Pending} dataset(s) estructurales pendientes.",
+                "Atlas SEN revisado: {Transmission} subestaciones de transmisión, {Distribution} de distribución/subtransmisión, {Lines} trazos de línea, {Divisions} divisiones, {DemandRegions} regiones de demanda y {MdaZones} zonas MDA; {Pending} dataset(s) estructurales pendientes.",
                 status.TransmissionSubstations,
                 status.DistributionSubstations,
                 status.TransmissionLineFeatures,
                 status.TariffDivisions,
+                status.DemandRegions,
                 status.MdaZones,
                 states.Count(state => state.PendingReview));
             return status;
@@ -440,14 +484,39 @@ public sealed partial class AtlasSenReferenceService :
         var atlas = await GetDocumentAsync(
             AtlasSenDatasetKeys.Atlas,
             cancellationToken);
+        var users = await GetDocumentAsync(
+            AtlasSenDatasetKeys.TariffUsers,
+            cancellationToken);
+        var energy = await GetDocumentAsync(
+            AtlasSenDatasetKeys.TariffEnergy,
+            cancellationToken);
         using var document = JsonDocument.Parse(atlas);
+        using var usersDocument = JsonDocument.Parse(users);
+        using var energyDocument = JsonDocument.Parse(energy);
         var divisions = GetProperty(document.RootElement, "TZ");
+        var referenceYear = ResolveTariffReferenceYear(
+            usersDocument.RootElement,
+            energyDocument.RootElement);
+        var usersByDivision = GetProperty(
+            usersDocument.RootElement,
+            "byDivision");
+        var energyByDivision = GetProperty(
+            energyDocument.RootElement,
+            "byDivision");
         var features = new List<AtlasSenGeoJsonFeature>();
         if (divisions.ValueKind == JsonValueKind.Object)
         {
             foreach (var division in divisions.EnumerateObject())
             {
                 var coordinates = ReverseLatLngCoordinates(division.Value);
+                var usersTotal = SumTariffDivisionYear(
+                    usersByDivision,
+                    division.Name,
+                    referenceYear);
+                var energyMwh = SumTariffDivisionYear(
+                    energyByDivision,
+                    division.Name,
+                    referenceYear);
                 features.Add(new AtlasSenGeoJsonFeature
                 {
                     Geometry = JsonSerializer.SerializeToElement(new
@@ -459,8 +528,12 @@ public sealed partial class AtlasSenReferenceService :
                     {
                         ["division"] = division.Name,
                         ["network_context"] = "division_tarifaria",
+                        ["reference_year"] = referenceYear,
+                        ["users_total"] = usersTotal,
+                        ["energy_mwh"] = energyMwh,
+                        ["energy_gwh"] = energyMwh / 1000d,
                         ["source"] =
-                            "Atlas SEN · DOF municipio-división + INEGI",
+                            "Atlas SEN · DOF/INEGI + CNE memorias de cálculo",
                         ["license"] = "CC-BY 4.0",
                         ["validation_state"] =
                             "referencia_secundaria_pendiente_comparacion"
@@ -476,7 +549,8 @@ public sealed partial class AtlasSenReferenceService :
                 Layer = "divisiones_tarifarias_atlas_sen",
                 GeneratedUtc = DateTime.UtcNow,
                 Features = features.Count,
-                Source = "Atlas SEN · DOF municipio-división + INEGI",
+                Source =
+                    "Atlas SEN · DOF/INEGI + CNE memorias de cálculo",
                 License = "CC-BY 4.0",
                 ValidationState =
                     "referencia_secundaria_pendiente_comparacion"
@@ -487,6 +561,349 @@ public sealed partial class AtlasSenReferenceService :
             TariffGeoJsonCacheKey,
             result,
             TimeSpan.FromMinutes(Math.Max(5, _options.CacheMinutes)));
+        return result;
+    }
+
+    public async Task<AtlasSenTariffSeriesResponse> GetTariffSeriesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_cache.TryGetValue<AtlasSenTariffSeriesResponse>(
+                TariffSeriesCacheKey,
+                out var cached) &&
+            cached is not null)
+        {
+            return cached;
+        }
+
+        var users = await GetDocumentAsync(
+            AtlasSenDatasetKeys.TariffUsers,
+            cancellationToken);
+        var energy = await GetDocumentAsync(
+            AtlasSenDatasetKeys.TariffEnergy,
+            cancellationToken);
+        using var usersDocument = JsonDocument.Parse(users);
+        using var energyDocument = JsonDocument.Parse(energy);
+        var usersRoot = usersDocument.RootElement;
+        var energyRoot = energyDocument.RootElement;
+        var usersByDivision = GetProperty(usersRoot, "byDivision");
+        var energyByDivision = GetProperty(energyRoot, "byDivision");
+        var referenceYear = ResolveTariffReferenceYear(
+            usersRoot,
+            energyRoot);
+        var usersYears = ReadStringArray(GetProperty(usersRoot, "years"))
+            .ToHashSet(StringComparer.Ordinal);
+        var years = ReadStringArray(GetProperty(energyRoot, "years"))
+            .Where(usersYears.Contains)
+            .OrderBy(year => year, StringComparer.Ordinal)
+            .ToList();
+        var yearStatus = GetProperty(
+            GetProperty(energyRoot, "meta"),
+            "year_status");
+        var divisionNames = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        if (usersByDivision.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var division in usersByDivision.EnumerateObject())
+            {
+                divisionNames.Add(division.Name);
+            }
+        }
+        if (energyByDivision.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var division in energyByDivision.EnumerateObject())
+            {
+                divisionNames.Add(division.Name);
+            }
+        }
+
+        var divisions = new Dictionary<string, AtlasSenTariffDivisionSeries>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var division in divisionNames.OrderBy(
+                     value => value,
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            var points = new List<AtlasSenTariffSeriesPoint>();
+            foreach (var year in years)
+            {
+                var usersTotal = SumTariffDivisionYear(
+                    usersByDivision,
+                    division,
+                    year);
+                var energyMwh = SumTariffDivisionYear(
+                    energyByDivision,
+                    division,
+                    year);
+                var status = yearStatus.ValueKind == JsonValueKind.Object &&
+                             yearStatus.TryGetProperty(
+                                 year,
+                                 out var statusValue)
+                    ? statusValue.GetString() ?? string.Empty
+                    : string.Empty;
+                var complete = string.Equals(
+                    status,
+                    "ok_12_months",
+                    StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(
+                        year,
+                        referenceYear,
+                        StringComparison.Ordinal);
+                points.Add(new AtlasSenTariffSeriesPoint
+                {
+                    Year = year,
+                    Users = usersTotal,
+                    EnergyMwh = energyMwh,
+                    EnergyGwh = energyMwh / 1000d,
+                    IntensityKwhPerUser =
+                        usersTotal is > 0 && energyMwh.HasValue
+                            ? energyMwh.Value * 1000d / usersTotal.Value
+                            : null,
+                    YearStatus = status,
+                    IsComplete = complete
+                });
+            }
+            divisions[division] = new AtlasSenTariffDivisionSeries
+            {
+                Division = division,
+                Series = points
+            };
+        }
+
+        var result = new AtlasSenTariffSeriesResponse
+        {
+            GeneratedUtc = DateTime.UtcNow,
+            ReferenceYear = referenceYear,
+            Years = years,
+            Divisions = divisions
+        };
+        _cache.Set(
+            TariffSeriesCacheKey,
+            result,
+            TimeSpan.FromMinutes(Math.Max(5, _options.CacheMinutes)));
+        return result;
+    }
+
+    public async Task<AtlasSenDemandSnapshot> GetDemandAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_cache.TryGetValue<AtlasSenDemandSnapshot>(
+                DemandCacheKey,
+                out var cached) &&
+            cached is not null)
+        {
+            return cached;
+        }
+
+        var raw = await GetDocumentAsync(
+            AtlasSenDatasetKeys.Demand,
+            cancellationToken);
+        var snapshot = JsonSerializer.Deserialize<AtlasSenDemandSnapshot>(
+                raw,
+                JsonOptions) ??
+            throw new JsonException(
+                "La fotografía de demanda de Atlas SEN no es válida.");
+        _cache.Set(
+            DemandCacheKey,
+            snapshot,
+            LiveDataCacheDuration());
+        return snapshot;
+    }
+
+    public async Task<AtlasSenGeoJson> GetDemandRegionsGeoJsonAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_cache.TryGetValue<AtlasSenGeoJson>(
+                DemandGeoJsonCacheKey,
+                out var cached) &&
+            cached is not null)
+        {
+            return cached;
+        }
+
+        var atlas = await GetDocumentAsync(
+            AtlasSenDatasetKeys.Atlas,
+            cancellationToken);
+        var demand = await GetDemandAsync(cancellationToken);
+        using var document = JsonDocument.Parse(atlas);
+        var regionPolygons = GetProperty(document.RootElement, "RP");
+        var features = new List<AtlasSenGeoJsonFeature>();
+        foreach (var region in demand.Regions)
+        {
+            if (string.Equals(
+                    region.Key,
+                    "Sistema Interconectado Nacional",
+                    StringComparison.OrdinalIgnoreCase) ||
+                regionPolygons.ValueKind != JsonValueKind.Object ||
+                !regionPolygons.TryGetProperty(
+                    region.Key,
+                    out var geometrySource))
+            {
+                continue;
+            }
+
+            var latest = region.Value.Latest ??
+                region.Value.Hourly.LastOrDefault(hour =>
+                    hour.DemandMw.HasValue);
+            if (latest is null)
+            {
+                continue;
+            }
+
+            features.Add(new AtlasSenGeoJsonFeature
+            {
+                Geometry = JsonSerializer.SerializeToElement(new
+                {
+                    type = "MultiPolygon",
+                    coordinates =
+                        ReverseLatLngCoordinates(geometrySource)
+                }),
+                Properties = new Dictionary<string, object?>
+                {
+                    ["region"] = region.Key,
+                    ["gerencia"] = region.Value.ManagementId,
+                    ["operating_date"] =
+                        demand.OperatingDate.ToString("yyyy-MM-dd"),
+                    ["updated_at"] = demand.UpdatedAt,
+                    ["hour"] = latest.Hour,
+                    ["demand_mw"] = latest.DemandMw,
+                    ["generation_mw"] = latest.GenerationMw,
+                    ["forecast_mw"] = latest.ForecastMw,
+                    ["balance_mw"] =
+                        latest.GenerationMw - latest.DemandMw,
+                    ["forecast_deviation_mw"] =
+                        latest.DemandMw - latest.ForecastMw,
+                    ["source"] =
+                        "CENACE · GraficaDemanda, compilado por Atlas SEN",
+                    ["validation_state"] =
+                        "actualizacion_automatica_fuente_publica"
+                }
+            });
+        }
+
+        var result = new AtlasSenGeoJson
+        {
+            Meta = new AtlasSenGeoJsonMeta
+            {
+                Layer = "demanda_regional_atlas_sen",
+                GeneratedUtc = DateTime.UtcNow,
+                Features = features.Count,
+                Source =
+                    "CENACE · GraficaDemanda, compilado por Atlas SEN",
+                License = "Datos públicos CENACE",
+                ValidationState =
+                    "actualizacion_automatica_fuente_publica"
+            },
+            Features = features
+        };
+        _cache.Set(
+            DemandGeoJsonCacheKey,
+            result,
+            LiveDataCacheDuration());
+        return result;
+    }
+
+    public async Task<AtlasSenWeatherResponse?> GetWeatherAsync(
+        string region,
+        CancellationToken cancellationToken = default)
+    {
+        var resolvedRegion = DemandRegionWeatherPoints.Keys.FirstOrDefault(
+            candidate => string.Equals(
+                candidate,
+                region?.Trim(),
+                StringComparison.OrdinalIgnoreCase));
+        if (resolvedRegion is null)
+        {
+            return null;
+        }
+
+        var demand = await GetDemandAsync(cancellationToken);
+        var cacheKey =
+            $"{WeatherCacheKeyPrefix}:{resolvedRegion}:{demand.OperatingDate:yyyy-MM-dd}";
+        if (_cache.TryGetValue<AtlasSenWeatherResponse>(
+                cacheKey,
+                out var cached) &&
+            cached is not null)
+        {
+            return cached;
+        }
+
+        var point = DemandRegionWeatherPoints[resolvedRegion];
+        var date = demand.OperatingDate.ToString("yyyy-MM-dd");
+        var query = string.Join(
+            "&",
+            $"latitude={point.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+            $"longitude={point.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+            "hourly=temperature_2m",
+            "timezone=America%2FMexico_City",
+            $"start_date={date}",
+            $"end_date={date}");
+        var separator = _options.WeatherUrl.Contains(
+            '?',
+            StringComparison.Ordinal)
+            ? "&"
+            : "?";
+        var requestUri = $"{_options.WeatherUrl}{separator}{query}";
+        var client = _httpClientFactory.CreateClient("AtlasSen");
+        var raw = await client.GetStringAsync(
+            requestUri,
+            cancellationToken);
+        using var document = JsonDocument.Parse(raw);
+        var hourlySource = GetProperty(
+            document.RootElement,
+            "hourly");
+        var times = GetProperty(hourlySource, "time");
+        var temperatures = GetProperty(
+            hourlySource,
+            "temperature_2m");
+        if (times.ValueKind != JsonValueKind.Array ||
+            temperatures.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException(
+                "La respuesta meteorológica no contiene la serie horaria esperada.");
+        }
+
+        var timeValues = times.EnumerateArray().ToList();
+        var temperatureValues = temperatures.EnumerateArray().ToList();
+        var hours = new List<AtlasSenWeatherHour>();
+        var length = Math.Min(
+            timeValues.Count,
+            temperatureValues.Count);
+        for (var index = 0; index < length; index++)
+        {
+            var time = timeValues[index].GetString() ?? string.Empty;
+            if (time.Length < 13 ||
+                !int.TryParse(
+                    time.AsSpan(11, 2),
+                    out var hour))
+            {
+                continue;
+            }
+
+            var temperature = temperatureValues[index].ValueKind ==
+                              JsonValueKind.Number &&
+                              temperatureValues[index].TryGetDouble(
+                                  out var value)
+                ? value
+                : (double?)null;
+            hours.Add(new AtlasSenWeatherHour
+            {
+                Hour = hour,
+                Time = time,
+                TemperatureC = temperature
+            });
+        }
+
+        var result = new AtlasSenWeatherResponse
+        {
+            Region = resolvedRegion,
+            OperatingDate = demand.OperatingDate,
+            Latitude = point.Latitude,
+            Longitude = point.Longitude,
+            Hourly = hours
+        };
+        _cache.Set(
+            cacheKey,
+            result,
+            TimeSpan.FromMinutes(30));
         return result;
     }
 
@@ -512,8 +929,124 @@ public sealed partial class AtlasSenReferenceService :
         _cache.Set(
             MdaCacheKey,
             snapshot,
-            TimeSpan.FromMinutes(30));
+            LiveDataCacheDuration());
         return snapshot;
+    }
+
+    public async Task<AtlasSenGeoJson> GetPrivateGenerationGeoJsonAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_cache.TryGetValue<AtlasSenGeoJson>(
+                PrivateGenerationGeoJsonCacheKey,
+                out var cached) &&
+            cached is not null)
+        {
+            return cached;
+        }
+
+        var raw = await GetDocumentAsync(
+            AtlasSenDatasetKeys.PrivateGeneration,
+            cancellationToken);
+        using var document = JsonDocument.Parse(raw);
+        var root = document.RootElement;
+        var projects = GetProperty(root, "projects");
+        var source = ReadObjectString(root, "src");
+        var note = ReadObjectString(root, "note");
+        var features = new List<AtlasSenGeoJsonFeature>();
+        if (projects.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var project in projects.EnumerateArray())
+            {
+                var latitude = ReadObjectDouble(project, "lat");
+                var longitude = ReadObjectDouble(project, "lng");
+                if (!latitude.HasValue ||
+                    !longitude.HasValue ||
+                    latitude is < 14 or > 33.5 ||
+                    longitude is < -118 or > -86)
+                {
+                    continue;
+                }
+
+                var precision = ReadObjectString(project, "prec");
+                var firmness = ReadObjectString(project, "firm");
+                features.Add(new AtlasSenGeoJsonFeature
+                {
+                    Geometry = JsonSerializer.SerializeToElement(new
+                    {
+                        type = "Point",
+                        coordinates = new[]
+                        {
+                            longitude.Value,
+                            latitude.Value
+                        }
+                    }),
+                    Properties = new Dictionary<string, object?>
+                    {
+                        ["name"] = ReadObjectString(project, "n"),
+                        ["developer"] = ReadObjectString(project, "dev"),
+                        ["technology"] =
+                            ReadObjectString(project, "t") switch
+                            {
+                                "pv" => "Fotovoltaica",
+                                "wind" => "Eólica",
+                                var value => value
+                            },
+                        ["capacity_mw"] =
+                            ReadObjectDouble(project, "mw"),
+                        ["storage_mw"] =
+                            ReadObjectDouble(project, "st"),
+                        ["state"] = ReadObjectString(project, "edo"),
+                        ["municipality"] =
+                            ReadObjectString(project, "mun"),
+                        ["coordinate_precision"] = precision,
+                        ["coordinate_reference"] = precision switch
+                        {
+                            "exact" => "MIA localizada",
+                            "near" => "Referencia próxima",
+                            "muni" => "Centroide municipal",
+                            _ => "Sin clasificación"
+                        },
+                        ["project_status"] = firmness,
+                        ["environmental_reference"] =
+                            ReadObjectString(project, "mia"),
+                        ["planned_cod"] =
+                            ReadObjectInt(project, "cod"),
+                        ["planning_context"] =
+                            "1ª Convocatoria de Atención Prioritaria · planeación vinculante",
+                        ["source"] =
+                            string.IsNullOrWhiteSpace(source)
+                                ? "CNE/SENER · compilado por Atlas SEN"
+                                : $"{source} · compilado por Atlas SEN",
+                        ["source_note"] = note,
+                        ["validation_state"] =
+                            precision == "exact"
+                                ? "referencia_secundaria_geolocalizacion_documental"
+                                : "referencia_secundaria_ubicacion_aproximada"
+                    }
+                });
+            }
+        }
+
+        var result = new AtlasSenGeoJson
+        {
+            Meta = new AtlasSenGeoJsonMeta
+            {
+                Layer = "generacion_privada_planeada_atlas_sen",
+                GeneratedUtc = DateTime.UtcNow,
+                Features = features.Count,
+                Source =
+                    "CNE/SENER · 1ª Convocatoria de Atención Prioritaria, compilado por Atlas SEN",
+                License = "Datos públicos; revisar fuente por proyecto",
+                ValidationState =
+                    "referencia_secundaria_no_sustituye_registro_de_permisos"
+            },
+            Features = features
+        };
+        _cache.Set(
+            PrivateGenerationGeoJsonCacheKey,
+            result,
+            TimeSpan.FromMinutes(Math.Max(5, _options.CacheMinutes)));
+        return result;
     }
 
     public async Task<AtlasSenStatus> AcknowledgeDatasetAsync(
@@ -579,7 +1112,9 @@ public sealed partial class AtlasSenReferenceService :
             return cached;
         }
 
-        await GetStatusAsync(false, cancellationToken);
+        await GetStatusAsync(
+            IsLiveDataset(key),
+            cancellationToken);
         if (_cache.TryGetValue<string>(
                 DocumentCacheKey(key),
                 out cached) &&
@@ -635,10 +1170,7 @@ public sealed partial class AtlasSenReferenceService :
             response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync(
                 cancellationToken);
-            using (JsonDocument.Parse(content))
-            {
-                // Valida JSON antes de reemplazar la última fotografía buena.
-            }
+            ValidateDatasetContent(definition, content);
             await WriteTextAtomicAsync(path, content, cancellationToken);
             return ParseFetchedDataset(
                 definition,
@@ -675,6 +1207,7 @@ public sealed partial class AtlasSenReferenceService :
         string etag,
         bool fromFallback)
     {
+        ValidateDatasetContent(definition, content);
         using var document = JsonDocument.Parse(content);
         var (records, sourceUpdatedUtc) = definition.Key switch
         {
@@ -689,8 +1222,14 @@ public sealed partial class AtlasSenReferenceService :
                 AtlasSenDatasetKeys.TariffEnergy => (
                 GetObjectLength(document.RootElement, "byDivision"),
                 ReadUpdatedUtc(document.RootElement)),
+            AtlasSenDatasetKeys.Demand => (
+                GetObjectLength(document.RootElement, "regions"),
+                ReadUpdatedUtc(document.RootElement)),
             AtlasSenDatasetKeys.Mda => (
                 GetInt(document.RootElement, "count"),
+                ReadUpdatedUtc(document.RootElement)),
+            AtlasSenDatasetKeys.PrivateGeneration => (
+                GetArrayLength(document.RootElement, "projects"),
                 ReadUpdatedUtc(document.RootElement)),
             _ => (0, null)
         };
@@ -757,11 +1296,19 @@ public sealed partial class AtlasSenReferenceService :
             dataset.Definition.Key == AtlasSenDatasetKeys.Atlas);
         var osm = datasets.Single(dataset =>
             dataset.Definition.Key == AtlasSenDatasetKeys.OsmSubstations);
+        var demand = datasets.Single(dataset =>
+            dataset.Definition.Key == AtlasSenDatasetKeys.Demand);
         var mda = datasets.Single(dataset =>
             dataset.Definition.Key == AtlasSenDatasetKeys.Mda);
+        var privateGeneration = datasets.Single(dataset =>
+            dataset.Definition.Key ==
+            AtlasSenDatasetKeys.PrivateGeneration);
         using var atlasDocument = JsonDocument.Parse(atlas.Content);
         using var osmDocument = JsonDocument.Parse(osm.Content);
+        using var demandDocument = JsonDocument.Parse(demand.Content);
         using var mdaDocument = JsonDocument.Parse(mda.Content);
+        using var privateGenerationDocument =
+            JsonDocument.Parse(privateGeneration.Content);
         return new AtlasSenStatus
         {
             CheckedUtc = checkedUtc,
@@ -780,11 +1327,22 @@ public sealed partial class AtlasSenReferenceService :
             TariffDivisions = GetObjectLength(
                 atlasDocument.RootElement,
                 "TZ"),
+            DemandRegions = GetObjectLength(
+                demandDocument.RootElement,
+                "regions"),
+            DemandUpdatedUtc = ReadUpdatedUtc(
+                demandDocument.RootElement),
+            DemandOperatingDate = ReadDateOnly(
+                demandDocument.RootElement,
+                "operatingDate"),
             MdaZones = GetInt(mdaDocument.RootElement, "count"),
             MdaUpdatedUtc = ReadUpdatedUtc(mdaDocument.RootElement),
             MdaOperatingDate = ReadDateOnly(
                 mdaDocument.RootElement,
                 "operatingDate"),
+            PrivateGenerationProjects = GetArrayLength(
+                privateGenerationDocument.RootElement,
+                "projects"),
             Datasets = states
         };
     }
@@ -908,7 +1466,7 @@ public sealed partial class AtlasSenReferenceService :
             _cache.Set(
                 DocumentCacheKey(dataset.Definition.Key),
                 dataset.Content,
-                TimeSpan.FromMinutes(Math.Max(5, _options.CacheMinutes)));
+                DocumentCacheDuration(dataset.Definition.Key));
         }
     }
 
@@ -917,7 +1475,11 @@ public sealed partial class AtlasSenReferenceService :
         _cache.Remove(SubstationsCacheKey);
         _cache.Remove(TariffGeoJsonCacheKey);
         _cache.Remove(TariffOverviewCacheKey);
+        _cache.Remove(TariffSeriesCacheKey);
+        _cache.Remove(DemandCacheKey);
+        _cache.Remove(DemandGeoJsonCacheKey);
         _cache.Remove(MdaCacheKey);
+        _cache.Remove(PrivateGenerationGeoJsonCacheKey);
     }
 
     private IReadOnlyList<AtlasSenDatasetDefinition> DatasetDefinitions() =>
@@ -952,12 +1514,26 @@ public sealed partial class AtlasSenReferenceService :
                 "CC-BY 4.0",
                 false),
             new AtlasSenDatasetDefinition(
+                AtlasSenDatasetKeys.Demand,
+                _options.DemandUrl,
+                "data",
+                "CENACE · GraficaDemanda, compilado por Atlas SEN",
+                "Datos públicos CENACE",
+                true),
+            new AtlasSenDatasetDefinition(
                 AtlasSenDatasetKeys.Mda,
                 _options.MdaUrl,
                 "data",
                 "CENACE · SWPEND MDA, PND por zona de carga",
                 "Datos públicos CENACE",
-                true)
+                true),
+            new AtlasSenDatasetDefinition(
+                AtlasSenDatasetKeys.PrivateGeneration,
+                _options.PrivateGenerationUrl,
+                "main",
+                "CNE/SENER · 1ª Convocatoria de Atención Prioritaria, compilado por Atlas SEN",
+                "Datos públicos; revisar fuente por proyecto",
+                false)
         };
 
     private async Task<AtlasSenManifest?> ReadManifestAsync(
@@ -992,6 +1568,108 @@ public sealed partial class AtlasSenReferenceService :
 
     private static string DocumentCacheKey(string key) =>
         $"atlas-sen-document-v1:{key}";
+
+    private TimeSpan LiveDataCacheDuration() =>
+        TimeSpan.FromMinutes(
+            Math.Max(1, _options.LiveDataCacheMinutes));
+
+    private TimeSpan DocumentCacheDuration(string key) =>
+        IsLiveDataset(key)
+            ? LiveDataCacheDuration()
+            : TimeSpan.FromMinutes(Math.Max(5, _options.CacheMinutes));
+
+    private static bool IsLiveDataset(string key) =>
+        string.Equals(
+            key,
+            AtlasSenDatasetKeys.Demand,
+            StringComparison.Ordinal) ||
+        string.Equals(
+            key,
+            AtlasSenDatasetKeys.Mda,
+            StringComparison.Ordinal);
+
+    private static string ResolveSnapshotDirectory(
+        string configuredPath,
+        string contentRootPath)
+    {
+        var value = string.IsNullOrWhiteSpace(configuredPath)
+            ? "App_Data/cache/atlas-sen"
+            : configuredPath.Trim();
+        if (Path.IsPathRooted(value))
+        {
+            return Path.GetFullPath(value);
+        }
+
+        var appServiceInstance = Environment.GetEnvironmentVariable(
+            "WEBSITE_INSTANCE_ID");
+        var appServiceHome = Environment.GetEnvironmentVariable("HOME");
+        if (!string.IsNullOrWhiteSpace(appServiceInstance) &&
+            !string.IsNullOrWhiteSpace(appServiceHome))
+        {
+            return Path.GetFullPath(
+                Path.Combine(
+                    appServiceHome,
+                    "data",
+                    "atlas-sen"));
+        }
+
+        return Path.GetFullPath(
+            Path.Combine(contentRootPath, value));
+    }
+
+    private static void ValidateDatasetContent(
+        AtlasSenDatasetDefinition definition,
+        string content)
+    {
+        using var document = JsonDocument.Parse(content);
+        var root = document.RootElement;
+        var valid = definition.Key switch
+        {
+            AtlasSenDatasetKeys.Atlas =>
+                HasNonEmptyArray(root, "H") &&
+                HasNonEmptyArray(root, "OL") &&
+                HasNonEmptyObject(root, "TZ") &&
+                HasNonEmptyObject(root, "RP"),
+            AtlasSenDatasetKeys.OsmSubstations =>
+                HasNonEmptyArray(root, "subs"),
+            AtlasSenDatasetKeys.TariffUsers or
+                AtlasSenDatasetKeys.TariffEnergy =>
+                HasNonEmptyObject(root, "byDivision"),
+            AtlasSenDatasetKeys.Demand =>
+                HasNonEmptyObject(root, "regions") &&
+                ReadDateOnly(root, "operatingDate").HasValue,
+            AtlasSenDatasetKeys.Mda =>
+                HasNonEmptyObject(root, "zonas") &&
+                GetInt(root, "count") > 0 &&
+                ReadDateOnly(root, "operatingDate").HasValue,
+            AtlasSenDatasetKeys.PrivateGeneration =>
+                HasNonEmptyArray(root, "projects"),
+            _ => false
+        };
+        if (!valid)
+        {
+            throw new JsonException(
+                $"El dataset Atlas SEN '{definition.Key}' no contiene la estructura mínima esperada.");
+        }
+    }
+
+    private static bool HasNonEmptyArray(
+        JsonElement root,
+        string propertyName)
+    {
+        var value = GetProperty(root, propertyName);
+        return value.ValueKind == JsonValueKind.Array &&
+            value.GetArrayLength() > 0;
+    }
+
+    private static bool HasNonEmptyObject(
+        JsonElement root,
+        string propertyName)
+    {
+        var value = GetProperty(root, propertyName);
+        return value.ValueKind == JsonValueKind.Object &&
+            value.EnumerateObject().Any();
+    }
 
     private static Uri ValidateUri(string value)
     {
@@ -1155,6 +1833,51 @@ public sealed partial class AtlasSenReferenceService :
             : 0;
     }
 
+    private static string ReadObjectString(
+        JsonElement element,
+        string name)
+    {
+        var value = GetProperty(element, name);
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? string.Empty,
+            JsonValueKind.Number => value.GetRawText(),
+            _ => string.Empty
+        };
+    }
+
+    private static double? ReadObjectDouble(
+        JsonElement element,
+        string name)
+    {
+        var value = GetProperty(element, name);
+        if (value.ValueKind == JsonValueKind.Number &&
+            value.TryGetDouble(out var number))
+        {
+            return number;
+        }
+        return value.ValueKind == JsonValueKind.String &&
+               double.TryParse(
+                   value.GetString(),
+                   NumberStyles.Float,
+                   CultureInfo.InvariantCulture,
+                   out number)
+            ? number
+            : null;
+    }
+
+    private static int? ReadObjectInt(
+        JsonElement element,
+        string name)
+    {
+        var value = ReadObjectDouble(element, name);
+        return value.HasValue
+            ? Convert.ToInt32(
+                value.Value,
+                CultureInfo.InvariantCulture)
+            : null;
+    }
+
     private static DateTime? ReadUpdatedUtc(JsonElement element)
     {
         var value = GetProperty(element, "updatedAt");
@@ -1194,6 +1917,71 @@ public sealed partial class AtlasSenReferenceService :
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .ToList()
             : Array.Empty<string>();
+
+    private static string ResolveTariffReferenceYear(
+        JsonElement usersRoot,
+        JsonElement energyRoot)
+    {
+        var userYears = ReadStringArray(GetProperty(usersRoot, "years"))
+            .ToHashSet(StringComparer.Ordinal);
+        var energyYears = ReadStringArray(GetProperty(energyRoot, "years"));
+        var status = GetProperty(
+            GetProperty(energyRoot, "meta"),
+            "year_status");
+        var completeYears = energyYears
+            .Where(userYears.Contains)
+            .Where(year =>
+                status.ValueKind != JsonValueKind.Object ||
+                !status.TryGetProperty(year, out var state) ||
+                string.Equals(
+                    state.GetString(),
+                    "ok_12_months",
+                    StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(year => year, StringComparer.Ordinal)
+            .ToList();
+        if (completeYears.Count > 0)
+        {
+            return completeYears[0];
+        }
+
+        return energyYears
+            .Where(userYears.Contains)
+            .OrderByDescending(year => year, StringComparer.Ordinal)
+            .FirstOrDefault() ?? string.Empty;
+    }
+
+    private static double? SumTariffDivisionYear(
+        JsonElement byDivision,
+        string division,
+        string year)
+    {
+        if (string.IsNullOrWhiteSpace(year) ||
+            byDivision.ValueKind != JsonValueKind.Object ||
+            !byDivision.TryGetProperty(division, out var tariffs) ||
+            tariffs.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var total = 0d;
+        var hasValue = false;
+        foreach (var tariff in tariffs.EnumerateObject())
+        {
+            if (tariff.Value.ValueKind != JsonValueKind.Object ||
+                !tariff.Value.TryGetProperty(year, out var value))
+            {
+                continue;
+            }
+
+            if (value.ValueKind == JsonValueKind.Number &&
+                value.TryGetDouble(out var number))
+            {
+                total += number;
+                hasValue = true;
+            }
+        }
+        return hasValue ? total : null;
+    }
 
     private static string GetArrayString(JsonElement array, int index)
     {

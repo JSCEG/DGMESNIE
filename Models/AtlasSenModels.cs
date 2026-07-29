@@ -9,7 +9,9 @@ public static class AtlasSenDatasetKeys
     public const string OsmSubstations = "osm_substations";
     public const string TariffUsers = "tariff_users";
     public const string TariffEnergy = "tariff_energy";
+    public const string Demand = "demand";
     public const string Mda = "mda";
+    public const string PrivateGeneration = "private_generation";
 }
 
 public sealed class AtlasSenStatus
@@ -21,9 +23,13 @@ public sealed class AtlasSenStatus
     public int DistributionSubstations { get; init; }
     public int TransmissionLineFeatures { get; init; }
     public int TariffDivisions { get; init; }
+    public int DemandRegions { get; init; }
+    public DateTime? DemandUpdatedUtc { get; init; }
+    public DateOnly? DemandOperatingDate { get; init; }
     public int MdaZones { get; init; }
     public DateTime? MdaUpdatedUtc { get; init; }
     public DateOnly? MdaOperatingDate { get; init; }
+    public int PrivateGenerationProjects { get; init; }
     public IReadOnlyList<AtlasSenDatasetState> Datasets { get; init; } =
         Array.Empty<AtlasSenDatasetState>();
 }
@@ -103,6 +109,41 @@ public sealed class AtlasSenTariffOverview
         "referencia_secundaria_pendiente_comparacion";
 }
 
+public sealed class AtlasSenTariffSeriesResponse
+{
+    public DateTime GeneratedUtc { get; init; }
+    public string ReferenceYear { get; init; } = string.Empty;
+    public IReadOnlyList<string> Years { get; init; } =
+        Array.Empty<string>();
+    public IReadOnlyDictionary<string, AtlasSenTariffDivisionSeries> Divisions
+        { get; init; } =
+        new Dictionary<string, AtlasSenTariffDivisionSeries>(
+            StringComparer.OrdinalIgnoreCase);
+    public string Source { get; init; } =
+        "CNE · memorias de cálculo del Suministro Básico";
+    public string License { get; init; } = "CC-BY 4.0";
+    public string ValidationState { get; init; } =
+        "referencia_secundaria_pendiente_comparacion";
+}
+
+public sealed class AtlasSenTariffDivisionSeries
+{
+    public string Division { get; init; } = string.Empty;
+    public IReadOnlyList<AtlasSenTariffSeriesPoint> Series { get; init; } =
+        Array.Empty<AtlasSenTariffSeriesPoint>();
+}
+
+public sealed class AtlasSenTariffSeriesPoint
+{
+    public string Year { get; init; } = string.Empty;
+    public double? Users { get; init; }
+    public double? EnergyMwh { get; init; }
+    public double? EnergyGwh { get; init; }
+    public double? IntensityKwhPerUser { get; init; }
+    public string YearStatus { get; init; } = string.Empty;
+    public bool IsComplete { get; init; }
+}
+
 public sealed class AtlasSenGeoJson
 {
     public string Type { get; init; } = "FeatureCollection";
@@ -125,6 +166,85 @@ public sealed class AtlasSenGeoJsonFeature
     public string Type { get; init; } = "Feature";
     public required JsonElement Geometry { get; init; }
     public required IReadOnlyDictionary<string, object?> Properties { get; init; }
+}
+
+public sealed class AtlasSenDemandSnapshot
+{
+    [JsonPropertyName("updatedAt")]
+    public DateTime UpdatedAt { get; init; }
+
+    [JsonPropertyName("operatingDate")]
+    public DateOnly OperatingDate { get; init; }
+
+    [JsonPropertyName("source")]
+    public string Source { get; init; } = "CENACE";
+
+    [JsonPropertyName("regions")]
+    public IReadOnlyDictionary<string, AtlasSenDemandRegion> Regions { get; init; } =
+        new Dictionary<string, AtlasSenDemandRegion>(
+            StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class AtlasSenDemandRegion
+{
+    [JsonPropertyName("gerencia")]
+    public int ManagementId { get; init; }
+
+    [JsonPropertyName("hourly")]
+    public IReadOnlyList<AtlasSenDemandHour> Hourly { get; init; } =
+        Array.Empty<AtlasSenDemandHour>();
+
+    [JsonPropertyName("latest")]
+    public AtlasSenDemandHour? Latest { get; init; }
+}
+
+public sealed class AtlasSenDemandHour
+{
+    [JsonPropertyName("hora")]
+    public int Hour { get; init; }
+
+    [JsonPropertyName("demandaMW")]
+    public double? DemandMw { get; init; }
+
+    [JsonPropertyName("generacionMW")]
+    public double? GenerationMw { get; init; }
+
+    [JsonPropertyName("pronosticoMW")]
+    public double? ForecastMw { get; init; }
+}
+
+public sealed class AtlasSenDemandResponse
+{
+    public DateTime UpdatedAt { get; init; }
+    public DateOnly OperatingDate { get; init; }
+    public string Source { get; init; } = "CENACE";
+    public bool IncludesHourlyDetail { get; init; }
+    public IReadOnlyDictionary<string, AtlasSenDemandRegion> Regions { get; init; } =
+        new Dictionary<string, AtlasSenDemandRegion>(
+            StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class AtlasSenWeatherResponse
+{
+    public string Region { get; init; } = string.Empty;
+    public DateOnly OperatingDate { get; init; }
+    public double Latitude { get; init; }
+    public double Longitude { get; init; }
+    public string LocationNote { get; init; } =
+        "Punto representativo de la región de control";
+    public string Source { get; init; } = "Open-Meteo";
+    public string AttributionUrl { get; init; } =
+        "https://open-meteo.com/";
+    public string License { get; init; } = "CC BY 4.0";
+    public IReadOnlyList<AtlasSenWeatherHour> Hourly { get; init; } =
+        Array.Empty<AtlasSenWeatherHour>();
+}
+
+public sealed class AtlasSenWeatherHour
+{
+    public int Hour { get; init; }
+    public string Time { get; init; } = string.Empty;
+    public double? TemperatureC { get; init; }
 }
 
 public sealed class AtlasSenMdaSnapshot
