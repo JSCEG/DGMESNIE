@@ -29,7 +29,7 @@ public sealed class PamConvocatoriaEvidenceOptions
     public int CacheMinutes { get; set; } = 30;
     public int SnapshotMaxAgeMinutes { get; set; } = 1440;
     public string SnapshotPath { get; set; } =
-        "App_Data/cache/pam_convocatoria_coverage_v18.json";
+        "App_Data/cache/pam_convocatoria_coverage_v19.json";
     public int HighConfidenceThreshold { get; set; } = 90;
     public int ReviewThreshold { get; set; } = 70;
     public int MaximumMatchesPerPam { get; set; } = 12;
@@ -66,9 +66,9 @@ public interface IPamConvocatoriaEvidenceService
 
 public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceService
 {
-    public const string RulesVersion = "PAM-CONV2-v1.18";
+    public const string RulesVersion = "PAM-CONV2-v1.19";
 
-    private const string CacheKey = "pam-conv2-evidence-catalog-v18";
+    private const string CacheKey = "pam-conv2-evidence-catalog-v19";
     private static readonly SemaphoreSlim CatalogLock = new(1, 1);
     private static readonly HashSet<string> EmptyValues = new(
         new[]
@@ -114,6 +114,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
     private readonly PamConvocatoriaEvidenceOptions _options;
     private readonly ILogger<PamConvocatoriaEvidenceService> _logger;
     private readonly ICfeRgdSubstationAuditService _cfeRgdAuditService;
+    private readonly IAtlasSenReferenceService _atlasSenService;
     private readonly string _snapshotPath;
     private readonly string _connectionString;
 
@@ -124,6 +125,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         IConfiguration configuration,
         IWebHostEnvironment environment,
         ICfeRgdSubstationAuditService cfeRgdAuditService,
+        IAtlasSenReferenceService atlasSenService,
         ILogger<PamConvocatoriaEvidenceService> logger)
     {
         _httpClient = httpClient;
@@ -131,6 +133,7 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         _options = options.Value;
         _logger = logger;
         _cfeRgdAuditService = cfeRgdAuditService;
+        _atlasSenService = atlasSenService;
         _connectionString =
             configuration.GetConnectionString("DefaultConnection") ??
             string.Empty;
@@ -503,6 +506,25 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                         ["decisiones"] = string.Join(" · ", candidate.Decisiones),
                         ["folios"] = string.Join(" · ", candidate.Folios),
                         ["evidencias"] = string.Join(" · ", candidate.Evidencias),
+                        ["nivel_red_sugerido"] =
+                            candidate.NivelRedSugerido,
+                        ["atlas_sen_estado"] =
+                            candidate.AuditoriaAtlasSen?.State ??
+                            "sin_auditoria",
+                        ["atlas_sen_nombre_exacto"] =
+                            candidate.AuditoriaAtlasSen?.ExactName ?? false,
+                        ["atlas_sen_tension_compatible"] =
+                            candidate.AuditoriaAtlasSen?.VoltageCompatible,
+                        ["atlas_sen_transmision"] =
+                            candidate.AuditoriaAtlasSen
+                                ?.HasTransmissionReference ?? false,
+                        ["atlas_sen_distribucion"] =
+                            candidate.AuditoriaAtlasSen
+                                ?.HasDistributionReference ?? false,
+                        ["atlas_sen_hallazgos"] = string.Join(
+                            " · ",
+                            candidate.AuditoriaAtlasSen?.Findings ??
+                            Array.Empty<string>()),
                         ["fuente"] = candidate.Fuente,
                         ["validada"] = false,
                         ["advertencia"] =
@@ -812,18 +834,22 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             var gcrTask = _httpClient.GetStringAsync(
                 _options.GerenciasUrl,
                 cancellationToken);
+            var atlasSubstationsTask =
+                TryGetAtlasSubstationsAsync(cancellationToken);
             await Task.WhenAll(
                 baseTask,
                 traceTask,
                 substationsTask,
                 linesTask,
-                gcrTask);
+                gcrTask,
+                atlasSubstationsTask);
 
             var baseCsv = await baseTask;
             var traceCsv = await traceTask;
             var substationsJson = await substationsTask;
             var linesJson = await linesTask;
             var gcrJson = await gcrTask;
+            var atlasSubstations = await atlasSubstationsTask;
             var gcrAreas = ParseGcrAreas(gcrJson);
             var substations = ParseSubstations(
                 substationsJson,
@@ -873,7 +899,8 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 .ToList();
             var coverage = BuildCoverage(
                 allRows,
-                technicalAnnexEvidence);
+                technicalAnnexEvidence,
+                atlasSubstations);
             await SaveCoverageSnapshotAsync(
                 coverage,
                 cancellationToken);
@@ -899,6 +926,31 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
         finally
         {
             CatalogLock.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<AtlasSenSubstationReference>>
+        TryGetAtlasSubstationsAsync(
+            CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _atlasSenService.GetSubstationsAsync(
+                null,
+                null,
+                5000,
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException or
+                IOException or
+                JsonException or
+                InvalidOperationException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Atlas SEN no estuvo disponible para contrastar las subestaciones de Segunda Convocatoria; la cobertura principal continúa con las fuentes institucionales.");
+            return Array.Empty<AtlasSenSubstationReference>();
         }
     }
 
@@ -2468,10 +2520,155 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
             : null;
     }
 
+    private static AtlasSenSubstationAudit BuildAtlasSenAudit(
+        IReadOnlyList<AtlasSenSubstationReference> references,
+        string declaredName,
+        double? declaredVoltageKv,
+        string declaredRegion)
+    {
+        var normalized = NormalizeSubstationName(declaredName);
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            references.Count == 0)
+        {
+            return new AtlasSenSubstationAudit
+            {
+                DeclaredName = declaredName,
+                DeclaredVoltageKv = declaredVoltageKv
+            };
+        }
+
+        var related = references
+            .Where(reference =>
+                string.Equals(
+                    reference.NormalizedName,
+                    normalized,
+                    StringComparison.Ordinal) ||
+                reference.NormalizedName.StartsWith(
+                    $"{normalized} ",
+                    StringComparison.Ordinal) ||
+                normalized.StartsWith(
+                    $"{reference.NormalizedName} ",
+                    StringComparison.Ordinal))
+            .ToList();
+        var exact = related.Where(reference =>
+                string.Equals(
+                    reference.NormalizedName,
+                    normalized,
+                    StringComparison.Ordinal))
+            .ToList();
+        var voltageMatches = declaredVoltageKv.HasValue
+            ? related.Where(reference =>
+                    reference.VoltageKv.HasValue &&
+                    Math.Abs(
+                        reference.VoltageKv.Value -
+                        declaredVoltageKv.Value) <= 1)
+                .ToList()
+            : new List<AtlasSenSubstationReference>();
+        var hasTransmission = related.Any(reference =>
+            reference.NetworkLevel ==
+            RedElectricaNetworkLevels.Transmission);
+        var hasDistribution = related.Any(reference =>
+            reference.NetworkLevel is
+                RedElectricaNetworkLevels.Subtransmission or
+                RedElectricaNetworkLevels.Distribution);
+        bool? voltageCompatible = !declaredVoltageKv.HasValue ||
+                                  related.Count == 0
+            ? null
+            : voltageMatches.Count > 0;
+        var normalizedRegion = ResolveGcrKey(declaredRegion);
+        var regionMatches = string.IsNullOrWhiteSpace(normalizedRegion)
+            ? related
+            : related.Where(reference =>
+                    string.Equals(
+                        ResolveGcrKey(reference.Region),
+                        normalizedRegion,
+                        StringComparison.Ordinal) ||
+                    NormalizeText(reference.Region).Contains(
+                        NormalizeText(declaredRegion),
+                        StringComparison.Ordinal))
+                .ToList();
+        var findings = new List<string>();
+        if (related.Count > 0)
+        {
+            findings.Add(
+                $"{related.Count} referencia(s) nominal(es) en el índice externo.");
+        }
+        if (voltageMatches.Count > 0)
+        {
+            findings.Add(
+                $"tensión compatible en {voltageMatches.Count} referencia(s).");
+        }
+        else if (voltageCompatible == false)
+        {
+            findings.Add(
+                "el nombre aparece, pero la tensión declarada no coincide con la referencia externa.");
+        }
+        if (regionMatches.Count > 0 &&
+            !string.IsNullOrWhiteSpace(normalizedRegion))
+        {
+            findings.Add(
+                $"región compatible en {regionMatches.Count} referencia(s).");
+        }
+        if (hasTransmission && hasDistribution)
+        {
+            findings.Add(
+                "hay homónimos en transmisión y distribución/subtransmisión; se deben conservar como instalaciones separadas.");
+        }
+
+        var state = related.Count == 0
+            ? "sin_coincidencia"
+            : hasTransmission && hasDistribution
+                ? "homonimos_nivel_red"
+                : exact.Count == 0
+                    ? "coincidencia_nominal_parcial"
+                    : voltageCompatible == false
+                        ? "tension_incompatible"
+                        : "coincidencia_exacta_secundaria";
+        return new AtlasSenSubstationAudit
+        {
+            State = state,
+            DeclaredName = declaredName,
+            DeclaredVoltageKv = declaredVoltageKv,
+            ExactName = exact.Count > 0,
+            VoltageCompatible = voltageCompatible,
+            HasTransmissionReference = hasTransmission,
+            HasDistributionReference = hasDistribution,
+            Findings = findings,
+            Matches = related
+                .OrderByDescending(reference =>
+                    reference.NetworkLevel ==
+                    RedElectricaNetworkLevels.Transmission)
+                .ThenByDescending(reference => reference.VoltageKv ?? 0)
+                .Take(10)
+                .ToList()
+        };
+    }
+
+    private static string ResolveSuggestedNetworkLevel(
+        AtlasSenSubstationAudit audit,
+        double? declaredVoltageKv)
+    {
+        if (audit.HasTransmissionReference &&
+            (!audit.HasDistributionReference ||
+             declaredVoltageKv >= 230))
+        {
+            return RedElectricaNetworkLevels.Transmission;
+        }
+        if (audit.HasDistributionReference)
+        {
+            return RedElectricaNetworkClassifier.Classify(
+                declaredVoltageKv,
+                "osm_distribution");
+        }
+        return RedElectricaNetworkClassifier.Classify(declaredVoltageKv);
+    }
+
     private PamConvocatoriaCoverageReport BuildCoverage(
         IReadOnlyList<SecondCallRow> rows,
         IReadOnlyList<TechnicalAnnexEvidence>
-            technicalAnnexEvidence)
+            technicalAnnexEvidence,
+        IReadOnlyList<AtlasSenSubstationReference>
+            atlasSubstations)
     {
         var candidates = new List<PamConvocatoriaInfrastructureCandidate>();
         var substationGroups = GroupSubstationRows(rows);
@@ -2501,6 +2698,12 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                     evaluationRows.Select(row => row.State).ToArray()),
                 FirstNonEmpty(
                     evaluationRows.Select(row => row.Municipality).ToArray()));
+            var atlasSenAudit = BuildAtlasSenAudit(
+                atlasSubstations,
+                representative.DeclaredSubstation,
+                representative.VoltageKv,
+                FirstNonEmpty(
+                    evaluationRows.Select(row => row.Gcr).ToArray()));
             var territorialHomonymRejected = resolutions.Any(item =>
                 item.TerritorialHomonymRejected);
             var directCatalogKeys = resolutions
@@ -2880,6 +3083,14 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 candidateEvidence.Add(
                     "CFE RGD confirma el nombre y la tensión en el territorio declarado, mientras la sugerencia de catálogo pertenece a una GCR incompatible; el homónimo se retira de la coincidencia propuesta.");
             }
+            if (atlasSenAudit.Matches.Count > 0)
+            {
+                candidateEvidence.AddRange(
+                    atlasSenAudit.Findings.Select(finding =>
+                        $"Atlas SEN: {finding}"));
+                candidateEvidence.Add(
+                    "Atlas SEN se usa como referencia secundaria versionada; no cambia por sí solo el estado oficial ni la conectividad del candidato.");
+            }
 
             var automationReason = automaticFirm
                 ? technicalCatalogFirm
@@ -3127,7 +3338,11 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 Latitud = point?.Latitude,
                 Longitud = point?.Longitude,
                 Fuente = _options.BaseUrl,
-                AuditoriaCfeRgd = cfeRgdAudit
+                AuditoriaCfeRgd = cfeRgdAudit,
+                NivelRedSugerido = ResolveSuggestedNetworkLevel(
+                    atlasSenAudit,
+                    representative.VoltageKv),
+                AuditoriaAtlasSen = atlasSenAudit
             });
         }
 
@@ -3327,6 +3542,28 @@ public sealed class PamConvocatoriaEvidenceService : IPamConvocatoriaEvidenceSer
                 string.Equals(
                     candidate.AuditoriaCfeRgd?.Estado,
                     CfeRgdAuditStates.Backed,
+                    StringComparison.Ordinal)),
+            SubestacionesAtlasSenExactas = candidates.Count(candidate =>
+                string.Equals(
+                    candidate.TipoElemento,
+                    "subestacion",
+                    StringComparison.Ordinal) &&
+                candidate.AuditoriaAtlasSen?.ExactName == true),
+            SubestacionesAtlasSenExactasVigentes = candidates.Count(candidate =>
+                string.Equals(
+                    candidate.TipoElemento,
+                    "subestacion",
+                    StringComparison.Ordinal) &&
+                candidate.ProyectosVigentes > 0 &&
+                candidate.AuditoriaAtlasSen?.ExactName == true),
+            SubestacionesAtlasSenHomonimosNivelRed = candidates.Count(candidate =>
+                string.Equals(
+                    candidate.TipoElemento,
+                    "subestacion",
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    candidate.AuditoriaAtlasSen?.State,
+                    "homonimos_nivel_red",
                     StringComparison.Ordinal)),
             ReferenciasLinea = candidates.Count(candidate =>
                 string.Equals(candidate.TipoElemento, "linea_transmision", StringComparison.Ordinal)),

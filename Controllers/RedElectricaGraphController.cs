@@ -131,24 +131,35 @@ public sealed class RedElectricaGraphController : ControllerBase
         StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<RedElectricaGraphNode>>> Nodes(
         [FromQuery] string? search = null,
+        [FromQuery] string? level = null,
         [FromQuery] bool includeVirtual = false,
         [FromQuery] int limit = 100,
         CancellationToken cancellationToken = default)
     {
-        if (search is { Length: > 160 } || limit is < 1 or > 500)
+        if (search is { Length: > 160 } ||
+            level is { Length: > 40 } ||
+            limit is < 1 or > 500)
         {
             return Problem(
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Parámetros de búsqueda no válidos",
-                detail: "La búsqueda admite 160 caracteres y el límite debe estar entre 1 y 500.");
+                detail: "La búsqueda admite 160 caracteres, el nivel de red 40 y el límite debe estar entre 1 y 500.");
         }
 
         try
         {
             var normalized = (search ?? string.Empty).Trim();
+            var normalizedLevel = (level ?? string.Empty)
+                .Trim()
+                .ToLowerInvariant();
             var snapshot = await _service.GetAsync(false, cancellationToken);
             var nodes = snapshot.Nodes.Values
                 .Where(node => includeVirtual || !node.IsVirtual)
+                .Where(node =>
+                    string.IsNullOrWhiteSpace(normalizedLevel) ||
+                    node.NetworkLevel.Equals(
+                        normalizedLevel,
+                        StringComparison.OrdinalIgnoreCase))
                 .Where(node =>
                     string.IsNullOrWhiteSpace(normalized) ||
                     node.Name.Contains(
@@ -328,12 +339,14 @@ public sealed class RedElectricaGraphController : ControllerBase
         StatusCodes.Status200OK)]
     public async Task<ActionResult<RedElectricaGeoJson>> NodesGeoJson(
         [FromQuery] bool includeVirtual = true,
+        [FromQuery] string? networkLevel = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             return Ok(await _service.GetNodesGeoJsonAsync(
                 includeVirtual,
+                networkLevel,
                 cancellationToken));
         }
         catch (OperationCanceledException) when (
@@ -361,8 +374,10 @@ public sealed class RedElectricaGraphController : ControllerBase
         {
             var nodes = await _service.GetNodesGeoJsonAsync(
                 includeVirtual,
+                null,
                 cancellationToken);
             var edges = await _service.GetEdgesGeoJsonAsync(
+                null,
                 null,
                 cancellationToken);
             return Ok(new RedElectricaGeoJson
@@ -399,12 +414,14 @@ public sealed class RedElectricaGraphController : ControllerBase
         StatusCodes.Status200OK)]
     public async Task<ActionResult<RedElectricaGeoJson>> EdgesGeoJson(
         [FromQuery] string? state = null,
+        [FromQuery] string? networkLevel = null,
         CancellationToken cancellationToken = default)
     {
         try
         {
             return Ok(await _service.GetEdgesGeoJsonAsync(
                 state,
+                networkLevel,
                 cancellationToken));
         }
         catch (OperationCanceledException) when (

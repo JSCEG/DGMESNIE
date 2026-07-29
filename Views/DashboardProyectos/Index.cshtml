@@ -687,7 +687,7 @@
           <div style="font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#9B2247;margin:{{ lgc.mt }} 0 8px">{{ lgc.title }}</div>
           <sc-for list="{{ lgc.items }}" as="lg" hint-placeholder-count="4">
             <div onClick="{{ lg.onClick }}" style="display:flex;align-items:center;gap:9px;margin:0 -5px 3px;padding:2px 5px;border-radius:6px;cursor:{{ lg.cursor }};opacity:{{ lg.op }}" style-hover="background:#FAF8F5">
-              <span style="width:{{ lg.w }};height:{{ lg.h }};border-radius:{{ lg.r }};flex:none;background:{{ lg.color }}"></span>
+              <span style="width:{{ lg.w }};height:{{ lg.h }};border-radius:{{ lg.r }};flex:none;background:{{ lg.color }};border:{{ lg.border }};box-sizing:border-box"></span>
               <span style="flex:1;min-width:0;font-size:11.5px;color:#3a3a3a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ lg.label }}</span>
               <sc-if value="{{ lg.hasCount }}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-family:'IBM Plex Mono',monospace;color:#9A958E;flex:none">{{ lg.count }}</span></sc-if>
             </div>
@@ -1681,8 +1681,11 @@ class Component extends DCLogic {
     { key:'municipios',    cat:'División territorial',   label:'Municipios',                 code:'MU', color:'#C9A24B', type:'polygon',   src:'municipios', on:false, lazy:true, heavy:'~26 MB' },
     { key:'subestaciones', cat:'Red eléctrica',          label:'Subestaciones eléctricas',   code:'SE', color:'#9B2247', type:'point', analysis:true,     src:'subestaciones', on:false },
     { key:'lineas',        cat:'Red eléctrica',          label:'Líneas de transmisión',      code:'LT', color:'#E0A12E', type:'line', analysis:true,      src:'lineas',     on:false },
-    { key:'red_grafo',     cat:'Red eléctrica',          label:'Grafo eléctrico navegable',  code:'GR', color:'#6B3654', type:'graph', lazy:true, compactPoints:true, src:'/DashboardProyectos/RedElectrica/Grafo/GeoJson', on:false },
+    { key:'red_lineas',    cat:'Red eléctrica',          label:'Líneas de transmisión',      code:'LT', color:'#31D0E4', type:'graph', graphPart:'edges', lazy:true, src:'/DashboardProyectos/RedElectrica/Grafo/GeoJson/Aristas', on:false },
+    { key:'red_se_transmision', cat:'Red eléctrica',      label:'Subestaciones de transmisión', code:'ST', color:'#AEB8C6', type:'graph', graphPart:'nodes', graphNodeKind:'transmission', lazy:true, compactPoints:true, src:'/DashboardProyectos/RedElectrica/InventarioSubestaciones/GeoJson?networkLevel=transmision', on:false },
+    { key:'red_se_distribucion', cat:'Red eléctrica',     label:'Subestaciones de distribución', code:'SD', color:'#FF9652', type:'graph', graphPart:'nodes', graphNodeKind:'distribution', lazy:true, compactPoints:true, src:'/DashboardProyectos/RedElectrica/InventarioSubestaciones/GeoJson?networkLevel=subtransmision%2Cdistribucion%2Cindeterminado', on:false },
     { key:'conv2_red_gap', cat:'Red eléctrica',          label:'Vacíos de red · 2ª convocatoria', code:'C2', color:'#A57F2C', type:'geo', analysis:false, lazy:true, compactPoints:true, src:'/DashboardProyectos/PamTerritorial/EvidenciaConvocatoria/GeoJson', on:false },
+    { key:'tarifas_atlas', cat:'Precios energéticos',    label:'Divisiones tarifarias · contraste Atlas SEN', code:'TA', color:'#2E6FB0', type:'geo', analysis:false, lazy:true, src:'/DashboardProyectos/AtlasSen/Divisiones/GeoJson', on:false },
     { key:'centrales',     cat:'Red eléctrica',          label:'Centrales eléctricas',       code:'CE', color:'#C0552E', type:'geo', analysis:true, lazy:true, src:'https://cdn.sassoapps.com/geojson/Centrales_El%C3%A9ctricas_privadas_y_de_CFE.geojson' },
     // OJO: municipios_sin_electrificar.geojson responde 404 en el CDN (auditoría 2026-07) — la capa
     // falla con aviso y ya no aborta el análisis; restaurar src cuando la fuente vuelva a publicarse.
@@ -1741,13 +1744,15 @@ class Component extends DCLogic {
   // Paleta para coloreo por estado (estados / municipios)
   ESTADO_PALETTE = ['#9B2247','#E0A12E','#0E8A6E','#1E9CB8','#C0552E','#2E6FB0','#9AAE3B','#7E3B52','#3BA98C','#A57F2C'];
 
+  // Código cromático de tensión de las DACG/DOF. El estado topológico se expresa
+  // mediante trazo continuo/discontinuo, no sustituyendo el color de tensión.
   KV_COLORS = [
-    { min: 400, color: '#9B2247', label: '400 kV' },
-    { min: 230, color: '#C0552E', label: '230 kV' },
-    { min: 161, color: '#E0A12E', label: '161 kV' },
-    { min: 115, color: '#1E9CB8', label: '115 kV' },
-    { min: 69,  color: '#3BA98C', label: '69–115 kV' },
-    { min: 0,   color: '#8A9099', label: '≤ 69 kV' },
+    { min:400,  color:'#00A9CE', label:'400 kV · azul' },
+    { min:230,  color:'#F2C94C', label:'230 kV · amarillo' },
+    { min:138,  color:'#3DAA5D', label:'161–138 kV · verde' },
+    { min:60,   color:'#C84FA3', label:'115–60 kV · magenta' },
+    { min:13.2, color:'#FFFFFF', label:'44–13.2 kV · blanco' },
+    { min:0,    color:'#F28C38', label:'< 13.2 kV · naranja' },
   ];
 
   CVE_ENT = { '01':'Aguascalientes','02':'Baja California','03':'Baja California Sur','04':'Campeche','05':'Coahuila de Zaragoza','06':'Colima','07':'Chiapas','08':'Chihuahua','09':'Ciudad de México','10':'Durango','11':'Guanajuato','12':'Guerrero','13':'Hidalgo','14':'Jalisco','15':'México','16':'Michoacán de Ocampo','17':'Morelos','18':'Nayarit','19':'Nuevo León','20':'Oaxaca','21':'Puebla','22':'Querétaro','23':'Quintana Roo','24':'San Luis Potosí','25':'Sinaloa','26':'Sonora','27':'Tabasco','28':'Tamaulipas','29':'Tlaxcala','30':'Veracruz de Ignacio de la Llave','31':'Yucatán','32':'Zacatecas' };
@@ -2103,6 +2108,11 @@ class Component extends DCLogic {
     map.createPane('genvec'); map.getPane('genvec').style.zIndex = '449';
     this._svgRenderer = L.svg({ pane:'genvec', padding:0.5 });
     this._svgRenderer.addTo(map); // CLAVE: añadirlo al mapa mantiene su _bounds actualizado (evita 'reading x')
+    // Etiquetas de tensión dibujadas en un solo canvas y sólo para los trazos
+    // visibles. Se evita crear miles de nodos DOM al acercar el mapa.
+    map.createPane('graphlabels');
+    map.getPane('graphlabels').style.zIndex = '452';
+    map.getPane('graphlabels').style.pointerEvents = 'none';
     // Pane de capas de DATOS (puntos/líneas/polígonos del inventario) — encima de los polígonos de contexto (gerencias/estados)
     map.createPane('data'); map.getPane('data').style.zIndex = '430';
     this._dataRenderer = L.canvas({ pane:'data', padding:0.5 });
@@ -2746,6 +2756,38 @@ class Component extends DCLogic {
   _nameOf(p, fb){ if(!p) return fb; for(const k in p){ if(/nombre|name|nomgeo|clave|subest|linea/i.test(k) && p[k]) return String(p[k]); } return fb; }
   _propEnt(p){ if(!p) return null; for(const k in p){ if(/nomgeo|entidad|estado|nom_ent|edo/i.test(k) && p[k]) return String(p[k]); } return null; }
   _colorForKv(kv){ return (this.KV_COLORS.find(c=>kv>=c.min)||this.KV_COLORS[this.KV_COLORS.length-1]).color; }
+  _lineWeightForKv(kv){
+    const value=Number(kv)||0;
+    if(value>=400) return 4.2;
+    if(value>=230) return 3.35;
+    if(value>=138) return 2.8;
+    if(value>=60) return 2.15;
+    if(value>=13.2) return 1.65;
+    return 1.35;
+  }
+  _voltageLabelMinZoom(kv){
+    const value=Number(kv)||0;
+    if(value>=400) return 6;
+    if(value>=230) return 7;
+    if(value>=138) return 8;
+    if(value>=60) return 8;
+    if(value>=13.2) return 10;
+    return 11;
+  }
+  _networkLevelLabel(level){
+    return ({
+      transmision:'Transmisión',
+      subtransmision:'Subtransmisión',
+      distribucion:'Distribución'
+    })[String(level||'').toLowerCase()]||'Nivel por determinar';
+  }
+  _networkLevelColor(level){
+    return ({
+      transmision:'#9B2247',
+      subtransmision:'#E0A12E',
+      distribucion:'#2E6FB0'
+    })[String(level||'').toLowerCase()]||'#8A9099';
+  }
   _subStyle(kv){ return { radius: kv>=400?5.5:(kv>=230?4.5:3.6), color:'#fff', weight:1, fillColor:this._colorForKv(kv), fillOpacity:.95 }; }
   _norm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,''); }
   _tecLabel(t){ if(!t) return '—'; const m={FV:'Fotovoltaica',EO:'Eólica',CC:'Ciclo combinado',HID:'Hidroeléctrica',GEO:'Geotérmica',CSP:'Solar concentración',COG:'Cogeneración'}; return m[t] || this._techFull(t) || '—'; }
@@ -3047,7 +3089,7 @@ class Component extends DCLogic {
     } else {
       const g = this._layerOf(key);
       try { if (g && this.map.hasLayer(g)) this.map.removeLayer(g); } catch(err){ try{ g.clearLayers&&g.clearLayers(); }catch(e2){} }
-      if(key==='red_grafo') this._clearGraphFocus();
+      if(cfg&&cfg.type==='graph') this._clearGraphFocus();
       const pamWasSelected=key==='pam'&&this._isPamSelection();
       if(key==='pam'){
         this._clearPamInteraction();
@@ -3094,8 +3136,12 @@ class Component extends DCLogic {
         if(key==='pam'&&geo.meta&&Number.isFinite(Number(geo.meta.proyectos))){
           cnt=Number(geo.meta.proyectos);
         }
-        if(key==='red_grafo'&&geo.meta&&Number.isFinite(Number(geo.meta.nodes))){
-          cnt=Number(geo.meta.nodes);
+        if(cfg.type==='graph'&&geo.meta){
+          const graphCount=cfg.graphPart==='edges'?Number(geo.meta.edges):Number(geo.meta.nodes);
+          if(Number.isFinite(graphCount)) cnt=graphCount;
+        }
+        if(key==='tarifas_atlas'&&geo.meta&&Number.isFinite(Number(geo.meta.features))){
+          cnt=Number(geo.meta.features);
         }
         const l2 = { ...this.state.layers }; l2[key] = { ...l2[key], loading:false, count:cnt };
         this._invalidateSearch(); // el índice del buscador debe reconstruirse CON los features recién cargados
@@ -4227,17 +4273,117 @@ class Component extends DCLogic {
     this._normFeatures(geo).forEach(feature=>walk(feature.geometry));
     return count;
   }
+  _makeVoltageLabelLayer(records){
+    const L=window.L;
+    if(!this._VoltageLabelLayer){
+      this._VoltageLabelLayer=L.Layer.extend({
+        initialize(items){ this._items=items||[]; this._frame=null; },
+        onAdd(map){
+          this._map=map;
+          this._canvas=L.DomUtil.create('canvas','dg-voltage-labels');
+          this._canvas.style.position='absolute';
+          this._canvas.style.pointerEvents='none';
+          map.getPane('graphlabels').appendChild(this._canvas);
+          map.on('move zoom resize moveend zoomend',this._queue,this);
+          this._queue();
+        },
+        onRemove(map){
+          map.off('move zoom resize moveend zoomend',this._queue,this);
+          if(this._frame){ cancelAnimationFrame(this._frame); this._frame=null; }
+          if(this._canvas) L.DomUtil.remove(this._canvas);
+          this._canvas=null; this._map=null;
+        },
+        _queue(){
+          if(this._frame) return;
+          this._frame=requestAnimationFrame(()=>{
+            this._frame=null;
+            try{this._redraw();}catch(error){}
+          });
+        },
+        _redraw(){
+          const map=this._map,canvas=this._canvas;
+          if(!map||!canvas) return;
+          const size=map.getSize(),dpr=Math.min(2,window.devicePixelRatio||1);
+          const topLeft=map.containerPointToLayerPoint([0,0]);
+          L.DomUtil.setPosition(canvas,topLeft);
+          const pixelWidth=Math.max(1,Math.round(size.x*dpr));
+          const pixelHeight=Math.max(1,Math.round(size.y*dpr));
+          if(canvas.width!==pixelWidth) canvas.width=pixelWidth;
+          if(canvas.height!==pixelHeight) canvas.height=pixelHeight;
+          canvas.style.width=size.x+'px'; canvas.style.height=size.y+'px';
+          const ctx=canvas.getContext('2d');
+          ctx.setTransform(dpr,0,0,dpr,0,0);
+          ctx.clearRect(0,0,size.x,size.y);
+          const zoom=map.getZoom(),bounds=map.getBounds().pad(.12);
+          const occupied=[];
+          let shown=0;
+          for(const item of this._items){
+            if(shown>=110||zoom<item.minZoom||!item.bounds.intersects(bounds)) continue;
+            let best=null;
+            (item.segments||[]).forEach(segment=>{
+              for(let i=1;i<segment.length;i++){
+                const a=map.latLngToContainerPoint(segment[i-1]);
+                const b=map.latLngToContainerPoint(segment[i]);
+                const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+                if(mx<-70||my<-40||mx>size.x+70||my>size.y+40) continue;
+                const dx=b.x-a.x,dy=b.y-a.y,length=Math.sqrt(dx*dx+dy*dy);
+                if(length>=34&&(!best||length>best.length)) best={a,b,mx,my,dx,dy,length};
+              }
+            });
+            if(!best) continue;
+            const fontSize=zoom>=10?11:10;
+            ctx.font='800 '+fontSize+'px "IBM Plex Mono",monospace';
+            const width=ctx.measureText(item.label).width+22,height=fontSize+14;
+            const box={x1:best.mx-width/2,y1:best.my-height/2,x2:best.mx+width/2,y2:best.my+height/2};
+            if(occupied.some(other=>!(box.x2<other.x1||box.x1>other.x2||box.y2<other.y1||box.y1>other.y2))) continue;
+            occupied.push(box);
+            let angle=Math.atan2(best.dy,best.dx);
+            if(angle>Math.PI/2) angle-=Math.PI;
+            if(angle<-Math.PI/2) angle+=Math.PI;
+            ctx.save();
+            ctx.translate(best.mx,best.my);
+            ctx.rotate(angle);
+            ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+            ctx.strokeStyle=item.darkHalo?'rgba(17,24,39,.92)':'rgba(255,255,255,.94)';
+            ctx.lineWidth=3.8;
+            ctx.strokeText(item.label,0,0);
+            ctx.fillStyle=item.color;
+            ctx.fillText(item.label,0,0);
+            ctx.restore();
+            shown++;
+          }
+        }
+      });
+    }
+    return new this._VoltageLabelLayer(records);
+  }
   _buildElectricGraph(key, geo, cfg){
     const L=window.L;
     const group=this.groups[key];
     group.clearLayers();
     this._clearGraphFocus();
-    this._graphNodeById=new Map();
-    this._graphEdgeById=new Map();
+    this._graphNodeById=this._graphNodeById||new Map();
+    this._graphEdgeById=this._graphEdgeById||new Map();
     const searchRecords=[];
     const features=this._normFeatures(geo);
-    const edges=features.filter(feature=>(feature.properties||{}).element_type==='edge');
-    const nodes=features.filter(feature=>(feature.properties||{}).element_type==='node');
+    // El grafo formal identifica explícitamente nodos/aristas. El inventario conciliado de
+    // subestaciones también es una fuente válida de nodos y se acepta por geometría para que una
+    // etiqueta de procedencia no deje la capa "activa" con contador, pero sin puntos dibujados.
+    const edges=features.filter(feature=>{
+      const p=feature.properties||{};
+      return p.element_type==='edge'||(
+        cfg.graphPart==='edges'&&
+        feature.geometry&&
+        (feature.geometry.type==='LineString'||feature.geometry.type==='MultiLineString')
+      );
+    });
+    const nodes=features.filter(feature=>{
+      const p=feature.properties||{};
+      return p.element_type==='node'||p.element_type==='substation_inventory'||(
+        cfg.graphPart==='nodes'&&feature.geometry&&feature.geometry.type==='Point'
+      );
+    });
+    const labelRecords=[];
     const lineSegments=geometry=>{
       if(!geometry) return [];
       if(geometry.type==='LineString') return [geometry.coordinates||[]];
@@ -4253,17 +4399,35 @@ class Component extends DCLogic {
       const edgeId=String(p.edge_id||'');
       const state=String(p.connection_state||'sin_resolver');
       const kv=Number(p.voltage_kv)||0;
-      const color=state==='conectada'?this._colorForKv(kv):(state==='parcial'?'#A57F2C':'#8A9099');
+      const color=this._colorForKv(kv);
       const dash=state==='conectada'?null:(state==='parcial'?'7 5':'3 6');
+      const weight=this._lineWeightForKv(kv);
+      const labelSegments=[];
+      let labelBounds=null;
       lineSegments(feature.geometry).forEach(segment=>{
         const latlngs=toLatLngs(segment);
         if(latlngs.length<2) return;
+        labelSegments.push(latlngs.map(latlng=>L.latLng(latlng[0],latlng[1])));
+        const segmentBounds=L.latLngBounds(latlngs);
+        labelBounds=labelBounds?labelBounds.extend(segmentBounds):segmentBounds;
+        if(color.toUpperCase()==='#FFFFFF'){
+          const casing=L.polyline(latlngs,{
+            color:'#27313B',weight:weight+2.1,opacity:state==='sin_resolver' ? .42 : .78,
+            dashArray:dash,renderer:this._svgRenderer,pane:'genvec',
+            noClip:true,smoothFactor:0,interactive:false
+          });
+          this._guardPath(casing);
+          group.addLayer(casing);
+        }
         const line=L.polyline(latlngs,{
-          color,weight:state==='conectada'?2.5:2,opacity:state==='sin_resolver' ? .45 : .82,
+          color,weight,opacity:state==='sin_resolver' ? .42 : (state==='parcial' ? .72 : .9),
           dashArray:dash,renderer:this._svgRenderer,pane:'genvec',noClip:true,smoothFactor:0
         });
         this._guardPath(line);
-        line.bindTooltip(String(p.name||'Línea de transmisión'),{sticky:true});
+        line.bindTooltip(
+          String(p.name||'Línea de transmisión')+(kv?' · '+kv.toLocaleString('es-MX')+' kV':''),
+          {sticky:true}
+        );
         line.on('click',event=>{
           this._selAt=performance.now();
           try{if(event&&event.originalEvent)L.DomEvent.stopPropagation(event.originalEvent);}catch(error){}
@@ -4274,6 +4438,14 @@ class Component extends DCLogic {
           this._graphEdgeById.set(edgeId,{props:p,layer:line,geometry:feature.geometry});
         }
       });
+      if(kv>0&&labelBounds&&labelSegments.length){
+        labelRecords.push({
+          label:kv.toLocaleString('es-MX',{maximumFractionDigits:1})+' kV',
+          color,minZoom:this._voltageLabelMinZoom(kv),kv,
+          darkHalo:color.toUpperCase()==='#FFFFFF'||color.toUpperCase()==='#F2C94C',
+          segments:labelSegments,bounds:labelBounds
+        });
+      }
     });
 
     nodes.forEach(feature=>{
@@ -4283,12 +4455,17 @@ class Component extends DCLogic {
       const lng=Number(coordinates[0]),lat=Number(coordinates[1]);
       const nodeId=String(p.node_id||'');
       const virtual=!!p.is_virtual;
+      const transmission=cfg.graphNodeKind==='transmission'||String(p.network_level)==='transmision';
+      const undetermined=String(p.network_level)==='indeterminado';
+      const markerColor=transmission?'#8E9AAD':(undetermined?'#8A9099':'#FFFFFF');
+      const markerFill=transmission?'#111820':(undetermined?'#8A9099':'#FF9652');
       const marker=L.circleMarker([lat,lng],{
-        radius:virtual?2.5:4.4,
-        color:virtual?'#fff':'#5F1233',
-        weight:virtual ? .8 : 1.2,
-        fillColor:virtual?'#8A9099':'#9B2247',
-        fillOpacity:virtual ? .58 : .94,
+        radius:virtual?2.5:(transmission?(Number(p.voltage_kv)>=400?6.2:5.4):3.2),
+        color:virtual?'#fff':markerColor,
+        weight:virtual ? .8 : (transmission ? 1.7 : 1),
+        fillColor:virtual?'#8A9099':markerFill,
+        fillOpacity:virtual ? .58 : (transmission||undetermined ? 0 : .92),
+        dashArray:undetermined?'2 2':null,
         renderer:this._dataRenderer,
         pane:'data'
       });
@@ -4299,7 +4476,8 @@ class Component extends DCLogic {
       marker.on('click',event=>{
         this._selAt=performance.now();
         try{if(event&&event.originalEvent)L.DomEvent.stopPropagation(event.originalEvent);}catch(error){}
-        this._selectGraphNode(p,marker);
+        if(nodeId) this._selectGraphNode(p,marker);
+        else this._selectInventorySubstation(p,marker);
       });
       group.addLayer(marker);
       if(nodeId) this._graphNodeById.set(nodeId,{props:p,marker,lat,lng});
@@ -4314,11 +4492,75 @@ class Component extends DCLogic {
     this._genericFeats=this._genericFeats||{};
     this._genericFeats[key]=searchRecords;
     this._genericCount=this._genericCount||{};
-    this._genericCount[key]=Number(geo&&geo.meta&&geo.meta.nodes)||nodes.length;
+    this._genericCount[key]=cfg.graphPart==='edges'
+      ?(Number(geo&&geo.meta&&geo.meta.edges)||edges.length)
+      :(Number(geo&&geo.meta&&geo.meta.nodes)||nodes.length);
     this._vectorPathLayers=this._vectorPathLayers||{};
     this._vectorPathLayers[key]=edges.length>0;
+    if(labelRecords.length){
+      labelRecords.sort((a,b)=>b.kv-a.kv);
+      group.addLayer(this._makeVoltageLabelLayer(labelRecords));
+    }
     this._graphMeta=geo&&geo.meta?geo.meta:null;
     return nodes.length+edges.length;
+  }
+  _selectInventorySubstation(p,marker){
+    if(this._handler) return;
+    this._selAt=performance.now();
+    this._clearHighlight();
+    this._clearGraphFocus();
+    const point=marker&&marker.getLatLng?marker.getLatLng():null;
+    const lat=point?point.lat:null;
+    const lng=point?point.lng:null;
+    const networkLabel=this._networkLevelLabel(p.network_level);
+    const networkColor=this._colorForKv(Number(p.voltage_kv)||0);
+    const sources=Array.isArray(p.sources)?p.sources.join(' · '):(p.source||'—');
+    const connectedLineNames=Array.isArray(p.connected_line_names)
+      ?[...new Set(p.connected_line_names.filter(Boolean))]:[];
+    const connectionCount=Number(p.connection_count)||connectedLineNames.length||0;
+    const connectionNames=connectedLineNames.length
+      ?connectedLineNames.slice(0,14).join(' · ')+(connectedLineNames.length>14?' · …':'')
+      :'Sin líneas asociadas';
+    const selected={
+      kicker:'Inventario eléctrico · referencia georreferenciada',
+      color:networkColor,
+      name:String(p.name||'Subestación'),
+      rows:[
+        ['Tipo de infraestructura','Subestación eléctrica · inventario conciliado'],
+        ['Nivel de red',networkLabel],
+        ['Identificador de universo',p.universe_key||'—'],
+        ['Tensión',p.voltage_kv?Number(p.voltage_kv).toLocaleString('es-MX')+' kV':'—'],
+        ['Fuentes del registro',sources],
+        ['Fuente de coordenadas',p.coordinate_source||'—'],
+        ['Estado de conciliación',p.reconciliation_state||'Pendiente'],
+        ['Estado de validación',p.validation_state||'Pendiente de revisión humana'],
+        ['Líneas asociadas',connectionNames],
+        ['Estado topológico',p.connection_validation_state||(connectionCount?'Asociación automática':'Sin asociación')]
+      ],
+      metrics:[
+        {label:'Líneas asociadas',value:String(connectionCount),unit:'',accent:'#9B2247'},
+        {label:'Tensión nominal',value:p.voltage_kv?this._nf(Number(p.voltage_kv)):'—',unit:p.voltage_kv?'kV':'',accent:'#E0A12E'},
+        {label:'Ubicación',value:'Referencia',unit:'',accent:'#1E9CB8'}
+      ],
+      lat,lng
+    };
+    this._flash(marker);
+    this.setState({selected},()=>this._recompute());
+    const connectedEdgeIds=Array.isArray(p.connected_line_ids)
+      ?p.connected_line_ids.map(String):[];
+    const focusEdges=connectedEdgeIds
+      .map(edgeId=>this._graphEdgeById&&this._graphEdgeById.get(edgeId))
+      .filter(Boolean)
+      .map(record=>({...record.props,geometry:record.geometry}));
+    if(focusEdges.length){
+      this._renderGraphFocus({
+        nodes:[{latitude:lat,longitude:lng,isVirtual:false}],
+        edges:focusEdges
+      });
+    }
+    if(isFinite(lat)&&isFinite(lng)){
+      this.map.setView([lat,lng],Math.max(this.map.getZoom(),8),{animate:true});
+    }
   }
   _selectGraphNode(p,marker){
     if(this._handler) return;
@@ -4330,19 +4572,22 @@ class Component extends DCLogic {
     const lat=marker&&marker.getLatLng?marker.getLatLng().lat:null;
     const lng=marker&&marker.getLatLng?marker.getLatLng().lng:null;
     const virtual=!!p.is_virtual;
+    const networkLabel=this._networkLevelLabel(p.network_level);
+    const networkColor=this._colorForKv(Number(p.voltage_kv)||0);
     const baseRows=[
-      ['Tipo de infraestructura',virtual?'Nodo topológico pendiente':'Subestación de transmisión'],
+      ['Tipo de infraestructura',virtual?'Nodo topológico pendiente':'Subestación eléctrica'],
+      ['Nivel de red',networkLabel],
       ['Identificador del grafo',nodeId],
       ['Tensión',p.voltage_kv?Number(p.voltage_kv).toLocaleString('es-MX')+' kV':'—'],
       ['Grado topológico',String(p.degree??0)+' conexiones'],
       ['Componente eléctrico',p.component_id||'—'],
-      ['Estado',virtual?'Pendiente de validar':'Nodo catalogado'],
+      ['Estado de validación',p.validation_state||(virtual?'Pendiente de validar':'Nodo catalogado')],
       ['Conexiones','Consultando…'],
       ['Fuente',p.source||'DGMESNIE · grafo eléctrico']
     ];
     const selected={
       kicker:virtual?'Grafo eléctrico · nodo virtual':'Grafo eléctrico · subestación',
-      color:virtual?'#8A9099':'#9B2247',
+      color:virtual?'#8A9099':networkColor,
       name:String(p.name||(virtual?'Extremo sin resolver':'Subestación')),
       rows:baseRows,
       metrics:[
@@ -4369,7 +4614,7 @@ class Component extends DCLogic {
       const realNeighbors=neighbors.filter(node=>!node.isVirtual);
       const lines=result.edges||[];
       const rows=baseRows.filter(row=>row[0]!=='Conexiones');
-      rows.splice(6,0,
+      rows.splice(7,0,
         ['Líneas conectadas',lines.length?lines.slice(0,14).map(edge=>edge.name).join(' · '):'Sin líneas conectadas'],
         ['Subestaciones vecinas',realNeighbors.length?realNeighbors.slice(0,14).map(node=>node.name).join(' · '):'Sin subestaciones vecinas'],
         ['Extremos de línea sin resolver',String(neighbors.filter(node=>node.isVirtual).length)]
@@ -4395,15 +4640,18 @@ class Component extends DCLogic {
     this._clearGraphFocus();
     const from=this._graphNodeById&&this._graphNodeById.get(String(p.from_id||''));
     const to=this._graphNodeById&&this._graphNodeById.get(String(p.to_id||''));
-    const fromName=from&&from.props?from.props.name:(p.from_id||'—');
-    const toName=to&&to.props?to.props.name:(p.to_id||'—');
+    const fromName=from&&from.props?from.props.name:(p.from_name||p.from_id||'—');
+    const toName=to&&to.props?to.props.name:(p.to_name||p.to_id||'—');
     const state=String(p.connection_state||'sin_resolver');
+    const networkLabel=this._networkLevelLabel(p.network_level);
+    const networkColor=this._colorForKv(Number(p.voltage_kv)||0);
     const selected={
-      kicker:'Grafo eléctrico · línea de transmisión',
-      color:state==='conectada'?'#0E8A6E':(state==='parcial'?'#A57F2C':'#8A9099'),
-      name:String(p.name||'Línea de transmisión'),
+      kicker:'Grafo eléctrico · '+networkLabel.toLowerCase(),
+      color:networkColor,
+      name:String(p.name||'Línea eléctrica'),
       rows:[
         ['Tipo de infraestructura','Arista de la red eléctrica'],
+        ['Nivel de red',networkLabel],
         ['Subestación origen',String(fromName)],
         ['Subestación destino',String(toName)],
         ['Estado topológico',state.replace('_',' ')],
@@ -4412,6 +4660,7 @@ class Component extends DCLogic {
         ['Tensión',p.voltage_kv?Number(p.voltage_kv).toLocaleString('es-MX')+' kV':'—'],
         ['Circuitos',p.circuits??'—'],
         ['Longitud geométrica',p.length_km?Number(p.length_km).toLocaleString('es-MX',{maximumFractionDigits:2})+' km':'—'],
+        ['Estado de validación',p.validation_state||'—'],
         ['Fuente',p.source||'DGMESNIE · grafo eléctrico']
       ],
       metrics:[
@@ -4422,8 +4671,17 @@ class Component extends DCLogic {
     };
     this.setState({selected},()=>this._recompute());
     const edgeRecord=this._graphEdgeById&&this._graphEdgeById.get(String(p.edge_id||''));
+    const fallbackEndpoint=(prefix,name)=> {
+      const lat=Number(p[prefix+'_latitude']),lng=Number(p[prefix+'_longitude']);
+      return isFinite(lat)&&isFinite(lng)
+        ?{nodeId:String(p[prefix+'_id']||''),name:String(name||'Extremo de línea'),latitude:lat,longitude:lng,isVirtual:false}
+        :null;
+    };
     this._renderGraphFocus({
-      nodes:[from&&from.props?this._graphNodeModel(from):null,to&&to.props?this._graphNodeModel(to):null].filter(Boolean),
+      nodes:[
+        from&&from.props?this._graphNodeModel(from):fallbackEndpoint('from',fromName),
+        to&&to.props?this._graphNodeModel(to):fallbackEndpoint('to',toName)
+      ].filter(Boolean),
       edges:[{...p,geometry:edgeRecord&&edgeRecord.geometry}]
     });
     try{if(line&&line.getBounds)this.map.fitBounds(line.getBounds().pad(.35),{maxZoom:11,animate:true});}catch(error){}
@@ -4997,7 +5255,26 @@ class Component extends DCLogic {
           if(this._selectedPermitDetailKey!==detailKey) return;
           this.setState({detalleLoading:null});
           this._toast('No se pudo cargar la ficha completa del permiso: '+(error.message||error));
-        });
+      });
+      return;
+    }
+    if(cfg.key==='tarifas_atlas'){
+      const rows=[
+        ['Tipo de infraestructura','División tarifaria · contraste Atlas SEN'],
+        ['División',p.division||nom||'—'],
+        ['Uso','Frontera territorial de comparación; no sustituye la estructura tarifaria institucional'],
+        ['Estado de validación','Referencia secundaria · pendiente de comparación controlada'],
+        ['Fuente',p.source||'Atlas SEN · DOF municipio-división + INEGI'],
+        ['Licencia',p.license||'CC-BY 4.0']
+      ];
+      this.setState({
+        selected:{
+          kicker:'Divisiones tarifarias · contraste Atlas SEN',
+          color:cfg.color,
+          name:p.division||nom||cfg.label,
+          rows
+        }
+      });
       return;
     }
     if(cfg.key==='conv2_red_gap'){
@@ -5011,6 +5288,9 @@ class Component extends DCLogic {
         ['Relación privada / pública',p.coincidencia_interconexion_publica_firme?'Declarada por la fuente y resuelta por separado':'—'],
         ['Tensión respaldada por red',p.coincidencia_tension_topologica_firme?'Sí · línea nominal y espacialmente conectada':'—'],
         ['Niveles observados',Array.isArray(p.niveles_tension_red_kv)?p.niveles_tension_red_kv.map(v=>Number(v).toLocaleString('es-MX')+' kV').join(' · '):'—'],
+        ['Nivel de red sugerido',this._networkLevelLabel(p.nivel_red_sugerido)],
+        ['Contraste Atlas SEN',p.atlas_sen_estado||'Sin auditoría'],
+        ['Hallazgos Atlas SEN',p.atlas_sen_hallazgos||'—'],
         ['Homónimo territorial',p.homonimo_territorial_descartado?'Descartado por GCR y distancia extrema':'—'],
         ['Agrupación territorial',p.grupo_territorial_separado?(p.clave_agrupacion_territorial||'Separada'):'—'],
         ['Puntaje',p.puntaje!=null?String(p.puntaje)+'/100':'—'],
@@ -5440,6 +5720,18 @@ class Component extends DCLogic {
         : 'Sin distancia calculable';
       const isLineCandidate=String(candidate.tipoElemento||'')==='linea_transmision';
       const cfeAudit=candidate.auditoriaCfeRgd||null;
+      const atlasAudit=candidate.auditoriaAtlasSen||null;
+      const atlasReferences=atlasAudit
+        ? (atlasAudit.matches||[]).slice(0,8).map(match=>
+            [
+              match.name,
+              match.voltageKv!=null?Number(match.voltageKv).toLocaleString('es-MX')+' kV':null,
+              this._networkLevelLabel(match.networkLevel),
+              match.region,
+              match.division
+            ].filter(Boolean).join(' · ')
+          ).join(' | ')
+        : '';
       const cfeAuditLabel=!cfeAudit
         ? 'Sin auditoría'
         : cfeAudit.estado==='respaldada'
@@ -5481,6 +5773,11 @@ class Component extends DCLogic {
             ' · horizonte '+String(cfeAudit.anioHorizonte||'—')+
             ' · SHA-256 '+(cfeAudit.sha256Fuente||'—')
           : '—'],
+        ['Nivel de red sugerido',this._networkLevelLabel(candidate.nivelRedSugerido)],
+        ['Contraste Atlas SEN',atlasAudit?(atlasAudit.state||'revisión'):'Sin auditoría'],
+        ['Referencias Atlas SEN',atlasReferences||'—'],
+        ['Hallazgos Atlas SEN',atlasAudit?(atlasAudit.findings||[]).join(' · ')||'—':'—'],
+        ['Uso de Atlas SEN','Contraste secundario · no valida ubicación ni conectividad'],
         ['Geometrías de subestación privada',String(candidate.geometriasSubestacionPrivada||0)],
         ['Distancias declaradas compatibles',String(candidate.distanciasCompatibles||0)+' de '+String(candidate.distanciasDeclaradas||0)],
         ['Distancia calculada hacia el nodo',coordinateDistance],
@@ -6104,7 +6401,28 @@ class Component extends DCLogic {
     this._toast('Análisis del área: '+subs.length+' subestaciones · '+km.toFixed(0)+' km · '+capacidad.toLocaleString()+' MW');
   }
   // Con análisis geoespacial activo, las métricas cuentan SOLO lo que está dentro del buffer
-  _visibleSubs(b){ if(!this.state.layers.subestaciones.on) return 0; return this.subFeatures.filter(s => b.contains([s.lat,s.lng]) && (!this._anaSubSet || this._anaSubSet.has(s))).length; }
+  _visibleSubs(b){
+    let count=0;
+    if(this.state.layers.subestaciones.on){
+      count+=this.subFeatures.filter(s=>
+        b.contains([s.lat,s.lng])&&(!this._anaSubSet||this._anaSubSet.has(s))
+      ).length;
+    }
+    const seen=new Set();
+    ['red_se_transmision','red_se_distribucion'].forEach(key=>{
+      if(!this.state.layers[key]||!this.state.layers[key].on) return;
+      const records=(this._genericFeats&&this._genericFeats[key])||[];
+      records.forEach(record=>{
+        if(!isFinite(record.lat)||!isFinite(record.lng)||!b.contains([record.lat,record.lng])) return;
+        const p=record.props||{};
+        const id=String(p.universe_key||p.node_id||key+':'+record.lat.toFixed(6)+':'+record.lng.toFixed(6));
+        if(seen.has(id)) return;
+        seen.add(id);
+        count++;
+      });
+    });
+    return count;
+  }
   _visibleLinesKm(b){ if(!this.state.layers.lineas.on) return 0; let km=0; this.lineFeatures.forEach(pl=>{ if(this._anaLineSet && !this._anaLineSet.has(pl)) return; if(b.intersects(pl.getBounds())) km+=pl._rec.km||0; }); return km; }
   _nearestSub(sel){ let best=Infinity; this.subFeatures.forEach(s=>{ if(s.idx===sel.idx) return; const d=this._haversine(sel.lat,sel.lng,s.lat,s.lng); if(d<best) best=d; }); return best===Infinity?null:best; }
   _lineKm(ll){ let km=0; for(let i=1;i<ll.length;i++) km+=this._haversine(ll[i-1][0],ll[i-1][1],ll[i][0],ll[i][1]); return km; }
@@ -6291,7 +6609,7 @@ class Component extends DCLogic {
         return;
       }
       const clearDynamic=cfg.lazy&&key!=='municipios';
-      if (clearDynamic||['permisos','proyectos','zonas','red_grafo'].includes(key)||cfg.analysis) {
+      if (clearDynamic||['permisos','proyectos','zonas'].includes(key)||cfg.type==='graph'||cfg.analysis) {
         try { g.clearLayers(); } catch(e){}
       }
     });
@@ -6301,7 +6619,9 @@ class Component extends DCLogic {
     this.LAYERS
       .filter(c=>(c.analysis||c.lazy)&&c.key!=='municipios'&&!['subestaciones','lineas'].includes(c.key))
       .forEach(c=>{ this._built[c.key]=false; });
-    this._built.red_grafo=false;
+    this.LAYERS.filter(c=>c.type==='graph').forEach(c=>{this._built[c.key]=false;});
+    this._graphNodeById=new Map();
+    this._graphEdgeById=new Map();
     try { if (!this.map.hasLayer(this.groups.gerencias)) this.groups.gerencias.addTo(this.map); } catch(e){}
     if (this.state.basemap!=='color') { try { this.map.removeLayer(this.bases[this.state.basemap]); } catch(e){} try { this.bases.color.addTo(this.map); } catch(e){} }
     const layers=this._initLayers();
@@ -6578,10 +6898,17 @@ class Component extends DCLogic {
   _legendGroups(interactive){
     const S=this.state, groups=[];
     const dot={w:'10px',h:'10px',r:'50%'}, bar={w:'16px',h:'4px',r:'2px'};
-    if (S.layers.lineas.on || S.layers.subestaciones.on) {
+    if (
+      S.layers.lineas.on ||
+      S.layers.subestaciones.on ||
+      (S.layers.red_lineas&&S.layers.red_lineas.on)
+    ) {
       groups.push({
         title:'Tensión (kV)',
-        items:this.KV_COLORS.map(c=>({ color:c.color, label:c.label, ...bar, hasCount:false, count:'', active:true, cursor:'default', op:1 }))
+        items:this.KV_COLORS.map(c=>({
+          color:c.color,label:c.label,...bar,border:c.color==='#FFFFFF'?'1px solid #8A9099':'none',
+          hasCount:false,count:'',active:true,cursor:'default',op:1
+        }))
       });
     }
     if (S.layers.gerencias.on) {
@@ -6608,15 +6935,19 @@ class Component extends DCLogic {
       });
     }
     const analyzedKeys=new Set((S.analysis&&S.analysis.ranKeys)||[]);
-    const caps=this.LAYERS.filter(c=>!c.analysis || S.layers[c.key].on || analyzedKeys.has(c.key));
+    const caps=this.LAYERS.filter(c=>
+      (!c.analysis || S.layers[c.key].on || analyzedKeys.has(c.key)) &&
+      (c.type!=='graph'||interactive||S.layers[c.key].on)
+    );
     groups.push({
       title:interactive?'Capas · clic para encender/apagar':'Capas del análisis',
       items:caps.map(c=>{
         const v=S.layers[c.key];
         const analyzed=analyzedKeys.has(c.key);
         const visible=interactive?!!v.on:(!!v.on||analyzed);
+        const shape=c.graphPart==='edges'?bar:dot;
         return {
-          color:visible?c.color:'#C7C2BA', label:v.label+(v.summarized&&interactive?' · resumen':''), ...dot,
+          color:visible?c.color:'#C7C2BA', label:v.label+(v.summarized&&interactive?' · resumen':''), ...shape,
           hasCount:v.count>0, count:(v.count||0).toLocaleString('es-MX'),
           active:visible, cursor:interactive?'pointer':'default', op:visible?1:.55,
           onClick:interactive?()=>this.toggleLayer(c.key):null
@@ -10130,7 +10461,8 @@ class Component extends DCLogic {
     }
     if(inc.legend){
       const items=this.LAYERS.filter(c=>this.state.layers[c.key].on).map(c=>({label:this.state.layers[c.key].label,color:c.color,count:this.state.layers[c.key].count}));
-      const kv=this.state.layers.lineas.on||this.state.layers.subestaciones.on;
+      const kv=this.state.layers.lineas.on||this.state.layers.subestaciones.on||
+        (this.state.layers.red_lineas&&this.state.layers.red_lineas.on);
       const pw=218, rowsN=items.length+(kv?this.KV_COLORS.length+1:0), ph=30+rowsN*16+10, x=w-pw-14, y=14;
       this._panel(ctx,x,y,pw,ph);
       ctx.fillStyle='#9B2247'; ctx.font='800 9px '+FS; ctx.fillText('LEYENDA · CAPAS ACTIVAS', x+14, y+22);
@@ -10138,7 +10470,11 @@ class Component extends DCLogic {
       items.forEach(it=>{ ctx.fillStyle=it.color; this._rr(ctx,x+14,ry-9,11,11,3); ctx.fill(); ctx.fillStyle='#3a3a3a'; ctx.font='600 10px '+FS; ctx.textAlign='left'; ctx.fillText(this._clip(ctx,it.label,135),x+32,ry); ctx.fillStyle='#9A958E'; ctx.font='600 9px '+FS; ctx.textAlign='right'; ctx.fillText((it.count||0).toLocaleString('es-MX'),x+pw-14,ry); ry+=16; });
       ctx.textAlign='left';
       if(kv){ ry+=2; ctx.fillStyle='#9B2247'; ctx.font='800 8.5px '+FS; ctx.fillText('TENSIÓN (kV)',x+14,ry); ry+=15;
-        this.KV_COLORS.forEach(c=>{ ctx.strokeStyle=c.color; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(x+14,ry-4); ctx.lineTo(x+32,ry-4); ctx.stroke(); ctx.fillStyle='#3a3a3a'; ctx.font='500 9.5px '+FS; ctx.fillText(c.label,x+40,ry); ry+=15; }); }
+        this.KV_COLORS.forEach(c=>{
+          if(c.color==='#FFFFFF'){ctx.strokeStyle='#8A9099';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(x+14,ry-4);ctx.lineTo(x+32,ry-4);ctx.stroke();}
+          ctx.strokeStyle=c.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x+14,ry-4);ctx.lineTo(x+32,ry-4);ctx.stroke();
+          ctx.fillStyle='#3a3a3a';ctx.font='500 9.5px '+FS;ctx.fillText(c.label,x+40,ry);ry+=15;
+        }); }
     }
     if(inc.metrics){
       const mr=this._metricRows(), accents=['#9B2247','#E0A12E','#1E9CB8','#0E8A6E','#C0552E','#9AAE3B'];
@@ -11180,7 +11516,7 @@ class Component extends DCLogic {
         this.LAYERS.forEach(cfg => {
           // El panel incluye división territorial + capas institucionales siempre-visibles
           // (PODECOBI). El resto se configura desde el buscador.
-          const visiblePanel = cfg.cat === 'División territorial' || cfg.key === 'podecobi' || cfg.key === 'pam' || cfg.key === 'red_grafo' || cfg.key === 'conv2_red_gap';
+          const visiblePanel = cfg.cat === 'División territorial' || cfg.key === 'podecobi' || cfg.key === 'pam' || cfg.type === 'graph' || cfg.key === 'conv2_red_gap' || cfg.key === 'tarifas_atlas';
           if (cfg.analysis || !visiblePanel) return;
           const v = L[cfg.key]; if (!v) return;
           if (!byCat[cfg.cat]) { byCat[cfg.cat] = []; order.push(cfg.cat); }

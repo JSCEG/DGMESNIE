@@ -169,6 +169,23 @@ builder.Services.AddHttpClient<IRedElectricaGraphService, RedElectricaGraphServi
         new MediaTypeWithQualityHeaderValue("application/json"));
     client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-Red-Grafo/1.0");
 });
+builder.Services.Configure<AtlasSenOptions>(
+    builder.Configuration.GetSection(AtlasSenOptions.SectionName));
+builder.Services.AddHttpClient("AtlasSen", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(90);
+    client.DefaultRequestHeaders.Accept.Add(
+        new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd(
+        "DGMESNIE-Atlas-SEN/1.0");
+});
+builder.Services.AddScoped<
+    IAtlasSenReferenceService,
+    AtlasSenReferenceService>();
+builder.Services.AddScoped<
+    IRedElectricaSubstationInventoryService,
+    RedElectricaSubstationInventoryService>();
+builder.Services.AddHostedService<AtlasSenUpdateMonitor>();
 builder.Services.Configure<InegiOptions>(builder.Configuration.GetSection(InegiOptions.SectionName));
 builder.Services.AddHttpClient<IInegiTerritorialService, InegiTerritorialService>(client =>
 {

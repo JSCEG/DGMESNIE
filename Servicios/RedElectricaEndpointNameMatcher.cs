@@ -211,8 +211,26 @@ internal static partial class RedElectricaEndpointNameMatcher
         normalized = PotAbbreviationRegex().Replace(
             normalized,
             "POTENCIA");
-        return normalized.Trim();
+        var tokens = normalized
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .ToArray();
+        if (tokens.Length > 0)
+        {
+            tokens[^1] = NormalizeTrailingOrdinal(tokens[^1]);
+        }
+        return string.Join(' ', tokens).Trim();
     }
+
+    private static string NormalizeTrailingOrdinal(string token) =>
+        token switch
+        {
+            "UNO" or "I" => "1",
+            "DOS" or "II" => "2",
+            "TRES" or "III" => "3",
+            "CUATRO" or "IV" => "4",
+            "CINCO" or "V" => "5",
+            _ => token
+        };
 
     private static string NormalizeLiteralAlias(string value)
     {

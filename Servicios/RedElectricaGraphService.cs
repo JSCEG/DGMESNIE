@@ -56,10 +56,12 @@ public interface IRedElectricaGraphService
 
     Task<RedElectricaGeoJson> GetNodesGeoJsonAsync(
         bool includeVirtual,
+        string? networkLevels = null,
         CancellationToken cancellationToken = default);
 
     Task<RedElectricaGeoJson> GetEdgesGeoJsonAsync(
         string? connectionState,
+        string? networkLevels = null,
         CancellationToken cancellationToken = default);
 
     Task<RedElectricaPamSubgraphResult?> GetPamSubgraphAsync(
@@ -70,10 +72,10 @@ public interface IRedElectricaGraphService
 
 public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
 {
-    public const string RulesVersion = "RED-GRAFO-v1.2";
-    private const string CacheKey = "red-electrica-graph-v3";
+    public const string RulesVersion = "RED-GRAFO-v1.3";
+    private const string CacheKey = "red-electrica-graph-v4";
     private const string SimulationCacheKey =
-        "red-electrica-graph-simulation-v2";
+        "red-electrica-graph-simulation-v3";
     private static readonly SemaphoreSlim BuildLock = new(1, 1);
 
     private readonly HttpClient _httpClient;
@@ -374,11 +376,16 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
 
     public async Task<RedElectricaGeoJson> GetNodesGeoJsonAsync(
         bool includeVirtual,
+        string? networkLevels = null,
         CancellationToken cancellationToken = default)
     {
         var snapshot = await GetAsync(false, cancellationToken);
+        var requestedLevels = ParseNetworkLevels(networkLevels);
         var nodes = snapshot.Nodes.Values
             .Where(node => includeVirtual || !node.IsVirtual)
+            .Where(node =>
+                requestedLevels.Count == 0 ||
+                requestedLevels.Contains(node.NetworkLevel))
             .ToList();
         return CreateGeoJson(
             snapshot,
@@ -390,10 +397,12 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
 
     public async Task<RedElectricaGeoJson> GetEdgesGeoJsonAsync(
         string? connectionState,
+        string? networkLevels = null,
         CancellationToken cancellationToken = default)
     {
         var snapshot = await GetAsync(false, cancellationToken);
         var normalizedState = NormalizeConnectionState(connectionState);
+        var requestedLevels = ParseNetworkLevels(networkLevels);
         var edges = snapshot.Edges.Values
             .Where(edge =>
                 string.IsNullOrWhiteSpace(normalizedState) ||
@@ -401,11 +410,14 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                     edge.ConnectionState,
                     normalizedState,
                     StringComparison.Ordinal))
+            .Where(edge =>
+                requestedLevels.Count == 0 ||
+                requestedLevels.Contains(edge.NetworkLevel))
             .ToList();
         return CreateGeoJson(
             snapshot,
             "aristas",
-            edges.Select(EdgeFeature).ToList(),
+            edges.Select(edge => EdgeFeature(edge, snapshot.Nodes)).ToList(),
             0,
             edges.Count);
     }
@@ -485,7 +497,7 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
         }
 
         var features = edgeIds
-            .Select(id => EdgeFeature(snapshot.Edges[id]))
+            .Select(id => EdgeFeature(snapshot.Edges[id], snapshot.Nodes))
             .Concat(nodeIds.Select(id => NodeFeature(snapshot.Nodes[id])))
             .ToList();
 
@@ -916,10 +928,15 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                         reader.GetValue(6),
                         CultureInfo.InvariantCulture),
                     VoltageKv = ReadDouble(reader, 7),
+                    NetworkLevel = RedElectricaNetworkClassifier.Classify(
+                        ReadDouble(reader, 7)),
                     Phase = ReadString(reader, 8),
                     Source = reader.GetString(9),
                     IsVirtual = reader.GetBoolean(10),
                     VirtualReason = ReadString(reader, 11),
+                    ValidationState = reader.GetBoolean(10)
+                        ? "pendiente_revision"
+                        : "catalogado",
                     Degree = reader.GetInt32(12),
                     ComponentId = ReadString(reader, 13)
                 };
@@ -980,6 +997,8 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                     ToResolution = reader.GetString(11),
                     ConnectionState = reader.GetString(12),
                     VoltageKv = ReadDouble(reader, 13),
+                    NetworkLevel = RedElectricaNetworkClassifier.Classify(
+                        ReadDouble(reader, 13)),
                     Circuits = ReadInt(reader, 14),
                     CatalogLengthKm = ReadDouble(reader, 15),
                     GeometryLengthKm = Convert.ToDouble(
@@ -1045,6 +1064,21 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
 
         var adjacency = BuildAdjacency(nodes, edges);
         AssignComponents(nodes, adjacency);
+        summary.SubestacionesTransmision = nodes.Values.Count(node =>
+            !node.IsVirtual &&
+            node.NetworkLevel == RedElectricaNetworkLevels.Transmission);
+        summary.SubestacionesSubtransmision = nodes.Values.Count(node =>
+            !node.IsVirtual &&
+            node.NetworkLevel == RedElectricaNetworkLevels.Subtransmission);
+        summary.SubestacionesDistribucion = nodes.Values.Count(node =>
+            !node.IsVirtual &&
+            node.NetworkLevel == RedElectricaNetworkLevels.Distribution);
+        summary.LineasTransmision = edges.Values.Count(edge =>
+            edge.NetworkLevel == RedElectricaNetworkLevels.Transmission);
+        summary.LineasSubtransmision = edges.Values.Count(edge =>
+            edge.NetworkLevel == RedElectricaNetworkLevels.Subtransmission);
+        summary.LineasDistribucion = edges.Values.Count(edge =>
+            edge.NetworkLevel == RedElectricaNetworkLevels.Distribution);
         summary.Persistida = true;
         summary.VersionIdBaseDatos = versionId;
         _logger.LogInformation(
@@ -1386,6 +1420,8 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                 ToResolution = selected.To.Resolution,
                 ConnectionState = state,
                 VoltageKv = line.VoltageKv,
+                NetworkLevel = RedElectricaNetworkClassifier.Classify(
+                    line.VoltageKv),
                 Circuits = line.Circuits,
                 CatalogLengthKm = line.CatalogLengthKm,
                 GeometryLengthKm = line.GeometryLengthKm,
@@ -1430,6 +1466,27 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                 .Count(),
             NodosAislados = nodes.Values.Count(node => node.Degree == 0),
             RevisionesPendientes = uniqueReviews.Count,
+            SubestacionesTransmision = nodes.Values.Count(node =>
+                !node.IsVirtual &&
+                node.NetworkLevel ==
+                RedElectricaNetworkLevels.Transmission),
+            SubestacionesSubtransmision = nodes.Values.Count(node =>
+                !node.IsVirtual &&
+                node.NetworkLevel ==
+                RedElectricaNetworkLevels.Subtransmission),
+            SubestacionesDistribucion = nodes.Values.Count(node =>
+                !node.IsVirtual &&
+                node.NetworkLevel ==
+                RedElectricaNetworkLevels.Distribution),
+            LineasTransmision = edges.Values.Count(edge =>
+                edge.NetworkLevel ==
+                RedElectricaNetworkLevels.Transmission),
+            LineasSubtransmision = edges.Values.Count(edge =>
+                edge.NetworkLevel ==
+                RedElectricaNetworkLevels.Subtransmission),
+            LineasDistribucion = edges.Values.Count(edge =>
+                edge.NetworkLevel ==
+                RedElectricaNetworkLevels.Distribution),
             FuenteSubestaciones = _options.SubstationsUrl,
             FuenteLineas = _options.LinesUrl,
             HashSubestaciones = substationHash,
@@ -1501,6 +1558,8 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                 Latitude = point.Latitude,
                 Longitude = point.Longitude,
                 VoltageKv = voltage,
+                NetworkLevel = RedElectricaNetworkClassifier.Classify(
+                    voltage),
                 Phase = GetString(properties, "fase", "phase"),
                 Source = _options.SubstationsUrl
             };
@@ -1964,9 +2023,12 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
             Latitude = endpoint.Latitude,
             Longitude = endpoint.Longitude,
             VoltageKv = line.VoltageKv,
+            NetworkLevel = RedElectricaNetworkClassifier.Classify(
+                line.VoltageKv),
             Source = _options.LinesUrl,
             IsVirtual = true,
-            VirtualReason = resolution.Reason
+            VirtualReason = resolution.Reason,
+            ValidationState = "pendiente_revision"
         };
         nodes[nodeId] = virtualNode;
         virtualNodes.Add(virtualNode);
@@ -2095,18 +2157,30 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                 ["node_type"] = node.Type,
                 ["name"] = node.Name,
                 ["voltage_kv"] = node.VoltageKv,
+                ["network_level"] = node.NetworkLevel,
+                ["network_level_label"] =
+                    RedElectricaNetworkClassifier.Label(node.NetworkLevel),
                 ["phase"] = node.Phase,
                 ["degree"] = node.Degree,
                 ["component_id"] = node.ComponentId,
                 ["is_virtual"] = node.IsVirtual,
                 ["virtual_reason"] = node.VirtualReason,
-                ["source"] = node.Source
+                ["source"] = node.Source,
+                ["source_kind"] = node.SourceKind,
+                ["validation_state"] = node.ValidationState
             }
         };
 
     private static RedElectricaGeoJsonFeature EdgeFeature(
-        RedElectricaGraphEdge edge) =>
-        new()
+        RedElectricaGraphEdge edge,
+        IReadOnlyDictionary<string, RedElectricaGraphNode>? nodes = null)
+    {
+        RedElectricaGraphNode? fromNode = null;
+        RedElectricaGraphNode? toNode = null;
+        nodes?.TryGetValue(edge.FromNodeId, out fromNode);
+        nodes?.TryGetValue(edge.ToNodeId, out toNode);
+
+        return new RedElectricaGeoJsonFeature
         {
             Geometry = edge.Geometry,
             Properties = new Dictionary<string, object?>
@@ -2117,19 +2191,31 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
                 ["name"] = edge.Name,
                 ["from_id"] = edge.FromNodeId,
                 ["to_id"] = edge.ToNodeId,
+                ["from_name"] = fromNode?.Name ?? edge.NominalEndpointA,
+                ["to_name"] = toNode?.Name ?? edge.NominalEndpointB,
+                ["from_latitude"] = fromNode?.Latitude,
+                ["from_longitude"] = fromNode?.Longitude,
+                ["to_latitude"] = toNode?.Latitude,
+                ["to_longitude"] = toNode?.Longitude,
                 ["from_confidence"] = edge.FromConfidence,
                 ["to_confidence"] = edge.ToConfidence,
                 ["from_resolution"] = edge.FromResolution,
                 ["to_resolution"] = edge.ToResolution,
                 ["connection_state"] = edge.ConnectionState,
                 ["voltage_kv"] = edge.VoltageKv,
+                ["network_level"] = edge.NetworkLevel,
+                ["network_level_label"] =
+                    RedElectricaNetworkClassifier.Label(edge.NetworkLevel),
                 ["circuits"] = edge.Circuits,
                 ["length_km"] = edge.GeometryLengthKm,
                 ["catalog_length_km"] = edge.CatalogLengthKm,
                 ["segment_index"] = edge.SegmentIndex,
-                ["source"] = edge.Source
+                ["source"] = edge.Source,
+                ["source_kind"] = edge.SourceKind,
+                ["validation_state"] = edge.ValidationState
             }
         };
+    }
 
     private static RedElectricaGeoJson CreateGeoJson(
         RedElectricaGraphSnapshot snapshot,
@@ -2160,6 +2246,32 @@ public sealed partial class RedElectricaGraphService : IRedElectricaGraphService
         return normalized is "conectada" or "parcial" or "sin_resolver"
             ? normalized
             : string.Empty;
+    }
+
+    private static HashSet<string> ParseNetworkLevels(string? value)
+    {
+        var allowed = new HashSet<string>(
+            new[]
+            {
+                RedElectricaNetworkLevels.Transmission,
+                RedElectricaNetworkLevels.Subtransmission,
+                RedElectricaNetworkLevels.Distribution,
+                RedElectricaNetworkLevels.Undetermined
+            },
+            StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        return value
+            .Split(
+                new[] { ',', ';', '|' },
+                StringSplitOptions.RemoveEmptyEntries |
+                StringSplitOptions.TrimEntries)
+            .Select(item => NormalizeText(item).ToLowerInvariant().Replace(' ', '_'))
+            .Where(allowed.Contains)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private static IReadOnlyList<JsonElement> GetFeatures(JsonElement root)

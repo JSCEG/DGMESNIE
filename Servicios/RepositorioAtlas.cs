@@ -74,12 +74,6 @@ namespace NSIE.Servicios
 
                 var resultado = (await connection.QueryAsync<ReporteDIario_PMLS>(query)).ToList();
 
-                // Simular horas para cada registro
-                for (int i = 0; i < resultado.Count; i++)
-                {
-                    resultado[i].Hora = i % 24;  // Ciclar a través de las horas de 0 a 23
-                }
-
                 return resultado;
             }
         }

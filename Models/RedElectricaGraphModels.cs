@@ -19,6 +19,12 @@ public sealed class RedElectricaGraphSummary
     public int Componentes { get; init; }
     public int NodosAislados { get; init; }
     public int RevisionesPendientes { get; init; }
+    public int SubestacionesTransmision { get; set; }
+    public int SubestacionesSubtransmision { get; set; }
+    public int SubestacionesDistribucion { get; set; }
+    public int LineasTransmision { get; set; }
+    public int LineasSubtransmision { get; set; }
+    public int LineasDistribucion { get; set; }
     public string FuenteSubestaciones { get; init; } = string.Empty;
     public string FuenteLineas { get; init; } = string.Empty;
     public string HashSubestaciones { get; init; } = string.Empty;
@@ -98,8 +104,11 @@ public sealed class RedElectricaGraphNode
     public double Latitude { get; init; }
     public double Longitude { get; init; }
     public double? VoltageKv { get; init; }
+    public string NetworkLevel { get; set; } = "indeterminado";
     public string Phase { get; init; } = string.Empty;
     public string Source { get; init; } = string.Empty;
+    public string SourceKind { get; init; } = "catalogo_dgmesnie";
+    public string ValidationState { get; init; } = "catalogado";
     public bool IsVirtual { get; init; }
     public string VirtualReason { get; init; } = string.Empty;
     public int Degree { get; set; }
@@ -122,12 +131,15 @@ public sealed class RedElectricaGraphEdge
     public string ToResolution { get; init; } = string.Empty;
     public string ConnectionState { get; init; } = string.Empty;
     public double? VoltageKv { get; init; }
+    public string NetworkLevel { get; set; } = "indeterminado";
     public int? Circuits { get; init; }
     public double? CatalogLengthKm { get; init; }
     public double GeometryLengthKm { get; init; }
     public int SegmentIndex { get; init; }
     public required JsonElement Geometry { get; init; }
     public string Source { get; init; } = string.Empty;
+    public string SourceKind { get; init; } = "catalogo_dgmesnie";
+    public string ValidationState { get; init; } = "topologia_derivada";
 }
 
 public sealed class RedElectricaGraphAdjacency
