@@ -886,7 +886,7 @@
                 </sc-for>
               </svg>
               <div class="dg-market-axis">
-                <span class="dg-market-axis__unit">GW</span>
+                <span class="dg-market-axis__unit">{{ marketYAxisUnit }}</span>
                 <sc-for list="{{ marketYAxis }}" as="my" hint-placeholder-count="3">
                   <span class="dg-market-axis__y" style="top:{{ my.top }}%">{{ my.label }}</span>
                 </sc-for>
@@ -2170,6 +2170,17 @@ class Component extends DCLogic {
     }else{
       this._secondaryLoadTimer=window.setTimeout(loadSecondary,900);
     }
+    // La fuente CENACE/Atlas SEN se actualiza durante el día. Una pestaña abierta
+    // vuelve a consultar cada cinco minutos mientras la bandeja de demanda está
+    // visible; el servidor conserva su propia caché viva con la misma cadencia.
+    this._liveDemandTimer=window.setInterval(()=>{
+      if(document.visibilityState!=='visible') return;
+      const S=this.state||{};
+      if(S.marketOpen&&S.marketMode==='demand'&&S.layers&&
+        S.layers.demanda_atlas&&S.layers.demanda_atlas.on){
+        this._loadDemandMarket(true,true);
+      }
+    },5*60*1000);
     // Mientras el componente termina de inicializar, todo el árbol está oculto
     // (visibility:hidden en .dg-boot) para evitar el flash de placeholders/skeletons
     // del render server-side (legendOn, capasOpen, modales, etc.). Se destapa al
@@ -2190,6 +2201,9 @@ class Component extends DCLogic {
     if (window.__dgPamAnalyze) delete window.__dgPamAnalyze;
     if (this._bootReadyPoll) { clearInterval(this._bootReadyPoll); this._bootReadyPoll = null; }
     if (this._reportFeedbackTimer) { clearTimeout(this._reportFeedbackTimer); this._reportFeedbackTimer = null; }
+    if (this._liveDemandTimer) { clearInterval(this._liveDemandTimer); this._liveDemandTimer = null; }
+    if (this._demandViewportFitTimer) { clearTimeout(this._demandViewportFitTimer); this._demandViewportFitTimer = null; }
+    if (this._tariffViewportFitTimer) { clearTimeout(this._tariffViewportFitTimer); this._tariffViewportFitTimer = null; }
     if (this._analysisAbortController) { try { this._analysisAbortController.abort(); } catch(e){} }
     if(this._secondaryLoadHandle&&typeof window.cancelIdleCallback==='function') window.cancelIdleCallback(this._secondaryLoadHandle);
     if(this._secondaryLoadTimer) window.clearTimeout(this._secondaryLoadTimer);
@@ -3397,6 +3411,8 @@ class Component extends DCLogic {
         this._clearPamInteraction();
         if(pamWasSelected) this._clearHighlight();
       }
+      if(key==='tarifas_atlas') this._clearTariffDivisionFocus();
+      if(key==='demanda_atlas') this._clearDemandRegionFocus();
       const nextState=datasetsSync ? { layers, datasets:datasetsSync } : { layers };
       if(pamWasSelected){
         nextState.selected=null;
@@ -5139,6 +5155,99 @@ class Component extends DCLogic {
     const match=this.TARIFF_DIVISION_COLORS.find(item=>this._norm(item[0])===key);
     return match?match[1]:'#8A9099';
   }
+  _clearTariffDivisionFocus(){
+    if(this._tariffDivisionFocus&&this.map){
+      try{this.map.removeLayer(this._tariffDivisionFocus);}catch(error){}
+    }
+    this._tariffDivisionFocus=null;
+  }
+  _fitTariffViewport(division,animate=true){
+    if(!this.map||!window.L) return;
+    const normalized=this._norm(division||'');
+    const selected=((this._genericFeats&&this._genericFeats.tarifas_atlas)||[])
+      .filter(item=>this._norm(item&&item.props&&item.props.division)===normalized)
+      .filter(item=>item&&item.geometry)
+      .map(item=>({
+        type:'Feature',
+        properties:item.props||{},
+        geometry:item.geometry
+      }));
+    if(!selected.length) return;
+    try{
+      const bounds=window.L.geoJSON({
+        type:'FeatureCollection',
+        features:selected
+      }).getBounds();
+      if(!bounds||!bounds.isValid()) return;
+      this.map.invalidateSize({pan:false});
+      this.map.fitBounds(bounds,{
+        ...this._marketViewportPadding(division),
+        maxZoom:7,
+        animate
+      });
+    }catch(error){}
+  }
+  _scheduleTariffViewportFit(division){
+    if(typeof window==='undefined') return;
+    window.requestAnimationFrame(()=>{
+      try{if(this.map)this.map.invalidateSize({pan:false});}catch(error){}
+    });
+    window.clearTimeout(this._tariffViewportFitTimer);
+    this._tariffViewportFitTimer=window.setTimeout(
+      ()=>this._fitTariffViewport(division,true),
+      280
+    );
+  }
+  _highlightTariffDivision(division,fit=false){
+    this._clearTariffDivisionFocus();
+    if(!this.map||!window.L||!division) return;
+    const normalized=this._norm(division);
+    const selected=((this._genericFeats&&this._genericFeats.tarifas_atlas)||[])
+      .filter(item=>this._norm(item&&item.props&&item.props.division)===normalized)
+      .filter(item=>item&&item.geometry)
+      .map(item=>({
+        type:'Feature',
+        properties:item.props||{},
+        geometry:item.geometry
+      }));
+    if(!selected.length) return;
+    const color=this._tariffDivisionColor(division);
+    try{
+      const collection={type:'FeatureCollection',features:selected};
+      const halo=window.L.geoJSON(collection,{
+        pane:'hl',
+        interactive:false,
+        style:{
+          color:'#FFFFFF',weight:9,opacity:.72,
+          fill:false,lineCap:'round',lineJoin:'round'
+        }
+      });
+      const focus=window.L.geoJSON(collection,{
+        pane:'hl',
+        interactive:false,
+        style:{
+          color,weight:4,opacity:1,
+          fillColor:color,fillOpacity:.25,
+          lineCap:'round',lineJoin:'round'
+        }
+      });
+      const label=document.createElement('span');
+      label.textContent='División seleccionada · '+String(division);
+      focus.bindTooltip(label,{
+        permanent:true,
+        direction:'center',
+        className:'dg-demand-region-label',
+        interactive:false,
+        opacity:1
+      });
+      this._tariffDivisionFocus=window.L
+        .featureGroup([halo,focus])
+        .addTo(this.map);
+      if(fit) this._fitTariffViewport(division,true);
+    }catch(error){
+      this._clearTariffDivisionFocus();
+    }
+  }
   _isNationalDemandRegion(region){
     const value=this._norm(region||'');
     return value.includes('sistemainterconectadonacional')||value==='sin';
@@ -5364,17 +5473,24 @@ class Component extends DCLogic {
       this._loadDemandWeather(name);
     });
   }
-  _loadDemandMarket = () => {
+  _loadDemandMarket = (forceRefresh=false,silent=false) => {
+    const hasData=!!this.state.demandMarketData;
     this.setState(
       {
         marketOpen:true,marketMode:'demand',
-        marketLoading:!this.state.demandMarketData,marketError:'',
+        marketLoading:!hasData&&!silent,marketError:'',
         menuOpen:null,mobilePanel:null,marketLegendOpen:false
       },
       ()=>this._scheduleDemandViewportFit(this.state.marketRegion)
     );
-    if(this.state.demandMarketData||this._demandMarketPromise) return this._demandMarketPromise||Promise.resolve(this.state.demandMarketData);
-    this._demandMarketPromise=fetch('/DashboardProyectos/AtlasSen/Demanda?hourly=true',{cache:'no-store'})
+    if(this._demandMarketPromise) return this._demandMarketPromise;
+    if(!forceRefresh&&hasData) return Promise.resolve(this.state.demandMarketData);
+    const demandUrl='/DashboardProyectos/AtlasSen/Demanda?hourly=true'+
+      (forceRefresh?'&ts='+Date.now():'');
+    this._demandMarketPromise=fetch(demandUrl,{
+      cache:'no-store',
+      headers:{'Accept':'application/json','Cache-Control':'no-cache'}
+    })
       .then(response=>{
         if(!response.ok) throw new Error('HTTP '+response.status);
         return response.json();
@@ -5398,21 +5514,31 @@ class Component extends DCLogic {
         return data;
       })
       .catch(error=>{
-        this.setState({marketLoading:false,marketError:error.message||String(error)});
-        this._toast('No se pudo cargar la serie horaria de demanda.');
+        this.setState({
+          marketLoading:false,
+          marketError:hasData?'':(error.message||String(error))
+        });
+        if(!silent) this._toast('No se pudo cargar la serie horaria de demanda.');
         return null;
       })
       .finally(()=>{this._demandMarketPromise=null;});
     return this._demandMarketPromise;
   };
-  _loadTariffMarket = () => {
+  _loadTariffMarket = (forceRefresh=false,silent=false) => {
+    const hasData=!!this.state.tariffMarketData;
     this.setState({
       marketOpen:true,marketMode:'consumption',
-      marketLoading:!this.state.tariffMarketData,marketError:'',
+      marketLoading:!hasData&&!silent,marketError:'',
       menuOpen:null,mobilePanel:null,marketLegendOpen:false
     });
-    if(this.state.tariffMarketData||this._tariffMarketPromise) return this._tariffMarketPromise||Promise.resolve(this.state.tariffMarketData);
-    this._tariffMarketPromise=fetch('/DashboardProyectos/AtlasSen/Divisiones/Series',{cache:'no-store'})
+    if(this._tariffMarketPromise) return this._tariffMarketPromise;
+    if(!forceRefresh&&hasData) return Promise.resolve(this.state.tariffMarketData);
+    const tariffUrl='/DashboardProyectos/AtlasSen/Divisiones/Series'+
+      (forceRefresh?'?ts='+Date.now():'');
+    this._tariffMarketPromise=fetch(tariffUrl,{
+      cache:'no-store',
+      headers:{'Accept':'application/json','Cache-Control':'no-cache'}
+    })
       .then(response=>{
         if(!response.ok) throw new Error('HTTP '+response.status);
         return response.json();
@@ -5427,22 +5553,30 @@ class Component extends DCLogic {
           marketDivision:preferred,
           marketLoading:false,
           marketError:''
+        },()=>{
+          this._highlightTariffDivision(preferred,false);
+          this._scheduleTariffViewportFit(preferred);
         });
         return data;
       })
       .catch(error=>{
-        this.setState({marketLoading:false,marketError:error.message||String(error)});
-        this._toast('No se pudo cargar la serie histórica de usuarios y consumo.');
+        this.setState({
+          marketLoading:false,
+          marketError:hasData?'':(error.message||String(error))
+        });
+        if(!silent) this._toast('No se pudo cargar la serie histórica de usuarios y consumo.');
         return null;
       })
       .finally(()=>{this._tariffMarketPromise=null;});
     return this._tariffMarketPromise;
   };
   openDemandMarket = () => {
+    this._clearTariffDivisionFocus();
     if(!this.state.layers.demanda_atlas.on) this.toggleLayer('demanda_atlas');
     else this._loadDemandMarket();
   };
   openConsumptionMarket = () => {
+    this._clearDemandRegionFocus();
     if(!this.state.layers.tarifas_atlas.on) this.toggleLayer('tarifas_atlas');
     else this._loadTariffMarket();
   };
@@ -5461,6 +5595,7 @@ class Component extends DCLogic {
       else this.setState({marketOpen:false});
     }
     if(!willOn&&key==='tarifas_atlas'&&this.state.marketMode==='consumption'){
+      this._clearTariffDivisionFocus();
       if(layers.demanda_atlas&&layers.demanda_atlas.on) this._loadDemandMarket();
       else this.setState({marketOpen:false});
     }
@@ -5530,8 +5665,31 @@ class Component extends DCLogic {
       const field=metric==='users'?'users':metric==='intensity'?'intensityKwhPerUser':'energyGwh';
       const values=series.map(point=>Number(point[field])).map(value=>Number.isFinite(value)?value:NaN);
       const color=this._tariffDivisionColor(division);
-      const plot=this._marketPlot([{values,color,width:3}]);
+      const metricLabel=metric==='users'?'Usuarios':metric==='intensity'?'Intensidad':'Consumo';
+      const plot=this._marketPlot([{
+        key:metric,
+        label:metricLabel,
+        values,color,width:3
+      }]);
       const unit=metric==='users'?'usuarios':metric==='intensity'?'kWh/usuario':'GWh';
+      const line=plot.lines[0];
+      const hoverItems=series.map((point,index)=>{
+        const value=values[index];
+        const coordinate=line&&line.coords&&line.coords[index];
+        const x=plot.x?plot.x(index):56;
+        return {
+          title:'Año '+String(point.year||'—'),
+          x:x.toFixed(1),
+          left:(x/10).toFixed(2),
+          flip:x>760,
+          rows:Number.isFinite(value)?[{
+            label:metricLabel,
+            color,
+            value:nf(value,metric==='users'?0:1)+' '+unit
+          }]:[],
+          points:coordinate?[{y:coordinate.y.toFixed(1),color}]:[]
+        };
+      });
       return {
         mode:'consumption',
         options:names.map(name=>({value:name,label:name})),
@@ -5543,8 +5701,10 @@ class Component extends DCLogic {
           {label:'Intensidad',value:nf(reference.intensityKwhPerUser,0),unit:'kWh/usuario',note:'consumo por usuario',color:'#0E8A6E'}
         ],
         title:(metric==='users'?'Usuarios':metric==='intensity'?'Intensidad de consumo':'Consumo de energía')+' · '+(division||'División CFE'),
-        subtitle:'Serie anual comparable · referencia completa '+(data.referenceYear||'—'),
-        legend:[{label:division||'División CFE',color}],
+        subtitle:'Serie anual comparable '+(series[0]&&series[0].year||'—')+'–'+
+          (series[series.length-1]&&series[series.length-1].year||'—')+
+          ' · referencia completa '+(data.referenceYear||'—'),
+        legend:[{label:metricLabel+' · '+(division||'División CFE'),color}],
         lines:plot.lines,
         xaxis:series.map((point,index)=>({
           x:(plot.x?plot.x(index).toFixed(1):'56'),
@@ -5554,6 +5714,7 @@ class Component extends DCLogic {
             (index===0?'none':(index===series.length-1?'translateX(-100%)':'translateX(-50%)'))
         })),
         xaxisTitle:'Año',
+        yaxisUnit:unit,
         yaxis:[plot.max,(plot.max+plot.min)/2,plot.min].map((value,index)=>({
           y:[18,66,114][index],
           top:([18,66,114][index]/150*100).toFixed(2),
@@ -5562,13 +5723,14 @@ class Component extends DCLogic {
         })),
         temperatureAxisVisible:false,
         temperatureYaxis:[],
-        hoverItems:[],
-        hoverCount:0,
+        hoverItems,
+        hoverCount:hoverItems.length,
         maxLabel:nf(plot.max,metric==='users'?0:1)+' '+unit,
         minLabel:nf(plot.min,metric==='users'?0:1)+' '+unit,
         nowVisible:false,
         nowX:'0',
-        source:data.source||'CNE · memorias de cálculo del Suministro Básico'
+        source:(data.source||'CNE · memorias de cálculo del Suministro Básico')+
+          ' · último año completo '+(data.referenceYear||'—')
       };
     }
     const data=S.demandMarketData||{};
@@ -5694,6 +5856,7 @@ class Component extends DCLogic {
       lines:plot.lines,
       xaxis,
       xaxisTitle:'Hora del día (h)',
+      yaxisUnit:'GW',
       yaxis:[plot.max,(plot.max+plot.min)/2,plot.min].map((value,index)=>({
         y:[18,66,114][index],
         top:([18,66,114][index]/150*100).toFixed(2),
@@ -5847,6 +6010,13 @@ class Component extends DCLogic {
     // colgar o abortar el pintado a medio camino, dejando la capa "activa" pero invisible.
     this._vectorPathLayers = this._vectorPathLayers || {};
     this._vectorPathLayers[key] = sawVectorPath;
+    if(key==='tarifas_atlas'&&this.state.marketMode==='consumption'&&
+      this.state.marketDivision){
+      window.setTimeout(()=>{
+        this._highlightTariffDivision(this.state.marketDivision,false);
+        this._scheduleTariffViewportFit(this.state.marketDivision);
+      },0);
+    }
     return n;
   }
   // Normaliza cualquier GeoJSON a lista plana de {geometry, properties}
@@ -7691,7 +7861,9 @@ class Component extends DCLogic {
     if (this._anaCircle) { try { this.map.removeLayer(this._anaCircle); } catch(e){} this._anaCircle=null; }
     if (this._mTip) { try { this.map.removeLayer(this._mTip); } catch(e){} this._mTip=null; }
     if (this._conv2ReviewFocus) { try { this.map.removeLayer(this._conv2ReviewFocus); } catch(e){} this._conv2ReviewFocus=null; }
-    this._clearHighlight(); this._clearGraphFocus(); this._stopDraw();
+    this._clearHighlight(); this._clearGraphFocus();
+    this._clearDemandRegionFocus(); this._clearTariffDivisionFocus();
+    this._stopDraw();
     try { this.drawn.clearLayers(); this.map.closePopup(); } catch(e){}
     try { this._muniPaneShow(false); } catch(e){}
     this._anaSubSet=null; this._anaLineSet=null; this._genericFeats={}; this._genericCount={}; this._autoLayer={};
@@ -7757,10 +7929,26 @@ class Component extends DCLogic {
   };
   onRefresh = () => {
     const online=this.state.datasets.filter(d=>/^https?:\/\//i.test(d.url||''));
-    if (!online.length) { this._toast('No hay datasets en línea vinculados para actualizar'); return; }
-    this._toast('Sincronizando datasets y Minutas…');
-    this.setState({ loading:true, loadingMsg:'Actualizando datos desde Google Sheets…' });
-    Promise.all(online.map(d=>this._reloadDataset(d))).then(updated=>{
+    const marketRequest=this.state.marketOpen
+      ?(this.state.marketMode==='demand'
+        ?this._loadDemandMarket(true,true)
+        :this._loadTariffMarket(true,true))
+      :null;
+    if(!online.length&&!marketRequest){
+      this._toast('No hay datos en línea activos para actualizar');
+      return;
+    }
+    this._toast('Sincronizando fuentes en línea…');
+    this.setState({
+      loading:true,
+      loadingMsg:this.state.marketOpen
+        ?'Actualizando indicadores de operación y mercado…'
+        :'Actualizando datos desde Google Sheets…'
+    });
+    Promise.all([
+      Promise.all(online.map(d=>this._reloadDataset(d))),
+      marketRequest||Promise.resolve(null)
+    ]).then(([updated])=>{
       const byId={}; updated.forEach(x=>{ byId[x.dataset.id]=x.dataset; });
       const datasets=this.state.datasets.map(d=>byId[d.id]||d);
       this._invalidateSearch();
@@ -7769,7 +7957,9 @@ class Component extends DCLogic {
         const traced=updated.find(x=>x.meta);
         this._toast(traced
           ? 'Datos actualizados · '+traced.meta.kept+' continúan de '+traced.meta.evaluated+' folios evaluados en Minutas'
-          : 'Datos actualizados · '+online.length+' dataset(s)');
+          : 'Datos actualizados · '+(online.length
+            ?online.length+' dataset(s) y panel de mercado'
+            :'panel de operación y mercado'));
       });
     }).catch(e=>{
       this.setState({ loading:false });
@@ -8537,10 +8727,176 @@ class Component extends DCLogic {
     };
   }
 
+  async _loadConsumptionReportContext(A){
+    const ranKeys=Array.isArray(A&&A.ranKeys)?A.ranKeys:[];
+    if(!ranKeys.includes('tarifas_atlas')) return null;
+    const geo=this._analysisFilteredGeo&&this._analysisFilteredGeo.tarifas_atlas;
+    const sourceFeatures=geo
+      ?this._normFeatures(geo)
+      :((this._genericFeats||{}).tarifas_atlas||[]).map(item=>({
+        properties:(item&&item.props)||{},
+        geometry:item&&item.geometry
+      }));
+    const requested=Array.from(new Set(sourceFeatures.map(feature=>{
+      const props=(feature&&feature.properties)||{};
+      return String(props.division||props.DIVISION||props['DIVISIÓN']||'').trim();
+    }).filter(Boolean)));
+    if(!requested.length) return null;
+    let data=this.state.tariffMarketData;
+    if(!data||!data.divisions){
+      const response=await fetch('/DashboardProyectos/AtlasSen/Divisiones/Series',{
+        cache:'no-store',
+        headers:{'Accept':'application/json','Cache-Control':'no-cache'}
+      });
+      if(!response.ok) throw new Error('HTTP '+response.status);
+      data=await response.json();
+    }
+    const available=Object.keys((data&&data.divisions)||{});
+    const divisions=requested.map(name=>{
+      const normalized=this._norm(name);
+      return available.find(item=>this._norm(item)===normalized);
+    }).filter(Boolean);
+    return {
+      data,
+      divisions:Array.from(new Set(divisions)).sort((a,b)=>a.localeCompare(b,'es-MX')),
+      source:data.source||'CNE · memorias de cálculo del Suministro Básico',
+      referenceYear:data.referenceYear||''
+    };
+  }
+
+  _appendConsumptionToReport(report,context){
+    if(!report||!context||!context.data||!context.divisions.length) return;
+    const number=value=>value==null||value===''
+      ?null
+      :(Number.isFinite(Number(value))?Number(value):null);
+    const fmt=(value,digits=0)=>value==null
+      ?'—'
+      :Number(value).toLocaleString('es-MX',{
+        minimumFractionDigits:digits,
+        maximumFractionDigits:digits
+      });
+    const referenceYear=String(context.referenceYear||'');
+    const rows=context.divisions.map(name=>{
+      const division=context.data.divisions[name]||{};
+      const series=Array.isArray(division.series)?division.series:[];
+      const reference=series.find(point=>String(point&&point.year)===referenceYear)||
+        series.filter(point=>point&&point.isComplete!==false).slice(-1)[0]||{};
+      return {
+        division:name,
+        year:String(reference.year||referenceYear||'—'),
+        users:number(reference.users),
+        energyGwh:number(reference.energyGwh),
+        intensity:number(reference.intensityKwhPerUser),
+        series
+      };
+    });
+    const source='Fuente: '+context.source;
+    const usersData=rows.filter(item=>item.users!=null)
+      .sort((a,b)=>b.users-a.users).slice(0,6)
+      .map(item=>({
+        label:item.division,
+        value:item.users,
+        color:this._tariffDivisionColor(item.division),
+        detail:'usuarios estimados · '+item.year
+      }));
+    const energyData=rows.filter(item=>item.energyGwh!=null)
+      .sort((a,b)=>b.energyGwh-a.energyGwh).slice(0,6)
+      .map(item=>({
+        label:item.division,
+        value:item.energyGwh,
+        color:this._tariffDivisionColor(item.division),
+        detail:'ventas de energía · '+item.year
+      }));
+    const charts=[
+      usersData.length?{
+        key:'consumption-users',
+        group:'consumption',
+        title:'Usuarios por división tarifaria',
+        subtitle:'Año completo de referencia '+(referenceYear||'disponible')+'.',
+        unit:'usuarios',
+        decimals:0,
+        data:usersData,
+        source
+      }:null,
+      energyData.length?{
+        key:'consumption-energy',
+        group:'consumption',
+        title:'Consumo eléctrico por división',
+        subtitle:'Ventas de energía del año completo '+(referenceYear||'disponible')+'.',
+        unit:'GWh',
+        decimals:1,
+        data:energyData,
+        source
+      }:null
+    ].filter(Boolean).map(chart=>({
+      ...chart,
+      alt:'Gráfica de '+chart.title.toLowerCase(),
+      svgDataUrl:this._reportChartSvg(chart)
+    }));
+    const tableRows=rows.map(item=>[
+      item.division,
+      item.year,
+      fmt(item.users,0),
+      item.energyGwh==null?'—':fmt(item.energyGwh,1)+' GWh',
+      item.intensity==null?'—':fmt(item.intensity,0)+' kWh/usuario'
+    ]);
+    const section={
+      key:'usuarios-consumo',
+      kicker:'Operación y mercado eléctrico',
+      color:'#2E6FB0',
+      icon:'M4 19v-7m6 7V5m6 14V9m4 10H2',
+      title:'Usuarios y consumo por división tarifaria CFE',
+      intro:'La cobertura territorial se cruza con las divisiones tarifarias de CFE. Para cada división identificada se presentan usuarios estimados, ventas de energía e intensidad de consumo con el último año completo comparable.',
+      hasRows:true,
+      rows:[
+        ['Divisiones intersectadas',rows.length.toLocaleString('es-MX')],
+        ['Año completo de referencia',referenceYear||'—'],
+        ['Cobertura de la serie','Usuarios y ventas de energía por división tarifaria']
+      ],
+      hasChips:false,
+      chips:[],
+      hasCharts:charts.length>0,
+      charts,
+      hasTable:tableRows.length>0,
+      table:{
+        head:['División','Año','Usuarios','Consumo','Intensidad'],
+        rows:tableRows
+      },
+      hasTable2:false,
+      source:context.source
+    };
+    const sections=Array.isArray(report.sections)?report.sections:[];
+    if(!sections.find(item=>item&&item.key===section.key)) sections.push(section);
+    report.sections=sections;
+    report.charts=(Array.isArray(report.charts)?report.charts:[]).concat(charts);
+    const usersTotal=rows.reduce((sum,item)=>sum+(item.users||0),0);
+    const energyTotal=rows.reduce((sum,item)=>sum+(item.energyGwh||0),0);
+    report.metrics=(Array.isArray(report.metrics)?report.metrics:[]).concat([
+      {
+        label:'Usuarios CFE',
+        value:fmt(usersTotal,0),
+        color:'#2E6FB0',
+        dim:false,
+        sub:rows.length+' división(es) · '+(referenceYear||'año completo')
+      },
+      {
+        label:'Consumo eléctrico',
+        value:fmt(energyTotal,1)+' GWh',
+        color:'#A57F2C',
+        dim:false,
+        sub:'ventas de energía · '+(referenceYear||'año completo')
+      }
+    ]);
+    report.consumption={
+      source:context.source,
+      referenceYear,
+      divisions:rows
+    };
+  }
+
   _orderReportSections(report){
     if(!report||!Array.isArray(report.sections)) return;
     // Orden editorial compartido por Front, PDF Carta, PDF 16:9 y Excel.
-    // Los alias de consumo reservan su posición para la siguiente integración.
     const order=[
       'layer-cut',
       'elec',
@@ -10708,12 +11064,16 @@ class Component extends DCLogic {
     const rep = await this._buildReport();
     if (!rep) return null;
     const inegiArea=this._resolveInegiArea(this.state.analysis);
-    const [sec,inegiContext,tariffLocalities,fuelPriceContext,demandContext] = await Promise.all([
+    const [
+      sec,inegiContext,tariffLocalities,fuelPriceContext,
+      demandContext,consumptionContext
+    ] = await Promise.all([
       rep._buildPolosSectionPromise,
       this._loadInegiReportContext(inegiArea),
       this._loadTariffLocalitiesInAnalysis(this.state.analysis).catch(()=>null),
       this._loadFuelPricesInAnalysis(this.state.analysis).catch(()=>null),
-      this._loadDemandReportContext(this.state.analysis).catch(()=>null)
+      this._loadDemandReportContext(this.state.analysis).catch(()=>null),
+      this._loadConsumptionReportContext(this.state.analysis).catch(()=>null)
     ]);
     const tariffDivisions=tariffLocalities&&Array.isArray(tariffLocalities.divisions)&&tariffLocalities.divisions.length
       ?tariffLocalities.divisions
@@ -10726,6 +11086,7 @@ class Component extends DCLogic {
       else rep.sections.unshift(sec);
     }
     this._appendDemandToReport(rep,demandContext);
+    this._appendConsumptionToReport(rep,consumptionContext);
     this._appendTariffsToReport(rep,tariffContext,tariffLocalities);
     this._appendInegiToReport(rep,inegiContext);
     this._appendFuelPricesToReport(rep,fuelPriceContext);
@@ -11261,7 +11622,11 @@ class Component extends DCLogic {
     const gap=cfg.landscape?18:16;
     const landscapeColumns=cfg.landscape&&data.length>1?2:1;
     const cardW=cfg.landscape&&landscapeColumns===2?(cfg.width-gap)/2:cfg.width;
-    const cardH=cfg.landscape?cfg.maxY-cfg.y:Math.min(248,(cfg.maxY-cfg.y-gap)/Math.max(1,data.length));
+    const requestedCardHeight=Number(cfg.maxCardHeight);
+    const maxCardHeight=Number.isFinite(requestedCardHeight)
+      ?Math.max(150,requestedCardHeight)
+      :248;
+    const cardH=cfg.landscape?cfg.maxY-cfg.y:Math.min(maxCardHeight,(cfg.maxY-cfg.y-gap)/Math.max(1,data.length));
     const drawCard=(chart,index)=>{
       const x=cfg.landscape&&landscapeColumns===2?cfg.x+index*(cardW+gap):cfg.x;
       const top=cfg.landscape?cfg.y:cfg.y+index*(cardH+gap);
@@ -11274,7 +11639,9 @@ class Component extends DCLogic {
           ?'PRECIOS ENERGÉTICOS'
           :(chart.group==='demand'
             ?'OPERACIÓN DEL SISTEMA'
-            :(chart.group==='energy-permits'?'PERMISOS ENERGÉTICOS':'INFRAESTRUCTURA ELÉCTRICA')));
+            :(chart.group==='consumption'
+              ?'OPERACIÓN Y MERCADO'
+              :(chart.group==='energy-permits'?'PERMISOS ENERGÉTICOS':'INFRAESTRUCTURA ELÉCTRICA'))));
       doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(cfg.landscape?8:7.5);
       doc.setCharSpace(.55); doc.text(chartGroup,x+15,top+20); doc.setCharSpace(0);
       doc.setTextColor(28,27,26); this._setReportFont(doc,'title','bold'); doc.setFontSize(cfg.landscape?16:14);
@@ -11512,7 +11879,7 @@ class Component extends DCLogic {
     }
 
     const demandCharts=charts.filter(chart=>chart&&chart.group==='demand');
-    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand');
+    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.group!=='consumption');
     const tariffCharts=charts.filter(chart=>chart&&chart.group==='tariffs');
     const inegiCharts=charts.filter(chart=>chart&&chart.group==='inegi');
     let electricChartPage=null,demandChartPage=null,tariffChartPage=null,inegiChartPage=null,chartPageCount=0;
@@ -11597,7 +11964,8 @@ class Component extends DCLogic {
       sectionCharts.slice(chartOffset).forEach(chart=>{
         if(y+278>MAX_Y) nextSectionPage();
         y=this._pdfReportCharts(doc,[chart],{
-          x:M,y,width:W-M*2,maxY:MAX_Y,landscape:false
+          x:M,y,width:W-M*2,maxY:MAX_Y,landscape:false,
+          maxCardHeight:sec.key==='usuarios-consumo'?198:undefined
         })+14;
       });
 
@@ -11839,7 +12207,7 @@ class Component extends DCLogic {
     }
 
     const demandCharts=charts.filter(chart=>chart&&chart.group==='demand');
-    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand');
+    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.group!=='consumption');
     const tariffCharts=charts.filter(chart=>chart&&chart.group==='tariffs');
     const inegiCharts=charts.filter(chart=>chart&&chart.group==='inegi');
     let chartPageCount=0;
@@ -13377,6 +13745,7 @@ class Component extends DCLogic {
       onToggleMarketExpanded:()=>this.setState({marketExpanded:!S.marketExpanded},()=>{
         try{if(this.map)this.map.invalidateSize();}catch(error){}
         if(S.marketMode==='demand') this._scheduleDemandViewportFit(this.state.marketRegion);
+        else this._scheduleTariffViewportFit(this.state.marketDivision);
       }),
       onMarketDemand:this.openDemandMarket,
       onMarketConsumption:this.openConsumptionMarket,
@@ -13388,6 +13757,8 @@ class Component extends DCLogic {
         ()=>{
           try{if(this.map)this.map.invalidateSize();}catch(error){}
           if(S.marketMode==='demand') this._scheduleDemandViewportFit(this.state.marketRegion);
+          this._clearDemandRegionFocus();
+          this._clearTariffDivisionFocus();
         }
       ),
       marketSelection:market.selection||'',
@@ -13398,14 +13769,17 @@ class Component extends DCLogic {
         if(S.marketMode==='consumption') this.setState({
           marketDivision:value,marketHoverIndex:null,
           menuOpen:null,marketLegendOpen:false
+        },()=>{
+          this._highlightTariffDivision(value,true);
+          this._scheduleTariffViewportFit(value);
         });
         else this._selectDemandRegion(value,true);
       },
       marketMetricTabsVisible:S.marketMode==='consumption',
       marketMetricTabs:[
-        {label:'Usuarios',activeClass:S.marketMetric==='users'?' is-active':'',onClick:()=>this.setState({marketMetric:'users'})},
-        {label:'Consumo',activeClass:S.marketMetric==='energy'?' is-active':'',onClick:()=>this.setState({marketMetric:'energy'})},
-        {label:'Intensidad',activeClass:S.marketMetric==='intensity'?' is-active':'',onClick:()=>this.setState({marketMetric:'intensity'})}
+        {label:'Usuarios',activeClass:S.marketMetric==='users'?' is-active':'',onClick:()=>this.setState({marketMetric:'users',marketHoverIndex:null})},
+        {label:'Consumo',activeClass:S.marketMetric==='energy'?' is-active':'',onClick:()=>this.setState({marketMetric:'energy',marketHoverIndex:null})},
+        {label:'Intensidad',activeClass:S.marketMetric==='intensity'?' is-active':'',onClick:()=>this.setState({marketMetric:'intensity',marketHoverIndex:null})}
       ],
       marketKpis:market.kpis||[],
       marketChartTitle:market.title||(S.marketError?'Indicadores no disponibles':'Indicadores de operación'),
@@ -13414,6 +13788,7 @@ class Component extends DCLogic {
       marketChartLines:market.lines||[],
       marketXAxis:market.xaxis||[],
       marketXAxisTitle:market.xaxisTitle||'',
+      marketYAxisUnit:market.yaxisUnit||'',
       marketYAxis:market.yaxis||[],
       marketTemperatureAxisVisible:!!market.temperatureAxisVisible,
       marketTemperatureYAxis:market.temperatureYaxis||[],
@@ -13978,8 +14353,8 @@ class Component extends DCLogic {
       reportEyebrow: ((this._report||{}).target||{}).eyebrow || 'Evaluación de sitio estratégico',
       reportMeta: ((this._report||{}).meta||[]).map(r => ({ label:r[0], value:r[1] })),
       reportMetrics: ((this._report||{}).metrics || []).map(m => ({ ...m, op: m.dim ? '.62' : '1', vcolor: m.dim ? '#9A958E' : '#1c1b1a', sub: m.sub||'' })),
-      reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.svgDataUrl).length),
-      reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.svgDataUrl),
+      reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.group!=='consumption'&&chart.svgDataUrl).length),
+      reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.group!=='consumption'&&chart.svgDataUrl),
       reportSections: ((this._report||{}).sections||[]).map(sec => ({
         ...sec,
         rowItems: (sec.rows||[]).map(r => ({ label:r[0], value:r[1], color: r[1]==='no analizada' ? '#9A958E' : '#1c1b1a' })),
