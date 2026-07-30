@@ -8652,7 +8652,21 @@ class Component extends DCLogic {
   closeExport = () => this.setState({ exportOpen:false });
   _download(url, name){ const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); }
   _stamp(){ return new Date().toLocaleString('es-MX'); }
-  _activeLayerRows(){ return this.LAYERS.filter(c=>!c.hidden).map(c=>{ const v=this.state.layers[c.key]; return { Capa:v.label, Categoria:c.cat, Activa: v.on?'Sí':'No', Conteo:v.count||0 }; }); }
+  _activeLayerRows(A=this.state.analysis,L=this.state.layers){
+    const analysis=A||{};
+    const layerState=L||{};
+    const selectedKeys = Array.isArray(analysis.ranKeys) && analysis.ranKeys.length ? analysis.ranKeys : [];
+    const selectedSet = new Set(selectedKeys);
+    const keysToShow = selectedKeys.length ? selectedKeys : this.LAYERS.filter(c => !c.hidden).map(c=>c.key);
+    const byKey = new Map(this.LAYERS.filter(c=>!c.hidden).map(c=>[c.key,c]));
+    return keysToShow
+      .map(key=>{
+        const cfg = byKey.get(key) || {};
+        const v = layerState[key] || {};
+        return cfg.key ? { Capa:v.label || cfg.label || key, Categoria:cfg.cat||'Análisis territorial', Activa: (selectedSet.has(key) ? 'Sí' : (v.on ? 'Sí' : 'No')), Conteo:v.count||0 } : null;
+      })
+      .filter(Boolean);
+  }
   _metricRows(){ const m=this.state.metrics; return [
     ['Capacidad total seleccionada', Math.round(m.capacidad||0), 'MW'],
     ['Subestaciones visibles', m.subs||0, ''],
@@ -14607,7 +14621,7 @@ class Component extends DCLogic {
     const ar=this._anaRows();
     if(ar.length) X.utils.book_append_sheet(wb, sheet(['Concepto','Valor','Unidad'], ar, [34,18,12], [1]), 'Análisis de zona');
     // Capas
-    const capRows=this._activeLayerRows().map(r=>[r.Capa,r.Categoria,r.Activa,r.Conteo]);
+    const capRows=this._activeLayerRows(this.state.analysis,this.state.layers).map(r=>[r.Capa,r.Categoria,r.Activa,r.Conteo]);
     X.utils.book_append_sheet(wb, sheet(['Capa','Categoría','Activa','Conteo'], capRows, [30,22,10,12], [3]), 'Capas');
     // Selección
     const sel=this.state.selected;
