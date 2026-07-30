@@ -333,6 +333,9 @@
           gap:16px;
           margin-top:18px;
         }
+        .dg-report-section[data-report-key="demanda-pronostico"] .dg-report-chart-grid {
+          grid-template-columns:minmax(0,1fr);
+        }
         .dg-report-chart-card {
           min-width:0;
           padding:18px 18px 14px;
@@ -1688,7 +1691,7 @@
         </sc-if>
         <!-- Secciones de contenido -->
         <sc-for list="{{ reportSections }}" as="sec" hint-placeholder-count="4">
-          <section class="dg-report-section" data-screen-label="{{ sec.title }}">
+          <section class="dg-report-section" data-screen-label="{{ sec.title }}" data-report-key="{{ sec.key }}">
             <div class="dg-report-section__head" style="display:flex;align-items:center;gap:10px">
               <span class="dg-report-section__marker" style="background:{{ sec.color }};display:block;flex:none"></span>
               <span class="dg-report-section__kicker" style="font-weight:800;text-transform:uppercase">{{ sec.kicker }}</span>
@@ -8390,7 +8393,186 @@ class Component extends DCLogic {
     return {sections,charts,raw};
   }
 
+  async _loadDemandReportContext(A){
+    const ranKeys=Array.isArray(A&&A.ranKeys)?A.ranKeys:[];
+    if(!ranKeys.includes('demanda_atlas')) return null;
+    let data=this.state.demandMarketData;
+    if(!data||!data.regions){
+      const response=await fetch('/DashboardProyectos/AtlasSen/Demanda?hourly=true',{cache:'no-store'});
+      if(!response.ok) throw new Error('HTTP '+response.status);
+      data=await response.json();
+    }
+    const available=data&&data.regions?Object.keys(data.regions):[];
+    if(!available.length) return null;
+    const matched=[];
+    const addRegion=raw=>{
+      const normalized=this._norm(raw);
+      if(!normalized) return;
+      const exact=available.find(name=>this._norm(name)===normalized);
+      const partial=available.find(name=>this._norm(name).includes(normalized)||normalized.includes(this._norm(name)));
+      const region=exact||partial;
+      if(region&&!matched.includes(region)) matched.push(region);
+    };
+    ((this._genericFeats||{}).demanda_atlas||[]).forEach(item=>{
+      const props=(item&&item.props)||{};
+      addRegion(props.region||props.gerencia_nombre||item.nom);
+    });
+    if(!matched.length&&A&&A.targetKind==='gcr') addRegion(A.targetLabel);
+    if(!matched.length&&this.state.marketRegion) addRegion(this.state.marketRegion);
+    return {
+      data,
+      regionNames:matched,
+      source:data.source||'CENACE',
+      operatingDate:data.operatingDate||'',
+      updatedAt:data.updatedAt||''
+    };
+  }
+
+  _appendDemandToReport(report,context){
+    if(!report||!context||!context.data||!context.data.regions) return;
+    const regions=context.regionNames
+      .map(name=>({name,data:context.data.regions[name]}))
+      .filter(item=>item.data);
+    if(!regions.length) return;
+    const number=value=>value==null||value===''
+      ?null
+      :(Number.isFinite(Number(value))?Number(value):null);
+    const hourLabel=(hour,index,total)=>{
+      const numeric=Number(hour);
+      if(numeric===24&&index===0) return '00:00';
+      if(numeric===24&&index===total-1) return '24:00';
+      return String(Number.isFinite(numeric)?numeric:0).padStart(2,'0')+':00';
+    };
+    const formatMw=value=>value==null?'—':Number(value).toLocaleString('es-MX',{maximumFractionDigits:0})+' MW';
+    const charts=[];
+    const tableRows=[];
+    const rawRegions=[];
+    regions.forEach(({name,data})=>{
+      const hourly=Array.isArray(data.hourly)?data.hourly:[];
+      const latest=data.latest||hourly.filter(point=>number(point&&point.demandaMW)!=null).slice(-1)[0]||{};
+      const demand=number(latest.demandaMW);
+      const generation=number(latest.generacionMW);
+      const forecast=number(latest.pronosticoMW);
+      const balance=demand!=null&&generation!=null?generation-demand:null;
+      const deviation=demand!=null&&forecast!=null?demand-forecast:null;
+      tableRows.push([
+        name,
+        Number.isFinite(Number(latest.hora))?String(Number(latest.hora)).padStart(2,'0')+':00':'—',
+        formatMw(demand),
+        formatMw(generation),
+        formatMw(forecast),
+        formatMw(balance),
+        formatMw(deviation)
+      ]);
+      const points=hourly.map((point,index)=>({
+        label:hourLabel(point&&point.hora,index,hourly.length),
+        hour:Number(point&&point.hora),
+        value:number(point&&point.demandaMW),
+        demandMW:number(point&&point.demandaMW),
+        generationMW:number(point&&point.generacionMW),
+        forecastMW:number(point&&point.pronosticoMW),
+        detail:'Demanda, generación y pronóstico horario'
+      }));
+      const series=[
+        {key:'demand',label:'Demanda',color:'#1E6FD9',values:points.map(point=>point.demandMW)},
+        {key:'generation',label:'Generación',color:'#0E8A6E',values:points.map(point=>point.generationMW)},
+        {key:'forecast',label:'Pronóstico',color:'#7A8FA8',dash:'6 5',values:points.map(point=>point.forecastMW)}
+      ];
+      const chart={
+        key:'demand-forecast-'+this._norm(name),
+        group:'demand',
+        type:'timeseries',
+        title:'Demanda y pronóstico - '+name,
+        subtitle:'Serie horaria del día de operación '+(context.operatingDate||'reportado')+'. Valores en GW.',
+        unit:'MW',
+        decimals:0,
+        data:points,
+        series,
+        source:'Fuente: '+context.source+(context.updatedAt?' - actualización '+new Date(context.updatedAt).toLocaleString('es-MX'):'')
+      };
+      charts.push({
+        ...chart,
+        alt:'Gráfica horaria de demanda y pronóstico de '+name,
+        svgDataUrl:this._reportChartSvg(chart)
+      });
+      rawRegions.push({name,hourly:points,latest});
+    });
+    const section={
+      key:'demanda-pronostico',
+      kicker:'Operación del sistema eléctrico',
+      color:'#1E9CB8',
+      icon:'M3 12h4l3-8 4 16 3-8h4',
+      title:'Demanda y pronóstico por región de control',
+      intro:'La cobertura territorial se cruza con las regiones operativas de CENACE. Se presenta la medición horaria, la generación neta y el pronóstico del día de operación para cada región identificada.',
+      hasRows:true,
+      rows:[
+        ['Regiones intersectadas',regions.length.toLocaleString('es-MX')],
+        ['Día de operación',context.operatingDate||'—'],
+        ['Actualización',context.updatedAt?new Date(context.updatedAt).toLocaleString('es-MX'):'—']
+      ],
+      hasChips:false,
+      chips:[],
+      hasCharts:charts.length>0,
+      charts,
+      hasTable:tableRows.length>0,
+      table:{
+        head:['Región','Hora','Demanda','Generación','Pronóstico','Balance','Desviación vs. pronóstico'],
+        rows:tableRows
+      },
+      hasTable2:false,
+      source:context.source
+    };
+    const sections=Array.isArray(report.sections)?report.sections:[];
+    if(!sections.find(item=>item&&item.key===section.key)){
+      const electricalIndex=sections.findIndex(item=>item&&item.key==='elec');
+      sections.splice(electricalIndex>=0?electricalIndex+1:1,0,section);
+    }
+    report.sections=sections;
+    report.charts=(Array.isArray(report.charts)?report.charts:[]).concat(charts);
+    report.demandForecast={
+      source:context.source,
+      operatingDate:context.operatingDate,
+      updatedAt:context.updatedAt,
+      regions:rawRegions
+    };
+  }
+
+  _orderReportSections(report){
+    if(!report||!Array.isArray(report.sections)) return;
+    // Orden editorial compartido por Front, PDF Carta, PDF 16:9 y Excel.
+    // Los alias de consumo reservan su posición para la siguiente integración.
+    const order=[
+      'layer-cut',
+      'elec',
+      'demanda-pronostico',
+      'usuarios-consumo',
+      'consumo-electricidad',
+      'tarifas-atlas',
+      'tarifas-electricas',
+      'permits-electricity',
+      'permits-gas',
+      'permits-petroleum',
+      'podecobi',
+      'inegi',
+      'social',
+      'amb',
+      'pat',
+      'ter',
+      'ds'
+    ];
+    const rank=new Map(order.map((key,index)=>[key,index]));
+    report.sections=report.sections
+      .map((section,index)=>({section,index}))
+      .sort((a,b)=>{
+        const rankA=rank.has(a.section&&a.section.key)?rank.get(a.section.key):order.length;
+        const rankB=rank.has(b.section&&b.section.key)?rank.get(b.section.key):order.length;
+        return rankA-rankB||a.index-b.index;
+      })
+      .map(item=>item.section);
+  }
+
   _reportChartSvg(chart){
+    if(chart&&chart.type==='timeseries') return this._reportTimeSeriesChartSvg(chart);
     const D=window.d3;
     if(!D||typeof D.create!=='function') return '';
     const data=(chart&&Array.isArray(chart.data)?chart.data:[]).filter(item=>Number.isFinite(Number(item.value))&&Number(item.value)>=0);
@@ -8467,6 +8649,83 @@ class Component extends DCLogic {
       .attr('font-weight',800)
       .attr('font-family','Arial, Helvetica, sans-serif')
       .text(item=>this._reportChartValueText(chart,item.value));
+    const xml=new XMLSerializer().serializeToString(svg.node());
+    return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(xml);
+  }
+
+  _reportTimeSeriesChartSvg(chart){
+    const D=window.d3;
+    if(!D||typeof D.create!=='function') return '';
+    const points=Array.isArray(chart&&chart.data)?chart.data:[];
+    const series=(Array.isArray(chart&&chart.series)?chart.series:[])
+      .map(item=>({...item,values:(Array.isArray(item.values)?item.values:[])
+        .map(value=>value==null||value===''?null:Number(value))}));
+    const values=series.flatMap(item=>item.values).filter(Number.isFinite);
+    if(points.length<2||!values.length) return '';
+    const width=720,height=290,margin={top:48,right:24,bottom:42,left:62};
+    let min=D.min(values),max=D.max(values);
+    const rawSpan=Math.max(1,max-min);
+    min=Math.max(0,min-rawSpan*.10);
+    max=max+rawSpan*.10;
+    const x=D.scaleLinear().domain([0,Math.max(1,points.length-1)]).range([margin.left,width-margin.right]);
+    const y=D.scaleLinear().domain([min,max]).nice().range([height-margin.bottom,margin.top]);
+    const svg=D.create('svg')
+      .attr('xmlns','http://www.w3.org/2000/svg')
+      .attr('viewBox','0 0 '+width+' '+height)
+      .attr('width',width)
+      .attr('height',height)
+      .attr('role','img')
+      .attr('aria-label','Gráfica horaria de '+chart.title);
+    svg.append('rect').attr('width',width).attr('height',height).attr('fill','#fff');
+    const yAxis=svg.append('g')
+      .attr('transform','translate('+margin.left+',0)')
+      .call(D.axisLeft(y).ticks(4).tickSize(-(width-margin.left-margin.right)).tickFormat(value=>(Number(value)/1000).toLocaleString('es-MX',{maximumFractionDigits:1})));
+    yAxis.select('.domain').remove();
+    yAxis.selectAll('.tick line').attr('stroke','#ECE8E2').attr('stroke-width',1);
+    yAxis.selectAll('.tick text').attr('fill','#6F6B66').attr('font-size',11).attr('font-family','Arial, Helvetica, sans-serif');
+    const tickIndexes=[0,Math.round((points.length-1)*.25),Math.round((points.length-1)*.5),Math.round((points.length-1)*.75),points.length-1]
+      .filter((value,index,array)=>array.indexOf(value)===index);
+    const xAxis=svg.append('g')
+      .attr('transform','translate(0,'+(height-margin.bottom)+')')
+      .call(D.axisBottom(x).tickValues(tickIndexes).tickSize(5).tickFormat(index=>(points[Math.round(index)]||{}).label||''));
+    xAxis.select('.domain').attr('stroke','#D8D3CC');
+    xAxis.selectAll('.tick line').attr('stroke','#D8D3CC');
+    xAxis.selectAll('.tick text').attr('fill','#6F6B66').attr('font-size',11).attr('font-family','Arial, Helvetica, sans-serif');
+    const line=D.line()
+      .defined(value=>Number.isFinite(value))
+      .x((value,index)=>x(index))
+      .y(value=>y(value));
+    series.forEach(item=>{
+      svg.append('path')
+        .datum(item.values)
+        .attr('fill','none')
+        .attr('stroke',item.color||'#1E6FD9')
+        .attr('stroke-width',item.key==='demand'?3:2.2)
+        .attr('stroke-dasharray',item.dash||null)
+        .attr('stroke-linecap','round')
+        .attr('stroke-linejoin','round')
+        .attr('d',line);
+    });
+    const legend=svg.append('g').attr('transform','translate('+margin.left+',18)');
+    let legendX=0;
+    series.forEach(item=>{
+      legend.append('line')
+        .attr('x1',legendX).attr('x2',legendX+23).attr('y1',4).attr('y2',4)
+        .attr('stroke',item.color||'#1E6FD9').attr('stroke-width',3).attr('stroke-dasharray',item.dash||null);
+      legend.append('text')
+        .attr('x',legendX+30).attr('y',8)
+        .attr('fill','#3A3A3A').attr('font-size',11).attr('font-weight',700)
+        .attr('font-family','Arial, Helvetica, sans-serif').text(item.label||'Serie');
+      legendX+=30+Math.max(66,String(item.label||'Serie').length*7);
+    });
+    svg.append('text')
+      .attr('x',12).attr('y',margin.top-12)
+      .attr('fill','#6F6B66').attr('font-size',10).attr('font-weight',700)
+      .attr('font-family','Arial, Helvetica, sans-serif').text('GW');
+    svg.append('text')
+      .attr('x',width-margin.right).attr('y',height-10)
+      .attr('text-anchor','end').attr('fill','#9A958E').attr('font-size',10)
+      .attr('font-family','Arial, Helvetica, sans-serif').text('Hora del día');
     const xml=new XMLSerializer().serializeToString(svg.node());
     return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(xml);
   }
@@ -10449,11 +10708,12 @@ class Component extends DCLogic {
     const rep = await this._buildReport();
     if (!rep) return null;
     const inegiArea=this._resolveInegiArea(this.state.analysis);
-    const [sec,inegiContext,tariffLocalities,fuelPriceContext] = await Promise.all([
+    const [sec,inegiContext,tariffLocalities,fuelPriceContext,demandContext] = await Promise.all([
       rep._buildPolosSectionPromise,
       this._loadInegiReportContext(inegiArea),
       this._loadTariffLocalitiesInAnalysis(this.state.analysis).catch(()=>null),
-      this._loadFuelPricesInAnalysis(this.state.analysis).catch(()=>null)
+      this._loadFuelPricesInAnalysis(this.state.analysis).catch(()=>null),
+      this._loadDemandReportContext(this.state.analysis).catch(()=>null)
     ]);
     const tariffDivisions=tariffLocalities&&Array.isArray(tariffLocalities.divisions)&&tariffLocalities.divisions.length
       ?tariffLocalities.divisions
@@ -10465,10 +10725,12 @@ class Component extends DCLogic {
       if (idx >= 0) rep.sections.splice(idx + 1, 0, sec);
       else rep.sections.unshift(sec);
     }
+    this._appendDemandToReport(rep,demandContext);
     this._appendTariffsToReport(rep,tariffContext,tariffLocalities);
     this._appendInegiToReport(rep,inegiContext);
     this._appendFuelPricesToReport(rep,fuelPriceContext);
     await this._attachReportThematicMaps(rep,tariffLocalities);
+    this._orderReportSections(rep);
     return rep;
   }
 
@@ -11010,7 +11272,9 @@ class Component extends DCLogic {
         ?'CONTEXTO TERRITORIAL · INEGI'
         :(chart.group==='tariffs'||chart.group==='fuel-prices'
           ?'PRECIOS ENERGÉTICOS'
-          :(chart.group==='energy-permits'?'PERMISOS ENERGÉTICOS':'INFRAESTRUCTURA ELÉCTRICA'));
+          :(chart.group==='demand'
+            ?'OPERACIÓN DEL SISTEMA'
+            :(chart.group==='energy-permits'?'PERMISOS ENERGÉTICOS':'INFRAESTRUCTURA ELÉCTRICA')));
       doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(cfg.landscape?8:7.5);
       doc.setCharSpace(.55); doc.text(chartGroup,x+15,top+20); doc.setCharSpace(0);
       doc.setTextColor(28,27,26); this._setReportFont(doc,'title','bold'); doc.setFontSize(cfg.landscape?16:14);
@@ -11020,6 +11284,76 @@ class Component extends DCLogic {
       doc.setTextColor(111,107,102); this._setReportFont(doc,'body','normal'); doc.setFontSize(cfg.landscape?8.5:7.8);
       const subtitleLines=doc.splitTextToSize(String(chart.subtitle||''),cardW-30);
       doc.text(subtitleLines,x+15,cy); cy+=subtitleLines.length*(cfg.landscape?10:9)+11;
+
+      if(chart.type==='timeseries'){
+        const chartSeries=(Array.isArray(chart.series)?chart.series:[])
+          .map(series=>({...series,values:(Array.isArray(series.values)?series.values:[])
+            .map(value=>value==null||value===''?null:Number(value))}));
+        const values=chartSeries.flatMap(series=>series.values).filter(Number.isFinite);
+        const pointCount=Math.max(2,...chartSeries.map(series=>series.values.length));
+        if(values.length){
+          let minValue=Math.min(...values),maxValue=Math.max(...values);
+          const rawSpan=Math.max(1,maxValue-minValue);
+          minValue=Math.max(0,minValue-rawSpan*.10);
+          maxValue=maxValue+rawSpan*.10;
+          const span=Math.max(1,maxValue-minValue);
+          const legendY=cy+2;
+          let legendX=x+15;
+          chartSeries.forEach(series=>{
+            const color=rgb(series.color);
+            doc.setDrawColor(color[0],color[1],color[2]); doc.setLineWidth(series.key==='demand'?2.1:1.5);
+            doc.setLineDashPattern(series.dash?[4,3]:[],0);
+            doc.line(legendX,legendY,legendX+18,legendY);
+            doc.setLineDashPattern([],0);
+            doc.setTextColor(58,58,58); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7.8:7.1);
+            doc.text(String(series.label||'Serie'),legendX+24,legendY+2.5);
+            legendX+=24+Math.max(54,doc.getTextWidth(String(series.label||'Serie'))+16);
+          });
+          const plotLeft=x+(cfg.landscape?48:45);
+          const plotRight=x+cardW-18;
+          const plotTop=legendY+15;
+          const plotBottom=top+cardH-33;
+          const plotW=Math.max(80,plotRight-plotLeft);
+          const plotH=Math.max(65,plotBottom-plotTop);
+          const px=index=>plotLeft+(index/Math.max(1,pointCount-1))*plotW;
+          const py=value=>plotTop+((maxValue-value)/span)*plotH;
+          [maxValue,(maxValue+minValue)/2,minValue].forEach((value,gridIndex)=>{
+            const gy=plotTop+(gridIndex/2)*plotH;
+            doc.setDrawColor(gridIndex===2?216:236,gridIndex===2?211:232,gridIndex===2?204:226); doc.setLineWidth(.55);
+            doc.line(plotLeft,gy,plotRight,gy);
+            doc.setTextColor(111,107,102); this._setReportFont(doc,'mono','normal'); doc.setFontSize(cfg.landscape?7.2:6.6);
+            doc.text((value/1000).toLocaleString('es-MX',{maximumFractionDigits:1}),plotLeft-7,gy+2.5,{align:'right'});
+          });
+          chartSeries.forEach(series=>{
+            const color=rgb(series.color);
+            doc.setDrawColor(color[0],color[1],color[2]); doc.setLineWidth(series.key==='demand'?2.1:1.45);
+            doc.setLineDashPattern(series.dash?[4,3]:[],0);
+            let previous=null;
+            series.values.forEach((value,index)=>{
+              if(!Number.isFinite(value)){ previous=null; return; }
+              const current={x:px(index),y:py(value)};
+              if(previous) doc.line(previous.x,previous.y,current.x,current.y);
+              previous=current;
+            });
+            doc.setLineDashPattern([],0);
+          });
+          const labels=Array.isArray(chart.data)?chart.data:[];
+          const tickIndexes=[0,Math.round((pointCount-1)*.25),Math.round((pointCount-1)*.5),Math.round((pointCount-1)*.75),pointCount-1]
+            .filter((value,index,array)=>array.indexOf(value)===index);
+          tickIndexes.forEach((pointIndex,tickIndex)=>{
+            const tx=px(pointIndex);
+            doc.setDrawColor(216,211,204); doc.setLineWidth(.45); doc.line(tx,plotBottom,tx,plotBottom+4);
+            doc.setTextColor(111,107,102); this._setReportFont(doc,'mono','normal'); doc.setFontSize(cfg.landscape?7:6.4);
+            const label=String((labels[pointIndex]||{}).label||'');
+            doc.text(label,tx,plotBottom+12,{align:tickIndex===0?'left':(tickIndex===tickIndexes.length-1?'right':'center')});
+          });
+          doc.setTextColor(111,107,102); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7:6.4);
+          doc.text('GW',plotLeft-7,plotTop-6,{align:'right'});
+        }
+        doc.setTextColor(154,149,142); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7:6.6);
+        doc.text(this._clipText(doc,String(chart.source||'Fuente: CENACE'),cardW-30).toUpperCase(),x+15,top+cardH-11);
+        return;
+      }
 
       const rows=chart.data.slice(0,6);
       const maxValue=Math.max(1,...rows.map(item=>Number(item.value)||0));
@@ -11177,16 +11511,23 @@ class Component extends DCLogic {
       doc.text('No se registraron indicadores para esta corrida.',M,y+8);
     }
 
-    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs');
+    const demandCharts=charts.filter(chart=>chart&&chart.group==='demand');
+    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand');
     const tariffCharts=charts.filter(chart=>chart&&chart.group==='tariffs');
     const inegiCharts=charts.filter(chart=>chart&&chart.group==='inegi');
-    let electricChartPage=null,tariffChartPage=null,inegiChartPage=null,chartPageCount=0;
-    let electricChartFolio=null,tariffChartFolio=null,inegiChartFolio=null;
+    let electricChartPage=null,demandChartPage=null,tariffChartPage=null,inegiChartPage=null,chartPageCount=0;
+    let electricChartFolio=null,demandChartFolio=null,tariffChartFolio=null,inegiChartFolio=null;
     if(electricCharts.length){
       electricChartFolio=String(4+chartPageCount).padStart(2,'0');
       pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro de la cobertura',electricChartFolio);
       electricChartPage=pageInfo.page; chartPageCount++;
       this._pdfReportCharts(doc,electricCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
+    }
+    if(demandCharts.length){
+      demandChartFolio=String(4+chartPageCount).padStart(2,'0');
+      pageInfo=addReportPage('Operación del sistema','Demanda y pronóstico por hora','Regiones de control en la cobertura',demandChartFolio);
+      demandChartPage=pageInfo.page; chartPageCount++;
+      this._pdfReportCharts(doc,demandCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
     }
     if(tariffCharts.length){
       tariffChartFolio=String(4+chartPageCount).padStart(2,'0');
@@ -11219,6 +11560,7 @@ class Component extends DCLogic {
     ];
     if(!allDim) indexEntries.push({group:'Panorama general',folio:'03',title:'Indicadores de la cobertura analizada',page:metricsPage});
     if(electricChartPage) indexEntries.push({group:'Panorama general',folio:electricChartFolio,title:'Perfil eléctrico de la zona',page:electricChartPage});
+    if(demandChartPage) indexEntries.push({group:'Panorama general',folio:demandChartFolio,title:'Demanda y pronóstico por región',page:demandChartPage});
     if(tariffChartPage) indexEntries.push({group:'Panorama general',folio:tariffChartFolio,title:'Tarifas eléctricas por división',page:tariffChartPage});
     if(inegiChartPage) indexEntries.push({group:'Panorama general',folio:inegiChartFolio,title:'Perfil sociodemográfico y económico',page:inegiChartPage});
     nonEmptySections.forEach((sec)=>{
@@ -11247,7 +11589,11 @@ class Component extends DCLogic {
         });
       }
       const sectionCharts=Array.isArray(sec.charts)?sec.charts:[];
-      const chartOffset=sec.key==='inegi'?Math.min(2,sectionCharts.length):(sec.key==='tarifas-electricas'?Math.min(1,sectionCharts.length):0);
+      const chartOffset=sec.key==='inegi'
+        ?Math.min(2,sectionCharts.length)
+        :(sec.key==='tarifas-electricas'
+          ?Math.min(1,sectionCharts.length)
+          :(sec.key==='demanda-pronostico'?Math.min(2,sectionCharts.length):0));
       sectionCharts.slice(chartOffset).forEach(chart=>{
         if(y+278>MAX_Y) nextSectionPage();
         y=this._pdfReportCharts(doc,[chart],{
@@ -11492,7 +11838,8 @@ class Component extends DCLogic {
       doc.text('No se registraron indicadores para esta corrida.',M,y+10);
     }
 
-    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs');
+    const demandCharts=charts.filter(chart=>chart&&chart.group==='demand');
+    const electricCharts=charts.filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand');
     const tariffCharts=charts.filter(chart=>chart&&chart.group==='tariffs');
     const inegiCharts=charts.filter(chart=>chart&&chart.group==='inegi');
     let chartPageCount=0;
@@ -11501,6 +11848,13 @@ class Component extends DCLogic {
       pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro de la cobertura',folio);
       indexEntries.push({group:'Panorama general',folio,title:'Perfil eléctrico de la zona',page:pageInfo.page});
       this._pdfReportCharts(doc,electricCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:true});
+      chartPageCount++;
+    }
+    if(demandCharts.length){
+      const folio=String(4+chartPageCount).padStart(2,'0');
+      pageInfo=addReportPage('Operación del sistema','Demanda y pronóstico por hora','Regiones de control en la cobertura',folio);
+      indexEntries.push({group:'Panorama general',folio,title:'Demanda y pronóstico por región',page:pageInfo.page});
+      this._pdfReportCharts(doc,demandCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:true});
       chartPageCount++;
     }
     if(tariffCharts.length){
@@ -11559,7 +11913,11 @@ class Component extends DCLogic {
         });
       }
       const sectionCharts=Array.isArray(sec&&sec.charts)?sec.charts:[];
-      const chartOffset=sec&&sec.key==='inegi'?Math.min(2,sectionCharts.length):(sec&&sec.key==='tarifas-electricas'?Math.min(1,sectionCharts.length):0);
+      const chartOffset=sec&&sec.key==='inegi'
+        ?Math.min(2,sectionCharts.length)
+        :(sec&&sec.key==='tarifas-electricas'
+          ?Math.min(1,sectionCharts.length)
+          :(sec&&sec.key==='demanda-pronostico'?Math.min(2,sectionCharts.length):0));
       sectionCharts.slice(chartOffset).forEach(chart=>{
         if(y+270>MAX_Y) nextSectionPage();
         y=this._pdfReportCharts(doc,[chart],{
@@ -12474,30 +12832,44 @@ class Component extends DCLogic {
     finish(zone,[{wch:31},{wch:58},{wch:16},{wch:16}],6);
 
     const metrics=Array.isArray(R.metrics)?R.metrics:[];
-    const metricRows=metrics.map(m=>[m&&m.label!=null?m.label:'',asNumber(m&&m.value,'valor'),m&&m.sub!=null?m.sub:'',m&&m.color!=null?m.color:'',m&&m.dim?'Sí':'No']);
-    const metricsRows=[[],[],[],[],[],['Indicador','Valor','Detalle','Color de referencia','Atenuado'],...metricRows];
+    const metricRows=metrics.map(m=>[m&&m.label!=null?m.label:'',asNumber(m&&m.value,'valor'),m&&m.sub!=null?m.sub:'',m&&m.color!=null?m.color:'',m&&m.dim?'Sí':'No','']);
+    const metricsRows=[[],[],[],[],[],['Indicador','Valor','Detalle','Color de referencia','Atenuado','Fuente / serie'],...metricRows];
     const chartBlocks=[];
     (Array.isArray(R.charts)?R.charts:[]).forEach(chart=>{
       metricsRows.push([]);
-      const titleRow=metricsRows.length; metricsRows.push([chart.title||'Perfil eléctrico']);
-      const headerRow=metricsRows.length; metricsRows.push(['Categoría','Valor','Unidad','Detalle','Fuente']);
-      (Array.isArray(chart.data)?chart.data:[]).forEach(item=>metricsRows.push([
-        item&&item.label!=null?item.label:'',
-        asNumber(item&&item.value,'valor'),
-        chart.unit||'',
-        item&&item.detail!=null?item.detail:'',
-        chart.source||'SENER',
-      ]));
-      chartBlocks.push({title:titleRow,header:headerRow,last:metricsRows.length-1});
+      const titleRow=metricsRows.length; metricsRows.push([chart.title||'Perfil eléctrico','','','','','']);
+      const headerRow=metricsRows.length;
+      if(chart&&chart.type==='timeseries'){
+        metricsRows.push(['Hora','Demanda (MW)','Generación (MW)','Pronóstico (MW)','Detalle','Fuente']);
+        (Array.isArray(chart.data)?chart.data:[]).forEach(item=>metricsRows.push([
+          item&&item.label!=null?item.label:'',
+          asNumber(item&&item.demandMW,'demandaMW'),
+          asNumber(item&&item.generationMW,'generacionMW'),
+          asNumber(item&&item.forecastMW,'pronosticoMW'),
+          item&&item.detail!=null?item.detail:'',
+          chart.source||'CENACE'
+        ]));
+      }else{
+        metricsRows.push(['Categoría','Valor','Unidad','Detalle','Fuente','']);
+        (Array.isArray(chart.data)?chart.data:[]).forEach(item=>metricsRows.push([
+          item&&item.label!=null?item.label:'',
+          asNumber(item&&item.value,'valor'),
+          chart.unit||'',
+          item&&item.detail!=null?item.detail:'',
+          chart.source||'SENER',
+          ''
+        ]));
+      }
+      chartBlocks.push({title:titleRow,header:headerRow,last:metricsRows.length-1,cols:6});
     });
     const metricSheet=X.utils.aoa_to_sheet(metricsRows);
-    titleBlock(metricSheet,'Indicadores','Métricas y datos fuente del perfil eléctrico',4);
-    paintTable(metricSheet,5,5+metricRows.length,5,true);
+    titleBlock(metricSheet,'Indicadores','Métricas, demanda, pronóstico y datos fuente del perfil eléctrico',5);
+    paintTable(metricSheet,5,5+metricRows.length,6,true);
     chartBlocks.forEach(block=>{
-      ensure(metricSheet,block.title,0).s=ST.gold; merge(metricSheet,block.title,0,block.title,4);
-      paintTable(metricSheet,block.header,block.last,5,true);
+      ensure(metricSheet,block.title,0).s=ST.gold; merge(metricSheet,block.title,0,block.title,block.cols-1);
+      paintTable(metricSheet,block.header,block.last,block.cols,true);
     });
-    finish(metricSheet,widths(metricsRows,[31,18,48,20,12]),6);
+    finish(metricSheet,widths(metricsRows,[24,18,18,18,46,58]),6);
 
     const buildSection=(plan)=>{
       const sec=plan.sec||{}, rows=[[],[],[],[],[],['Introducción'],[sec.intro==null?'':sec.intro],[]];
@@ -12783,6 +13155,14 @@ class Component extends DCLogic {
         (R.fuelPrices.fuente||'CNE · precios reportados por permisionarios')+' · consulta '+String(R.fuelPrices.fechaConsulta||R.date||''),
         Array.isArray(R.fuelPrices.estaciones)?R.fuelPrices.estaciones.length:0,
         'Estaciones con precio'
+      ]]:[]),
+      ...(R.demandForecast?[[
+        'Demanda y pronóstico',
+        (R.demandForecast.source||'CENACE')+' · día de operación '+String(R.demandForecast.operatingDate||'—')+
+          (R.demandForecast.updatedAt?' · actualización '+new Date(R.demandForecast.updatedAt).toLocaleString('es-MX'):''),
+        (Array.isArray(R.demandForecast.regions)?R.demandForecast.regions:[])
+          .reduce((total,region)=>total+(Array.isArray(region&&region.hourly)?region.hourly.length:0),0),
+        'Series horarias por región'
       ]]:[]),
       ...activeDatasets.map(d=>[d.name||'Dataset activo',d.url||'Fuente conectada',Array.isArray(d.rows)?d.rows.length:0,Array.isArray(d.fields)?d.fields.length:0]),
       ...permitPlans.map(plan=>{
@@ -13598,8 +13978,8 @@ class Component extends DCLogic {
       reportEyebrow: ((this._report||{}).target||{}).eyebrow || 'Evaluación de sitio estratégico',
       reportMeta: ((this._report||{}).meta||[]).map(r => ({ label:r[0], value:r[1] })),
       reportMetrics: ((this._report||{}).metrics || []).map(m => ({ ...m, op: m.dim ? '.62' : '1', vcolor: m.dim ? '#9A958E' : '#1c1b1a', sub: m.sub||'' })),
-      reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.svgDataUrl).length),
-      reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.svgDataUrl),
+      reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.svgDataUrl).length),
+      reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.svgDataUrl),
       reportSections: ((this._report||{}).sections||[]).map(sec => ({
         ...sec,
         rowItems: (sec.rows||[]).map(r => ({ label:r[0], value:r[1], color: r[1]==='no analizada' ? '#9A958E' : '#1c1b1a' })),

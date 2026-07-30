@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using NSIE.Models;
 using NSIE.Servicios;
 using System.Text.Json;
@@ -6,6 +7,7 @@ using System.Text.Json;
 namespace NSIE.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("DashboardProyectos/AtlasSen")]
 public sealed class AtlasSenController : ControllerBase
 {

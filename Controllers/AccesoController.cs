@@ -32,7 +32,8 @@ namespace NSIE.Controllers
         private readonly IRepositorioUsuarios _repositorioUsuarios;
         private readonly string _connectionString;
         private readonly ILogger<AccesoController> _logger;
-        public AccesoController(IRepositorioAcceso repositorioAcceso, IRepositorioUsuarios repositorioUsuarios, IConfiguration configuration, IServicioEmailSMTP servicioEmailSMTP, ILogger<AccesoController> logger)
+        private readonly IWebHostEnvironment _environment;
+        public AccesoController(IRepositorioAcceso repositorioAcceso, IRepositorioUsuarios repositorioUsuarios, IConfiguration configuration, IServicioEmailSMTP servicioEmailSMTP, ILogger<AccesoController> logger, IWebHostEnvironment environment)
         {
             _repositorioAcceso = repositorioAcceso;
             _repositorioUsuarios = repositorioUsuarios;
@@ -40,6 +41,7 @@ namespace NSIE.Controllers
             //_servicioEmail = servicioEmail;
             _servicioEmailSMTP = servicioEmailSMTP;
             _logger = logger;
+            _environment = environment;
         }
 
         public IActionResult Enviar()
@@ -84,8 +86,13 @@ namespace NSIE.Controllers
         }
 
         [HttpGet]
-        public IActionResult DevBypass(int id)
+        public async Task<IActionResult> DevBypass(int id)
         {
+            if (!_environment.IsDevelopment())
+            {
+                return NotFound();
+            }
+
             using (var cn = new SqlConnection(_connectionString))
             {
                 cn.Open();
@@ -95,7 +102,7 @@ namespace NSIE.Controllers
                     return Content($"Usuario con ID {id} no existe o no está vigente.");
                 }
             }
-            return CompletarInicioSesion(id, false, null);
+            return await CompletarInicioSesion(id, false, null);
         }
 
         [HttpPost]
@@ -175,7 +182,7 @@ namespace NSIE.Controllers
                 Clave = "OAuthSocial" // esta clave coincide con lo guardado en DB (encriptado en ProcesarLoginInvitado)
             };
 
-            return Login(usuarioSocial, "social", true);
+            return await Login(usuarioSocial, "social", true);
 
         }
 
@@ -240,7 +247,7 @@ namespace NSIE.Controllers
                 Clave = "OAuthSocial" // esta clave coincide con lo guardado en DB (encriptado en ProcesarLoginInvitado)
             };
 
-            return Login(usuarioSocial, "social", true);
+            return await Login(usuarioSocial, "social", true);
         }
 
         public async Task<IActionResult> Logout()
@@ -279,7 +286,7 @@ namespace NSIE.Controllers
         }
 
         #region Acceso a consulta Pública
-        public IActionResult AccesoComoInvitado()
+        public async Task<IActionResult> AccesoComoInvitado()
         {
             Usuario oUsuario = new Usuario
             {
@@ -287,10 +294,10 @@ namespace NSIE.Controllers
                 Clave = "consulta_publica"
             };
             RegistrarAcceso(oUsuario.Correo, "Acceso como Consulta Pública");
-            return ProcesarLoginInvitado(oUsuario);
+            return await ProcesarLoginInvitado(oUsuario);
         }
 
-        private IActionResult ProcesarLoginInvitado(Usuario oUsuario)
+        private async Task<IActionResult> ProcesarLoginInvitado(Usuario oUsuario)
         {
             try
             {
@@ -314,13 +321,13 @@ namespace NSIE.Controllers
                 return View("Login");
             }
 
-            return CompletarInicioSesion(oUsuario.IdUsuario, false, null);
+            return await CompletarInicioSesion(oUsuario.IdUsuario, false, null);
         }
         #endregion
 
         #region Metodo Login
         [HttpPost]
-        public IActionResult Login(Usuario oUsuario, string tipoAcceso = null, bool registrarAcceso = true)
+        public async Task<IActionResult> Login(Usuario oUsuario, string tipoAcceso = null, bool registrarAcceso = true)
         {
             // Si el tipo de acceso es público, procesar como invitado directamente
             if (tipoAcceso == "publico")
@@ -336,7 +343,7 @@ namespace NSIE.Controllers
                 RegistrarAcceso(usuarioInvitado.Correo, "Acceso como Consulta Pública");
 
                 // Procesar login como invitado (sin recursión)
-                return ProcesarLoginInvitado(usuarioInvitado);
+                return await ProcesarLoginInvitado(usuarioInvitado);
             }
 
             if (tipoAcceso == "social")
@@ -346,7 +353,7 @@ namespace NSIE.Controllers
                 RegistrarAcceso(oUsuario.Correo, "Acceso como Consulta Pública");
 
                 // Procesar login como invitado (sin recursión)
-                return ProcesarLoginInvitado(oUsuario);
+                return await ProcesarLoginInvitado(oUsuario);
             }
 
             // Validar que se proporcionen credenciales para usuario registrado
@@ -377,7 +384,7 @@ namespace NSIE.Controllers
                 return View("Login");
             }
 
-            return CompletarInicioSesion(oUsuario.IdUsuario, registrarAcceso, "Inicio de sesión funcionario SENER");
+            return await CompletarInicioSesion(oUsuario.IdUsuario, registrarAcceso, "Inicio de sesión funcionario SENER");
         }
         #endregion
 
@@ -575,7 +582,7 @@ namespace NSIE.Controllers
             );
         }
 
-        private IActionResult CompletarInicioSesion(int idUsuario, bool registrarAcceso, string tipoAcceso)
+        private async Task<IActionResult> CompletarInicioSesion(int idUsuario, bool registrarAcceso, string tipoAcceso)
         {
             using var cn = new SqlConnection(_connectionString);
             cn.Open();
@@ -622,6 +629,11 @@ namespace NSIE.Controllers
 
             var perfilUsuarioJson = JsonConvert.SerializeObject(perfilUsuario);
             HttpContext.Session.SetString("PerfilUsuario", perfilUsuarioJson);
+            await IniciarSesionInterna(
+                idUsuario,
+                perfilUsuario.Correo,
+                perfilUsuario.Nombre,
+                perfilUsuario.Rol_Nombre ?? perfilUsuario.Rol ?? "Usuario");
 
             var seccionesAgrupadas = ObtenerSeccionesUsuario(cn, idUsuario);
             var seccionesUsuarioJson = JsonConvert.SerializeObject(seccionesAgrupadas);

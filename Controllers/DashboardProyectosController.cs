@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Newtonsoft.Json;
@@ -7,6 +8,7 @@ using NSIE.Servicios;
 
 namespace NSIE.Controllers
 {
+    [Authorize]
     public class DashboardProyectosController : Controller
     {
         private readonly IPamrntProyectosIdentificadosService _pamService;
