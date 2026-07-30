@@ -86,6 +86,24 @@ namespace NSIE.Controllers
         }
 
         [HttpGet]
+        public IActionResult DeployCheck()
+        {
+            var info = new
+            {
+                appServiceName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"),
+                slotName = Environment.GetEnvironmentVariable("WEBSITE_SLOT_NAME"),
+                resourceGroup = Environment.GetEnvironmentVariable("WEBSITE_RESOURCE_GROUP"),
+                hostName = Environment.GetEnvironmentVariable("WEBSITE_HOSTNAME"),
+                instanceId = Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"),
+                environment = _environment.EnvironmentName,
+                machine = Environment.MachineName,
+                checkedAtUtc = DateTime.UtcNow
+            };
+
+            return Json(info);
+        }
+
+        [HttpGet]
         public async Task<IActionResult> DevBypass(int id)
         {
             if (!_environment.IsDevelopment())
