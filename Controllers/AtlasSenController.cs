@@ -487,6 +487,33 @@ public sealed class AtlasSenController : ControllerBase
         }
     }
 
+    [HttpGet("GeneracionDistribuida")]
+    [ResponseCache(Duration = 600, Location = ResponseCacheLocation.Client)]
+    [ProducesResponseType(
+        typeof(AtlasSenDistributedGenerationResponse),
+        StatusCodes.Status200OK)]
+    public async Task<ActionResult<AtlasSenDistributedGenerationResponse>>
+        DistributedGeneration(
+            CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return Ok(await _service.GetDistributedGenerationAsync(
+                cancellationToken));
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (Exception exception) when (IsSourceException(exception))
+        {
+            return AtlasUnavailable(
+                exception,
+                "consultar la generación distribuida");
+        }
+    }
+
     private ObjectResult AtlasUnavailable(
         Exception exception,
         string action)

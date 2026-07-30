@@ -12,6 +12,10 @@ public static class AtlasSenDatasetKeys
     public const string Demand = "demand";
     public const string Mda = "mda";
     public const string PrivateGeneration = "private_generation";
+    public const string DistributedGenerationByState =
+        "distributed_generation_by_state";
+    public const string DistributedGenerationBySize =
+        "distributed_generation_by_size";
 }
 
 public sealed class AtlasSenStatus
@@ -30,6 +34,9 @@ public sealed class AtlasSenStatus
     public DateTime? MdaUpdatedUtc { get; init; }
     public DateOnly? MdaOperatingDate { get; init; }
     public int PrivateGenerationProjects { get; init; }
+    public int DistributedGenerationStates { get; init; }
+    public string DistributedGenerationReferencePeriod { get; init; } =
+        string.Empty;
     public IReadOnlyList<AtlasSenDatasetState> Datasets { get; init; } =
         Array.Empty<AtlasSenDatasetState>();
 }
@@ -142,6 +149,57 @@ public sealed class AtlasSenTariffSeriesPoint
     public double? IntensityKwhPerUser { get; init; }
     public string YearStatus { get; init; } = string.Empty;
     public bool IsComplete { get; init; }
+}
+
+public sealed class AtlasSenDistributedGenerationResponse
+{
+    public DateTime GeneratedUtc { get; init; }
+    public string ReferencePeriod { get; init; } = string.Empty;
+    public string ReferenceYear { get; init; } = string.Empty;
+    public IReadOnlyList<string> Periods { get; init; } =
+        Array.Empty<string>();
+    public IReadOnlyList<string> Years { get; init; } =
+        Array.Empty<string>();
+    public IReadOnlyDictionary<string, AtlasSenDistributedGenerationState> States
+        { get; init; } =
+        new Dictionary<string, AtlasSenDistributedGenerationState>(
+            StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyDictionary<string, double?> CapacityTotalMw { get; init; } =
+        new Dictionary<string, double?>(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyDictionary<string, int?> ContractsTotal { get; init; } =
+        new Dictionary<string, int?>(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, double?>>
+        CapacityBySize { get; init; } =
+        new Dictionary<string, IReadOnlyDictionary<string, double?>>(
+            StringComparer.OrdinalIgnoreCase);
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, int?>>
+        ContractsBySize { get; init; } =
+        new Dictionary<string, IReadOnlyDictionary<string, int?>>(
+            StringComparer.OrdinalIgnoreCase);
+    public string Source { get; init; } =
+        "CNE · Generación Distribuida y Limpia";
+    public string AttributionUrl { get; init; } =
+        "https://www.cne.gob.mx/";
+    public string License { get; init; } = "Datos públicos CNE";
+    public string ValidationState { get; init; } =
+        "serie_publica_compilada_por_atlas_sen";
+}
+
+public sealed class AtlasSenDistributedGenerationState
+{
+    public string Name { get; init; } = string.Empty;
+    public string MacroRegion { get; init; } = string.Empty;
+    public AtlasSenDistributedGenerationPoint? Latest { get; init; }
+    public IReadOnlyDictionary<string, AtlasSenDistributedGenerationPoint> Series
+        { get; init; } =
+        new Dictionary<string, AtlasSenDistributedGenerationPoint>(
+            StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class AtlasSenDistributedGenerationPoint
+{
+    public double? Mw { get; init; }
+    public int? Contracts { get; init; }
 }
 
 public sealed class AtlasSenGeoJson

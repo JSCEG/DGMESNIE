@@ -34,6 +34,10 @@ public sealed class AtlasSenOptions
         "https://api.open-meteo.com/v1/forecast";
     public string PrivateGenerationUrl { get; set; } =
         "https://raw.githubusercontent.com/batuenergy/atlas-sen/main/public/data/private_generation.json";
+    public string DistributedGenerationByStateUrl { get; set; } =
+        "https://raw.githubusercontent.com/batuenergy/atlas-sen/main/public/data/dg_by_state.json";
+    public string DistributedGenerationBySizeUrl { get; set; } =
+        "https://raw.githubusercontent.com/batuenergy/atlas-sen/main/public/data/dg_by_size.json";
     public string SnapshotDirectory { get; set; } =
         DefaultSnapshotDirectory;
     public int CacheMinutes { get; set; } = 360;
@@ -87,6 +91,9 @@ public interface IAtlasSenReferenceService
     Task<AtlasSenGeoJson> GetPrivateGenerationGeoJsonAsync(
         CancellationToken cancellationToken = default);
 
+    Task<AtlasSenDistributedGenerationResponse> GetDistributedGenerationAsync(
+        CancellationToken cancellationToken = default);
+
     Task<AtlasSenStatus> AcknowledgeDatasetAsync(
         string datasetKey,
         CancellationToken cancellationToken = default);
@@ -106,6 +113,8 @@ public sealed partial class AtlasSenReferenceService :
     private const string MdaCacheKey = "atlas-sen-mda-v1";
     private const string PrivateGenerationGeoJsonCacheKey =
         "atlas-sen-private-generation-geojson-v1";
+    private const string DistributedGenerationCacheKey =
+        "atlas-sen-distributed-generation-v1";
     private static readonly SemaphoreSlim RefreshLock = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -1049,6 +1058,102 @@ public sealed partial class AtlasSenReferenceService :
         return result;
     }
 
+    public async Task<AtlasSenDistributedGenerationResponse>
+        GetDistributedGenerationAsync(
+            CancellationToken cancellationToken = default)
+    {
+        if (_cache.TryGetValue<AtlasSenDistributedGenerationResponse>(
+                DistributedGenerationCacheKey,
+                out var cached) &&
+            cached is not null)
+        {
+            return cached;
+        }
+
+        var stateTask = GetDocumentAsync(
+            AtlasSenDatasetKeys.DistributedGenerationByState,
+            cancellationToken);
+        var sizeTask = GetDocumentAsync(
+            AtlasSenDatasetKeys.DistributedGenerationBySize,
+            cancellationToken);
+        await Task.WhenAll(stateTask, sizeTask);
+
+        using var stateDocument = JsonDocument.Parse(await stateTask);
+        using var sizeDocument = JsonDocument.Parse(await sizeTask);
+        var stateRoot = stateDocument.RootElement;
+        var sizeRoot = sizeDocument.RootElement;
+        var periods = ReadStringArray(stateRoot, "periods");
+        var years = ReadStringArray(sizeRoot, "years");
+        var referencePeriod = periods.LastOrDefault() ?? string.Empty;
+        var referenceYear = years.LastOrDefault() ?? string.Empty;
+        var macroRegions = GetProperty(stateRoot, "macroRegion");
+        var statesSource = GetProperty(stateRoot, "byState");
+        var states = new Dictionary<string, AtlasSenDistributedGenerationState>(
+            StringComparer.OrdinalIgnoreCase);
+
+        if (statesSource.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var stateProperty in statesSource.EnumerateObject())
+            {
+                var series = new Dictionary<
+                    string,
+                    AtlasSenDistributedGenerationPoint>(
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (var period in periods)
+                {
+                    var point = GetProperty(stateProperty.Value, period);
+                    if (point.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+                    series[period] = new AtlasSenDistributedGenerationPoint
+                    {
+                        Mw = ReadObjectDouble(point, "mw"),
+                        Contracts = ReadObjectInt(point, "contratos")
+                    };
+                }
+                series.TryGetValue(referencePeriod, out var latest);
+                states[stateProperty.Name] =
+                    new AtlasSenDistributedGenerationState
+                    {
+                        Name = stateProperty.Name,
+                        MacroRegion = ReadObjectString(
+                            macroRegions,
+                            stateProperty.Name),
+                        Latest = latest,
+                        Series = series
+                    };
+            }
+        }
+
+        var result = new AtlasSenDistributedGenerationResponse
+        {
+            GeneratedUtc = DateTime.UtcNow,
+            ReferencePeriod = referencePeriod,
+            ReferenceYear = referenceYear,
+            Periods = periods,
+            Years = years,
+            States = states,
+            CapacityTotalMw = ReadDoubleSeries(
+                GetProperty(sizeRoot, "capacityMWp_total"),
+                years),
+            ContractsTotal = ReadIntSeries(
+                GetProperty(sizeRoot, "contracts_total"),
+                years),
+            CapacityBySize = ReadNestedDoubleSeries(
+                GetProperty(sizeRoot, "capacityMWp"),
+                years),
+            ContractsBySize = ReadNestedIntSeries(
+                GetProperty(sizeRoot, "contracts"),
+                years)
+        };
+        _cache.Set(
+            DistributedGenerationCacheKey,
+            result,
+            TimeSpan.FromMinutes(Math.Max(5, _options.CacheMinutes)));
+        return result;
+    }
+
     public async Task<AtlasSenStatus> AcknowledgeDatasetAsync(
         string datasetKey,
         CancellationToken cancellationToken = default)
@@ -1231,6 +1336,12 @@ public sealed partial class AtlasSenReferenceService :
             AtlasSenDatasetKeys.PrivateGeneration => (
                 GetArrayLength(document.RootElement, "projects"),
                 ReadUpdatedUtc(document.RootElement)),
+            AtlasSenDatasetKeys.DistributedGenerationByState => (
+                GetObjectLength(document.RootElement, "byState"),
+                ReadUpdatedUtc(document.RootElement)),
+            AtlasSenDatasetKeys.DistributedGenerationBySize => (
+                GetObjectLength(document.RootElement, "capacityMWp"),
+                ReadUpdatedUtc(document.RootElement)),
             _ => (0, null)
         };
         return new FetchedDataset(
@@ -1303,12 +1414,17 @@ public sealed partial class AtlasSenReferenceService :
         var privateGeneration = datasets.Single(dataset =>
             dataset.Definition.Key ==
             AtlasSenDatasetKeys.PrivateGeneration);
+        var distributedGeneration = datasets.Single(dataset =>
+            dataset.Definition.Key ==
+            AtlasSenDatasetKeys.DistributedGenerationByState);
         using var atlasDocument = JsonDocument.Parse(atlas.Content);
         using var osmDocument = JsonDocument.Parse(osm.Content);
         using var demandDocument = JsonDocument.Parse(demand.Content);
         using var mdaDocument = JsonDocument.Parse(mda.Content);
         using var privateGenerationDocument =
             JsonDocument.Parse(privateGeneration.Content);
+        using var distributedGenerationDocument =
+            JsonDocument.Parse(distributedGeneration.Content);
         return new AtlasSenStatus
         {
             CheckedUtc = checkedUtc,
@@ -1343,6 +1459,13 @@ public sealed partial class AtlasSenReferenceService :
             PrivateGenerationProjects = GetArrayLength(
                 privateGenerationDocument.RootElement,
                 "projects"),
+            DistributedGenerationStates = GetObjectLength(
+                distributedGenerationDocument.RootElement,
+                "byState"),
+            DistributedGenerationReferencePeriod = ReadStringArray(
+                    distributedGenerationDocument.RootElement,
+                    "periods")
+                .LastOrDefault() ?? string.Empty,
             Datasets = states
         };
     }
@@ -1480,6 +1603,7 @@ public sealed partial class AtlasSenReferenceService :
         _cache.Remove(DemandGeoJsonCacheKey);
         _cache.Remove(MdaCacheKey);
         _cache.Remove(PrivateGenerationGeoJsonCacheKey);
+        _cache.Remove(DistributedGenerationCacheKey);
     }
 
     private IReadOnlyList<AtlasSenDatasetDefinition> DatasetDefinitions() =>
@@ -1533,6 +1657,20 @@ public sealed partial class AtlasSenReferenceService :
                 "main",
                 "CNE/SENER · 1ª Convocatoria de Atención Prioritaria, compilado por Atlas SEN",
                 "Datos públicos; revisar fuente por proyecto",
+                false),
+            new AtlasSenDatasetDefinition(
+                AtlasSenDatasetKeys.DistributedGenerationByState,
+                _options.DistributedGenerationByStateUrl,
+                "main",
+                "CNE · Generación Distribuida y Limpia, compilado por Atlas SEN",
+                "Datos públicos CNE",
+                false),
+            new AtlasSenDatasetDefinition(
+                AtlasSenDatasetKeys.DistributedGenerationBySize,
+                _options.DistributedGenerationBySizeUrl,
+                "main",
+                "CNE · Generación Distribuida y Limpia, compilado por Atlas SEN",
+                "Datos públicos CNE",
                 false)
         };
 
@@ -1644,6 +1782,13 @@ public sealed partial class AtlasSenReferenceService :
                 ReadDateOnly(root, "operatingDate").HasValue,
             AtlasSenDatasetKeys.PrivateGeneration =>
                 HasNonEmptyArray(root, "projects"),
+            AtlasSenDatasetKeys.DistributedGenerationByState =>
+                HasNonEmptyArray(root, "periods") &&
+                HasNonEmptyObject(root, "byState"),
+            AtlasSenDatasetKeys.DistributedGenerationBySize =>
+                HasNonEmptyArray(root, "years") &&
+                HasNonEmptyObject(root, "capacityMWp") &&
+                HasNonEmptyObject(root, "contracts"),
             _ => false
         };
         if (!valid)
@@ -1791,6 +1936,80 @@ public sealed partial class AtlasSenReferenceService :
             Source = source.Source,
             License = source.License
         };
+
+    private static IReadOnlyList<string> ReadStringArray(
+        JsonElement root,
+        string propertyName)
+    {
+        var source = GetProperty(root, propertyName);
+        return source.ValueKind == JsonValueKind.Array
+            ? source.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString() ?? string.Empty)
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .ToArray()
+            : Array.Empty<string>();
+    }
+
+    private static IReadOnlyDictionary<string, double?> ReadDoubleSeries(
+        JsonElement source,
+        IReadOnlyList<string> keys) =>
+        keys.ToDictionary(
+            key => key,
+            key => ReadObjectDouble(source, key),
+            StringComparer.OrdinalIgnoreCase);
+
+    private static IReadOnlyDictionary<string, int?> ReadIntSeries(
+        JsonElement source,
+        IReadOnlyList<string> keys) =>
+        keys.ToDictionary(
+            key => key,
+            key => ReadObjectInt(source, key),
+            StringComparer.OrdinalIgnoreCase);
+
+    private static IReadOnlyDictionary<
+        string,
+        IReadOnlyDictionary<string, double?>>
+        ReadNestedDoubleSeries(
+            JsonElement source,
+            IReadOnlyList<string> keys)
+    {
+        var result = new Dictionary<
+            string,
+            IReadOnlyDictionary<string, double?>>(
+            StringComparer.OrdinalIgnoreCase);
+        if (source.ValueKind != JsonValueKind.Object)
+        {
+            return result;
+        }
+        foreach (var property in source.EnumerateObject())
+        {
+            result[property.Name] = ReadDoubleSeries(property.Value, keys);
+        }
+        return result;
+    }
+
+    private static IReadOnlyDictionary<
+        string,
+        IReadOnlyDictionary<string, int?>>
+        ReadNestedIntSeries(
+            JsonElement source,
+            IReadOnlyList<string> keys)
+    {
+        var result = new Dictionary<
+            string,
+            IReadOnlyDictionary<string, int?>>(
+            StringComparer.OrdinalIgnoreCase);
+        if (source.ValueKind != JsonValueKind.Object)
+        {
+            return result;
+        }
+        foreach (var property in source.EnumerateObject())
+        {
+            result[property.Name] = ReadIntSeries(property.Value, keys);
+        }
+        return result;
+    }
 
     private static JsonElement GetProperty(
         JsonElement element,
