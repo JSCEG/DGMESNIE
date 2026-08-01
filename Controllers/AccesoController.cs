@@ -657,27 +657,10 @@ namespace NSIE.Controllers
             var seccionesUsuarioJson = JsonConvert.SerializeObject(seccionesAgrupadas);
             HttpContext.Session.SetString("SeccionesUsuario", seccionesUsuarioJson);
 
-            var primerModuloExterno = seccionesAgrupadas
-                .SelectMany(s => s.Modulos)
-                .FirstOrDefault(m => m.EsExterno && !string.IsNullOrWhiteSpace(m.Action));
-
-            if (primerModuloExterno != null)
-            {
-                return Redirect(primerModuloExterno.Action);
-            }
-
-            bool tieneGestor = seccionesAgrupadas
-                .SelectMany(s => s.Modulos)
-                .Any(m => string.Equals(m.Controller, "Gestor", StringComparison.OrdinalIgnoreCase));
-
-            if (tieneGestor)
-            {
-                return RedirectToAction("Index", "Gestor");
-            }
-            else
-            {
-                return RedirectToAction("Index", "Home");
-            }
+            // El Dashboard territorial es la página de entrada común.
+            // Las secciones y módulos del usuario siguen determinando qué opciones
+            // puede consultar después de iniciar sesión.
+            return RedirectToAction("Index", "DashboardProyectos");
         }
 
         private List<SeccionSNIER> ObtenerSeccionesUsuario(SqlConnection cn, int idUsuario)

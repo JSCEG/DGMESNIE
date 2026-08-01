@@ -429,7 +429,7 @@ namespace NSIE.Controllers
                     .SelectMany(item => item.Value.Errors)
                     .Select(error => error.ErrorMessage)
                     .FirstOrDefault(message => !string.IsNullOrWhiteSpace(message))
-                    ?? "La decisión de la cancelación contiene datos incompletos o inválidos.";
+                    ?? "La decisión del hallazgo contiene datos incompletos o inválidos.";
                 return RedirectToAction(nameof(ActualizacionDetalle), routeValues);
             }
 
@@ -445,7 +445,7 @@ namespace NSIE.Controllers
                     loteId, input, usuarioId, usuarioNombre, cancellationToken);
 
                 TempData["PamDecisionSuccess"] =
-                    "La cancelación quedó clasificada y salió de pendientes. La cartera maestra todavía no fue modificada.";
+                    "El hallazgo quedó clasificado y salió de pendientes. La cartera maestra todavía no fue modificada.";
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

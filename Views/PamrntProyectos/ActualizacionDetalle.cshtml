@@ -892,47 +892,47 @@
     </section>
 
     @{
-        var cancelacionesPendientes = Model.NoEncontrados
-            .Where(hallazgo => hallazgo.EsCancelacion && !hallazgo.EstaRevisado)
+        var hallazgosPendientes = Model.NoEncontrados
+            .Where(hallazgo => !hallazgo.CambioPropuestoId.HasValue && !hallazgo.EstaRevisado)
             .ToList();
-        var cancelacionesAtendidas = Model.NoEncontrados
-            .Where(hallazgo => hallazgo.EsCancelacion && hallazgo.EstaRevisado)
+        var hallazgosAtendidos = Model.NoEncontrados
+            .Where(hallazgo => !hallazgo.CambioPropuestoId.HasValue && hallazgo.EstaRevisado)
             .ToList();
-        var altasGestionadasEnRevision = Model.NoEncontrados.Count(hallazgo => !hallazgo.EsCancelacion);
+        var altasGestionadasEnRevision = Model.NoEncontrados.Count(hallazgo => hallazgo.CambioPropuestoId.HasValue);
     }
     <section class="card border-0 shadow-sm pam-analysis-card" id="pam-claves-no-encontradas">
         <div class="pam-section-heading">
             <div>
                 <span class="pam-analysis-eyebrow">Revisión necesaria</span>
-                <h3>Claves sin coincidencia en la cartera</h3>
-                <p>Las altas se atienden en la revisión agrupada; aquí sólo se resuelven las cancelaciones que no encontraron proyecto.</p>
+                <h3>Claves y hallazgos sin coincidencia en la cartera</h3>
+                <p>Las altas con propuesta se atienden en la revisión agrupada; aquí se resuelven las cancelaciones y hallazgos que no generaron una propuesta automática.</p>
             </div>
-            <span class="pam-section-count @(cancelacionesPendientes.Count > 0 ? "is-warning" : "is-success")">@cancelacionesPendientes.Count pendiente(s)</span>
+            <span class="pam-section-count @(hallazgosPendientes.Count > 0 ? "is-warning" : "is-success")">@hallazgosPendientes.Count pendiente(s)</span>
         </div>
 
         <div class="pam-finding-summary">
             <span><strong>@Model.Resumen.ClavesNoEncontradas</strong> hallazgos totales</span>
             <span><strong>@altasGestionadasEnRevision</strong> altas gestionadas arriba</span>
-            <span><strong>@cancelacionesAtendidas.Count</strong> cancelaciones atendidas</span>
-            <span class="@(cancelacionesPendientes.Count > 0 ? "is-warning" : "is-success")"><strong>@cancelacionesPendientes.Count</strong> por decidir</span>
+            <span><strong>@hallazgosAtendidos.Count</strong> hallazgos atendidos</span>
+            <span class="@(hallazgosPendientes.Count > 0 ? "is-warning" : "is-success")"><strong>@hallazgosPendientes.Count</strong> por decidir</span>
         </div>
 
-        @if (cancelacionesPendientes.Count == 0)
+        @if (hallazgosPendientes.Count == 0)
         {
             <div class="pam-analysis-empty is-compact">
                 <i class="fas fa-circle-check"></i>
-                <strong>No hay cancelaciones pendientes de clasificación.</strong>
+                <strong>No hay hallazgos pendientes de clasificación.</strong>
             </div>
         }
         else
         {
             <div class="pam-cancellation-list">
-                @foreach (var hallazgo in cancelacionesPendientes)
+                @foreach (var hallazgo in hallazgosPendientes)
                 {
                     <details id="pam-hallazgo-@hallazgo.HallazgoId" class="pam-cancellation-review">
                         <summary>
                             <span class="pam-project-identity">
-                                <span class="pam-project-classification">Cancelación reportada</span>
+                                <span class="pam-project-classification">@(hallazgo.EsCancelacion ? "Cancelación reportada" : "Hallazgo sin coincidencia")</span>
                                 <code>@(hallazgo.ClaveRecibida ?? "Sin clave")</code>
                                 <strong>@(hallazgo.NombreRecibido ?? "Nombre no extraído")</strong>
                             </span>
@@ -942,7 +942,14 @@
                         <div class="pam-cancellation-body">
                             <div class="pam-project-guidance is-alta">
                                 <i class="fas fa-circle-info" aria-hidden="true"></i>
-                                <span>La clave no existe en la cartera vigente. Elija si debe conservarse como antecedente cancelado, vincularse a un proyecto existente o descartarse.</span>
+                                @if (hallazgo.EsCancelacion)
+                                {
+                                    <span>La clave no existe en la cartera vigente. Elija si debe conservarse como antecedente cancelado, vincularse a un proyecto existente o descartarse.</span>
+                                }
+                                else
+                                {
+                                    <span>La fila no generó una propuesta automática. Elija si debe registrarse como alta real, vincularse a un proyecto existente o descartarse.</span>
+                                }
                             </div>
                             <div class="pam-alta-source">
                                 <span><i class="fas fa-file-lines" aria-hidden="true"></i>@(hallazgo.FuenteDocumento ?? "Fuente no indicada")</span>
@@ -960,14 +967,23 @@
                                 <input type="hidden" name="EstadoRevisionRetorno" value="@Model.Filtro.EstadoRevision" />
 
                                 <fieldset class="pam-decision-options">
-                                    <legend>¿Cómo debe tratarse esta cancelación?</legend>
-                                    <label><input type="radio" name="Clasificacion" value="Alta real" required data-related-toggle /><span><strong>Registrar antecedente cancelado</strong><small>Crea la ficha histórica como cancelada; no será un proyecto vigente.</small></span></label>
-                                    <label><input type="radio" name="Clasificacion" value="Vincular existente" data-related-toggle /><span><strong>Cancelar proyecto existente</strong><small>Vincula esta clave con un proyecto vigente y prepara su cancelación.</small></span></label>
-                                    <label><input type="radio" name="Clasificacion" value="Descartar" data-related-toggle /><span><strong>Descartar reporte</strong><small>Conserva la traza, pero no prepara ningún cambio a la cartera.</small></span></label>
+                                    <legend>¿Cómo debe tratarse este hallazgo?</legend>
+                                    @if (hallazgo.EsCancelacion)
+                                    {
+                                        <label><input type="radio" name="Clasificacion" value="Alta real" required data-related-toggle /><span><strong>Registrar antecedente cancelado</strong><small>Crea la ficha histórica como cancelada; no será un proyecto vigente.</small></span></label>
+                                        <label><input type="radio" name="Clasificacion" value="Vincular existente" data-related-toggle /><span><strong>Cancelar proyecto existente</strong><small>Vincula esta clave con un proyecto vigente y prepara su cancelación.</small></span></label>
+                                        <label><input type="radio" name="Clasificacion" value="Descartar" data-related-toggle /><span><strong>Descartar reporte</strong><small>Conserva la traza, pero no prepara ningún cambio a la cartera.</small></span></label>
+                                    }
+                                    else
+                                    {
+                                        <label><input type="radio" name="Clasificacion" value="Alta real" required data-related-toggle /><span><strong>Registrar como alta real</strong><small>Crea un proyecto nuevo con los datos recibidos.</small></span></label>
+                                        <label><input type="radio" name="Clasificacion" value="Vincular existente" data-related-toggle /><span><strong>Vincular existente</strong><small>Relaciona la fila con un proyecto vigente de la cartera.</small></span></label>
+                                        <label><input type="radio" name="Clasificacion" value="Descartar" data-related-toggle /><span><strong>Descartar hallazgo</strong><small>Conserva la traza, pero no prepara ningún cambio.</small></span></label>
+                                    }
                                 </fieldset>
 
                                 <div class="pam-related-field" data-related-field hidden>
-                                    <label for="pam-cancel-related-@hallazgo.HallazgoId">Proyecto vigente que se cancelará</label>
+                                    <label for="pam-cancel-related-@hallazgo.HallazgoId">@(hallazgo.EsCancelacion ? "Proyecto vigente que se cancelará" : "Proyecto vigente relacionado")</label>
                                     <select id="pam-cancel-related-@hallazgo.HallazgoId" name="ProyectoRelacionadoId" class="form-select" data-related-select disabled>
                                         <option value="">Seleccione un proyecto…</option>
                                         @foreach (var opcion in Model.ProyectosVigentes)
@@ -975,7 +991,7 @@
                                             <option value="@opcion.ProyectoId">@(ResumirClaves(opcion.ClaveProyecto)) — @opcion.NombreProyecto</option>
                                         }
                                     </select>
-                                    <small>Revise clave y nombre antes de confirmar. Si no existe, use “Registrar antecedente cancelado”.</small>
+                                    <small>@(hallazgo.EsCancelacion ? "Revise clave y nombre antes de confirmar. Si no existe, use “Registrar antecedente cancelado”." : "Revise clave y nombre antes de confirmar. Si no existe, use “Registrar como alta real”.")</small>
                                 </div>
 
                                 <div class="pam-decision-note">
@@ -994,12 +1010,12 @@
             </div>
         }
 
-        @if (cancelacionesAtendidas.Count > 0)
+        @if (hallazgosAtendidos.Count > 0)
         {
             <details class="pam-reviewed-findings">
-                <summary><i class="fas fa-circle-check" aria-hidden="true"></i>Ver cancelaciones atendidas (@cancelacionesAtendidas.Count)</summary>
+                <summary><i class="fas fa-circle-check" aria-hidden="true"></i>Ver hallazgos atendidos (@hallazgosAtendidos.Count)</summary>
                 <div class="pam-finding-list">
-                    @foreach (var hallazgo in cancelacionesAtendidas)
+                    @foreach (var hallazgo in hallazgosAtendidos)
                     {
                         <article class="is-reviewed">
                             <div>
@@ -1008,7 +1024,11 @@
                                 <strong>@(hallazgo.NombreRecibido ?? "Nombre no extraído")</strong>
                             </div>
                             <div>
-                                <span>@(hallazgo.ProyectoRelacionadoId.HasValue ? $"Vinculada con {ResumirClaves(hallazgo.ProyectoRelacionadoClave)} — {hallazgo.ProyectoRelacionadoNombre}" : hallazgo.ClasificacionPreliminar == "Alta real" ? "Preparada como antecedente cancelado." : "No se aplicará a la cartera.")</span>
+                                <span>@(hallazgo.ProyectoRelacionadoId.HasValue
+                                    ? $"Vinculada con {ResumirClaves(hallazgo.ProyectoRelacionadoClave)} — {hallazgo.ProyectoRelacionadoNombre}"
+                                    : hallazgo.ClasificacionPreliminar == "Alta real"
+                                        ? (hallazgo.EsCancelacion ? "Preparada como antecedente cancelado." : "Preparada como alta nueva.")
+                                        : "No se aplicará a la cartera.")</span>
                                 <small>@(hallazgo.FuenteDocumento ?? "Fuente no indicada") · @(hallazgo.UbicacionFuente ?? "sin ubicación")</small>
                             </div>
                             <form asp-action="ReabrirDecisionPreliminar" asp-route-loteId="@Model.Lote.LoteId" method="post" data-reopen-form>

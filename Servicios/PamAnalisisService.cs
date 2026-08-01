@@ -415,6 +415,11 @@ WHERE e.AnalisisId = @AnalisisId;
 
 SELECT cp.CambioPropuestoId, cp.ProyectoId, cp.ProyectoVersionBaseId,
        CASE
+           -- Cada alta recibida es una revisión independiente. Dos fases pueden
+           -- compartir clave/nombre, pero no deben ocultarse entre sí al filtrar
+           -- Pendientes o Revisadas.
+           WHEN cp.TipoCambio = N'Alta'
+               THEN CONCAT(N'A:', CONVERT(NVARCHAR(30), cp.CambioPropuestoId))
            WHEN cp.ProyectoVersionBaseId IS NOT NULL
                THEN CONCAT(N'V:', CONVERT(NVARCHAR(30), cp.ProyectoVersionBaseId))
            ELSE CONCAT(
@@ -920,9 +925,9 @@ WHERE RevisionId = @RevisionId
                 throw new PamDecisionPreliminarException("El hallazgo ya no es válido. Recarga la página e intenta nuevamente.");
 
             var clasificacion = NormalizarClasificacionPreliminar(input.Clasificacion)
-                ?? throw new PamDecisionPreliminarException("Selecciona cómo debe tratarse la cancelación reportada.");
+                ?? throw new PamDecisionPreliminarException("Selecciona cómo debe tratarse el hallazgo reportado.");
             if (clasificacion is not ("Alta real" or "Vincular existente" or "Descartar"))
-                throw new PamDecisionPreliminarException("La clasificación seleccionada no aplica a una cancelación reportada.");
+                throw new PamDecisionPreliminarException("La clasificación seleccionada no aplica a este hallazgo.");
 
             var requiereRelacionado = clasificacion == "Vincular existente";
             if (requiereRelacionado && !input.ProyectoRelacionadoId.HasValue)
@@ -971,8 +976,8 @@ WHERE r.RevisionId = @RevisionId
                     LoteId = loteId
                 }, transaction, cancellationToken: cancellationToken));
 
-                if (target == null || !target.EsCancelacion)
-                    throw new PamDecisionPreliminarException("La cancelación ya no pertenece al análisis vigente o dejó de estar pendiente.");
+                if (target == null)
+                    throw new PamDecisionPreliminarException("El hallazgo ya no pertenece al análisis vigente o dejó de estar pendiente.");
                 if (target.VersionDecision == null || !target.VersionDecision.SequenceEqual(versionEsperada))
                     throw new DBConcurrencyException("La decisión cambió mientras la revisabas. Actualiza la pantalla antes de intentarlo nuevamente.");
 
@@ -1013,9 +1018,15 @@ VALUES
 
                 var resolucion = clasificacion switch
                 {
-                    "Alta real" => "Cancelación clasificada para registrar el proyecto como antecedente cancelado; pendiente de aplicación.",
-                    "Vincular existente" => "Cancelación vinculada a un proyecto vigente; pendiente de aplicación.",
-                    _ => "Reporte de cancelación descartado; no se aplicará a la cartera."
+                    "Alta real" => target.EsCancelacion
+                        ? "Cancelación clasificada para registrar el proyecto como antecedente cancelado; pendiente de aplicación."
+                        : "Hallazgo sin propuesta automática clasificado como alta real; pendiente de aplicación.",
+                    "Vincular existente" => target.EsCancelacion
+                        ? "Cancelación vinculada a un proyecto vigente; pendiente de aplicación."
+                        : "Hallazgo sin propuesta automática vinculado a un proyecto vigente; pendiente de aplicación.",
+                    _ => target.EsCancelacion
+                        ? "Reporte de cancelación descartado; no se aplicará a la cartera."
+                        : "Hallazgo sin propuesta automática descartado; no se aplicará a la cartera."
                 };
                 var nuevaVersion = await connection.QuerySingleOrDefaultAsync<byte[]>(new CommandDefinition(@"
 UPDATE dgmesnie.PAMRevisionPendiente
@@ -1646,8 +1657,24 @@ FROM
                             AND (d.ProyectoRelacionadoId IS NULL OR v.ProyectoId <> d.ProyectoRelacionadoId))
                   OR EXISTS (SELECT 1 FROM dgmesnie.PAMProyectoClaveVersion clave
                              WHERE clave.EsVigente = 1 AND LTRIM(RTRIM(clave.ClaveProyecto)) = LTRIM(RTRIM(d.ClaveProyecto))
-                               AND (d.ProyectoRelacionadoId IS NULL OR clave.ProyectoId <> d.ProyectoRelacionadoId))
+                              AND (d.ProyectoRelacionadoId IS NULL OR clave.ProyectoId <> d.ProyectoRelacionadoId))
               ))
+
+    UNION ALL
+
+    SELECT N'Bloqueo', N'CONFLICTO_CLAVE_PAQUETE', N'Una clave apunta a varios proyectos en el paquete',
+           N'Revisa las filas repetidas: una misma clave alterna no puede vincularse a destinos distintos.',
+           (SELECT COUNT(*)
+            FROM
+            (
+                SELECT LTRIM(RTRIM(d.ClaveProyecto)) AS ClaveProyecto
+                FROM dgmesnie.PAMAplicacionPaqueteDetalle d
+                WHERE d.PaqueteAplicacionId = @PaquetePreflightId
+                  AND d.Accion = N'Vincular clave'
+                  AND NULLIF(LTRIM(RTRIM(d.ClaveProyecto)), N'') IS NOT NULL
+                GROUP BY LTRIM(RTRIM(d.ClaveProyecto))
+                HAVING COUNT(DISTINCT d.ProyectoRelacionadoId) > 1
+            ) conflicto)
 
     UNION ALL
 
@@ -2131,9 +2158,9 @@ IF EXISTS
     SELECT 1 FROM dgmesnie.PAMAplicacionPaqueteDetalle d
     WHERE d.PaqueteAplicacionId = @PaqueteAplicacionId
       AND d.TipoElemento = N'CambioCampo'
-      AND (d.Accion <> N'Aplicar'
-           OR d.Campo NOT IN (N'NombreProyecto', N'GRT', N'EtapaProyecto', N'FechaNecesaria',
-                              N'FeoFactible', N'MontoProyectoMdp', N'EstadoRealProyecto', N'AnioInstruccion')
+      AND d.Accion = N'Aplicar'
+      AND (d.Campo NOT IN (N'NombreProyecto', N'GRT', N'EtapaProyecto', N'FechaNecesaria',
+                           N'FeoFactible', N'MontoProyectoMdp', N'EstadoRealProyecto', N'AnioInstruccion')
            OR NOT EXISTS
               (SELECT 1 FROM dgmesnie.PAMProyectoVersion v WITH (UPDLOCK, HOLDLOCK)
                WHERE v.ProyectoVersionId = d.ProyectoVersionBaseId AND v.EsVersionVigente = 1)
@@ -2360,12 +2387,13 @@ INTO #CambiosInsertados (PaqueteDetalleId, CambioId);
 
 INSERT dgmesnie.PAMProyectoVersionFuente
     (ProyectoVersionId, FuenteId, Papel, CampoRespaldado, HojaPaginaSeccion, Observaciones, UsuarioRegistro)
-SELECT DISTINCT nueva.ProyectoVersionNuevaId, cambio.FuenteId, N'Primaria', cambio.Campo,
-       detalle.UbicacionFuente,
+SELECT nueva.ProyectoVersionNuevaId, cambio.FuenteId, N'Primaria', cambio.Campo,
+       MIN(detalle.UbicacionFuente),
        CONCAT(N'Aplicado desde paquete ', LEFT(CONVERT(NVARCHAR(36), @PaqueteUid), 8)), @UsuarioNombre
 FROM #CambiosAplicar cambio
 INNER JOIN #NuevasVersiones nueva ON nueva.ProyectoVersionAnteriorId = cambio.ProyectoVersionBaseId
-INNER JOIN dgmesnie.PAMAplicacionPaqueteDetalle detalle ON detalle.PaqueteDetalleId = cambio.PaqueteDetalleId;
+INNER JOIN dgmesnie.PAMAplicacionPaqueteDetalle detalle ON detalle.PaqueteDetalleId = cambio.PaqueteDetalleId
+GROUP BY nueva.ProyectoVersionNuevaId, cambio.FuenteId, cambio.Campo;
 
 INSERT dgmesnie.PAMCambioFuente
     (CambioId, FuenteId, Papel, HojaPaginaSeccion, Observaciones, UsuarioRegistro)
@@ -2394,6 +2422,31 @@ INNER JOIN #DetalleFuente df ON df.PaqueteDetalleId = d.PaqueteDetalleId
 INNER JOIN #FuenteCarga fc ON fc.FuenteId = df.FuenteId
 WHERE d.PaqueteAplicacionId = @PaqueteAplicacionId AND d.Accion = N'Vincular clave';
 
+IF EXISTS
+(
+    SELECT 1
+    FROM #ClavesAlternas clave
+    WHERE NULLIF(LTRIM(RTRIM(clave.ClaveProyecto)), N'') IS NOT NULL
+    GROUP BY LTRIM(RTRIM(clave.ClaveProyecto))
+    HAVING COUNT(DISTINCT clave.ProyectoId) > 1
+)
+    THROW 51071, N'Una clave alterna apunta a varios proyectos dentro del paquete.', 1;
+
+CREATE TABLE #ClavesAlternasUnicas
+(
+    PaqueteDetalleId BIGINT NOT NULL PRIMARY KEY,
+    ClaveProyecto NVARCHAR(200) NOT NULL,
+    ProyectoId BIGINT NOT NULL,
+    FuenteId BIGINT NOT NULL,
+    CargaId BIGINT NOT NULL
+);
+
+INSERT #ClavesAlternasUnicas (PaqueteDetalleId, ClaveProyecto, ProyectoId, FuenteId, CargaId)
+SELECT MIN(clave.PaqueteDetalleId), LTRIM(RTRIM(clave.ClaveProyecto)), clave.ProyectoId,
+       MIN(clave.FuenteId), MIN(clave.CargaId)
+FROM #ClavesAlternas clave
+GROUP BY clave.ProyectoId, LTRIM(RTRIM(clave.ClaveProyecto));
+
 CREATE TABLE #ClavesInsertadas
 (
     PaqueteDetalleId BIGINT NOT NULL PRIMARY KEY,
@@ -2402,7 +2455,7 @@ CREATE TABLE #ClavesInsertadas
 );
 
 MERGE dgmesnie.PAMProyectoClaveVersion AS destino
-USING #ClavesAlternas AS fuente
+USING #ClavesAlternasUnicas AS fuente
 ON 1 = 0
 WHEN NOT MATCHED THEN
     INSERT (ProyectoId, ClaveProyecto, TipoClave, FuenteId, CargaId,
@@ -2412,12 +2465,32 @@ WHEN NOT MATCHED THEN
 OUTPUT fuente.PaqueteDetalleId, fuente.ProyectoId, inserted.ProyectoClaveVersionId
 INTO #ClavesInsertadas (PaqueteDetalleId, ProyectoId, ProyectoClaveVersionId);
 
+CREATE TABLE #ClavesInsertadasTodas
+(
+    PaqueteDetalleId BIGINT NOT NULL PRIMARY KEY,
+    ProyectoId BIGINT NOT NULL,
+    ProyectoClaveVersionId BIGINT NOT NULL
+);
+
+INSERT #ClavesInsertadasTodas (PaqueteDetalleId, ProyectoId, ProyectoClaveVersionId)
+SELECT clave.PaqueteDetalleId, clave.ProyectoId, insertada.ProyectoClaveVersionId
+FROM #ClavesAlternas clave
+INNER JOIN #ClavesAlternasUnicas unica
+    ON unica.PaqueteDetalleId =
+       (
+           SELECT MIN(otra.PaqueteDetalleId)
+           FROM #ClavesAlternas otra
+           WHERE otra.ProyectoId = clave.ProyectoId
+             AND LTRIM(RTRIM(otra.ClaveProyecto)) = LTRIM(RTRIM(clave.ClaveProyecto))
+       )
+INNER JOIN #ClavesInsertadas insertada ON insertada.PaqueteDetalleId = unica.PaqueteDetalleId;
+
 INSERT dgmesnie.PAMAplicacionResultado
     (PaqueteAplicacionId, PaqueteDetalleId, TipoResultado, ProyectoId,
      ProyectoClaveVersionId, UsuarioAplicacionId, UsuarioAplicacion)
 SELECT @PaqueteAplicacionId, clave.PaqueteDetalleId, N'Clave vinculada', clave.ProyectoId,
        clave.ProyectoClaveVersionId, @UsuarioId, @UsuarioNombre
-FROM #ClavesInsertadas clave;
+FROM #ClavesInsertadasTodas clave;
 
 SELECT d.PaqueteDetalleId, d.Accion, d.ClaveProyecto, d.NombreProyecto,
        hallazgo.DatosExtraidosJson, df.FuenteId, fc.CargaId,
@@ -2556,6 +2629,29 @@ FROM #ProyectosNuevos nuevo
 INNER JOIN #VersionesProyectosNuevos version ON version.PaqueteDetalleId = nuevo.PaqueteDetalleId
 INNER JOIN #CambiosProyectosNuevos cambio ON cambio.PaqueteDetalleId = nuevo.PaqueteDetalleId;
 
+-- Las decisiones que conservan u omiten información no generan una nueva versión,
+-- pero cada detalle congelado debe conservar su resultado trazable.
+INSERT dgmesnie.PAMAplicacionResultado
+    (PaqueteAplicacionId, PaqueteDetalleId, TipoResultado, ProyectoId,
+     ProyectoVersionAnteriorId, UsuarioAplicacionId, UsuarioAplicacion)
+SELECT @PaqueteAplicacionId, detalle.PaqueteDetalleId,
+       CASE detalle.Accion
+           WHEN N'Mantener SQL' THEN N'Cambio conservado'
+           WHEN N'Omitir' THEN N'Cambio omitido'
+           ELSE N'Acción descartada'
+       END,
+       COALESCE(detalle.ProyectoId, versionBase.ProyectoId, detalle.ProyectoRelacionadoId),
+       CASE WHEN detalle.TipoElemento = N'CambioCampo' THEN detalle.ProyectoVersionBaseId END,
+       @UsuarioId, @UsuarioNombre
+FROM dgmesnie.PAMAplicacionPaqueteDetalle detalle
+LEFT JOIN dgmesnie.PAMProyectoVersion versionBase
+    ON versionBase.ProyectoVersionId = detalle.ProyectoVersionBaseId
+WHERE detalle.PaqueteAplicacionId = @PaqueteAplicacionId
+  AND detalle.Accion IN (N'Mantener SQL', N'Omitir', N'No aplicar')
+  AND NOT EXISTS
+      (SELECT 1 FROM dgmesnie.PAMAplicacionResultado resultado
+       WHERE resultado.PaqueteDetalleId = detalle.PaqueteDetalleId);
+
 UPDATE carga
 SET EstadoCarga = N'Aplicada',
     FechaFinUtc = SYSUTCDATETIME(),
@@ -2588,7 +2684,7 @@ DECLARE @ResumenAplicacion NVARCHAR(MAX) =
     SELECT
         (SELECT COUNT(*) FROM #NuevasVersiones) AS versionesActualizadas,
         (SELECT COUNT(*) FROM #VersionesProyectosNuevos) AS proyectosNuevos,
-        (SELECT COUNT(*) FROM #ClavesInsertadas) AS clavesAlternas,
+        (SELECT COUNT(*) FROM #ClavesInsertadasTodas) AS clavesAlternas,
         (SELECT COUNT(*) FROM #CambiosInsertados) + (SELECT COUNT(*) FROM #CambiosProyectosNuevos) AS cambiosRegistrados,
         (SELECT COUNT(*) FROM dgmesnie.PAMAplicacionResultado ar WHERE ar.PaqueteAplicacionId = @PaqueteAplicacionId) AS resultados
     FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
@@ -2614,7 +2710,7 @@ SELECT @PaqueteAplicacionId AS PaqueteAplicacionId,
        CAST(0 AS BIT) AS Existente,
        (SELECT COUNT(*) FROM #NuevasVersiones) + (SELECT COUNT(*) FROM #VersionesProyectosNuevos) AS TotalVersionesNuevas,
        (SELECT COUNT(*) FROM #VersionesProyectosNuevos) AS TotalProyectosNuevos,
-       (SELECT COUNT(*) FROM #ClavesInsertadas) AS TotalClavesAlternas,
+       (SELECT COUNT(*) FROM #ClavesInsertadasTodas) AS TotalClavesAlternas,
        (SELECT COUNT(*) FROM #CambiosInsertados) + (SELECT COUNT(*) FROM #CambiosProyectosNuevos) AS TotalCambios,
        (SELECT COUNT(*) FROM dgmesnie.PAMAplicacionResultado ar WHERE ar.PaqueteAplicacionId = @PaqueteAplicacionId) AS TotalResultados;";
 
