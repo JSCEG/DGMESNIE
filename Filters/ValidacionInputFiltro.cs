@@ -59,6 +59,11 @@ public class ValidacionInputFiltro : ActionFilterAttribute
         "ProyectosPrivados.ApiAcciones",
         "ProyectosPrivados.ApiActualizarEstatusAccion",
         "ProyectosPrivados.ApiCrearAccion",
+        "ProyectosPrivados.ApiCarteraConvocatoria",
+        "ProyectosPrivados.ApiActualizarEstadoConvocatoria",
+        "ProyectosPrivados.ApiAgregarComentarioConvocatoria",
+        "ProyectosPrivados.ApiActualizarPrioridadConvocatoria",
+        "ProyectosPrivados.ApiCrearProyectoConvocatoria",
         "ProyectosPrivados.Minuta",
         "PamrntProyectos.EnviarFicha"
     };

@@ -1,28 +1,10 @@
 @{
-    ViewData["Title"] = "Segunda Convocatoria";
+    ViewData["Title"] = "Cartera estratégica y 2.ª convocatoria";
     var header = ViewData["HeaderViewModel"] as NSIE.Models.HeaderViewModel;
 }
 
 @section Styles {
-    <style>
-        .iframe-container {
-            position: relative;
-            width: 100%;
-            height: calc(100vh - 280px);
-            min-height: 650px;
-            border-radius: var(--border-radius-md, 8px);
-            overflow: hidden;
-            box-shadow: var(--box-shadow-card, 0 4px 6px rgba(0, 0, 0, 0.1));
-            border: 1px solid var(--color-border, #DDDDDD);
-            background: #FFFFFF;
-            transition: all 0.3s ease;
-        }
-        .iframe-container iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-    </style>
+    <link rel="stylesheet" href="~/css/cartera-convocatoria.css" asp-append-version="true" />
 }
 
 @if (header != null)
@@ -30,23 +12,172 @@
     @await Html.PartialAsync("_ViewHeader", header)
 }
 
-<div class="container ps-5 pe-5 mb-5">
-    <!-- Breadcrumbs -->
-    <div class="alert alert-light mb-3" role="alert" style="padding-left: 15px;">
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb lp-5 mb-0">
-                <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")">Inicio</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Segunda Convocatoria</li>
-            </ol>
-        </nav>
+<main class="cartera" id="carteraApp"
+      data-api-data="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria")"
+      data-api-status="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria/Estado")"
+      data-api-comment="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria/Comentarios")"
+      data-api-priority="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria/Prioridad")"
+      data-api-project="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria/Proyectos")"
+      data-report-url="@Url.Action("ReporteCarteraConvocatoriaPdf", "ProyectosPrivados")">
+    <div class="visually-hidden">@Html.AntiForgeryToken()</div>
+    <nav class="cartera__crumb" aria-label="Ruta de navegación">
+        <a href="@Url.Action("Index", "Home")">Inicio</a><span>/</span>
+        <a href="@Url.Action("Index", "DashboardProyectos")">Dashboard de proyectos</a><span>/</span>
+        <strong>Cartera estratégica y 2.ª convocatoria</strong>
+    </nav>
+
+    <section class="cartera__hero">
+        <div>
+            <p class="cartera__kicker">SEGUIMIENTO INSTITUCIONAL · CORTE 5 DE AGOSTO DE 2026</p>
+            <h1>Cartera estratégica y segunda convocatoria.</h1>
+            <p>Prelación, asignación territorial y trazabilidad de decisiones por proyecto.</p>
+        </div>
+        <div class="cartera__actions">
+            <button class="btn-cartera btn-cartera--ghost" type="button" data-action="report">Presentación general PDF</button>
+            <button class="btn-cartera btn-cartera--primary" type="button" data-action="new-project">Agregar proyecto</button>
+        </div>
+    </section>
+
+    <section class="cartera__kpis" aria-label="Indicadores de cartera">
+        <article><span>Proyectos</span><strong id="kpiTotal">65</strong><small>cartera integrada</small></article>
+        <article><span>Capacidad</span><strong id="kpiMw">10,196.207</strong><small>MW netos</small></article>
+        <article><span>Estratégicos</span><strong id="kpiStrategic">35</strong><small>convocatoria estratégica</small></article>
+        <article><span>Particulares 2</span><strong id="kpiPrivate">30</strong><small>segunda convocatoria</small></article>
+        <article class="cartera__kpi-analysis"><span>Factibles</span><strong id="kpiFeasible">31</strong><small>pasan a mesas de evaluación</small></article>
+        <article class="cartera__kpi-decision"><span>Estatus definido</span><strong id="kpiDecision">0</strong><small>continúa / no continúa</small></article>
+    </section>
+
+    <section class="cartera__toolbar" aria-label="Filtros de cartera">
+        <label class="cartera__search"><span class="visually-hidden">Buscar</span><input id="projectSearch" type="search" placeholder="Buscar proyecto, folio, entidad o subestación" /></label>
+        <select id="typeFilter" aria-label="Tipo de proyecto"><option value="">Todos los tipos</option><option>Estratégico</option><option>Particular 2</option></select>
+        <select id="regionFilter" aria-label="Gerencia de control"><option value="">Todas las gerencias</option></select>
+        <select id="stateFilter" aria-label="Entidad federativa"><option value="">Todas las entidades</option></select>
+        <select id="decisionFilter" aria-label="Seguimiento"><option value="">Todos los seguimientos</option><option value="continua">Continúa</option><option value="revision">En revisión</option><option value="no-continua">No continúa</option></select>
+        <select id="analysisFilter" aria-label="Clasificación del análisis"><option value="">Todo el análisis</option></select>
+        <button class="btn-cartera btn-cartera--outline" type="button" data-action="clear-filters">Limpiar</button>
+    </section>
+
+    <div class="cartera__tabs" role="tablist" aria-label="Vistas de cartera">
+        <button class="is-active" type="button" role="tab" data-view="portfolio">Cartera y mapa</button>
+        <button type="button" role="tab" data-view="ranking">Prelación</button>
+        <button type="button" role="tab" data-view="sessions">Sesiones</button>
     </div>
 
-    <!-- Iframe Container -->
-    <div class="iframe-container">
-        <iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"  src="https://pvirce.pages.dev/MINUTAS-SEGUNDA-CONVOCATORIA-PARTICULARES" 
-                title="Minutas Segunda Convocatoria - Proyectos Particulares" 
-                allowfullscreen>
-        </iframe>
-    </div>
+    <section class="cartera__workspace" data-panel="portfolio">
+        <div class="cartera__map-card">
+            <div class="cartera__section-head"><div><p>COBERTURA TERRITORIAL</p><h2>Distribución por entidad y GCR</h2></div><span id="mapCount">8 proyectos visibles</span></div>
+            <div id="portfolioMap" class="cartera__map" role="img" aria-label="Mapa esquemático de proyectos en México"></div>
+            <div class="cartera__legend"><span><i class="dot dot--strategic"></i>Estratégico</span><span><i class="dot dot--private"></i>Particular 2</span><span><i class="dot dot--no"></i>No va</span></div>
+        </div>
+        <div class="cartera__list-card">
+            <div class="cartera__section-head"><div><p>PORTAFOLIO</p><h2>Proyectos priorizados</h2></div><span id="resultCount"></span></div>
+            <div id="projectList" class="cartera__project-list"></div>
+        </div>
+    </section>
+
+    <section class="cartera__ranking" data-panel="ranking" hidden>
+        <div class="cartera__section-head"><div><p>ORDEN DE PREFERENCIA</p><h2>Hoja de prelación</h2></div><p class="cartera__hint">El orden se conserva por gerencia, tipo y prioridad 1–4.</p></div>
+        <div class="cartera__ranking-grid">
+            <div class="cartera__ranking-controls">
+                <label>Sesión de trabajo<input id="sessionName" value="Sesión del 4 de agosto de 2026" /></label>
+                <label>Fecha<input id="sessionDate" type="date" value="2026-08-04" /></label>
+                <button class="btn-cartera btn-cartera--primary" type="button" data-action="save-ranking">Guardar fotografía</button>
+            </div>
+            <div class="cartera__table-wrap"><table><thead><tr><th>Orden</th><th>Proyecto</th><th>GCR / entidad</th><th>Tipo</th><th>Análisis</th><th>Prioridad</th><th>Decisión</th><th></th></tr></thead><tbody id="rankingBody"></tbody></table></div>
+        </div>
+    </section>
+
+    <section class="cartera__sessions" data-panel="sessions" hidden>
+        <div class="cartera__section-head"><div><p>TRAZABILIDAD</p><h2>Sesiones y comentarios</h2></div><button class="btn-cartera btn-cartera--primary" type="button" data-action="new-session">Registrar sesión</button></div>
+        <div id="sessionTimeline" class="cartera__timeline"></div>
+    </section>
+</main>
+
+<dialog class="cartera-modal" id="projectDialog">
+    <form method="dialog" id="projectForm">
+        <header><div><p>ALTA DE CARTERA</p><h2>Agregar proyecto</h2></div><button type="button" data-close-project aria-label="Cerrar">×</button></header>
+        <div class="cartera-modal__grid">
+            <label>Folio<input name="folio" required placeholder="VUPE-C2-0000-2026" /></label>
+            <label>Nombre del proyecto<input name="name" required /></label>
+            <label>Tipo<select name="type"><option>Estratégico</option><option>Particular 2</option></select></label>
+            <label>Gerencia de Control Regional<input name="region" required /></label>
+            <label>Entidad federativa<input name="state" required /></label>
+            <label>Tecnología<input name="technology" /></label>
+            <label>Capacidad neta (MW)<input name="mw" type="number" min="0" step="0.01" /></label>
+            <label>Prioridad<select name="priority"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+            <label>Razón social<input name="company" /></label>
+            <label>Grupo de interés<input name="interestGroup" /></label>
+            <label class="cartera-modal__wide">Subestación / punto de interconexión<input name="substation" /></label>
+        </div>
+        <p class="cartera-form-status" id="projectFormStatus" role="status"></p>
+        <footer><button class="btn-cartera btn-cartera--ghost" type="button" data-close-project>Cancelar</button><button class="btn-cartera btn-cartera--primary" type="submit" data-action="submit-project">Guardar proyecto</button></footer>
+    </form>
+</dialog>
+
+<div class="tracking-modal" id="trackingModal" hidden>
+    <div class="tracking-modal__backdrop" data-close-tracking></div>
+    <section class="tracking-modal__panel" role="dialog" aria-modal="true" aria-labelledby="trackingTitle" tabindex="-1">
+        <header class="tracking-modal__header">
+            <div>
+                <p>SEGUIMIENTO DEL PROYECTO</p>
+                <h2 id="trackingTitle">Proyecto</h2>
+                <span id="trackingFolio"></span>
+            </div>
+            <button type="button" data-close-tracking aria-label="Cerrar">×</button>
+        </header>
+
+        <div class="tracking-modal__body">
+            <dl class="tracking-project-data">
+                <div><dt>Razón social</dt><dd id="trackingCompany">—</dd></div>
+                <div><dt>Grupo de interés</dt><dd id="trackingGroup">—</dd></div>
+                <div><dt>Gerencia de control</dt><dd id="trackingRegion">—</dd></div>
+                <div><dt>Entidad federativa</dt><dd id="trackingState">—</dd></div>
+                <div><dt>Punto de interconexión</dt><dd id="trackingInterconnection">—</dd></div>
+                <div><dt>Ranking asignado</dt><dd id="trackingRank">—</dd></div>
+                <div><dt>Clasificación de mesa</dt><dd id="trackingAnalysisClass">—</dd></div>
+                <div><dt>Viabilidad técnica</dt><dd id="trackingViability">—</dd></div>
+                <div id="trackingDuplicateRow" hidden><dt>Inscripción duplicada</dt><dd id="trackingDuplicate">—</dd></div>
+            </dl>
+
+            <section class="tracking-analysis" aria-labelledby="trackingAnalysisTitle">
+                <h3 id="trackingAnalysisTitle">Análisis técnico</h3>
+                <p id="trackingAnalysis">Sin observaciones adicionales registradas por la mesa técnica.</p>
+            </section>
+
+            <section class="tracking-status" aria-labelledby="trackingStatusTitle">
+                <h3 id="trackingStatusTitle">Seguimiento</h3>
+                <div class="tracking-status__row">
+                    <button type="button" data-status="continua"><i class="bi bi-check-circle"></i> Continúa</button>
+                    <button type="button" data-status="revision"><i class="bi bi-clock-history"></i> En revisión</button>
+                    <button type="button" data-status="no-continua"><i class="bi bi-pause-circle"></i> No continúa</button>
+                    <span id="trackingStatusHint">Estado registrado en la base de datos.</span>
+                </div>
+            </section>
+
+            <section class="tracking-log" aria-labelledby="trackingLogTitle">
+                <div class="tracking-log__head"><h3 id="trackingLogTitle">Bitácora de comentarios</h3><span id="trackingCommentCount">0 comentarios</span></div>
+                <div id="trackingComments" class="tracking-comments"></div>
+            </section>
+
+            <form id="noteForm" class="tracking-comment-form">
+                <input type="hidden" name="folio" />
+                <div class="tracking-comment-form__context">
+                    <label>Sesión<input name="session" required /></label>
+                    <label>Fecha<input name="date" type="date" required /></label>
+                </div>
+                <label>Acuerdo, pendiente o justificación
+                    <textarea name="text" rows="4" maxlength="4000" required placeholder="Escriba la nota que debe quedar en la ficha del proyecto."></textarea>
+                </label>
+                <div class="tracking-comment-form__actions">
+                    <button class="btn-cartera btn-cartera--primary" type="submit">Agregar comentario</button>
+                    <span id="noteFormStatus" role="status">El comentario se guardará en la BD.</span>
+                </div>
+            </form>
+        </div>
+    </section>
 </div>
 
+@section Scripts {
+    <script src="~/tablero/assets/gcr-data.js"></script>
+    <script src="~/js/cartera-convocatoria.js" asp-append-version="true"></script>
+}

@@ -30,6 +30,29 @@
         .OrderByDescending(x => x.FechaRegistroUtc)
         .Take(12)
         .ToList();
+    var versionVigente = historialVersiones.LastOrDefault(x => x.EsVersionVigente)
+        ?? historialVersiones.LastOrDefault();
+    var cambiosRecientes = historialCambios.Take(5).ToList();
+    var fuentesPorCampo = historialCambios
+        .Where(x => !string.IsNullOrWhiteSpace(x.FuenteDocumento))
+        .GroupBy(x => x.CampoEtiqueta)
+        .Select(grupo => new
+        {
+            Campo = grupo.Key,
+            Fuente = grupo.OrderByDescending(x => x.FechaRegistroUtc).First().FuenteDocumento,
+            Corte = grupo.Max(x => x.FechaCorte)
+        })
+        .Take(6)
+        .ToList();
+    var relacionesVigentes = (Model.Detalle?.Relaciones ?? new List<NSIE.Models.PamRelacionDetalle>())
+        .Where(x => x.EsRelacionVigente)
+        .Take(4)
+        .ToList();
+    var pendientesValidacion = (Model.Ficha.PendientesValidacion ?? new List<string>())
+        .Where(x => !string.IsNullOrWhiteSpace(x))
+        .Take(4)
+        .ToList();
+    var expedienteOrigen = Model.ExpedientePormenorizadoOrigen;
     var archivoBase = $"Ficha_{Model.Ficha.ClavePem}_{DateTime.Now:yyyyMMdd}";
     var seccion01 = $"Sección 01 · {Model.Ficha.ClavePem}";
     var seccion02 = "Sección 02 · Cierre y trazabilidad";
@@ -305,7 +328,7 @@
                     <button type="button" class="pam-index__entry" data-goto-label="13"><span>Fases y licitación</span><i></i><small>13</small></button>
                     <button type="button" class="pam-index__group" data-goto-label="14"><b>02</b><span>Cierre y trazabilidad</span></button>
                     <button type="button" class="pam-index__entry" data-goto-label="15"><span>Conclusión ejecutiva</span><i></i><small>15</small></button>
-                    <button type="button" class="pam-index__entry" data-goto-label="16"><span>Trazabilidad metodológica</span><i></i><small>16</small></button>
+                    <button type="button" class="pam-index__entry" data-goto-label="16"><span>Aplicación y trazabilidad</span><i></i><small>16</small></button>
                     <button type="button" class="pam-index__group" data-goto-label="17"><b>03</b><span>Anexos</span></button>
                     <button type="button" class="pam-index__entry" data-goto-label="18"><span>Historial de versiones</span><i></i><small>18</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="19"><span>Línea de tiempo de modificaciones</span><i></i><small>19</small></button>
@@ -921,31 +944,117 @@
                 </div>
             </section>
 
-            @* ── 16 · Trazabilidad ── *@
-            <section class="pam-slide pam-slide--content" data-slide data-label="Trazabilidad" data-screen-label="16">
+            @* ── 16 · Aplicación y trazabilidad ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Aplicación y trazabilidad" data-screen-label="16">
                 <header class="pam-lamina-head">
                     <span class="pam-lamina-head__kicker">@seccion02</span>
-                    <span class="pam-lamina-head__aside">Seguimiento y trazabilidad documental</span>
+                    <span class="pam-lamina-head__aside">Versión vigente y evidencia documental</span>
                 </header>
-                <h2 class="pam-lamina-title">Seguimiento institucional, vigencia y soporte documental del proyecto.</h2>
-                <div class="pam-lamina-body pam-trace">
-                    <div class="pam-trace__layout">
-                        <ol>
-                            @foreach (var paso in Model.Ficha.ProximosPasos)
-                            {
-                                <li>@paso</li>
-                            }
-                        </ol>
-                        <div class="pam-trace__cards">
-                            <article><span>Clave de registro</span><strong>ID @Model.Proyecto.ProyectoId</strong><small>versión @(detalle?.NumeroVersion ?? 1).0</small></article>
-                            <article><span>Trazabilidad</span><strong>@versiones versión(es)</strong><small>@cambios registros de seguimiento</small></article>
-                            <article><span>Soporte documental</span><strong>@fuentes fuente(s)</strong><small>corte @fechaCorte.ToString("yyyy-MM-dd")</small></article>
-                            <article><span>Estatus cartera</span><strong>@Model.Proyecto.EstadoVigenciaCartera</strong><small>@Model.Proyecto.EtapaProyecto</small></article>
+                <h2 class="pam-lamina-title">Hechos consolidados y elementos que aún requieren validación.</h2>
+                <div class="pam-lamina-body pam-application-evidence">
+                    <section class="pam-evidence__consolidated" aria-labelledby="pam-hechos-consolidados">
+                        <div class="pam-evidence__section-head">
+                            <span id="pam-hechos-consolidados"><i class="fas fa-circle-check" aria-hidden="true"></i> Hechos consolidados en cartera</span>
+                            <small>La ficha lee la versión vigente; no modifica el historial.</small>
                         </div>
-                    </div>
+                        <dl class="pam-evidence__facts">
+                            <div><dt>Versión vigente</dt><dd>V@(versionVigente?.NumeroVersion ?? detalle?.NumeroVersion ?? 1)</dd></div>
+                            <div><dt>Vigente desde</dt><dd>@(versionVigente?.VigenteDesde ?? detalle?.VigenteDesde).ToString("yyyy-MM-dd")</dd></div>
+                            <div><dt>Estado de cartera</dt><dd>@Model.Proyecto.EstadoVigenciaCartera</dd></div>
+                            <div><dt>Fuente y corte</dt><dd>@fechaCorte.ToString("yyyy-MM-dd") · @Model.Proyecto.FuenteDocumento</dd></div>
+                        </dl>
+
+                        <div class="pam-evidence__subhead">Última aplicación y cambios recientes</div>
+                        @if (cambiosRecientes.Count == 0)
+                        {
+                            <p class="pam-evidence__empty">No hay cambios detallados posteriores registrados para este proyecto.</p>
+                        }
+                        else
+                        {
+                            <ul class="pam-evidence__changes">
+                                @foreach (var cambio in cambiosRecientes)
+                                {
+                                    <li>
+                                        <strong>@cambio.CampoEtiqueta</strong>
+                                        <span>@(cambio.EsAlta ? "Alta registrada en cartera" : $"Actualizado el {cambio.FechaRegistroUtc:yyyy-MM-dd}")</span>
+                                        @if (!string.IsNullOrWhiteSpace(cambio.FuenteDocumento))
+                                        {
+                                            <small>Fuente: @cambio.FuenteDocumento · corte @cambio.FechaCorte.ToString("yyyy-MM-dd")</small>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </section>
+
+                    <aside class="pam-evidence__support" aria-label="Soporte documental y pendientes de validación">
+                        <section class="pam-origin-record @(expedienteOrigen?.TieneVinculo == true ? "is-linked" : "is-pending")" aria-labelledby="pam-expediente-origen">
+                            <div class="pam-evidence__section-head">
+                                <span id="pam-expediente-origen"><i class="fas fa-file-lines" aria-hidden="true"></i> Expediente pormenorizado de origen</span>
+                                <small>@(expedienteOrigen?.Estado ?? "Pendiente de vinculación")</small>
+                            </div>
+                            @if (expedienteOrigen?.TieneVinculo == true)
+                            {
+                                <dl class="pam-origin-record__facts">
+                                    <div><dt>Registro</dt><dd>#@expedienteOrigen.ProyectoModernizacionId@(expedienteOrigen.Numero.HasValue ? $" · No. {expedienteOrigen.Numero}" : string.Empty)</dd></div>
+                                    <div><dt>Clave PEM</dt><dd>@expedienteOrigen.ClavePem</dd></div>
+                                    <div><dt>Método de vínculo</dt><dd>@expedienteOrigen.MetodoVinculo</dd></div>
+                                    <div><dt>Fuente y corte de origen</dt><dd>@(string.IsNullOrWhiteSpace(expedienteOrigen.FuenteDocumento) ? "Fuente histórica no especificada" : expedienteOrigen.FuenteDocumento)@(expedienteOrigen.FechaCarga.HasValue ? $" · carga {expedienteOrigen.FechaCarga:yyyy-MM-dd}" : string.Empty)</dd></div>
+                                </dl>
+                                <a class="pam-origin-record__link" href="@expedienteOrigen.UrlDetalle"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i> Consultar registro pormenorizado</a>
+                            }
+                            else
+                            {
+                                <p>@(expedienteOrigen?.Mensaje ?? "No existe un vínculo comprobable al expediente pormenorizado.")</p>
+                                <small>Método: @(expedienteOrigen?.MetodoVinculo ?? "No disponible")</small>
+                            }
+                        </section>
+                        <div class="pam-evidence__section-head">
+                            <span><i class="fas fa-link" aria-hidden="true"></i> Fuentes y relaciones</span>
+                            <small>@fuentes fuente(s) documentales · @relacionesVigentes.Count relación(es) vigente(s)</small>
+                        </div>
+                        @if (fuentesPorCampo.Count > 0)
+                        {
+                            <ul class="pam-evidence__sources">
+                                @foreach (var fuenteCampo in fuentesPorCampo)
+                                {
+                                    <li><strong>@fuenteCampo.Campo</strong><span>@fuenteCampo.Fuente · @fuenteCampo.Corte.ToString("yyyy-MM-dd")</span></li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <p class="pam-evidence__empty">Los campos vigentes conservan la fuente principal mostrada arriba.</p>
+                        }
+                        @if (relacionesVigentes.Count > 0)
+                        {
+                            <ul class="pam-evidence__relations" aria-label="Relaciones vigentes">
+                                @foreach (var relacion in relacionesVigentes)
+                                {
+                                    <li><strong>@relacion.TipoRelacion</strong><span>@relacion.Direccion · @relacion.ClaveRelacionada — @relacion.NombreRelacionado</span></li>
+                                }
+                            </ul>
+                        }
+                        <div class="pam-evidence__pending" role="note">
+                            <strong><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> Pendientes de validación</strong>
+                            @if (pendientesValidacion.Count == 0)
+                            {
+                                <span>No hay pendientes declarados en la ficha dinámica. Esto no sustituye la validación técnica de fuentes.</span>
+                            }
+                            else
+                            {
+                                <ul>
+                                    @foreach (var pendiente in pendientesValidacion)
+                                    {
+                                        <li>@pendiente</li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    </aside>
                 </div>
                 <div class="pam-lamina-foot">
-                    <span>Fuente principal: @Model.Ficha.Fuente</span>
+                    <span>La información consolidada proviene de la versión vigente; los pendientes no se presentan como hechos confirmados.</span>
                     <span class="pam-lamina-foot__meta">
                         <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
                         16

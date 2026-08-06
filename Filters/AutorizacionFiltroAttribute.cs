@@ -31,6 +31,9 @@ public class AutorizacionFiltro : ActionFilterAttribute
         Console.WriteLine("Filtro AutorizacionFiltro ejecutado");
 
         var requestPath = context.HttpContext.Request.Path.ToString();
+        var isCarteraApiRequest = requestPath.StartsWith(
+            "/ProyectosPrivados/Api/CarteraConvocatoria",
+            StringComparison.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(requestPath) &&
             (requestPath.StartsWith("/Acceso/Login", StringComparison.OrdinalIgnoreCase)
              || requestPath.StartsWith("/Acceso/ForgotPassword", StringComparison.OrdinalIgnoreCase)
@@ -70,7 +73,19 @@ public class AutorizacionFiltro : ActionFilterAttribute
 
         if (!usuarioLogeado)
         {
-            // Si el usuario no está logueado, redirigir a la página de sesión expirada
+            // Las peticiones AJAX no deben recibir HTML por una redirección silenciosa.
+            if (isCarteraApiRequest)
+            {
+                context.Result = new JsonResult(new
+                {
+                    error = "Tu sesión expiró. Inicia sesión nuevamente; el comentario permanece en el formulario."
+                })
+                {
+                    StatusCode = StatusCodes.Status401Unauthorized
+                };
+                return;
+            }
+
             context.Result = new RedirectToActionResult("SesionExpirada", "Acceso", null);
         }
         else

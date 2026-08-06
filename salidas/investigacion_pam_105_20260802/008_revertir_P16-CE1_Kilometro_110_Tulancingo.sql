@@ -1,0 +1,19 @@
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+
+BEGIN TRANSACTION;
+
+DELETE FROM dgmesnie.PAMProyectoUbicacion
+WHERE ProyectoId = 19
+  AND MetodoUbicacion = N'investigacion_individual_conciliada_v2'
+  AND Observaciones LIKE N'%Lote=PAM-UBICACION-INDIVIDUAL-20260802-003.%';
+
+IF @@ROWCOUNT <> 3
+BEGIN
+    ROLLBACK TRANSACTION;
+    THROW 51307, N'Reversion cancelada: no se localizaron exactamente las tres filas del lote.', 1;
+END;
+
+COMMIT TRANSACTION;

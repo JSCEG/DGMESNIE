@@ -3092,8 +3092,10 @@ class Component extends DCLogic {
           :'asociada al catálogo de red')
         :(detailLocation.precisionUbicacion||'exacta');
       const geometryType=String(detailLocation.tipoGeometria||(detailLocation.geometria&&detailLocation.geometria.type)||'');
+      const isMunicipal=this._norm(detailLocation.precisionUbicacion)==='municipal'
+        ||this._norm(detailLocation.metodoUbicacion)==='municipioareainfluenciadocumentada';
       const isSinglePoint=locations.length===1&&geometryType==='Point';
-      mode=isSinglePoint?'point':'territory';
+      mode=isMunicipal?'municipality':(isSinglePoint?'point':'territory');
       radiusKm=Math.max(1,Number(detailLocation.radioSugeridoKm)||20);
       bufferKm=locations.length>1
         ?Math.max(0,Number(detailLocation.radioSugeridoKm)||10)
@@ -3135,6 +3137,43 @@ class Component extends DCLogic {
       municipality:detailLocation&&detailLocation.municipio||'',
       pamItem:item
     };
+  }
+  _pamMunicipalityTerritory(option){
+    const municipalityWanted=this._norm(option&&option.municipality);
+    const stateWanted=this._norm(option&&option.state);
+    if(!municipalityWanted) return Promise.resolve(null);
+    return this._anaMunicipiosShortcutGeo().then(geo=>{
+      const matches=((geo&&geo.features)||[]).filter(feature=>{
+        const properties=feature&&feature.properties||{};
+        const municipality=this._norm(properties.NOMGEO||properties.nombre||'');
+        if(municipality!==municipalityWanted) return false;
+        const stateCode=String(properties.CVE_ENT||properties.cve_ent||'').padStart(2,'0');
+        const state=this._norm(this.CVE_ENT[stateCode]||this._propEnt(properties)||'');
+        return !stateWanted||state===stateWanted||state.includes(stateWanted)||stateWanted.includes(state);
+      });
+      if(matches.length!==1) return null;
+      const feature=matches[0];
+      const properties=feature.properties||{};
+      const center=this._centroid(feature.geometry);
+      if(!center||!isFinite(center[0])||!isFinite(center[1])) return null;
+      const stateCode=String(properties.CVE_ENT||properties.cve_ent||'').padStart(2,'0');
+      const municipalityCode=String(properties.CVE_MUN||properties.cve_mun
+        ||(properties.CVEGEO?String(properties.CVEGEO).slice(-3):'')).padStart(3,'0');
+      const state=this.CVE_ENT[stateCode]||option.state||this._propEnt(properties)||'';
+      const municipality=properties.NOMGEO||properties.nombre||option.municipality||'';
+      const item=option.pamItem||{};
+      const key=item.claveProyecto||('PAM '+item.proyectoId);
+      return {
+        ...option,
+        kind:'municipality',
+        label:key+' · '+(item.nombreProyecto||'Proyecto PAM'),
+        detail:'Cobertura municipal documentada · '+[municipality,state].filter(Boolean).join(', '),
+        state,municipality,stateCode,municipalityCode,
+        lat:center[0],lng:center[1],zoom:10,
+        geometry:{type:'Feature',properties,geometry:feature.geometry},
+        bufferKm:0,analysisMode:'territory'
+      };
+    });
   }
   _selectPamItem(item,location){
     if(!item) return;
@@ -3311,6 +3350,17 @@ class Component extends DCLogic {
     if(!option||!option.pamItem) return;
     const item=option.pamItem;
     const key=item.claveProyecto||('PAM '+item.proyectoId);
+    if(option.analysisMode==='municipality'){
+      this._toast('Preparando cobertura municipal documentada…');
+      this._pamMunicipalityTerritory(option).then(territory=>{
+        if(!territory){
+          this._toast('No se encontró un polígono municipal único; no se sustituyó por una referencia regional');
+          return;
+        }
+        this._anaPlaceTerritory(territory);
+      }).catch(error=>this._toast('No se pudo preparar la cobertura municipal: '+(error.message||error)));
+      return;
+    }
     if(option.analysisMode==='point'){
       const radiusKm=Math.max(1,Number(option.radiusKm)||20);
       this.setState({analysis:{...this.state.analysis,radiusKm}},()=>this._anaPlace(option.lat,option.lng,{
@@ -3769,8 +3819,8 @@ class Component extends DCLogic {
         const pamMeta=key==='pam'&&(geo.meta||{});
         this._toast(pamMeta
           ?cnt.toLocaleString('es-MX')+' proyectos PAM · '
-            +Number(pamMeta.proyectosAsociadosRed||0).toLocaleString('es-MX')+' asociados a la red · '
-            +Number(pamMeta.proyectosRegionales||0).toLocaleString('es-MX')+' con referencia regional GCR · '
+            +Number(pamMeta.proyectosConUbicacionPrecisa||0).toLocaleString('es-MX')+' con ubicación de red · '
+            +Number(pamMeta.proyectosRegionales||0).toLocaleString('es-MX')+' sin punto, con referencia GCR · '
             +'2ª convocatoria en capa independiente'
           :cfg.label+' cargada · '+cnt.toLocaleString('es-MX')+' elementos');
       }, 180);
@@ -9146,12 +9196,12 @@ class Component extends DCLogic {
         title:'Proyectos PAM / PAMRNT',
         items:[
           {
-            color:'#6B3654',label:'Asociación de red · pendiente de validación',...dot,
-            hasCount:true,count:Number(this._pamLayerMeta.proyectosAsociadosRed||0).toLocaleString('es-MX'),
+            color:'#6B3654',label:'Con ubicación de red',...dot,
+            hasCount:true,count:Number(this._pamLayerMeta.proyectosConUbicacionPrecisa||0).toLocaleString('es-MX'),
             active:true,cursor:'default',op:1
           },
           {
-            color:'#B47712',label:'Referencia regional GCR · no es coordenada oficial',...dot,
+            color:'#B47712',label:'Sin punto · referencia regional GCR',...dot,
             hasCount:true,count:Number(this._pamLayerMeta.proyectosRegionales||0).toLocaleString('es-MX'),
             active:true,cursor:'default',op:1
           }

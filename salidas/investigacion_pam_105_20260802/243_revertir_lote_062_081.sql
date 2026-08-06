@@ -1,0 +1,48 @@
+-- Ejecutar con sqlcmd -f 65001 para conservar UTF-8.
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+
+DECLARE @Metodo nvarchar(80)=N'investigacion_individual_conciliada_v2';
+DECLARE @E TABLE(ProyectoId bigint PRIMARY KEY,Cantidad int,Lote nvarchar(80));
+INSERT @E VALUES
+(88,2,N'PAM-UBICACION-INDIVIDUAL-20260803-062'),
+(91,2,N'PAM-UBICACION-INDIVIDUAL-20260803-063'),
+(90,2,N'PAM-UBICACION-INDIVIDUAL-20260803-065'),
+(74,1,N'PAM-UBICACION-INDIVIDUAL-20260803-066'),
+(125,2,N'PAM-UBICACION-INDIVIDUAL-20260803-067'),
+(127,1,N'PAM-UBICACION-INDIVIDUAL-20260803-068'),
+(123,1,N'PAM-UBICACION-INDIVIDUAL-20260803-069'),
+(172,3,N'PAM-UBICACION-INDIVIDUAL-20260803-070'),
+(63,3,N'PAM-UBICACION-INDIVIDUAL-20260803-071'),
+(70,1,N'PAM-UBICACION-INDIVIDUAL-20260803-072'),
+(27,9,N'PAM-UBICACION-INDIVIDUAL-20260803-078'),
+(41,3,N'PAM-UBICACION-INDIVIDUAL-20260803-080'),
+(48,3,N'PAM-UBICACION-INDIVIDUAL-20260803-081');
+
+BEGIN TRY
+ BEGIN TRANSACTION;
+ IF EXISTS(
+   SELECT 1 FROM @E e
+   OUTER APPLY(
+     SELECT COUNT(*) Cantidad
+     FROM dgmesnie.PAMProyectoUbicacion u WITH(UPDLOCK,HOLDLOCK)
+     WHERE u.ProyectoId=e.ProyectoId AND u.MetodoUbicacion=@Metodo
+       AND u.Observaciones LIKE N'%' + e.Lote + N'.%'
+   ) x WHERE x.Cantidad<>e.Cantidad
+ ) THROW 516401,N'Reversión cancelada: el lote ya no coincide con los 33 registros esperados.',1;
+
+ DELETE u
+ FROM dgmesnie.PAMProyectoUbicacion u
+ JOIN @E e ON e.ProyectoId=u.ProyectoId
+ WHERE u.MetodoUbicacion=@Metodo AND u.Observaciones LIKE N'%' + e.Lote + N'.%';
+
+ IF @@ROWCOUNT<>33
+  THROW 516402,N'Reversión cancelada: no se eliminaron exactamente 33 registros.',1;
+ COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+ IF @@TRANCOUNT>0 ROLLBACK TRANSACTION;
+ THROW;
+END CATCH;

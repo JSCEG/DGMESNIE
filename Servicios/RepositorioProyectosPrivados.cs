@@ -14,6 +14,12 @@ namespace NSIE.Servicios
 {
     public class RepositorioProyectosPrivados : IRepositorioProyectosPrivados
     {
+        private sealed class EstadoConvocatoriaRow
+        {
+            public long Id { get; set; }
+            public string Estado { get; set; } = string.Empty;
+        }
+
         private readonly string _conn;
 
         public RepositorioProyectosPrivados(IConfiguration config)
@@ -749,6 +755,453 @@ namespace NSIE.Servicios
                     SemaforoId = semId, Usuario = usuario
                 });
             }
+        }
+
+        // ── Cartera estratégica y segunda convocatoria ─────────────────────
+        public async Task SincronizarCarteraConvocatoriaAsync(CarteraConvocatoriaSeed seed, string usuario)
+        {
+            if (seed?.Projects == null || seed.Projects.Count == 0) return;
+
+            using (var db = Connection)
+            {
+                db.Open();
+                using (var tx = db.BeginTransaction())
+                {
+                    try
+                    {
+                        const string upsert = @"
+MERGE dgmesnie.CarteraConvocatoriaProyecto WITH (HOLDLOCK) AS target
+USING (SELECT @Folio AS Folio) AS source
+ON target.Folio = source.Folio
+WHEN MATCHED THEN UPDATE SET
+    Nombre = @Name,
+    Tipo = @Type,
+    GerenciaControl = @Region,
+    EntidadFederativa = @State,
+    Tecnologia = @Technology,
+    RazonSocial = @Company,
+    GrupoInteres = @InterestGroup,
+    Subestacion = @Substation,
+    PuntoInterconexion = @InterconnectionPoint,
+    CapacidadMw = @Mw,
+    OrdenPrelacion = @Rank,
+    FuentePrioridad = @PrioritySource,
+    ClasificacionAnalisis = @AnalysisClassification,
+    ViabilidadTecnica = @TechnicalViability,
+    AnalisisTecnico = @TechnicalAnalysis,
+    FechaFirmaProyecto = @ProjectSignedAt,
+    GrupoDuplicado = @DuplicateGroup,
+    Fuente = @Source,
+    FilaFuente = @SourceRow,
+    VersionFuente = @SourceVersion,
+    Activo = 1,
+    ActualizadoUtc = SYSUTCDATETIME(),
+    ActualizadoPor = @Usuario
+WHEN NOT MATCHED THEN INSERT
+(
+    Folio, Nombre, Tipo, GerenciaControl, EntidadFederativa,
+    Tecnologia, RazonSocial, GrupoInteres, Subestacion,
+    PuntoInterconexion, CapacidadMw, OrdenPrelacion, Prioridad,
+    FuentePrioridad, EstadoSeguimiento, ClasificacionAnalisis,
+    ViabilidadTecnica, AnalisisTecnico, FechaFirmaProyecto,
+    GrupoDuplicado, Fuente, FilaFuente,
+    VersionFuente, CreadoPor
+)
+VALUES
+(
+    @Folio, @Name, @Type, @Region, @State,
+    @Technology, @Company, @InterestGroup, @Substation,
+    @InterconnectionPoint, @Mw, @Rank, @Priority,
+    @PrioritySource, @Decision, @AnalysisClassification,
+    @TechnicalViability, @TechnicalAnalysis, @ProjectSignedAt,
+    @DuplicateGroup, @Source, @SourceRow,
+    @SourceVersion, @Usuario
+);";
+
+                        foreach (var project in seed.Projects)
+                        {
+                            var decision = NormalizarEstadoConvocatoria(project.Decision);
+                            await db.ExecuteAsync(upsert, new
+                            {
+                                project.Folio,
+                                project.Name,
+                                project.Type,
+                                project.Region,
+                                project.State,
+                                project.Technology,
+                                project.Company,
+                                project.InterestGroup,
+                                project.Substation,
+                                project.InterconnectionPoint,
+                                project.Mw,
+                                project.Rank,
+                                Priority = Math.Clamp(project.Priority, 1, 4),
+                                project.PrioritySource,
+                                Decision = decision,
+                                project.AnalysisClassification,
+                                project.TechnicalViability,
+                                project.TechnicalAnalysis,
+                                project.ProjectSignedAt,
+                                project.DuplicateGroup,
+                                project.Source,
+                                project.SourceRow,
+                                seed.SourceVersion,
+                                Usuario = usuario
+                            }, tx);
+                        }
+
+                        await db.ExecuteAsync(@"
+UPDATE dgmesnie.CarteraConvocatoriaProyecto
+SET Activo = 0,
+    ActualizadoUtc = SYSUTCDATETIME(),
+    ActualizadoPor = @Usuario
+WHERE Activo = 1
+  AND Fuente IN (N'Estratégicos', N'Particulares 2')
+  AND ISNULL(VersionFuente, N'') <> @SourceVersion;", new
+                        {
+                            seed.SourceVersion,
+                            Usuario = usuario
+                        }, tx);
+
+                        const string insertSeedNote = @"
+DECLARE @ProyectoCarteraId BIGINT =
+(
+    SELECT ProyectoCarteraId
+    FROM dgmesnie.CarteraConvocatoriaProyecto
+    WHERE Folio = @Folio
+);
+IF @ProyectoCarteraId IS NOT NULL
+   AND NOT EXISTS
+   (
+       SELECT 1
+       FROM dgmesnie.CarteraConvocatoriaComentario
+       WHERE OrigenClave = @OrigenClave
+          OR
+          (
+              ProyectoCarteraId = @ProyectoCarteraId
+              AND Sesion = @Session
+              AND FechaSesion = @Date
+              AND Comentario = @Text
+          )
+   )
+BEGIN
+    INSERT dgmesnie.CarteraConvocatoriaComentario
+    (
+        ProyectoCarteraId, Sesion, FechaSesion, Comentario,
+        UsuarioRegistro, OrigenClave
+    )
+    VALUES
+    (
+        @ProyectoCarteraId, @Session, @Date, @Text,
+        @Usuario, @OrigenClave
+    );
+END;";
+
+                        for (var index = 0; index < seed.Notes.Count; index++)
+                        {
+                            var note = seed.Notes[index];
+                            if (string.IsNullOrWhiteSpace(note.Folio) ||
+                                string.IsNullOrWhiteSpace(note.Text)) continue;
+
+                            await db.ExecuteAsync(insertSeedNote, new
+                            {
+                                note.Folio,
+                                Session = string.IsNullOrWhiteSpace(note.Session)
+                                    ? "Sesión de trabajo"
+                                    : note.Session.Trim(),
+                                Date = note.Date == default ? DateTime.Today : note.Date.Date,
+                                Text = note.Text.Trim(),
+                                Usuario = "Importación inicial",
+                                OrigenClave = $"seed:cartera:{note.Folio}:{note.Date:yyyyMMdd}:{index + 1}"
+                            }, tx);
+                        }
+
+                        tx.Commit();
+                    }
+                    catch
+                    {
+                        tx.Rollback();
+                        throw;
+                    }
+                }
+            }
+        }
+
+        public async Task<CarteraConvocatoriaDatos> ObtenerCarteraConvocatoriaAsync()
+        {
+            using (var db = Connection)
+            {
+                const string projectsSql = @"
+SELECT
+    ProyectoCarteraId AS ProjectId,
+    Folio,
+    Nombre AS Name,
+    Tipo AS Type,
+    GerenciaControl AS Region,
+    EntidadFederativa AS State,
+    Tecnologia AS Technology,
+    RazonSocial AS Company,
+    GrupoInteres AS InterestGroup,
+    Subestacion,
+    PuntoInterconexion AS InterconnectionPoint,
+    CapacidadMw AS Mw,
+    OrdenPrelacion AS Rank,
+    Prioridad AS Priority,
+    FuentePrioridad AS PrioritySource,
+    EstadoSeguimiento AS Decision,
+    ClasificacionAnalisis AS AnalysisClassification,
+    ViabilidadTecnica AS TechnicalViability,
+    AnalisisTecnico AS TechnicalAnalysis,
+    FechaFirmaProyecto AS ProjectSignedAt,
+    GrupoDuplicado AS DuplicateGroup,
+    Fuente AS Source,
+    FilaFuente AS SourceRow,
+    ActualizadoUtc AS UpdatedAt,
+    ActualizadoPor AS UpdatedBy
+FROM dgmesnie.CarteraConvocatoriaProyecto
+WHERE Activo = 1
+ORDER BY OrdenPrelacion, Folio;";
+
+                const string notesSql = @"
+SELECT
+    c.ComentarioId AS CommentId,
+    p.Folio,
+    c.Sesion AS Session,
+    c.FechaSesion AS Date,
+    c.Comentario AS Text,
+    c.UsuarioRegistro AS [User],
+    c.FechaRegistroUtc AS CreatedAt
+FROM dgmesnie.CarteraConvocatoriaComentario c
+INNER JOIN dgmesnie.CarteraConvocatoriaProyecto p
+    ON p.ProyectoCarteraId = c.ProyectoCarteraId
+WHERE p.Activo = 1
+ORDER BY c.FechaSesion DESC, c.ComentarioId DESC;";
+
+                var projects = (await db.QueryAsync<CarteraConvocatoriaProyecto>(projectsSql)).ToList();
+                var notes = (await db.QueryAsync<CarteraConvocatoriaComentario>(notesSql)).ToList();
+                var sourceVersion = await db.QueryFirstOrDefaultAsync<string>(@"
+SELECT TOP (1) VersionFuente
+FROM dgmesnie.CarteraConvocatoriaProyecto
+WHERE Activo = 1 AND VersionFuente IS NOT NULL
+ORDER BY ActualizadoUtc DESC, ProyectoCarteraId DESC;");
+
+                var latest = notes.FirstOrDefault();
+                return new CarteraConvocatoriaDatos
+                {
+                    SourceVersion = sourceVersion ?? "bd-cartera-convocatoria-v1",
+                    Source = new
+                    {
+                        database = "dgmesnie.CarteraConvocatoriaProyecto",
+                        rows = projects.Count
+                    },
+                    Projects = projects,
+                    Notes = notes,
+                    Session = latest == null
+                        ? new CarteraConvocatoriaSesion()
+                        : new CarteraConvocatoriaSesion
+                        {
+                            Name = latest.Session,
+                            Date = latest.Date.ToString("yyyy-MM-dd")
+                        }
+                };
+            }
+        }
+
+        public async Task<bool> ActualizarEstadoConvocatoriaAsync(string folio, string estado, string usuario)
+        {
+            var normalized = NormalizarEstadoConvocatoria(estado);
+            using (var db = Connection)
+            {
+                db.Open();
+                using (var tx = db.BeginTransaction())
+                {
+                    try
+                    {
+                        var current = await db.QueryFirstOrDefaultAsync<EstadoConvocatoriaRow>(@"
+SELECT ProyectoCarteraId AS Id, EstadoSeguimiento AS Estado
+FROM dgmesnie.CarteraConvocatoriaProyecto WITH (UPDLOCK, HOLDLOCK)
+WHERE Folio = @Folio AND Activo = 1;", new { Folio = folio.Trim() }, tx);
+
+                        if (current == null || current.Id <= 0)
+                        {
+                            tx.Rollback();
+                            return false;
+                        }
+
+                        if (!string.Equals(current.Estado, normalized, StringComparison.OrdinalIgnoreCase))
+                        {
+                            await db.ExecuteAsync(@"
+UPDATE dgmesnie.CarteraConvocatoriaProyecto
+SET EstadoSeguimiento = @Estado,
+    ActualizadoUtc = SYSUTCDATETIME(),
+    ActualizadoPor = @Usuario
+WHERE ProyectoCarteraId = @Id;
+
+INSERT dgmesnie.CarteraConvocatoriaEstadoHistorial
+(
+    ProyectoCarteraId, EstadoAnterior, EstadoNuevo, UsuarioRegistro
+)
+VALUES
+(
+    @Id, @Anterior, @Estado, @Usuario
+);", new
+                            {
+                                current.Id,
+                                Anterior = current.Estado,
+                                Estado = normalized,
+                                Usuario = usuario
+                            }, tx);
+                        }
+
+                        tx.Commit();
+                        return true;
+                    }
+                    catch
+                    {
+                        tx.Rollback();
+                        throw;
+                    }
+                }
+            }
+        }
+
+        public async Task<CarteraConvocatoriaComentario?> AgregarComentarioConvocatoriaAsync(
+            AgregarComentarioConvocatoriaRequest request,
+            string usuario)
+        {
+            using (var db = Connection)
+            {
+                const string sql = @"
+DECLARE @ProyectoCarteraId BIGINT =
+(
+    SELECT ProyectoCarteraId
+    FROM dgmesnie.CarteraConvocatoriaProyecto
+    WHERE Folio = @Folio AND Activo = 1
+);
+
+IF @ProyectoCarteraId IS NOT NULL
+BEGIN
+    INSERT dgmesnie.CarteraConvocatoriaComentario
+    (
+        ProyectoCarteraId, Sesion, FechaSesion, Comentario, UsuarioRegistro
+    )
+    OUTPUT
+        inserted.ComentarioId AS CommentId,
+        @Folio AS Folio,
+        inserted.Sesion AS Session,
+        inserted.FechaSesion AS Date,
+        inserted.Comentario AS Text,
+        inserted.UsuarioRegistro AS [User],
+        inserted.FechaRegistroUtc AS CreatedAt
+    VALUES
+    (
+        @ProyectoCarteraId, @Sesion, @Fecha, @Comentario, @Usuario
+    );
+END;";
+
+                return await db.QueryFirstOrDefaultAsync<CarteraConvocatoriaComentario>(sql, new
+                {
+                    Folio = request.Folio.Trim(),
+                    Sesion = request.Sesion.Trim(),
+                    Fecha = request.Fecha.Date,
+                    Comentario = request.Comentario.Trim(),
+                    Usuario = usuario
+                });
+            }
+        }
+
+        public async Task<bool> ActualizarPrioridadConvocatoriaAsync(string folio, int prioridad, string usuario)
+        {
+            using (var db = Connection)
+            {
+                var rows = await db.ExecuteAsync(@"
+UPDATE dgmesnie.CarteraConvocatoriaProyecto
+SET Prioridad = @Prioridad,
+    FuentePrioridad = N'Asignación registrada en plataforma',
+    ActualizadoUtc = SYSUTCDATETIME(),
+    ActualizadoPor = @Usuario
+WHERE Folio = @Folio AND Activo = 1;", new
+                {
+                    Folio = folio.Trim(),
+                    Prioridad = prioridad,
+                    Usuario = usuario
+                });
+                return rows > 0;
+            }
+        }
+
+        public async Task<long> CrearProyectoConvocatoriaAsync(CrearProyectoConvocatoriaRequest request, string usuario)
+        {
+            using (var db = Connection)
+            {
+                db.Open();
+                using (var tx = db.BeginTransaction())
+                {
+                    try
+                    {
+                        var nextRank = await db.ExecuteScalarAsync<int>(@"
+SELECT ISNULL(MAX(OrdenPrelacion), 0) + 1
+FROM dgmesnie.CarteraConvocatoriaProyecto WITH (UPDLOCK, HOLDLOCK);", transaction: tx);
+
+                        var id = await db.ExecuteScalarAsync<long>(@"
+INSERT dgmesnie.CarteraConvocatoriaProyecto
+(
+    Folio, Nombre, Tipo, GerenciaControl, EntidadFederativa,
+    Tecnologia, RazonSocial, GrupoInteres, PuntoInterconexion,
+    CapacidadMw, OrdenPrelacion, Prioridad, FuentePrioridad,
+    EstadoSeguimiento, Fuente, VersionFuente, CreadoPor
+)
+VALUES
+(
+    @Folio, @Nombre, @Tipo, @Gerencia, @Entidad,
+    @Tecnologia, @RazonSocial, @GrupoInteres, @PuntoInterconexion,
+    @CapacidadMw, @Orden, @Prioridad, N'Alta manual en plataforma',
+    N'revision', N'Captura manual', N'bd-manual-v1', @Usuario
+);
+SELECT CONVERT(BIGINT, SCOPE_IDENTITY());", new
+                        {
+                            Folio = request.Folio.Trim(),
+                            Nombre = request.Nombre.Trim(),
+                            Tipo = request.Tipo.Trim(),
+                            Gerencia = request.Gerencia.Trim(),
+                            Entidad = request.Entidad.Trim(),
+                            Tecnologia = request.Tecnologia?.Trim(),
+                            RazonSocial = request.RazonSocial?.Trim(),
+                            GrupoInteres = request.GrupoInteres?.Trim(),
+                            PuntoInterconexion = request.PuntoInterconexion?.Trim(),
+                            request.CapacidadMw,
+                            Orden = nextRank,
+                            request.Prioridad,
+                            Usuario = usuario
+                        }, tx);
+
+                        tx.Commit();
+                        return id;
+                    }
+                    catch
+                    {
+                        tx.Rollback();
+                        throw;
+                    }
+                }
+            }
+        }
+
+        private static string NormalizarEstadoConvocatoria(string? estado)
+        {
+            return (estado ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                "va" => "continua",
+                "continua" => "continua",
+                "continúa" => "continua",
+                "no-va" => "no-continua",
+                "no continua" => "no-continua",
+                "no continúa" => "no-continua",
+                "no-continua" => "no-continua",
+                "suspendido" => "no-continua",
+                "suspendida" => "no-continua",
+                _ => "revision"
+            };
         }
 
         // ── Catalogs ─────────────────────────────────────────────────────────

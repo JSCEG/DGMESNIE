@@ -1,14 +1,15 @@
 @model NSIE.Models.PamrntProyectosIdentificadosViewModel
 
 @{
-    ViewData["Title"] = "Dashboard maestro PAM/PAMRNT";
+    ViewData["Title"] = "Cartera y seguimiento PAM";
 
     // ── Datos para los gráficos SVG (server-rendered, sin librerías) ──
-    var pamVigentes = Math.Max(0, Model.TotalPam - Model.TotalCancelados);
+    var pamVigentes = Math.Max(0, Model.TotalPamVigentes);
+    var pamVigentesRepositorio = Math.Max(0, Model.TotalPamVigentesRepositorio);
     var composicion = new[]
     {
-        (Etiqueta: "PAM vigentes", Valor: pamVigentes, Clase: "guinda"),
-        (Etiqueta: "Nuevos PAMRNT", Valor: Model.TotalPamrnt, Clase: "dorado"),
+        (Etiqueta: "Cartera base histórica", Valor: pamVigentes, Clase: "guinda"),
+        (Etiqueta: "Programa PAMRNT 2026–2040", Valor: Model.TotalPamrnt, Clase: "dorado"),
         (Etiqueta: "Cancelados", Valor: Model.TotalCancelados, Clase: "gris")
     };
     var totalComposicion = Math.Max(1, composicion.Sum(s => s.Valor));
@@ -17,7 +18,7 @@
     var donutCirc = 2 * Math.PI * donutRadio;
     double offsetAcumulado = 0;
 
-    // Gauge: proporción de renovación (PAMRNT sobre cartera vigente)
+    // Gauge: participación del programa vigente dentro de los registros vigentes.
     var pctRenovacion = Model.TotalVigentes == 0 ? 0 : (double)Model.TotalPamrnt / Model.TotalVigentes;
     const double gaugeRadio = 50;
     var gaugeLargo = Math.PI * gaugeRadio;
@@ -70,6 +71,10 @@
         tamanoPagina = Model.Filtro.TamanoPagina,
         pagina = 1
     });
+
+    string EtiquetaPrograma(string origen) => string.Equals(origen, "PAMRNT", StringComparison.OrdinalIgnoreCase)
+        ? "Programa de planeación PAMRNT 2026–2040"
+        : "Cartera base histórica PAM";
 }
 
 @await Html.PartialAsync("_ViewHeader", Model.Header)
@@ -92,18 +97,27 @@
     <section class="pam-hero mb-4">
         <div>
             <span class="pam-eyebrow">Repositorio maestro de transmisión</span>
-            <h2>Cartera PAM + PAMRNT</h2>
-            <p>Consulta consolidada de proyectos vigentes, cancelados, fuentes documentales, versiones y relaciones jerárquicas validadas.</p>
+            <h2>Cartera y seguimiento PAM</h2>
+            <p>Consulta la cartera base histórica, el programa vigente de planeación y la evidencia documentada de los cortes de seguimiento.</p>
         </div>
-        @if (Model.PuedeActualizarFuentes)
-        {
-            <div class="d-flex flex-wrap gap-2 align-self-start">
+        <div class="d-flex flex-wrap gap-2 align-self-start">
+            <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#pam-ayuda-lectura">
+                <i class="fas fa-circle-question me-2" aria-hidden="true"></i>Cómo leer esta cartera
+            </button>
+            @if (Model.PuedeActualizarFuentes)
+            {
                 <a asp-action="NuevaActualizacion" class="btn btn-primary">
                     <i class="fas fa-cloud-arrow-up me-2"></i>Nueva actualización
                 </a>
-            </div>
-        }
+            }
+        </div>
     </section>
+
+    <div class="pam-context-sequence mb-4" role="note" aria-label="Secuencia de lectura de la cartera">
+        <span><strong>1.</strong> Cartera base histórica PAM</span><i aria-hidden="true">→</i>
+        <span><strong>2.</strong> Programa de planeación vigente PAMRNT 2026–2040</span><i aria-hidden="true">→</i>
+        <span><strong>3.</strong> Cortes de seguimiento y evidencia</span>
+    </div>
 
     <!-- Analítica: KPIs + donut + gauge -->
     <section class="pam-analitica mb-4" aria-label="Resumen de cartera">
@@ -111,17 +125,17 @@
             <article class="pam-kpi">
                 <span class="pam-kpi__label">Cartera vigente</span>
                 <strong class="pam-kpi__valor">@Model.TotalVigentes.ToString("N0")</strong>
-                <small>@pamVigentes PAM + @Model.TotalPamrnt PAMRNT</small>
+                <small>Registros vigentes de cartera</small>
             </article>
             <article class="pam-kpi pam-kpi--dorado">
-                <span class="pam-kpi__label">Nuevos PAMRNT</span>
+                <span class="pam-kpi__label">Programa PAMRNT vigente</span>
                 <strong class="pam-kpi__valor">@Model.TotalPamrnt.ToString("N0")</strong>
-                <small>Ejercicio 2026-2040</small>
+                <small>Registros del programa 2026–2040</small>
             </article>
             <article class="pam-kpi pam-kpi--verde">
                 <span class="pam-kpi__label">Inversión PAMRNT</span>
                 <strong class="pam-kpi__valor">@Model.InversionTotalMdp.ToString("N0")</strong>
-                <small>Millones de pesos</small>
+                <small>Universo filtrado · millones de pesos</small>
             </article>
             <article class="pam-kpi pam-kpi--gris">
                 <span class="pam-kpi__label">Cancelados</span>
@@ -129,9 +143,9 @@
                 <small>Se conservan en histórico</small>
             </article>
             <article class="pam-kpi pam-kpi--tinta">
-                <span class="pam-kpi__label">Altas / cambios recientes</span>
+                <span class="pam-kpi__label">Actualizaciones por corte</span>
                 <strong class="pam-kpi__valor">@Model.TotalRecientes.ToString("N0")</strong>
-                <small>Último corte @Model.VersionDatos</small>
+                <small>Último corte documentado @Model.VersionDatos</small>
             </article>
             <article class="pam-kpi pam-kpi--tinta">
                 <span class="pam-kpi__label">Identidades totales</span>
@@ -172,16 +186,16 @@
         </div>
 
         <div class="pam-panel pam-panel--gauge">
-            <h6 class="pam-panel__titulo">Renovación de cartera</h6>
-            <svg viewBox="0 0 120 72" class="pam-gauge" role="img" aria-label="Porcentaje de proyectos PAMRNT sobre la cartera vigente">
+            <h6 class="pam-panel__titulo">Participación del programa vigente</h6>
+            <svg viewBox="0 0 120 72" class="pam-gauge" role="img" aria-label="Proporción de registros PAMRNT dentro del universo vigente">
                 <path d="M 10 62 A @gaugeRadio @gaugeRadio 0 0 1 110 62" class="pam-gauge__pista" />
                 <path d="M 10 62 A @gaugeRadio @gaugeRadio 0 0 1 110 62" class="pam-gauge__valor"
                       stroke-dasharray="@((gaugeLargo * pctRenovacion).ToString("F2", inv)) @gaugeLargo.ToString("F2", inv)" />
                 <text x="60" y="52" class="pam-gauge__num">@((pctRenovacion * 100).ToString("N1"))%</text>
-                <text x="60" y="66" class="pam-gauge__sub">PAMRNT / vigentes</text>
+                <text x="60" y="66" class="pam-gauge__sub">PAMRNT en vigentes</text>
             </svg>
             <p class="pam-panel__nota">
-                @Model.TotalPamrnt.ToString("N0") de @Model.TotalVigentes.ToString("N0") proyectos vigentes provienen del nuevo ejercicio de planeación.
+                @Model.TotalPamrnt.ToString("N0") de @Model.TotalVigentes.ToString("N0") registros vigentes pertenecen al programa 2026–2040; no implica correspondencia uno a uno con la cartera histórica.
             </p>
         </div>
     </section>
@@ -218,12 +232,13 @@
     </section>
 
     <section class="pam-card">
+        <p class="pam-reading-context" role="note"><strong>Lectura actual:</strong> los indicadores y resultados responden al universo filtrado. Los números de las pestañas son totales estables del repositorio. La fuente y el corte describen evidencia de seguimiento, no el origen del proyecto.</p>
         <div class="pam-tabs" role="tablist" aria-label="Universos de cartera">
-            <a class="@(Model.Filtro.Universo == "vigentes" ? "is-active" : "")" asp-action="Index" asp-route-universo="vigentes" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Cartera vigente <span>@Model.TotalVigentes</span></a>
-            <a class="@(Model.Filtro.Universo == "pam" ? "is-active" : "")" asp-action="Index" asp-route-universo="pam" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">PAM <span>@pamVigentes</span></a>
-            <a class="@(Model.Filtro.Universo == "pamrnt" ? "is-active" : "")" asp-action="Index" asp-route-universo="pamrnt" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Nuevos PAMRNT <span>@Model.TotalPamrnt</span></a>
-            <a class="@(Model.Filtro.Universo == "cancelados" ? "is-active" : "")" asp-action="Index" asp-route-universo="cancelados" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Cancelados <span>@Model.TotalCancelados</span></a>
-            <a class="@(Model.Filtro.Universo == "recientes" ? "is-active" : "")" asp-action="Index" asp-route-universo="recientes" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Altas/cambios recientes <span>@Model.TotalRecientes</span></a>
+            <a class="@(Model.Filtro.Universo == "vigentes" ? "is-active" : "")" asp-action="Index" asp-route-universo="vigentes" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Vista consolidada <span>@Model.TotalVigentesRepositorio</span></a>
+            <a class="@(Model.Filtro.Universo == "pam" ? "is-active" : "")" asp-action="Index" asp-route-universo="pam" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Cartera base histórica <span>@pamVigentesRepositorio</span></a>
+            <a class="@(Model.Filtro.Universo == "pamrnt" ? "is-active" : "")" asp-action="Index" asp-route-universo="pamrnt" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Programa PAMRNT 2026–2040 <span>@Model.TotalPamrntRepositorio</span></a>
+            <a class="@(Model.Filtro.Universo == "cancelados" ? "is-active" : "")" asp-action="Index" asp-route-universo="cancelados" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Cancelados <span>@Model.TotalCanceladosRepositorio</span></a>
+            <a class="@(Model.Filtro.Universo == "recientes" ? "is-active" : "")" asp-action="Index" asp-route-universo="recientes" asp-route-tamanoPagina="@Model.Filtro.TamanoPagina">Cambios con evidencia <span>@Model.TotalRecientesRepositorio</span></a>
         </div>
 
         <nav class="pam-semaforo" aria-label="Semáforo de estatus de licitación">
@@ -262,13 +277,10 @@
                 <i class="fas fa-magnifying-glass"></i>
                 <input name="busqueda" value="@Model.Filtro.Busqueda" type="search" placeholder="Buscar clave, proyecto, región o fuente" />
             </label>
-            @* Origen (PAM/PAMRNT) ya vive en las pestañas superiores; etapa, tipo y fuente
-               se ocultan para simplificar. Se reactivan quitando el comentario. *@
-            @*
-            <select name="origen" aria-label="Filtrar por origen">
-                <option value="">Todos los orígenes</option>
-                <option value="PAM" selected="@(Model.Filtro.Origen == "PAM" ? "selected" : null)">PAM</option>
-                <option value="PAMRNT" selected="@(Model.Filtro.Origen == "PAMRNT" ? "selected" : null)">PAMRNT</option>
+            <select name="origen" aria-label="Filtrar por programa y procedencia">
+                <option value="">Todos los programas</option>
+                <option value="PAM" selected="@(Model.Filtro.Origen == "PAM" ? "selected" : null)">Cartera base histórica PAM</option>
+                <option value="PAMRNT" selected="@(Model.Filtro.Origen == "PAMRNT" ? "selected" : null)">Programa PAMRNT 2026–2040</option>
             </select>
             <select name="etapa" aria-label="Filtrar por etapa">
                 <option value="">Todas las etapas</option>
@@ -282,7 +294,6 @@
                 <option value="">Todas las fuentes</option>
                 @foreach (var valor in Model.FuentesDisponibles) { <option value="@valor" selected="@(Model.Filtro.Fuente == valor ? "selected" : null)">@valor</option> }
             </select>
-            *@
             <select name="region" aria-label="Filtrar por región">
                 <option value="">Todas las regiones</option>
                 @foreach (var valor in Model.RegionesDisponibles) { <option value="@valor" selected="@(Model.Filtro.Region == valor ? "selected" : null)">@valor</option> }
@@ -312,13 +323,13 @@
             <table class="table align-middle mb-0 pam-table" id="pam-tabla">
                 <thead>
                     <tr>
-                        <th>Clave / origen</th>
+                        <th>PEM</th>
                         <th>Proyecto</th>
                         <th>Etapa / vigencia</th>
                         <th>Región / tipo</th>
                         @* Jerarquía oculta mientras no haya relaciones padre-hijo cargadas; se reactiva quitando pam-col-jerarquia del CSS. *@
                         <th class="pam-col-jerarquia">Jerarquía</th>
-                        <th>Fuente / corte</th>
+                        <th>Programa y corte</th>
                         <th class="text-end">Inversión MDP</th>
                         <th class="text-end">Acciones</th>
                     </tr>
@@ -327,13 +338,13 @@
                     @foreach (var item in Model.Proyectos)
                     {
                         <tr>
-                            <td data-label="Clave">
+                            <td data-label="PEM">
                                 <code>@(string.IsNullOrWhiteSpace(item.ClavePem) ? "Sin clave" : item.ClavePem)</code>
                                 @if (!string.IsNullOrWhiteSpace(item.ClavesAlternas))
                                 {
                                     <small class="d-block mt-1 text-wrap"><strong>Alternas:</strong> @item.ClavesAlternas.Replace("\r", "").Replace("\n", " · ")</small>
                                 }
-                                <div class="mt-1"><span class="pam-origin pam-origin--@item.OrigenPrograma.ToLowerInvariant()">@item.OrigenPrograma</span></div>
+                                <div class="mt-1"><span class="pam-origin pam-origin--@item.OrigenPrograma.ToLowerInvariant()">@EtiquetaPrograma(item.OrigenPrograma)</span></div>
                                 <small>ID @item.ProyectoId · versión @item.NumeroVersion</small>
                             </td>
                             <td data-label="Proyecto" class="pam-td-proyecto">
@@ -363,15 +374,16 @@
                                     <span class="pam-texto-suave small">Sin relación validada</span>
                                 }
                             </td>
-                            <td data-label="Fuente">
-                                <div class="pam-source" title="@item.FuenteUbicacion">@item.FuenteDocumento</div>
-                                <small>@item.FechaCorte?.ToString("yyyy-MM-dd")</small>
+                            <td data-label="Programa y corte">
+                                <div class="pam-source" title="@item.FuenteUbicacion">Fuente: @item.FuenteDocumento</div>
+                                <small>Corte @item.FechaCorte?.ToString("yyyy-MM-dd") · V@(item.NumeroVersion)</small>
+                                <small class="d-block">@(item.UltimoCambioUtc.HasValue ? $"Último cambio {item.UltimoCambioUtc:yyyy-MM-dd}" : "Sin cambio posterior registrado")</small>
                             </td>
                             <td data-label="Inversión MDP" class="text-end fw-semibold pam-td-inversion">@(item.InversionMdp?.ToString("N3") ?? "—")</td>
                             <td data-label="Acciones" class="text-end pam-td-acciones">
                                 <div class="pam-action-botones">
                                     <a class="pam-accion pam-accion--ver" asp-action="Detalle" asp-route-proyectoId="@item.ProyectoId" title="Ver detalle, historial, fuentes y relaciones">
-                                        <i class="fas fa-eye" aria-hidden="true"></i><span>Ver</span>
+                                        <i class="fas fa-eye" aria-hidden="true"></i><span>Ver detalle</span>
                                     </a>
                                     @if (item.FichaDisponible)
                                     {
@@ -409,6 +421,46 @@
             </nav>
         }
     </section>
+
+</div>
+
+<div class="modal fade" id="pam-ayuda-lectura" tabindex="-1" aria-labelledby="pam-ayuda-lectura-titulo" aria-describedby="pam-ayuda-lectura-descripcion">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <span class="pam-eyebrow">Guía de lectura</span>
+                    <h2 class="h5 mb-0" id="pam-ayuda-lectura-titulo">Cómo leer esta cartera</h2>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar ayuda"></button>
+            </div>
+            <div class="modal-body" id="pam-ayuda-lectura-descripcion">
+                <section class="pam-help-flow" aria-labelledby="pam-help-flow-title">
+                    <h3 id="pam-help-flow-title">Flujo institucional de la cartera</h3>
+                    <ol class="pam-help-flow__steps">
+                        <li><strong>SENER</strong><span>Dirige la planeación e instrucción.</span></li>
+                        <li><strong>CENACE</strong><span>Propone y coordina la planeación técnica.</span></li>
+                        <li><strong>PAM</strong><span>Agrupa la cartera de proyectos.</span></li>
+                        <li><strong>PEM</strong><span>Identifica cada proyecto navegable de la cartera.</span></li>
+                        <li><strong>CFE Transmisión / CFE Distribución</strong><span>Ejecuta y reporta el seguimiento de la red.</span></li>
+                    </ol>
+                    <p>Cuando exista evidencia documental, un esquema mixto o participación privada se registra como modalidad de ejecución o financiamiento; no sustituye la responsabilidad de CFE sobre el servicio público y la red.</p>
+                </section>
+                <dl class="pam-help-list">
+                    <div><dt>PAM</dt><dd>Es el instrumento y cartera de ampliación y modernización que reúne los proyectos y su versión vigente.</dd></div>
+                    <div><dt>PEM</dt><dd>Es la clave de un proyecto individual. Abre su detalle y ficha; las claves alternas son referencias del mismo proyecto, no proyectos adicionales.</dd></div>
+                    <div><dt>Cartera base histórica PAM</dt><dd>Identifica los proyectos registrados en la cartera. Su vigencia se conserva aun cuando haya versiones históricas o cancelación.</dd></div>
+                    <div><dt>Programa vigente PAMRNT 2026–2040</dt><dd>Corresponde al ejercicio de planeación vigente. Se consulta junto con la cartera histórica, pero no declara por sí mismo que cada proyecto tenga un sucesor o antecedente directo.</dd></div>
+                    <div><dt>Programa, cortes y fuentes</dt><dd>La columna “Programa y corte” indica la procedencia, el documento y la fecha que respaldan una versión o cambio. Es evidencia de seguimiento; no sustituye el expediente de origen.</dd></div>
+                    <div><dt>Claves y códigos recibidos</dt><dd>Se conservan tal como llegaron en la fuente. Sólo una clave PEM principal o alterna única permite vincular de forma automática; no se infieren vínculos por nombre, región o avance.</dd></div>
+                </dl>
+                <p class="small text-muted mb-0">La región y la zona atendida son atributos de la fuente. Esta vista no infiere ubicación geográfica ni presenta un mapa.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendido</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -424,6 +476,135 @@
         --pam-guinda: var(--shell-accent, #9b2247);
         --pam-dorado: var(--shell-accent-2, #b38e5d);
         --pam-verde: var(--shell-accent-3, #1e5b4f);
+    }
+
+    .pam-reading-context {
+        margin: 0 0 14px;
+        padding: 9px 12px;
+        border-left: 3px solid var(--pam-dorado, #bc955c);
+        color: var(--pam-text-muted, #5d5d5d);
+        font-size: .86rem;
+        line-height: 1.45;
+    }
+
+    .pam-context-sequence {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .35rem .55rem;
+        padding: .15rem 0 .15rem .8rem;
+        border-left: 3px solid var(--pam-dorado, #bc955c);
+        color: var(--pam-muted, #746e69);
+        font-size: .88rem;
+        line-height: 1.45;
+    }
+
+    .pam-context-sequence strong {
+        color: var(--pam-guinda, #9b2247);
+    }
+
+    .pam-context-sequence i {
+        color: var(--pam-dorado, #b38e5d);
+        font-style: normal;
+        font-weight: 800;
+    }
+
+    .pam-help-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0 24px;
+        margin: 0;
+    }
+
+    /* El layout institucional eleva el backdrop de los modales de sesión.
+       Esta ayuda debe quedar por encima para mantener operables sus controles. */
+    #pam-ayuda-lectura {
+        z-index: 20050;
+    }
+
+    .pam-help-flow {
+        margin: 0 0 18px;
+        padding: 13px 0 15px;
+        border-top: 1px solid #e5e1dc;
+        border-bottom: 1px solid #e5e1dc;
+    }
+
+    .pam-help-flow h3 {
+        margin: 0 0 10px;
+        color: var(--pam-ink, #262220);
+        font-family: var(--font-display, "Patria", Georgia, serif);
+        font-size: 1rem;
+        font-weight: 700;
+    }
+
+    .pam-help-flow__steps {
+        display: flex;
+        align-items: stretch;
+        gap: 7px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .pam-help-flow__steps li {
+        position: relative;
+        flex: 1 1 0;
+        min-width: 0;
+        padding: 9px 8px 9px 12px;
+        border-left: 3px solid var(--pam-dorado, #bc955c);
+        background: #f8f6f3;
+    }
+
+    .pam-help-flow__steps li:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        z-index: 1;
+        top: 50%;
+        right: -12px;
+        transform: translateY(-50%);
+        color: var(--pam-guinda, #9d2449);
+        font-weight: 800;
+    }
+
+    .pam-help-flow__steps strong,
+    .pam-help-flow__steps span {
+        display: block;
+    }
+
+    .pam-help-flow__steps strong {
+        color: var(--pam-guinda, #9d2449);
+        font-size: .76rem;
+    }
+
+    .pam-help-flow__steps span,
+    .pam-help-flow > p {
+        margin: 4px 0 0;
+        color: #4f4b47;
+        font-size: .78rem;
+        line-height: 1.35;
+    }
+
+    .pam-help-list > div {
+        padding: 12px 0;
+        border-bottom: 1px solid #e5e1dc;
+    }
+
+    .pam-help-list dt {
+        color: var(--pam-guinda, #9d2449);
+        font-weight: 800;
+    }
+
+    .pam-help-list dd {
+        margin: 4px 0 0;
+        color: #4f4b47;
+        font-size: .9rem;
+        line-height: 1.45;
+    }
+
+    @@media (max-width: 767.98px) {
+        .pam-help-list { grid-template-columns: 1fr; }
+        .pam-help-flow__steps { flex-direction: column; gap: 5px; }
+        .pam-help-flow__steps li:not(:last-child)::after { top: auto; right: auto; bottom: -12px; left: 12px; transform: none; }
     }
 
     /* Hero plano con filo dorado (sin degradados) */
@@ -674,8 +855,9 @@
     .pam-tabs {
         display: flex;
         gap: .25rem;
-        padding: .75rem .75rem 0;
+        padding: .55rem .75rem 0;
         border-bottom: 1px solid var(--pam-line);
+        background: var(--pam-surface-2);
         overflow-x: auto;
         scrollbar-width: none;
     }
@@ -683,13 +865,15 @@
     .pam-tabs::-webkit-scrollbar { display: none; }
 
     .pam-tabs a {
+        position: relative;
         border-bottom: 3px solid transparent;
-        padding: .7rem .85rem;
+        padding: .8rem .85rem .7rem;
         color: var(--pam-muted);
         font-weight: 700;
         font-size: .88rem;
         white-space: nowrap;
         text-decoration: none;
+        transition: color .15s ease, background .15s ease;
     }
 
     .pam-tabs a span {
@@ -707,6 +891,7 @@
     .pam-tabs a.is-active {
         color: var(--pam-guinda);
         border-bottom-color: var(--pam-guinda);
+        background: var(--pam-surface);
     }
 
     .pam-tabs a.is-active span {
@@ -1058,6 +1243,25 @@
         background: rgba(155, 34, 71, 0.06);
     }
 
+    .pam-accion--ver {
+        border-color: rgba(155, 34, 71, .28);
+        color: var(--pam-guinda);
+    }
+
+    .pam-accion--ver i {
+        display: inline-grid;
+        width: 1.45rem;
+        height: 1.45rem;
+        place-items: center;
+        border-radius: 50%;
+        background: rgba(155, 34, 71, .10);
+    }
+
+    .pam-accion--ver:hover i {
+        background: var(--pam-guinda);
+        color: #fff;
+    }
+
     .pam-accion--ficha {
         border-color: var(--pam-guinda);
         background: var(--pam-guinda);
@@ -1235,13 +1439,21 @@
     }
 </style>
 
-@section scripts {
+@section Scripts {
     <script>
-        // Autofiltrar al cambiar cualquier select (misma UX de un clic que el resto de la plataforma)
-        document.querySelectorAll('#pam-filtros select').forEach(function (sel) {
-            sel.addEventListener('change', function () {
-                document.getElementById('pam-filtros').requestSubmit();
+        // Bootstrap inserta el backdrop al final de <body>. Como esta vista se renderiza
+        // dentro de <main>, el modal debe compartir esa raíz para no quedar detrás del fondo.
+        (function () {
+            const ayudaModal = document.getElementById("pam-ayuda-lectura");
+            if (ayudaModal && ayudaModal.parentElement !== document.body) {
+                document.body.appendChild(ayudaModal);
+            }
+
+            document.querySelectorAll('#pam-filtros select').forEach(function (sel) {
+                sel.addEventListener('change', function () {
+                    document.getElementById('pam-filtros').requestSubmit();
+                });
             });
-        });
+        })();
     </script>
 }

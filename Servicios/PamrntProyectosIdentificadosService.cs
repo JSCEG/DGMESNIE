@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using NSIE.Models;
@@ -35,11 +36,9 @@ namespace NSIE.Servicios
             filtro.Normalizar();
 
             const string sql = @"
-WITH Filtrado AS
-(
-    SELECT v.*
-    FROM dgmesnie.vw_PAMProyectoVigente v
-    WHERE
+SELECT v.* INTO #PamFiltrado
+FROM dgmesnie.vw_PAMProyectoVigente v
+WHERE
       (@Busqueda IS NULL OR v.ClaveProyecto LIKE @BusquedaLike OR v.NombreProyecto LIKE @BusquedaLike
        OR v.GRT LIKE @BusquedaLike OR v.FuenteDocumento LIKE @BusquedaLike
        OR EXISTS (SELECT 1 FROM dgmesnie.PAMProyectoClaveVersion clave
@@ -67,7 +66,8 @@ WITH Filtrado AS
           OR (@Universo = N'cancelados' AND v.EstadoVigenciaCartera = N'Cancelado')
           OR (@Universo = N'recientes' AND (v.NumeroVersion > 1 OR v.OrigenPrograma = N'PAMRNT'))
       )
-)
+;
+
 SELECT
     v.ProyectoId,
     v.PrioridadPrograma AS Prioridad,
@@ -91,7 +91,7 @@ SELECT
     cambio.UltimoCambioUtc,
     relacion.ClavePadre,
     relacion.NombrePadre
-FROM Filtrado v
+FROM #PamFiltrado v
 OUTER APPLY
 (
     SELECT MAX(c.FechaRegistroUtc) AS UltimoCambioUtc
@@ -117,39 +117,11 @@ ORDER BY
     v.PrioridadPrograma, v.Numero, v.ClaveProyecto
 OFFSET @Offset ROWS FETCH NEXT @TamanoPagina ROWS ONLY;
 
-SELECT COUNT(*)
-FROM dgmesnie.vw_PAMProyectoVigente v
-WHERE
-  (@Busqueda IS NULL OR v.ClaveProyecto LIKE @BusquedaLike OR v.NombreProyecto LIKE @BusquedaLike
-   OR v.GRT LIKE @BusquedaLike OR v.FuenteDocumento LIKE @BusquedaLike
-   OR EXISTS (SELECT 1 FROM dgmesnie.PAMProyectoClaveVersion clave
-              WHERE clave.ProyectoId = v.ProyectoId AND clave.EsVigente = 1
-                AND clave.ClaveProyecto LIKE @BusquedaLike))
-  AND (@Origen IS NULL OR v.OrigenPrograma = @Origen)
-  AND (@Etapa IS NULL OR v.EtapaProyecto = @Etapa)
-  AND (@Region IS NULL OR v.GRT = @Region)
-  AND (@Tipo IS NULL OR v.TipoProyecto = @Tipo)
-  AND (@Fuente IS NULL OR v.FuenteDocumento = @Fuente)
-  AND (@Estatus IS NULL
-       OR v.EstatusLicitacion = @Estatus
-       OR (@Estatus = N'Por clasificar' AND NULLIF(LTRIM(RTRIM(v.EstatusLicitacion)), N'') IS NULL))
-  AND (@Equipo IS NULL
-       OR (@Equipo = N'lineas' AND v.KmC > 0)
-       OR (@Equipo = N'transformacion' AND v.Mva > 0)
-       OR (@Equipo = N'compensacion' AND v.Mvar > 0))
-  AND (@FiltrarEmpalme = 0 OR v.ProyectoId IN @EmpalmeIds)
-  AND
-  (
-      @Universo = N'todos'
-      OR (@Universo = N'vigentes' AND v.EstadoVigenciaCartera = N'Vigente')
-      OR (@Universo = N'pam' AND v.EstadoVigenciaCartera = N'Vigente' AND v.OrigenPrograma = N'PAM')
-      OR (@Universo = N'pamrnt' AND v.EstadoVigenciaCartera = N'Vigente' AND v.OrigenPrograma = N'PAMRNT')
-      OR (@Universo = N'cancelados' AND v.EstadoVigenciaCartera = N'Cancelado')
-      OR (@Universo = N'recientes' AND (v.NumeroVersion > 1 OR v.OrigenPrograma = N'PAMRNT'))
-  );
+SELECT COUNT(*) FROM #PamFiltrado;
 
 SELECT
     SUM(CASE WHEN OrigenPrograma = N'PAM' THEN 1 ELSE 0 END) AS TotalPam,
+    SUM(CASE WHEN OrigenPrograma = N'PAM' AND EstadoVigenciaCartera = N'Vigente' THEN 1 ELSE 0 END) AS TotalPamVigentes,
     SUM(CASE WHEN OrigenPrograma = N'PAMRNT' THEN 1 ELSE 0 END) AS TotalPamrnt,
     SUM(CASE WHEN EstadoVigenciaCartera = N'Vigente' THEN 1 ELSE 0 END) AS TotalVigentes,
     SUM(CASE WHEN EstadoVigenciaCartera = N'Cancelado' THEN 1 ELSE 0 END) AS TotalCancelados,
@@ -159,16 +131,28 @@ SELECT
     CAST(SUM(CASE WHEN EstadoVigenciaCartera = N'Vigente' THEN ISNULL(Mva, 0) ELSE 0 END) AS DECIMAL(18,2)) AS TotalMva,
     CAST(SUM(CASE WHEN EstadoVigenciaCartera = N'Vigente' THEN ISNULL(Mvar, 0) ELSE 0 END) AS DECIMAL(18,2)) AS TotalMvar,
     CAST(SUM(CASE WHEN EstadoVigenciaCartera = N'Vigente' THEN ISNULL(MontoProyectoMdp, 0) ELSE 0 END) AS DECIMAL(18,2)) AS TotalInversionVigente,
+    CAST(SUM(CASE WHEN EstadoVigenciaCartera = N'Vigente' AND OrigenPrograma = N'PAMRNT' THEN ISNULL(MontoProyectoMdp, 0) ELSE 0 END) AS DECIMAL(18,2)) AS TotalInversionPamrnt,
     SUM(CASE WHEN EstadoVigenciaCartera = N'Vigente' AND (KmC IS NOT NULL OR Mva IS NOT NULL OR Mvar IS NOT NULL) THEN 1 ELSE 0 END) AS ProyectosConMetricas
+FROM #PamFiltrado;
+
+-- Los contadores de navegación describen siempre el repositorio completo.
+-- Los indicadores anteriores sí se calculan sobre el universo y filtros activos.
+SELECT
+    SUM(CASE WHEN OrigenPrograma = N'PAM' THEN 1 ELSE 0 END) AS TotalPam,
+    SUM(CASE WHEN OrigenPrograma = N'PAM' AND EstadoVigenciaCartera = N'Vigente' THEN 1 ELSE 0 END) AS TotalPamVigentes,
+    SUM(CASE WHEN OrigenPrograma = N'PAMRNT' THEN 1 ELSE 0 END) AS TotalPamrnt,
+    SUM(CASE WHEN EstadoVigenciaCartera = N'Vigente' THEN 1 ELSE 0 END) AS TotalVigentes,
+    SUM(CASE WHEN EstadoVigenciaCartera = N'Cancelado' THEN 1 ELSE 0 END) AS TotalCancelados,
+    SUM(CASE WHEN NumeroVersion > 1 OR OrigenPrograma = N'PAMRNT' THEN 1 ELSE 0 END) AS TotalRecientes
 FROM dgmesnie.vw_PAMProyectoVigente;
 
 SELECT ISNULL(NULLIF(LTRIM(RTRIM(EstatusLicitacion)), N''), N'Por clasificar') AS Estatus, COUNT(*) AS Total
-FROM dgmesnie.vw_PAMProyectoVigente
+FROM #PamFiltrado
 WHERE EstadoVigenciaCartera = N'Vigente'
 GROUP BY ISNULL(NULLIF(LTRIM(RTRIM(EstatusLicitacion)), N''), N'Por clasificar');
 
 SELECT FechaNecesaria, FeoFactible
-FROM dgmesnie.vw_PAMProyectoVigente
+FROM #PamFiltrado
 WHERE EstadoVigenciaCartera = N'Vigente';
 
 SELECT DISTINCT EtapaProyecto FROM dgmesnie.vw_PAMProyectoVigente WHERE NULLIF(LTRIM(RTRIM(EtapaProyecto)), N'') IS NOT NULL ORDER BY EtapaProyecto;
@@ -220,6 +204,7 @@ SELECT DISTINCT FuenteDocumento FROM dgmesnie.vw_PAMProyectoVigente WHERE NULLIF
             var proyectos = (await multi.ReadAsync<PamrntProyectoIdentificado>()).ToList();
             var totalFiltrado = await multi.ReadSingleAsync<int>();
             var resumen = await multi.ReadSingleAsync<PamRepositorioResumen>();
+            var navegacion = await multi.ReadSingleAsync<PamRepositorioResumen>();
             var conteosEstatus = (await multi.ReadAsync<(string Estatus, int Total)>())
                 .ToDictionary(x => x.Estatus, x => x.Total, StringComparer.OrdinalIgnoreCase);
             var fechasEmpalme = (await multi.ReadAsync<(string FechaNecesaria, string FeoFactible)>()).ToList();
@@ -247,14 +232,21 @@ SELECT DISTINCT FuenteDocumento FROM dgmesnie.vw_PAMProyectoVigente WHERE NULLIF
                 AvisoCruce = "Datos vigentes consultados desde dgmesnie.vw_PAMProyectoVigente.",
                 Proyectos = proyectos,
                 TotalPam = resumen.TotalPam,
+                TotalPamVigentes = resumen.TotalPamVigentes,
                 TotalPamrnt = resumen.TotalPamrnt,
                 TotalVigentes = resumen.TotalVigentes,
                 TotalCancelados = resumen.TotalCancelados,
                 TotalRecientes = resumen.TotalRecientes,
+                TotalVigentesRepositorio = navegacion.TotalVigentes,
+                TotalPamVigentesRepositorio = navegacion.TotalPamVigentes,
+                TotalPamrntRepositorio = navegacion.TotalPamrnt,
+                TotalCanceladosRepositorio = navegacion.TotalCancelados,
+                TotalRecientesRepositorio = navegacion.TotalRecientes,
                 TotalKmC = resumen.TotalKmC,
                 TotalMva = resumen.TotalMva,
                 TotalMvar = resumen.TotalMvar,
                 TotalInversionVigente = resumen.TotalInversionVigente,
+                TotalInversionPamrnt = resumen.TotalInversionPamrnt,
                 ProyectosConMetricas = resumen.ProyectosConMetricas,
                 TotalFiltrado = totalFiltrado,
                 Filtro = filtro,
@@ -385,6 +377,8 @@ ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;";
             var detalle = await ObtenerDetalleAsync(proyectoId.Value);
             if (detalle?.Actual == null) return null;
 
+            var expedienteOrigen = await ObtenerExpedientePormenorizadoOrigenAsync(detalle.Actual);
+
             var proyecto = ConstruirProyectoIdentificado(detalle.Actual);
             var ficha = await ObtenerFichaDesdeBaseAsync(proyecto.ProyectoId);
 
@@ -443,11 +437,113 @@ ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;";
                 Proyecto = proyecto,
                 Ficha = ficha,
                 Detalle = detalle,
+                ExpedientePormenorizadoOrigen = expedienteOrigen,
                 ImpactoRegional = impacto,
                 ContextoCartera = contexto.Proyectos,
                 ProyectosRegion = proyectosRegion,
                 FichaEnriquecida = enriquecida
             };
+        }
+
+        private async Task<PamExpedientePormenorizadoOrigen> ObtenerExpedientePormenorizadoOrigenAsync(PamProyectoDetalleActual actual)
+        {
+            var claves = new[] { actual.ClaveProyecto }
+                .Concat((actual.ClavesAlternas ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                .Select(NormalizarClavePormenorizada)
+                .Where(clave => !string.IsNullOrWhiteSpace(clave))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            const string sql = @"
+IF OBJECT_ID(N'dgmesnie.InformePormenorizadoModernizacion', N'U') IS NULL
+BEGIN
+    SELECT CAST(NULL AS INT) AS ProyectoModernizacionId,
+           CAST(NULL AS INT) AS Numero,
+           CAST(NULL AS INT) AS NumeroOriginal,
+           CAST(NULL AS NVARCHAR(200)) AS ClavePem,
+           CAST(NULL AS NVARCHAR(500)) AS NombreProyecto,
+           CAST(NULL AS NVARCHAR(500)) AS FuenteArchivo,
+           CAST(NULL AS DATETIME2) AS FechaCarga
+    WHERE 1 = 0;
+END
+ELSE
+BEGIN
+    SELECT ProyectoModernizacionId, Numero, NumeroOriginal, ClavePem, NombreProyecto, FuenteArchivo, FechaCarga
+    FROM dgmesnie.InformePormenorizadoModernizacion
+    WHERE ProyectoModernizacionId = @ProyectoModernizacionIdOrigen
+       OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(COALESCE(ClavePem, N''))), N' ', N''), N'‐', N'-'), N'‑', N'-'), N'–', N'-'), N'—', N'-'), N'−', N'-')) IN @Claves;
+END";
+
+            await using var connection = new SqlConnection(_connectionString);
+            var matches = (await connection.QueryAsync<ExpedientePormenorizadoRow>(sql, new
+            {
+                actual.ProyectoModernizacionIdOrigen,
+                Claves = claves.Length == 0 ? new[] { "__SIN_CLAVE__" } : claves
+            })).ToList();
+
+            var legacy = actual.ProyectoModernizacionIdOrigen.HasValue
+                ? matches.SingleOrDefault(row => row.ProyectoModernizacionId == actual.ProyectoModernizacionIdOrigen.Value)
+                : null;
+            if (legacy != null)
+            {
+                return MapearExpedienteOrigen(legacy, "Registro legado enlazado por identificador interno");
+            }
+
+            if (actual.ProyectoModernizacionIdOrigen.HasValue)
+            {
+                return new PamExpedientePormenorizadoOrigen
+                {
+                    ProyectoModernizacionId = actual.ProyectoModernizacionIdOrigen,
+                    MetodoVinculo = "Identificador legado de cartera",
+                    Estado = "Vínculo histórico sin detalle disponible",
+                    Mensaje = "La cartera conserva el identificador de origen, pero el registro no está disponible en la tabla vigente del informe. No se sustituyó por una coincidencia de nombre."
+                };
+            }
+
+            var exactos = matches
+                .Where(row => claves.Contains(NormalizarClavePormenorizada(row.ClavePem), StringComparer.Ordinal))
+                .GroupBy(row => row.ProyectoModernizacionId)
+                .Select(group => group.First())
+                .ToList();
+            if (exactos.Count == 1)
+            {
+                return MapearExpedienteOrigen(exactos[0], "Clave PEM principal o alterna única");
+            }
+
+            return new PamExpedientePormenorizadoOrigen
+            {
+                Estado = "Pendiente de vinculación",
+                MetodoVinculo = claves.Length == 0 ? "Sin clave PEM disponible" : "Clave PEM sin coincidencia única",
+                Mensaje = exactos.Count > 1
+                    ? "Más de un registro pormenorizado comparte una clave disponible; requiere resolución manual antes de vincularse."
+                    : "No existe un vínculo comprobable al expediente pormenorizado. No se infirió por nombre, región ni por avances posteriores."
+            };
+        }
+
+        private static PamExpedientePormenorizadoOrigen MapearExpedienteOrigen(ExpedientePormenorizadoRow row, string metodo)
+            => new()
+            {
+                TieneVinculo = true,
+                TieneAccesoDetalle = true,
+                ProyectoModernizacionId = row.ProyectoModernizacionId,
+                Numero = row.Numero,
+                NumeroOriginal = row.NumeroOriginal,
+                ClavePem = row.ClavePem,
+                NombreProyecto = row.NombreProyecto,
+                FuenteDocumento = row.FuenteArchivo,
+                FechaCarga = row.FechaCarga,
+                MetodoVinculo = metodo,
+                Estado = "Vinculado y verificable",
+                Mensaje = "Expediente de origen independiente de las actualizaciones y cortes de seguimiento posteriores."
+            };
+
+        private static string NormalizarClavePormenorizada(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            return Regex.Replace(value
+                .Replace('‐', '-').Replace('‑', '-').Replace('‒', '-')
+                .Replace('–', '-').Replace('—', '-').Replace('−', '-')
+                .ToUpperInvariant(), @"\s+", string.Empty).Trim();
         }
 
         public async Task<List<PamUsuarioDestinatario>> ObtenerDestinatariosAsync()
@@ -862,6 +958,7 @@ END;";
         private class PamRepositorioResumen
         {
             public int TotalPam { get; set; }
+            public int TotalPamVigentes { get; set; }
             public int TotalPamrnt { get; set; }
             public int TotalVigentes { get; set; }
             public int TotalCancelados { get; set; }
@@ -871,12 +968,24 @@ END;";
             public decimal TotalMva { get; set; }
             public decimal TotalMvar { get; set; }
             public decimal TotalInversionVigente { get; set; }
+            public decimal TotalInversionPamrnt { get; set; }
             public int ProyectosConMetricas { get; set; }
         }
 
         private class FichaJsonRow
         {
             public string FichaJson { get; set; }
+        }
+
+        private class ExpedientePormenorizadoRow
+        {
+            public int ProyectoModernizacionId { get; set; }
+            public int? Numero { get; set; }
+            public int? NumeroOriginal { get; set; }
+            public string ClavePem { get; set; }
+            public string NombreProyecto { get; set; }
+            public string FuenteArchivo { get; set; }
+            public DateTime? FechaCarga { get; set; }
         }
     }
 }

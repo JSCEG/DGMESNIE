@@ -19,12 +19,18 @@ namespace NSIE.Controllers
         private readonly IRepositorioProyectosPrivados _repo;
         private readonly IngestionService _ingestService;
         private readonly ILogger<ProyectosPrivadosController> _logger;
+        private readonly IWebHostEnvironment _environment;
 
-        public ProyectosPrivadosController(IRepositorioProyectosPrivados repo, IngestionService ingestService, ILogger<ProyectosPrivadosController> logger)
+        public ProyectosPrivadosController(
+            IRepositorioProyectosPrivados repo,
+            IngestionService ingestService,
+            ILogger<ProyectosPrivadosController> logger,
+            IWebHostEnvironment environment)
         {
             _repo = repo;
             _ingestService = ingestService;
             _logger = logger;
+            _environment = environment;
         }
 
         // ── Shell view: Index ────────────────────────────────────────────────
@@ -113,36 +119,203 @@ namespace NSIE.Controllers
 
         // ── View: Segunda Convocatoria ──────────────────────────────────────
         [HttpGet]
-        public IActionResult SegundaConvocatoria()
+        public async Task<IActionResult> SegundaConvocatoria()
         {
+            await SincronizarCarteraConvocatoriaInicialAsync();
+
             ViewData["HeaderViewModel"] = new HeaderViewModel
             {
-                Title = "Segunda Convocatoria",
+                Title = "Cartera estratégica y 2.ª convocatoria",
                 IconPath = "proyecto.png",
-                Description = "Seguimiento a proyectos registrados para la segunda convocatoria.",
+                Description = "Prelación, asignación territorial, sesiones y fichas de proyectos estratégicos y particulares.",
                 Section = "Seguimiento de proyectos",
                 ModuleInfo = JsonConvert.SerializeObject(new
                 {
-                    title = "Segunda Convocatoria - Proyectos Particulares",
-                    description = "Módulo para el seguimiento a proyectos registrados para la segunda convocatoria.",
-                    functionality = "Visualización del reporte dinámico e interactivo de la segunda convocatoria de proyectos particulares.",
+                    title = "Cartera estratégica y segunda convocatoria",
+                    description = "Módulo para el seguimiento integrado de proyectos estratégicos y particulares de la segunda convocatoria.",
+                    functionality = "Prelación por gerencia, entidad y prioridad; decisiones va/no va; sesiones fechadas, comentarios, mapa y fichas institucionales.",
                     stage = "Consulta y Seguimiento",
                     highlights = new[]
                     {
-                        "Reporte interactivo de proyectos particulares.",
-                        "Monitoreo de estado de registros y documentación.",
-                        "Acceso directo a la información cargada en el portal."
+                        "Prelación y asignación territorial de la cartera.",
+                        "Trazabilidad de sesiones, comentarios y decisiones.",
+                        "Fichas particulares y presentación general institucional."
                     },
                     roles = new[]
                     {
                         new { icon = "eye", text = "Usuarios Autorizados: Consulta y visualización del reporte general." }
                     },
-                    order = new { step = 3, description = "Consulta de reporte de segunda convocatoria" },
-                    context = "Visualizador integrado con el repositorio de datos de proyectos particulares de la segunda convocatoria.",
+                    order = new { step = 3, description = "Seguimiento operativo y ejecutivo de la cartera" },
+                    context = "Vista nativa integrada al Dashboard de Proyectos y preparada para persistencia SQL.",
                     manualUrl = string.Empty
                 })
             };
             return View();
+        }
+
+        [HttpGet("ProyectosPrivados/Api/CarteraConvocatoria")]
+        public async Task<IActionResult> ApiCarteraConvocatoria()
+        {
+            try
+            {
+                var data = await _repo.ObtenerCarteraConvocatoriaAsync();
+                return Json(data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error consultando la cartera estratégica y segunda convocatoria.");
+                return StatusCode(500, new { error = "No fue posible consultar la cartera en la base de datos." });
+            }
+        }
+
+        [HttpGet("ProyectosPrivados/SegundaConvocatoria/Reporte.pdf")]
+        public async Task<IActionResult> ReporteCarteraConvocatoriaPdf()
+        {
+            try
+            {
+                await SincronizarCarteraConvocatoriaInicialAsync();
+                var data = await _repo.ObtenerCarteraConvocatoriaAsync();
+                var pdf = CarteraConvocatoriaPdfService.Generar(
+                    data,
+                    _environment.WebRootPath,
+                    new DateTime(2026, 8, 5));
+                return File(
+                    pdf,
+                    "application/pdf",
+                    $"SENER_Cartera_Estrategicos_Segunda_Convocatoria_{DateTime.Now:yyyyMMdd}.pdf");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando el reporte PDF de la cartera estratégica y segunda convocatoria.");
+                return StatusCode(500, "No fue posible generar el reporte PDF institucional.");
+            }
+        }
+
+        [HttpPut("ProyectosPrivados/Api/CarteraConvocatoria/Estado")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApiActualizarEstadoConvocatoria(
+            [FromBody] ActualizarEstadoConvocatoriaRequest request)
+        {
+            if (!ModelState.IsValid || request == null)
+                return BadRequest(new { error = "Folio y estado son obligatorios." });
+
+            var validStates = new[] { "continua", "revision", "no-continua" };
+            var state = request.Estado.Trim().ToLowerInvariant();
+            if (!validStates.Contains(state))
+                return BadRequest(new { error = "El estado de seguimiento no es válido." });
+
+            try
+            {
+                var updated = await _repo.ActualizarEstadoConvocatoriaAsync(
+                    request.Folio,
+                    state,
+                    GetCurrentUserName());
+                return updated
+                    ? Ok(new { success = true, folio = request.Folio, decision = state })
+                    : NotFound(new { error = "No se encontró el proyecto." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error actualizando el seguimiento de {Folio}.", request.Folio);
+                return StatusCode(500, new { error = "No fue posible guardar el estado en la base de datos." });
+            }
+        }
+
+        [HttpPost("ProyectosPrivados/Api/CarteraConvocatoria/Comentarios")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApiAgregarComentarioConvocatoria(
+            [FromBody] AgregarComentarioConvocatoriaRequest request)
+        {
+            if (!ModelState.IsValid || request == null)
+                return BadRequest(new { error = "Proyecto, sesión, fecha y comentario son obligatorios." });
+
+            try
+            {
+                var note = await _repo.AgregarComentarioConvocatoriaAsync(
+                    request,
+                    GetCurrentUserName());
+                return note == null
+                    ? NotFound(new { error = "No se encontró el proyecto." })
+                    : Ok(new { success = true, note });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error agregando comentario a {Folio}.", request.Folio);
+                return StatusCode(500, new { error = "No fue posible guardar el comentario en la base de datos." });
+            }
+        }
+
+        [HttpPut("ProyectosPrivados/Api/CarteraConvocatoria/Prioridad")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApiActualizarPrioridadConvocatoria(
+            [FromBody] ActualizarPrioridadConvocatoriaRequest request)
+        {
+            if (!ModelState.IsValid || request == null)
+                return BadRequest(new { error = "Folio y prioridad entre 1 y 4 son obligatorios." });
+
+            try
+            {
+                var updated = await _repo.ActualizarPrioridadConvocatoriaAsync(
+                    request.Folio,
+                    request.Prioridad,
+                    GetCurrentUserName());
+                return updated
+                    ? Ok(new { success = true })
+                    : NotFound(new { error = "No se encontró el proyecto." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error actualizando prioridad de {Folio}.", request.Folio);
+                return StatusCode(500, new { error = "No fue posible guardar la prioridad." });
+            }
+        }
+
+        [HttpPost("ProyectosPrivados/Api/CarteraConvocatoria/Proyectos")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApiCrearProyectoConvocatoria(
+            [FromBody] CrearProyectoConvocatoriaRequest request)
+        {
+            if (!ModelState.IsValid || request == null)
+                return BadRequest(new { error = "Revise los datos obligatorios del proyecto." });
+
+            if (request.Tipo != "Estratégico" && request.Tipo != "Particular 2")
+                return BadRequest(new { error = "El tipo de proyecto no es válido." });
+
+            try
+            {
+                var id = await _repo.CrearProyectoConvocatoriaAsync(request, GetCurrentUserName());
+                return Ok(new { success = true, projectId = id });
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+            {
+                return Conflict(new { error = "Ya existe un proyecto con ese folio." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creando proyecto de convocatoria {Folio}.", request.Folio);
+                return StatusCode(500, new { error = "No fue posible guardar el proyecto en la base de datos." });
+            }
+        }
+
+        private async Task SincronizarCarteraConvocatoriaInicialAsync()
+        {
+            var path = Path.Combine(
+                _environment.WebRootPath,
+                "data",
+                "cartera-convocatoria-20260805.json");
+
+            try
+            {
+                var json = await System.IO.File.ReadAllTextAsync(path);
+                var seed = JsonConvert.DeserializeObject<CarteraConvocatoriaSeed>(json);
+                if (seed != null)
+                    await _repo.SincronizarCarteraConvocatoriaAsync(seed, GetCurrentUserName());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "No fue posible sincronizar la fotografía inicial de la cartera desde {Path}.", path);
+                throw;
+            }
         }
 
         // ── View: Energía Limpia ───────────────────────────────────────────

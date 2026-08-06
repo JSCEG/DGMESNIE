@@ -248,15 +248,23 @@ namespace NSIE.Models
         public bool PuedeActualizarFuentes { get; set; }
         public List<PamrntProyectoIdentificado> Proyectos { get; set; } = new();
         public int TotalPam { get; set; }
+        public int TotalPamVigentes { get; set; }
         public int TotalPamrnt { get; set; }
         public int TotalVigentes { get; set; }
         public int TotalCancelados { get; set; }
         public int TotalRecientes { get; set; }
+        // Totales estables para las pestañas: no cambian al acotar los indicadores de la vista.
+        public int TotalVigentesRepositorio { get; set; }
+        public int TotalPamVigentesRepositorio { get; set; }
+        public int TotalPamrntRepositorio { get; set; }
+        public int TotalCanceladosRepositorio { get; set; }
+        public int TotalRecientesRepositorio { get; set; }
         public int TotalFiltrado { get; set; }
         public decimal TotalKmC { get; set; }
         public decimal TotalMva { get; set; }
         public decimal TotalMvar { get; set; }
         public decimal TotalInversionVigente { get; set; }
+        public decimal TotalInversionPamrnt { get; set; }
         public int ProyectosConMetricas { get; set; }
         public PamDashboardFiltro Filtro { get; set; } = new();
         public Dictionary<string, int> ConteosEstatus { get; set; } = new();
@@ -269,9 +277,7 @@ namespace NSIE.Models
 
         public int TotalProyectos => Proyectos.Count;
         public int TotalIdentidades => TotalPam + TotalPamrnt;
-        public decimal InversionTotalMdp => Proyectos
-            .Where(x => string.Equals(x.OrigenPrograma, "PAMRNT", StringComparison.OrdinalIgnoreCase))
-            .Sum(x => x.InversionMdp ?? 0);
+        public decimal InversionTotalMdp => TotalInversionPamrnt;
         public int TotalPaginas => Math.Max(1, (int)Math.Ceiling(TotalFiltrado / (double)Filtro.TamanoPagina));
         public int RegistroDesde => TotalFiltrado == 0 ? 0 : ((Filtro.Pagina - 1) * Filtro.TamanoPagina) + 1;
         public int RegistroHasta => Math.Min(Filtro.Pagina * Filtro.TamanoPagina, TotalFiltrado);
@@ -383,6 +389,7 @@ namespace NSIE.Models
         public PamrntFichaProyecto Ficha { get; set; }
         public PamProyectoDetalleViewModel Detalle { get; set; }
         public PamImpactoRegional ImpactoRegional { get; set; }
+        public PamExpedientePormenorizadoOrigen ExpedientePormenorizadoOrigen { get; set; }
         public List<PamrntProyectoIdentificado> ContextoCartera { get; set; } = new();
         public List<PamrntProyectoIdentificado> ProyectosRegion { get; set; } = new();
         public List<PamUsuarioDestinatario> Destinatarios { get; set; } = new();
@@ -408,6 +415,29 @@ namespace NSIE.Models
             FechaNecesaria = PamFechaParser.Parsear(Detalle?.Actual?.FechaNecesaria),
             FeoFactible = PamFechaParser.Parsear(Detalle?.Actual?.FeoFactible)
         };
+    }
+
+    /// <summary>
+    /// Vínculo comprobable con el registro base del informe pormenorizado. No se
+    /// construye a partir del nombre ni de datos de seguimiento posteriores.
+    /// </summary>
+    public class PamExpedientePormenorizadoOrigen
+    {
+        public bool TieneVinculo { get; set; }
+        public bool TieneAccesoDetalle { get; set; }
+        public int? ProyectoModernizacionId { get; set; }
+        public int? Numero { get; set; }
+        public int? NumeroOriginal { get; set; }
+        public string ClavePem { get; set; }
+        public string NombreProyecto { get; set; }
+        public string FuenteDocumento { get; set; }
+        public DateTime? FechaCarga { get; set; }
+        public string MetodoVinculo { get; set; }
+        public string Estado { get; set; }
+        public string Mensaje { get; set; }
+        public string UrlDetalle => TieneAccesoDetalle && ProyectoModernizacionId.HasValue
+            ? $"/InformePormenorizado/Editar/{ProyectoModernizacionId.Value}"
+            : null;
     }
 
     public class PamProyectoDetalleViewModel

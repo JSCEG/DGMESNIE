@@ -30,6 +30,14 @@ namespace NSIE.Servicios.Interfaces
         Task<bool> ActualizarEstatusAccionAsync(int accionId, string estatus, string comentarios, string usuario);
         Task<int> CrearAccionAsync(int proyectoId, string titulo, string descripcion, string responsableNombre, string responsableId, DateTime? fechaCompromiso, string usuario);
 
+        // Cartera estratégica y segunda convocatoria
+        Task SincronizarCarteraConvocatoriaAsync(CarteraConvocatoriaSeed seed, string usuario);
+        Task<CarteraConvocatoriaDatos> ObtenerCarteraConvocatoriaAsync();
+        Task<bool> ActualizarEstadoConvocatoriaAsync(string folio, string estado, string usuario);
+        Task<CarteraConvocatoriaComentario?> AgregarComentarioConvocatoriaAsync(AgregarComentarioConvocatoriaRequest request, string usuario);
+        Task<bool> ActualizarPrioridadConvocatoriaAsync(string folio, int prioridad, string usuario);
+        Task<long> CrearProyectoConvocatoriaAsync(CrearProyectoConvocatoriaRequest request, string usuario);
+
         // Catalogs
         Task<List<CatalogoItem>> ObtenerCatClasificacionAsync();
         Task<List<CatalogoItem>> ObtenerCatPrioridadAsync();
