@@ -37,10 +37,19 @@ namespace NSIE.Servicios
         Task EliminarModuloVistaAsync(int vistaId);
         Task<int> ContarVistasPorModuloAsync(int moduloId);
 
+        // Todas las vistas del sistema en una sola consulta, para armar el árbol
+        // sección → módulo → vista de la pantalla de Gestión de Secciones sin
+        // una llamada por módulo.
+        Task<List<VistaSNIER>> ObtenerTodasLasVistasAsync();
+
         // NUEVOS MÉTODOS QUE FALTAN
         Task<List<SeccionConModulos>> ObtenerSeccionesConModulosAsync();
         Task<int> ContarModulosPorSeccionAsync(int seccionId);
         Task ActualizarOrdenSeccionAsync(int seccionId, int nuevoOrden);
+
+        // El árbol reordena arrastrando en los tres niveles, no solo en secciones.
+        Task ActualizarOrdenModuloAsync(int moduloId, int nuevoOrden);
+        Task ActualizarOrdenVistaAsync(int vistaId, int nuevoOrden);
 
         // ✅ AGREGAR ESTE MÉTODO QUE FALTA
         Task<List<ModuloSNIER>> ObtenerModulosPorSeccionAsync(int seccionId);
@@ -591,6 +600,37 @@ namespace NSIE.Servicios
             }
         }
 
+        public async Task<List<VistaSNIER>> ObtenerTodasLasVistasAsync()
+        {
+            try
+            {
+                using var connection = new SqlConnection(_connectionString);
+
+                var sql = @"
+                    SELECT
+                        v.[VistaId]                 as VistaId,
+                        v.[ModuloId]                as ModuloId,
+                        v.[Titulo]                  as Titulo,
+                        v.[Titulo]                  as VistaTitle,
+                        v.[Controller]              as Controller,
+                        v.[Action]                  as Action,
+                        v.[Perfiles]                as Perfiles,
+                        ISNULL(v.[Orden], 1)        as Orden,
+                        v.[Activa]                  as Activa,
+                        v.[EsExterno]               as EsExterno
+                    FROM [dgmesnie].[Vista] v
+                    ORDER BY v.[ModuloId], ISNULL(v.[Orden], 1), v.[Titulo]";
+
+                var vistas = await connection.QueryAsync<VistaSNIER>(sql);
+                return vistas.ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($">>> Error en ObtenerTodasLasVistasAsync: {ex.Message}");
+                return new List<VistaSNIER>();
+            }
+        }
+
         public async Task<List<SeccionConModulos>> ObtenerSeccionesConModulosAsync()
         {
             using var connection = new SqlConnection(_connectionString);
@@ -778,6 +818,20 @@ namespace NSIE.Servicios
             using var connection = new SqlConnection(_connectionString);
             var sql = "UPDATE [dgmesnie].[Seccion] SET [Orden] = @Orden WHERE [SeccionId] = @Id";
             await connection.ExecuteAsync(sql, new { Id = seccionId, Orden = nuevoOrden });
+        }
+
+        public async Task ActualizarOrdenModuloAsync(int moduloId, int nuevoOrden)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "UPDATE [dgmesnie].[Modulo] SET [Orden] = @Orden WHERE [ModuloId] = @Id";
+            await connection.ExecuteAsync(sql, new { Id = moduloId, Orden = nuevoOrden });
+        }
+
+        public async Task ActualizarOrdenVistaAsync(int vistaId, int nuevoOrden)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "UPDATE [dgmesnie].[Vista] SET [Orden] = @Orden WHERE [VistaId] = @Id";
+            await connection.ExecuteAsync(sql, new { Id = vistaId, Orden = nuevoOrden });
         }
 
         public async Task<List<Usuario>> ObtenerUsuariosVigentesAsync()

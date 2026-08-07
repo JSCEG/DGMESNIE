@@ -47,9 +47,9 @@
 
 @await Html.PartialAsync("_ViewHeader", header)
 
-<div class="pe-5 ps-5">
+<div class="container-fluid px-3 px-lg-4 secciones-page">
     <!-- Miga de pan (Breadcrumbs) -->
-    <nav aria-label="breadcrumb" class="mb-4">
+    <nav aria-label="breadcrumb" class="mb-3">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="@Url.Action("Index", "Home")"><i class="fas fa-home me-1"></i>Inicio</a></li>
             <li class="breadcrumb-item"><a href="@Url.Action("Index", "Secciones")">Gestión de Secciones</a></li>
@@ -57,99 +57,177 @@
         </ol>
     </nav>
 
-<!-- Información de la sección y botón nuevo módulo -->
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
-    <div>
-        <h4 class="mb-1">
-            <i class="fas fa-layer-group text-guinda me-1"></i>
-            @Model.Titulo
-        </h4>
-        <p class="text-muted mb-0">Total de Módulos: <strong class="text-guinda">@Model.Modulos.Count()</strong></p>
+@{
+    var modulos = Model.Modulos.OrderBy(m => m.Orden).ThenBy(m => m.Title).ToList();
+    var vistasDeLaSeccion = modulos.Sum(m => m.Vistas?.Count ?? 0);
+}
+
+<header class="navtree-head">
+    <!-- Sin título propio: _ViewHeader ya encabeza la página con el nombre de la
+         sección, y repetirlo aquí daba dos veces lo mismo. -->
+    <div class="navtree-head__text">
+        <p class="navtree-head__sub">
+            <strong>@modulos.Count</strong> módulo@(modulos.Count == 1 ? "" : "s") ·
+            <strong>@vistasDeLaSeccion</strong> vista@(vistasDeLaSeccion == 1 ? "" : "s").
+            El orden de esta lista es el orden dentro de la sección.
+        </p>
     </div>
-    <button class="btn btn-primary w-100 w-md-auto" onclick="abrirModalNuevoModulo()">
-        <i class="fas fa-plus-circle me-1"></i> Nuevo Módulo
-    </button>
-</div>
+    <div class="navtree-head__actions">
+        <a class="navtree-btn" href="@Url.Action("Index", "Secciones")">
+            <i class="fas fa-arrow-left"></i> Volver al árbol
+        </a>
+        <button type="button" class="navtree-btn navtree-btn--primary" onclick="abrirModalNuevoModulo()">
+            <i class="fas fa-plus"></i> Nuevo módulo
+        </button>
+    </div>
+</header>
 
-<!-- Tabla de Módulos con DataTables (SIN card wrapper) -->
-@if (Model.Modulos.Any())
+@if (modulos.Any())
 {
-    <table id="tablaModulos" class="table table-striped table-hover w-100">
-        <thead>
-            <tr>
-                <th style="width:5%">#</th>
-                <th style="width:25%">Título</th>
-                <th style="width:20%">Descripción</th>
-                <th style="width:8%">Orden</th>
-                <th style="width:10%">Vistas</th>
-                <th style="width:8%">Activo</th>
-                <th style="width:24%">Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var modulo in Model.Modulos.OrderBy(m => m.Orden))
-            {
-                <tr>
-                    <td>@modulo.Orden</td>
-                    <td>
-                        <strong>@modulo.Title</strong>
-                    </td>
-                    <td>
-                        <small class="text-muted">@modulo.Desc</small>
-                    </td>
-                    <td>
-                        <span class="badge bg-secondary">@modulo.Orden</span>
-                    </td>
-                    <td>
-                        @{
-                            var vistasCount = modulo.Vistas.Count;
-                            var badgeClass = vistasCount == 0 ? "bg-secondary" :
-                                             vistasCount <= 3 ? "bg-info" :
-                                             vistasCount <= 6 ? "bg-success" : "bg-warning";
-                        }
-                        <div class="d-flex align-items-center">
-                            <span class="badge @badgeClass me-2">
-                                @vistasCount vista@(vistasCount == 1 ? "" : "s")
-                            </span>
-                        </div>
-                    </td>
-                    <td>
-                        <span class="badge @(modulo.Activo ? "badge-state-active" : "badge-state-inactive")">
-                            @(modulo.Activo ? "Activo" : "Inactivo")
+    <div class="navtree-toolbar">
+        <span class="navtree-hint ms-0"><i class="fas fa-arrows-up-down"></i> Arrastra para reordenar · el orden se guarda al soltar</span>
+    </div>
+}
+
+@if (modulos.Any())
+{
+    <div class="navtree" id="navtreeModulos">
+        <div class="navtree__head" aria-hidden="true">
+            <span class="navtree__col-handle"></span>
+            <span class="navtree__col-num"></span>
+            <span class="navtree__col-nombre">Módulo</span>
+            <span class="navtree__col-resp">Ruta</span>
+            <span class="navtree__col-cont">Contenido</span>
+            <span class="navtree__col-estado">Estado</span>
+            <span class="navtree__col-acciones">Acciones</span>
+        </div>
+
+        @{ var indice = 0; }
+        @foreach (var modulo in modulos)
+        {
+            indice++;
+            var vistas = (modulo.Vistas ?? new List<VistaSNIER>()).OrderBy(v => v.Orden).ThenBy(v => v.Titulo).ToList();
+            var sinDescripcion = string.IsNullOrWhiteSpace(modulo.Desc);
+
+            <section class="navtree-item @(modulo.Activo ? "" : "is-oculta")"
+                     data-modulo-id="@modulo.Id" data-orden="@modulo.Orden">
+                <div class="navtree-row navtree-row--seccion">
+                    <button type="button" class="navtree-handle" title="Arrastra para cambiar el orden dentro de la sección"
+                            aria-label="Reordenar @modulo.Title">
+                        <i class="fas fa-grip-vertical"></i>
+                    </button>
+                    <span class="navtree-num">@indice.ToString("00")</span>
+
+                    <div class="navtree-nombre">
+                        <a class="navtree-nombre__titulo" href="#"
+                           onclick="abrirModalEditarModulo(@modulo.Id); return false;">@modulo.Title</a>
+                        <span class="navtree-nombre__desc @(sinDescripcion ? "is-faint" : "")">
+                            @(sinDescripcion ? "Sin descripción" : modulo.Desc)
                         </span>
-                    </td>
-                    <td>
-                        <div class="table-actions-container" role="group">
-                            <!-- Botón Editar Módulo -->
-                            <button class="btn btn-sm btn-outline-warning btn-icon-sm" onclick="abrirModalEditarModulo(@modulo.Id)"
-                                title="Editar módulo">
-                                <i class="fas fa-pen-to-square"></i>
-                            </button>
+                    </div>
 
-                            <!-- Botón Ver/Editar Vistas -->
-                            <a asp-action="EditarVistas" asp-route-moduloId="@modulo.Id" class="btn btn-sm btn-outline-primary btn-icon-sm"
-                                title="Gestionar vistas del módulo">
-                                <i class="fas fa-list"></i>
-                            </a>
+                    <div class="navtree-resp">
+                        <code class="navtree-ruta">/@modulo.Controller/@modulo.Action</code>
+                    </div>
 
-                            <!-- Botón Eliminar -->
-                            <button type="button" class="btn btn-sm btn-outline-danger btn-icon-sm" onclick="eliminarModuloAjax(@modulo.Id)"
-                                title="Eliminar módulo">
-                                <i class="fas fa-trash-can"></i>
+                    <div class="navtree-cont">
+                        @if (vistas.Any())
+                        {
+                            <button type="button" class="navtree-toggle" aria-expanded="false"
+                                    data-target="vistas-mod-@modulo.Id">
+                                <i class="fas fa-chevron-down navtree-toggle__caret"></i>
+                                <span>@vistas.Count vista@(vistas.Count == 1 ? "" : "s")</span>
                             </button>
+                        }
+                        else
+                        {
+                            <span class="navtree-cont__vacio">Sin vistas</span>
+                        }
+                    </div>
+
+                    <div class="navtree-estado">
+                        <span class="navtree-badge @(modulo.Activo ? "navtree-badge--activa" : "navtree-badge--oculta")">
+                            @(modulo.Activo ? "Activo" : "Oculto")
+                        </span>
+                    </div>
+
+                    <div class="navtree-acciones">
+                        <button type="button" class="navtree-icon" title="Editar módulo"
+                                onclick="abrirModalEditarModulo(@modulo.Id)">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <div class="dropdown">
+                            <button type="button" class="navtree-icon" data-bs-toggle="dropdown"
+                                    data-bs-container="body" aria-expanded="false" title="Más acciones">
+                                <i class="fas fa-ellipsis"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end navtree-menu">
+                                <li>
+                                    <a class="dropdown-item" asp-action="EditarVistas" asp-route-moduloId="@modulo.Id">
+                                        <i class="fas fa-list"></i> Gestionar vistas
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <button class="dropdown-item navtree-menu__danger" type="button"
+                                            onclick="eliminarModuloAjax(@modulo.Id)">
+                                        <i class="fas fa-trash-can"></i> Eliminar módulo
+                                    </button>
+                                </li>
+                            </ul>
                         </div>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+                    </div>
+                </div>
+
+                @if (vistas.Any())
+                {
+                    <div class="navtree-hijos" id="vistas-mod-@modulo.Id" hidden>
+                        @foreach (var vista in vistas)
+                        {
+                            <div class="navtree-row navtree-row--modulo">
+                                <span class="navtree-handle navtree-handle--placeholder" aria-hidden="true"></span>
+                                <span class="navtree-num"></span>
+
+                                <div class="navtree-nombre navtree-nombre--modulo">
+                                    <i class="fas fa-file-lines navtree-nombre__icono" aria-hidden="true"></i>
+                                    <span class="navtree-nombre__titulo">@vista.Titulo</span>
+                                </div>
+
+                                <div class="navtree-resp">
+                                    <code class="navtree-ruta">/@vista.Controller/@vista.Action</code>
+                                </div>
+
+                                <div class="navtree-cont">
+                                    <span class="navtree-cont__vacio">@(vista.EsExterno ? "Enlace externo" : "Ruta interna")</span>
+                                </div>
+
+                                <div class="navtree-estado">
+                                    <span class="navtree-badge navtree-badge--sm @(vista.Activa ? "navtree-badge--activa" : "navtree-badge--oculta")">
+                                        @(vista.Activa ? "Activa" : "Oculta")
+                                    </span>
+                                </div>
+
+                                <div class="navtree-acciones"></div>
+                            </div>
+                        }
+
+                        <a class="navtree-agregar" asp-action="EditarVistas" asp-route-moduloId="@modulo.Id">
+                            <i class="fas fa-pen"></i> Administrar estas vistas
+                        </a>
+                    </div>
+                }
+            </section>
+        }
+    </div>
 }
 else
 {
-    <div class="alert alert-info">
-        <i class="fas fa-info-circle"></i>
-        <strong>Sin módulos registrados</strong><br>
-        No hay módulos registrados para esta sección. Haz clic en "Nuevo Módulo" para agregar el primero.
+    <div class="navtree-vacio">
+        <i class="fas fa-circle-info"></i>
+        <span>
+            <strong>Esta sección aún no tiene módulos</strong>
+            Sin módulos no aparece nada colgando de ella en el menú. Empieza con «Nuevo módulo».
+        </span>
     </div>
 }
 
@@ -167,37 +245,35 @@ else
 
 
 @section Scripts {
-    <!-- DataTables CSS y JS -->
-    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-    <script type="text/javascript" charset="utf8"
-        src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script type="text/javascript" charset="utf8"
-        src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-
+    <script src="~/js/navtree-orden.js" asp-append-version="true"></script>
     <script>
         let moduloModal;
-        let tablaModulos;
 
         $(document).ready(function () {
-            // Inicializar modal
             const modalEl = document.getElementById('moduloModal');
             document.body.appendChild(modalEl);
             moduloModal = new bootstrap.Modal(modalEl);
 
-            // Inicializar DataTable
-            tablaModulos = $('#tablaModulos').DataTable({
-                "language": {
-                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json"
-                },
-                "responsive": true,
-                "pageLength": 10,
-                "order": [[0, "asc"]], // Ordenar por columna Orden
-                "columnDefs": [
-                    { "orderable": false, "targets": [6] }, // Deshabilitar ordenamiento en columna Acciones
-                    { "searchable": false, "targets": [3, 4, 5, 6] } // Solo buscar en título y descripción
-                ]
-            });
+            // Mismo despliegue en el sitio que el árbol de secciones: un solo
+            // listener delegado, sin DataTables de por medio.
+            const arbol = document.getElementById('navtreeModulos');
+            if (arbol) {
+                arbol.addEventListener('click', function (ev) {
+                    const toggle = ev.target.closest('.navtree-toggle');
+                    if (!toggle) return;
+                    const destino = document.getElementById(toggle.dataset.target);
+                    if (!destino) return;
+                    const abierto = toggle.getAttribute('aria-expanded') === 'true';
+                    toggle.setAttribute('aria-expanded', String(!abierto));
+                    destino.hidden = abierto;
+                });
 
+                activarArrastreNavtree(arbol, {
+                    campoId: 'moduloId',
+                    atributo: 'moduloId',
+                    url: '@Url.Action("ActualizarOrdenModulos", "Secciones")'
+                });
+            }
         });
 
         function abrirModalNuevoModulo() {
@@ -313,11 +389,5 @@ else
             });
         }
 
-        // Función para recargar contadores después de operaciones CRUD
-        function recargarContadores() {
-            setTimeout(function () {
-                cargarContadoresVistas();
-            }, 500);
-        }
     </script>
 }

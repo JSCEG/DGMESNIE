@@ -26,7 +26,21 @@ public class SeccionesController : Controller
         {
             Console.WriteLine(">>> Index - Cargando secciones con módulos");
             var secciones = await _repositorio.ObtenerSeccionesConModulosAsync(); // ✅ USAR ESTE MÉTODO
-            Console.WriteLine($">>> Index - {secciones.Count} secciones encontradas");
+
+            // El árbol de la vista muestra sección → módulo → vista, así que las
+            // vistas se traen de una sola vez y se cuelgan de su módulo. Una
+            // consulta por módulo serían ~86 viajes a la base.
+            var vistas = await _repositorio.ObtenerTodasLasVistasAsync();
+            var vistasPorModulo = vistas.GroupBy(v => v.ModuloId)
+                                        .ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var modulo in secciones.SelectMany(s => s.Modulos))
+            {
+                if (vistasPorModulo.TryGetValue(modulo.Id, out var suyas))
+                    modulo.Vistas = suyas;
+            }
+
+            Console.WriteLine($">>> Index - {secciones.Count} secciones, {vistas.Count} vistas");
             return View(secciones);
         }
         catch (Exception ex)
@@ -38,22 +52,9 @@ public class SeccionesController : Controller
 
 
 
-    public async Task<IActionResult> EditarSeccion(int id)
-    {
-        var seccion = await _repositorio.ObtenerSeccionPorIdAsync(id);
-        if (seccion == null) return NotFound();
-        return View("EditarSeccion", seccion);
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> EditarSeccion(SeccionConModulos seccion)
-    {
-        if (!ModelState.IsValid)
-            return View("EditarSeccion", seccion);
-
-        await _repositorio.ActualizarSeccionAsync(seccion);
-        return RedirectToAction("Index");
-    }
+    // Las acciones EditarSeccion (GET/POST) y su vista se retiraron: ninguna
+    // pantalla las enlazaba. La edición vive en ModalEditarSeccion +
+    // GuardarEdicionSeccion, que es lo que abre el árbol.
 
     public async Task<IActionResult> EditarModulos(int id)
     {
@@ -614,10 +615,62 @@ public class SeccionesController : Controller
         }
     }
 
-    // Clase para recibir cambios de orden
+    // Reordenar módulos dentro de una sección
+    [HttpPost]
+    public async Task<IActionResult> ActualizarOrdenModulos([FromBody] List<CambioOrdenModulo> cambios)
+    {
+        try
+        {
+            foreach (var cambio in cambios)
+            {
+                await _repositorio.ActualizarOrdenModuloAsync(cambio.ModuloId, cambio.NuevoOrden);
+            }
+
+            return Json(new { mensaje = "Orden actualizado correctamente." });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($">>> Error en ActualizarOrdenModulos: {ex.Message}");
+            return Json(new { error = "Error al actualizar el orden" });
+        }
+    }
+
+    // Reordenar vistas dentro de un módulo
+    [HttpPost]
+    public async Task<IActionResult> ActualizarOrdenVistas([FromBody] List<CambioOrdenVista> cambios)
+    {
+        try
+        {
+            foreach (var cambio in cambios)
+            {
+                await _repositorio.ActualizarOrdenVistaAsync(cambio.VistaId, cambio.NuevoOrden);
+            }
+
+            return Json(new { mensaje = "Orden actualizado correctamente." });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($">>> Error en ActualizarOrdenVistas: {ex.Message}");
+            return Json(new { error = "Error al actualizar el orden" });
+        }
+    }
+
+    // Clases para recibir cambios de orden
     public class CambioOrden
     {
         public int SeccionId { get; set; }
+        public int NuevoOrden { get; set; }
+    }
+
+    public class CambioOrdenModulo
+    {
+        public int ModuloId { get; set; }
+        public int NuevoOrden { get; set; }
+    }
+
+    public class CambioOrdenVista
+    {
+        public int VistaId { get; set; }
         public int NuevoOrden { get; set; }
     }
 }
