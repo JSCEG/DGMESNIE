@@ -39,20 +39,6 @@
     var totalVistas = secciones.Sum(s => s.Modulos?.Sum(m => m.Vistas?.Count ?? 0) ?? 0);
 }
 
-@section Styles {
-    <style>
-        /* Asegura que el modal de secciones quede por encima del header fijo */
-        #seccionModal.modal {
-            z-index: 2000 !important;
-        }
-
-        #seccionModal.modal ~ .modal-backdrop.show,
-        .modal-backdrop.show {
-            z-index: 1995 !important;
-        }
-    </style>
-}
-
 @await Html.PartialAsync("_ViewHeader", header)
 
 <div class="container-fluid px-3 px-lg-4 secciones-page">
@@ -232,7 +218,8 @@
 
                                         <div class="navtree-nombre navtree-nombre--modulo">
                                             <i class="fas fa-cube navtree-nombre__icono" aria-hidden="true"></i>
-                                            <span class="navtree-nombre__titulo">@modulo.Title</span>
+                                            <a class="navtree-nombre__titulo" href="#"
+                                               onclick="abrirModalEditarModulo(@modulo.Id); return false;">@modulo.Title</a>
                                         </div>
 
                                         <div class="navtree-resp is-faint">—</div>
@@ -258,11 +245,26 @@
                                             </span>
                                         </div>
 
+                                        <!-- El lápiz abre el módulo, igual que en la fila de sección.
+                                             Salir a otra página es una acción distinta y vive en el menú. -->
                                         <div class="navtree-acciones">
-                                            <a class="navtree-icon" title="Editar vistas del módulo"
-                                               href="@Url.Action("EditarVistas", "Secciones", new { moduloId = modulo.Id })">
+                                            <button type="button" class="navtree-icon" title="Editar módulo"
+                                                    onclick="abrirModalEditarModulo(@modulo.Id)">
                                                 <i class="fas fa-pen"></i>
-                                            </a>
+                                            </button>
+                                            <div class="dropdown">
+                                                <button type="button" class="navtree-icon" data-bs-toggle="dropdown"
+                                                        data-bs-container="body" aria-expanded="false" title="Más acciones">
+                                                    <i class="fas fa-ellipsis"></i>
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end navtree-menu">
+                                                    <li>
+                                                        <a class="dropdown-item" href="@Url.Action("EditarVistas", "Secciones", new { moduloId = modulo.Id })">
+                                                            <i class="fas fa-list"></i> Gestionar vistas
+                                                        </a>
+                                                    </li>
+                                                </ul>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -338,13 +340,37 @@
     </div>
 </div>
 
+<!-- Modal de módulo. El árbol edita los tres niveles sin salir de la página,
+     así que el módulo también se abre aquí y no manda a otra pantalla. -->
+<div class="modal fade" id="moduloModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-fullscreen-md-down">
+        <div class="modal-content">
+            <div id="contenidoModalModulo">
+                <!-- Aquí se carga el contenido dinámico -->
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <script src="~/js/navtree-orden.js" asp-append-version="true"></script>
     <script>
         let seccionModal;
+        let moduloModal;
 
         $(document).ready(function () {
-            seccionModal = new bootstrap.Modal(document.getElementById('seccionModal'));
+            // Los modales se cuelgan de <body> antes de instanciarlos. Si se
+            // quedan dentro de <main>, que trae isolation: isolate, su z-index
+            // no compite con el velo y aparecen por debajo, apagados y sin
+            // forma de cerrarlos. Mismo criterio que EditarModulos y EditarVistas.
+            const seccionEl = document.getElementById('seccionModal');
+            document.body.appendChild(seccionEl);
+            seccionModal = new bootstrap.Modal(seccionEl);
+
+            const moduloEl = document.getElementById('moduloModal');
+            document.body.appendChild(moduloEl);
+            moduloModal = new bootstrap.Modal(moduloEl);
+
             inicializarArbol();
         });
 
@@ -487,16 +513,25 @@
             cargarModalSeccion('@Url.Action("ModalEditarSeccion", "Secciones")?id=' + seccionId);
         }
 
+        function abrirModalEditarModulo(moduloId) {
+            cargarEnModal(moduloModal, '#contenidoModalModulo',
+                '@Url.Action("ModalEditarModulo", "Secciones")?id=' + moduloId);
+        }
+
         function cargarModalSeccion(url) {
-            $('#contenidoModalSeccion').html('<div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i><br>Cargando...</div>');
-            seccionModal.show();
+            cargarEnModal(seccionModal, '#contenidoModalSeccion', url);
+        }
+
+        function cargarEnModal(instancia, contenedor, url) {
+            $(contenedor).html('<div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i><br>Cargando...</div>');
+            instancia.show();
 
             $.get(url)
                 .done(function (html) {
-                    $('#contenidoModalSeccion').html(html);
+                    $(contenedor).html(html);
                 })
                 .fail(function (xhr) {
-                    seccionModal.hide();
+                    instancia.hide();
                     let mensaje = 'Error al cargar el modal';
                     if (xhr.status === 404) mensaje = 'Modal no encontrado';
                     else if (xhr.status === 400) mensaje = xhr.responseText || 'Datos incorrectos';
