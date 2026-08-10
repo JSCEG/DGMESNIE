@@ -43,116 +43,123 @@
             new() { Reference = "Art. 76 Reglamento", Description = "Establece la trazabilidad y seguridad" }
         }
     };
+
+    // El RFC es dato personal y viaja en los archivos que genera la exportación.
+    // Se muestra con el centro cubierto; el dato completo vive en la ficha del
+    // usuario, que exige entrar a editarlo.
+    Func<string, string> enmascararRfc = rfc =>
+    {
+        if (string.IsNullOrWhiteSpace(rfc) || rfc.Length < 8) return rfc;
+        return rfc.Substring(0, 4) + new string('•', rfc.Length - 7) + rfc.Substring(rfc.Length - 3);
+    };
+
+    var usuarios = Model.Where(u => u.Vigente).ToList();
+    var conSesion = usuarios.Count(u => u.SesionActiva);
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/usuarios.css" asp-append-version="true" />
 }
 
 @await Html.PartialAsync("_ViewHeader", header)
 
-@section Styles {
-    <style>
-        #confirmDeleteModal,
-        #userMessageModal {
-            z-index: 20060 !important;
-        }
-    </style>
-}
-
-<div class="container">
+<div class="container-fluid px-3 px-lg-4 usuarios-page">
     <div class="shell-table-card">
         <div class="shell-table-toolbar">
             <div>
                 <h5 class="mb-1 fw-bold">Usuarios, perfiles y trazabilidad</h5>
-                <p class="mb-0 text-muted small">Consulta accesos, sesiones y metadatos de control en una sola vista.
+                <p class="mb-0 text-muted small">
+                    <strong>@usuarios.Count</strong> usuarios vigentes ·
+                    <strong>@conSesion</strong> con sesión abierta.
+                    Abre la fila para ver el resto de los metadatos de control.
                 </p>
             </div>
             <div class="shell-table-toolbar__group justify-content-md-end flex-grow-0">
-                <a asp-controller="Usuarios" asp-action="NuevoUsuario" class="btn btn-primary">
-                    <i class="fas fa-user-plus me-1"></i> Agregar Usuario
+                <a asp-controller="Usuarios" asp-action="CrearNotificacion" class="navtree-btn">
+                    <i class="fas fa-bell"></i> Crear notificación
                 </a>
-
-                <a asp-controller="Usuarios" asp-action="CrearNotificacion" class="btn btn-warning">
-                    <i class="fas fa-bell me-1"></i> Crear Notificación
+                <a asp-controller="Usuarios" asp-action="NuevoUsuario" class="navtree-btn navtree-btn--primary">
+                    <i class="fas fa-user-plus"></i> Agregar usuario
                 </a>
             </div>
         </div>
 
+        @*
+            La tabla mostraba las 27 columnas de la consulta, incluida la clave
+            (hash SHA-256) y el RFC completo, y los botones de exportación se
+            los llevaban a Excel, CSV y PDF. Aquí quedan las seis que sirven
+            para administrar; el resto se abre por fila y la clave ya no se
+            renderiza en ninguna parte.
+        *@
         <div class="table-responsive">
-            <table id="usuariosTabla" class="table table-hover table-bordered align-middle w-100">
+            <table id="usuariosTabla" class="table table-hover align-middle w-100">
                 <thead>
                     <tr>
-                        <th>Acciones</th>
-                        <th>IdUsuario</th>
+                        <th class="usuarios-col-detalle"></th>
                         <th>Nombre</th>
-                        <th>Cargo</th>
-                        <th>Unidad de Adscripción</th>
-                        <th>Sesión Activa</th>
+                        <th>Unidad de adscripción</th>
                         <th>Correo</th>
-                        <th>Clave</th>
-                        <th>Última Actualización</th>
-                        <th>RFC</th>
-                        <th>Vigente</th>
-                        <th>Clave Empleado</th>
-                        <th>Hora Inicio Sesión</th>
                         <th>Rol</th>
-                        <th>Mercado ID</th>
-                        <th>Rol Usuario Vigente</th>
-                        <th>Rol Usuario Quien Registro</th>
-                        <th>Rol Usuario Fecha Modificación</th>
-                        <th>Rol Usuario Comentarios</th>
-                        <th>Rol Nombre</th>
-                        <th>Rol Vigente</th>
-                        <th>Rol Fecha Modificación</th>
-                        <th>Rol Comentario</th>
-                        <th>Mercado Nombre</th>
-                        <th>Mercado Vigente</th>
-                        <th>Mercado Fecha Modificación</th>
-                        <th>Mercado Comentario</th>
+                        <th>Sesión</th>
+                        <th class="usuarios-col-acciones">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var user in Model.Where(u => u.Vigente))
+                    @foreach (var user in usuarios)
                     {
-                        <tr>
+                        <tr data-id="@user.IdUsuario"
+                            data-rfc="@enmascararRfc(user.RFC)"
+                            data-clave-empleado="@user.ClaveEmpleado"
+                            data-actualizacion="@(user.UltimaActualizacion == default ? "—" : user.UltimaActualizacion.ToString("dd/MM/yyyy HH:mm"))"
+                            data-inicio-sesion="@(user.HoraInicioSesion == default ? "—" : user.HoraInicioSesion.ToString("dd/MM/yyyy HH:mm"))"
+                            data-mercado="@user.Mercado_Nombre"
+                            data-mercado-id="@user.Mercado_ID"
+                            data-rol-registro="@user.RolUsuario_QuienRegistro"
+                            data-rol-fecha="@(user.RolUsuario_FechaMod == default ? "—" : user.RolUsuario_FechaMod.ToString("dd/MM/yyyy"))"
+                            data-rol-comentarios="@user.RolUsuario_Comentarios"
+                            data-rol-vigente="@(user.RolUsuario_Vigente ? "Sí" : "No")">
+                            <td class="usuarios-detalle-toggle" title="Ver el resto de los datos"></td>
+
+                            <td>
+                                <span class="usuarios-nombre">@user.Nombre</span>
+                                <span class="usuarios-cargo">
+                                    @(string.IsNullOrWhiteSpace(user.Cargo) ? "Sin cargo registrado" : user.Cargo)
+                                </span>
+                            </td>
+
+                            <td>
+                                @(string.IsNullOrWhiteSpace(user.Unidad_de_Adscripcion)
+                                    ? Html.Raw("<span class=\"usuarios-vacio\">Sin adscripción</span>")
+                                    : Html.Raw(Html.Encode(user.Unidad_de_Adscripcion)))
+                            </td>
+
+                            <td><a class="usuarios-correo" href="mailto:@user.Correo">@user.Correo</a></td>
+
+                            <td>
+                                @(string.IsNullOrWhiteSpace(user.Rol_Nombre)
+                                    ? Html.Raw("<span class=\"usuarios-vacio\">Sin rol</span>")
+                                    : Html.Raw(Html.Encode(user.Rol_Nombre)))
+                            </td>
+
+                            <td data-order="@(user.SesionActiva ? 1 : 0)">
+                                <span class="navtree-badge navtree-badge--sm @(user.SesionActiva ? "navtree-badge--activa" : "navtree-badge--oculta")">
+                                    @(user.SesionActiva ? "Abierta" : "Cerrada")
+                                </span>
+                            </td>
+
                             <td>
                                 <div class="shell-table-actions justify-content-start">
                                     <a class="is-edit" href="@Url.Action("Edit", "Usuarios", new { id = user.IdUsuario })"
                                        title="Editar usuario" aria-label="Editar usuario @user.Nombre">
-                                        <i class="fas fa-pen-to-square"></i>
+                                        <i class="fas fa-pen"></i>
                                     </a>
                                     <a href="@Url.Action("Eliminar", "Usuarios", new { id = user.IdUsuario })"
                                        class="is-delete delete-link" title="Eliminar usuario"
                                        aria-label="Eliminar usuario @user.Nombre">
-                                        <i class="fas fa-trash"></i>
+                                        <i class="fas fa-trash-can"></i>
                                     </a>
                                 </div>
                             </td>
-
-
-                            <td>@user.IdUsuario</td>
-                            <td>@user.Nombre</td>
-                            <td>@user.Cargo</td>
-                            <td>@user.Unidad_de_Adscripcion</td>
-                            <td>@user.SesionActiva</td>
-                            <td>@user.Correo</td>
-                            <td>@user.Clave</td>
-                            <td>@user.UltimaActualizacion</td>
-                            <td>@user.RFC</td>
-                            <td>@user.Vigente</td>
-                            <td>@user.ClaveEmpleado</td>
-                            <td>@user.HoraInicioSesion</td>
-                            <td>@user.Rol</td>
-                            <td>@user.Mercado_ID</td>
-                            <td>@user.RolUsuario_Vigente</td>
-                            <td>@user.RolUsuario_QuienRegistro</td>
-                            <td>@user.RolUsuario_FechaMod</td>
-                            <td>@user.RolUsuario_Comentarios</td>
-                            <td>@user.Rol_Nombre</td>
-                            <td>@user.Rol_Vigente</td>
-                            <td>@user.Rol_FechaMod</td>
-                            <td>@user.Rol_Comentario</td>
-                            <td>@user.Mercado_Nombre</td>
-                            <td>@user.Mercado_Vigente</td>
-                            <td>@user.Mercado_FechaMod</td>
-                            <td>@user.Mercado_Comentario</td>
                         </tr>
                     }
                 </tbody>
@@ -161,21 +168,25 @@
     </div>
 
     @*Modal para Confirmar la Eliminación*@
-    <!-- Modal HTML -->
     <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteModalLabel"
          aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="confirmDeleteModalLabel">Confirmar Eliminación</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-sec__header">
+                    <div>
+                        <span class="modal-sec__kicker">Gestión de usuarios</span>
+                        <h5 class="modal-sec__title" id="confirmDeleteModalLabel">Eliminar usuario</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
-                <div class="modal-body">
-                    ¿Estás seguro de que deseas eliminar este usuario?
+                <div class="modal-sec__body">
+                    <p class="mb-0">Se dará de baja la cuenta y sus accesos. La acción no se puede deshacer.</p>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <a href="#" class="btn btn-danger" id="confirmDeleteButton">Eliminar</a>
+                <div class="modal-sec__foot">
+                    <button type="button" class="btn-sec" data-bs-dismiss="modal">Cancelar</button>
+                    <a href="#" class="btn-sec btn-sec--primary" id="confirmDeleteButton">
+                        <i class="fas fa-trash-can"></i> Eliminar
+                    </a>
                 </div>
             </div>
         </div>
@@ -194,25 +205,25 @@
         <input type="hidden" id="isSuccess" value="@isSuccess" />
         <input type="hidden" id="userErrorDetail" value="@userErrorDetail" />
 
-        <!-- Modal HTML -->
         <div class="modal" tabindex="-1" id="userMessageModal">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="modalTitle">Mensaje</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <div class="modal-sec__header">
+                        <div>
+                            <span class="modal-sec__kicker">Gestión de usuarios</span>
+                            <h5 class="modal-sec__title" id="modalTitle">Resultado</h5>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                     </div>
-                    <div class="modal-body" id="modalBody">
+                    <div class="modal-sec__body" id="modalBody">
                         <!-- El mensaje al usuario se inserta aquí con JavaScript -->
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    <div class="modal-sec__foot">
+                        <button type="button" class="btn-sec" data-bs-dismiss="modal">Cerrar</button>
                     </div>
                 </div>
             </div>
         </div>
-
-
     }
 
 </div>
@@ -221,21 +232,25 @@
     @*Modal para confirmar la eliminación*@
     <script>
         document.addEventListener("DOMContentLoaded", function () {
-            var confirmDeleteButton = document.getElementById("confirmDeleteButton");
-            var deleteLinks = document.querySelectorAll(".delete-link");
+            // Los modales se cuelgan de <body>: dentro de <main>, que trae
+            // isolation: isolate, su z-index no compite con el velo y quedarían
+            // por debajo, sin forma de cerrarlos.
+            document.querySelectorAll('#confirmDeleteModal, #userMessageModal').forEach(function (el) {
+                document.body.appendChild(el);
+            });
 
-            deleteLinks.forEach(link => {
-                link.addEventListener("click", function (e) {
-                    e.preventDefault();
-                    // Configurar el href del botón de confirmación con el href del enlace de eliminación.
-                    confirmDeleteButton.href = link.href;
-                    console.info("[Usuarios] Solicitud de eliminación preparada", {
-                        href: link.href,
-                        idUsuario: link.href.split('/').pop()
-                    });
-                    var confirmDeleteModal = new bootstrap.Modal(document.getElementById("confirmDeleteModal"));
-                    confirmDeleteModal.show();
+            var confirmDeleteButton = document.getElementById("confirmDeleteButton");
+
+            document.addEventListener("click", function (e) {
+                var link = e.target.closest(".delete-link");
+                if (!link) return;
+                e.preventDefault();
+                confirmDeleteButton.href = link.href;
+                console.info("[Usuarios] Solicitud de eliminación preparada", {
+                    href: link.href,
+                    idUsuario: link.href.split('/').pop()
                 });
+                new bootstrap.Modal(document.getElementById("confirmDeleteModal")).show();
             });
 
             if (confirmDeleteButton) {
@@ -247,13 +262,9 @@
                 });
             }
         });
-
     </script>
 
-
-
     @*Modal Mensaje de Exito o error al eliminar*@
-    <!-- Script para mostrar el modal con el mensaje del usuario -->
     <script>
         document.addEventListener("DOMContentLoaded", function () {
             var userMessageInput = document.getElementById("userMessage");
@@ -267,14 +278,10 @@
             var userErrorDetailInput = document.getElementById("userErrorDetail");
             var userErrorDetail = userErrorDetailInput ? userErrorDetailInput.value : "";
 
-            // Puedes personalizar los colores de los mensajes según el éxito o el fracaso
-            var messageColor = isSuccess ? "green" : "red";
-
+            document.getElementById("modalTitle").innerText = isSuccess ? "Listo" : "No se pudo completar";
             document.getElementById("modalBody").innerText = userMessage;
-            document.getElementById("modalBody").style.color = messageColor;
 
-            var userMessageModal = new bootstrap.Modal(document.getElementById("userMessageModal"));
-            userMessageModal.show();
+            new bootstrap.Modal(document.getElementById("userMessageModal")).show();
 
             if (isSuccess) {
                 console.info("[Usuarios] Eliminación exitosa", { message: userMessage });
@@ -292,43 +299,69 @@
 
             var table = $('#usuariosTabla').DataTable({
                 lengthMenu: [[10, 50, 100, -1], [10, 50, 100, "Todos"]],
-                scrollX: true,
+                order: [[1, 'asc']],
+                columnDefs: [
+                    { orderable: false, searchable: false, targets: [0, 6] }
+                ],
                 language: {
                     url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
                 },
                 dom: 'Blfrtip',
                 buttons: [
-                    {
-                        extend: 'copyHtml5',
-                        title: 'Energeo Lista de Usuarios de la Plataforma'
-                    },
-                    {
-                        extend: 'excelHtml5',
-                        title: 'Energeo Lista de Usuarios de la Plataforma'
-                    },
-                    {
-                        extend: 'csvHtml5',
-                        title: 'Energeo Lista de Usuarios de la Plataforma'
-                    },
+                    { extend: 'copyHtml5', title: 'SNIEr · Usuarios de la plataforma', exportOptions: { columns: [1, 2, 3, 4, 5] } },
+                    { extend: 'excelHtml5', title: 'SNIEr · Usuarios de la plataforma', exportOptions: { columns: [1, 2, 3, 4, 5] } },
+                    { extend: 'csvHtml5', title: 'SNIEr · Usuarios de la plataforma', exportOptions: { columns: [1, 2, 3, 4, 5] } },
                     {
                         extend: 'pdfHtml5',
-                        title: 'Energeo Lista de Usuarios de la Plataforma',
+                        title: 'SNIEr · Usuarios de la plataforma',
+                        exportOptions: { columns: [1, 2, 3, 4, 5] },
                         customize: function (doc) {
-                            // Cambia el color de la línea de encabezado a rojo
-                            doc.styles.tableHeader.color = '#9fa1a4';
-                            // Centra la tabla
-                            doc.defaultStyle.alignment = 'center';
-                            // Cambia el color de fondo del encabezado
-                            doc.styles.tableHeader.fillColor = '#4c1922'; // Cambia a tu color preferido
+                            doc.styles.tableHeader.color = '#ffffff';
+                            doc.styles.tableHeader.fillColor = '#9B2247';
+                            doc.defaultStyle.alignment = 'left';
                         }
                     }
-                ],
+                ]
             });
 
+            // Detalle por fila: aquí viven los metadatos de control que antes
+            // ocupaban veinte columnas a lo ancho.
+            function detalleDe(fila) {
+                var d = fila.dataset;
+                var campo = function (etiqueta, valor) {
+                    var v = (valor && valor.trim()) ? valor : '—';
+                    return '<div class="usuarios-detalle__campo">' +
+                           '<span class="usuarios-detalle__etiqueta">' + etiqueta + '</span>' +
+                           '<span class="usuarios-detalle__valor">' + v + '</span></div>';
+                };
+                return '<div class="usuarios-detalle">' +
+                    campo('Id de usuario', d.id) +
+                    campo('RFC', d.rfc) +
+                    campo('Clave de empleado', d.claveEmpleado) +
+                    campo('Mercado', d.mercado) +
+                    campo('Última actualización', d.actualizacion) +
+                    campo('Inicio de sesión', d.inicioSesion) +
+                    campo('Rol registrado por', d.rolRegistro) +
+                    campo('Rol modificado el', d.rolFecha) +
+                    campo('Rol vigente', d.rolVigente) +
+                    campo('Comentarios del rol', d.rolComentarios) +
+                    '</div>';
+            }
+
+            $('#usuariosTabla tbody').on('click', 'td.usuarios-detalle-toggle', function () {
+                var tr = $(this).closest('tr');
+                var fila = table.row(tr);
+
+                if (fila.child.isShown()) {
+                    fila.child.hide();
+                    tr.removeClass('is-abierta');
+                } else {
+                    fila.child(detalleDe(tr[0])).show();
+                    tr.addClass('is-abierta');
+                }
+            });
 
         });
-
-
     </script>
 
 }
