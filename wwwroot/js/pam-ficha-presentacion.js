@@ -48,7 +48,9 @@
             const availableWidth = fullscreen ? window.innerWidth : Math.max(320, page.clientWidth - 44);
             const top = shell.getBoundingClientRect().top;
             const availableHeight = fullscreen ? window.innerHeight : Math.max(280, window.innerHeight - top - 24);
-            const scale = Math.min(1, availableWidth / WIDTH, availableHeight / HEIGHT);
+            const scale = fullscreen
+                ? Math.min(availableWidth / WIDTH, availableHeight / HEIGHT)
+                : Math.min(1, availableWidth / WIDTH, availableHeight / HEIGHT);
 
             deck.style.transform = `scale(${scale})`;
             if (fullscreen) {
@@ -58,6 +60,23 @@
                 shell.style.width = `${Math.round(WIDTH * scale)}px`;
                 shell.style.height = `${Math.round(HEIGHT * scale)}px`;
             }
+        }
+
+        function syncFullscreenControls() {
+            const fullscreen = document.fullscreenElement === shell;
+            document.querySelectorAll("[data-fullscreen]").forEach(button => {
+                button.setAttribute("aria-pressed", fullscreen ? "true" : "false");
+                button.title = fullscreen ? "Salir de pantalla completa" : "Pantalla completa";
+
+                const icon = button.querySelector("i");
+                if (icon) {
+                    icon.classList.toggle("fa-expand", !fullscreen);
+                    icon.classList.toggle("fa-compress", fullscreen);
+                }
+
+                const label = button.querySelector("span");
+                if (label) label.textContent = fullscreen ? "Salir" : "Presentar";
+            });
         }
 
         function isEditableTarget(target) {
@@ -409,10 +428,14 @@
         });
 
         window.addEventListener("resize", resizeDeck, { passive: true });
-        document.addEventListener("fullscreenchange", resizeDeck);
+        document.addEventListener("fullscreenchange", () => {
+            syncFullscreenControls();
+            resizeDeck();
+        });
 
         const hashMatch = window.location.hash.match(/lamina-(\d{1,2})/i);
         show(hashMatch ? Number(hashMatch[1]) - 1 : 0, false);
+        syncFullscreenControls();
         resizeDeck();
     }
 

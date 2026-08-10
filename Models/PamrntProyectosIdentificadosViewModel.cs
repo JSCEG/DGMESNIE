@@ -448,7 +448,95 @@ namespace NSIE.Models
         public List<PamCambioDetalle> Cambios { get; set; } = new();
         public List<PamFuenteDetalle> Fuentes { get; set; } = new();
         public List<PamRelacionDetalle> Relaciones { get; set; } = new();
+        public List<PamSeguimientoProyectoRegistro> SeguimientoActual { get; set; } = new();
+        public List<PamSeguimientoCorteResumen> SeguimientoHistorial { get; set; } = new();
         public bool FichaDisponible => Actual?.ProyectoId > 0;
+        public bool TieneSeguimiento => SeguimientoActual.Count > 0;
+    }
+
+    /// <summary>
+    /// Registro operativo del último corte de seguimiento vinculado al proyecto.
+    /// Es evidencia complementaria y no sustituye la versión vigente de la cartera maestra.
+    /// </summary>
+    public class PamSeguimientoProyectoRegistro
+    {
+        public long SeguimientoDetalleId { get; set; }
+        public long SeguimientoUnidadId { get; set; }
+        public long LoteId { get; set; }
+        public long FuenteId { get; set; }
+        public int NumeroFila { get; set; }
+        public string CodigoUnico { get; set; }
+        public string CodigoPem { get; set; }
+        public string TipoCoincidencia { get; set; }
+        public string NombreProyecto { get; set; }
+        public string Categoria { get; set; }
+        public string ProyectoEnFases { get; set; }
+        public string FaseInicial { get; set; }
+        public string FasesSubsecuentes { get; set; }
+        public decimal? Mva { get; set; }
+        public decimal? Mvar { get; set; }
+        public decimal? KmC { get; set; }
+        public string OtraMetaFisica { get; set; }
+        public decimal? ImporteMdp { get; set; }
+        public string FinanciamientoCfe { get; set; }
+        public string FinanciamientoPormenorizado { get; set; }
+        public int? AnioInstruccion { get; set; }
+        public DateTime? FechaInicioConcursoProgramada { get; set; }
+        public DateTime? FechaInicioConcursoReal { get; set; }
+        public DateTime? FechaAdjudicacionProgramada { get; set; }
+        public DateTime? FechaAdjudicacionReal { get; set; }
+        public DateTime? FechaFirmaContratoProgramada { get; set; }
+        public DateTime? FechaFirmaContratoReal { get; set; }
+        public DateTime? FechaInicioConstruccionProgramada { get; set; }
+        public DateTime? FechaInicioConstruccionReal { get; set; }
+        public DateTime? FechaTerminoConstruccion { get; set; }
+        public string FeoIndicada { get; set; }
+        public string FeoFactible { get; set; }
+        public DateTime? FechaEstimadaTerminoCalculada { get; set; }
+        public int? PlazoEjecucionDias { get; set; }
+        public decimal? AvanceProgramado { get; set; }
+        public decimal? AvanceReal { get; set; }
+        public decimal? DiferenciaAvance { get; set; }
+        public string ComentariosPpt { get; set; }
+        public string NotaPpt { get; set; }
+        public string ElementosEquipos { get; set; }
+        public string ActualizacionEstatus { get; set; }
+        public DateTime? UltimaActualizacionFecha { get; set; }
+        public string DetalleUltimaActualizacion { get; set; }
+        public string OrigenUltimaActualizacion { get; set; }
+        public string ComentariosInternos { get; set; }
+        public DateTime FechaCorte { get; set; }
+        public string FuenteDocumento { get; set; }
+        public string FuenteUbicacion { get; set; }
+
+        public string FaseEtiqueta
+        {
+            get
+            {
+                var partes = new[] { FaseInicial, FasesSubsecuentes }
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase);
+                var texto = string.Join(" · ", partes);
+                return string.IsNullOrWhiteSpace(texto) ? "Unidad / proyecto" : $"Fase {texto}";
+            }
+        }
+
+        public string Financiamiento => !string.IsNullOrWhiteSpace(FinanciamientoCfe)
+            ? FinanciamientoCfe
+            : FinanciamientoPormenorizado;
+    }
+
+    public class PamSeguimientoCorteResumen
+    {
+        public long LoteId { get; set; }
+        public DateTime FechaCorte { get; set; }
+        public string FuenteDocumento { get; set; }
+        public int TotalUnidades { get; set; }
+        public int TotalRegistros { get; set; }
+        public decimal? ImporteMdp { get; set; }
+        public decimal? AvanceProgramadoPromedio { get; set; }
+        public decimal? AvanceRealPromedio { get; set; }
+        public DateTime FechaRegistroUtc { get; set; }
     }
 
     public class PamProyectoDetalleActual

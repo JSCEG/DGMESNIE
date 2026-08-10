@@ -93,6 +93,7 @@ builder.Services.AddTransient<IRepositorioInformePormenorizado, RepositorioInfor
 builder.Services.AddTransient<IPamrntProyectosIdentificadosService, PamrntProyectosIdentificadosService>();
 builder.Services.AddScoped<IPamTerritorialService, PamTerritorialService>();
 builder.Services.AddTransient<IPamActualizacionService, PamActualizacionService>();
+builder.Services.AddScoped<IPamSeguimientoTransmisionService, PamSeguimientoTransmisionService>();
 builder.Services.AddScoped<IPamFuenteExtractionService, PamFuenteExtractionService>();
 builder.Services.AddScoped<IPamAnalisisService, PamAnalisisService>();
 builder.Services.AddHostedService<PamAnalisisWorker>();

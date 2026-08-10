@@ -28,7 +28,22 @@
         .ToList();
     var historialCambios = (Model.Detalle?.Cambios ?? new List<NSIE.Models.PamCambioDetalle>())
         .OrderByDescending(x => x.FechaRegistroUtc)
-        .Take(12)
+        .ToList();
+    var paginasCambios = historialCambios
+        .GroupBy(c => new { c.FechaCorte, c.FuenteDocumento })
+        .OrderByDescending(g => g.Key.FechaCorte)
+        .SelectMany(grupo =>
+        {
+            var bloques = grupo.Chunk(4).ToList();
+            return bloques.Select((bloque, indice) => new
+            {
+                grupo.Key.FechaCorte,
+                grupo.Key.FuenteDocumento,
+                Cambios = bloque.ToList(),
+                ParteFuente = indice + 1,
+                TotalPartesFuente = bloques.Count
+            });
+        })
         .ToList();
     var versionVigente = historialVersiones.LastOrDefault(x => x.EsVersionVigente)
         ?? historialVersiones.LastOrDefault();
@@ -57,6 +72,16 @@
     var seccion01 = $"Sección 01 · {Model.Ficha.ClavePem}";
     var seccion02 = "Sección 02 · Cierre y trazabilidad";
     var inv = System.Globalization.CultureInfo.InvariantCulture;
+    var seguimientoFicha = Model.Detalle?.SeguimientoActual ?? new List<NSIE.Models.PamSeguimientoProyectoRegistro>();
+    var seguimientoCorteFicha = Model.Detalle?.SeguimientoHistorial?.FirstOrDefault();
+    var seguimientoMuestra = seguimientoFicha.Take(4).ToList();
+    var seguimientoImporteFicha = seguimientoFicha.Where(x => x.ImporteMdp.HasValue).Sum(x => x.ImporteMdp ?? 0);
+    var seguimientoProgramados = seguimientoFicha.Where(x => x.AvanceProgramado.HasValue)
+        .Select(x => x.AvanceProgramado <= 1 ? x.AvanceProgramado.Value * 100 : x.AvanceProgramado.Value).ToList();
+    var seguimientoReales = seguimientoFicha.Where(x => x.AvanceReal.HasValue)
+        .Select(x => x.AvanceReal <= 1 ? x.AvanceReal.Value * 100 : x.AvanceReal.Value).ToList();
+    decimal? seguimientoProgramadoPromedio = seguimientoProgramados.Count > 0 ? seguimientoProgramados.Average() : null;
+    decimal? seguimientoRealPromedio = seguimientoReales.Count > 0 ? seguimientoReales.Average() : null;
 
     // Reduce el tamaño del título cuando el texto es largo (nombres técnicos extensos).
     Func<string, string> ClaseTitulo = texto => (texto?.Length ?? 0) switch
@@ -325,7 +350,12 @@
                             <button type="button" class="pam-index__entry" data-goto-label="02B"><span>Diagramas y figuras técnicas (@Model.Diagramas.Count láminas)</span><i></i><small>02B</small></button>
                         }
                     }
-                    <button type="button" class="pam-index__entry" data-goto-label="13"><span>Fases y licitación</span><i></i><small>13</small></button>
+                    <button type="button" class="pam-index__entry" data-goto-label="13"><span>Fases y alineación con la fecha necesaria</span><i></i><small>13</small></button>
+                    <button type="button" class="pam-index__entry" data-goto-label="13A"><span>Datos vigentes de licitación</span><i></i><small>13·lic</small></button>
+                    @if (seguimientoFicha.Count > 0)
+                    {
+                        <button type="button" class="pam-index__entry" data-goto-label="13B"><span>Seguimiento operativo del último corte</span><i></i><small>13·seg</small></button>
+                    }
                     <button type="button" class="pam-index__group" data-goto-label="14"><b>02</b><span>Cierre y trazabilidad</span></button>
                     <button type="button" class="pam-index__entry" data-goto-label="15"><span>Conclusión ejecutiva</span><i></i><small>15</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="16"><span>Aplicación y trazabilidad</span><i></i><small>16</small></button>
@@ -815,7 +845,7 @@
             }
 
             @* ── 13 · Fases constructivas y estatus de licitación ── *@
-            <section class="pam-slide pam-slide--content" data-slide data-label="Fases y licitación" data-screen-label="13">
+            <section class="pam-slide pam-slide--content pam-slide--fases" data-slide data-label="Fases y alineación" data-screen-label="13">
                 <header class="pam-lamina-head">
                     <span class="pam-lamina-head__kicker">@seccion01</span>
                     <span class="pam-lamina-head__aside">Fases y licitación</span>
@@ -846,7 +876,7 @@
                             <div><strong>@emp.Nivel</strong><small>@emp.Resumen</small></div>
                         </div>
                     </div>
-                    <div class="pam-licitacion">
+                    <div class="pam-licitacion pam-licitacion--phase-only">
                         <div class="pam-fases">
                             @if (Model.Fases.Count > 0)
                             {
@@ -877,18 +907,12 @@
                                 </div>
                             }
                         </div>
-                        <div class="pam-licitacion__datos">
-                            <article>
-                                <span>Avance de ejecución</span>
-                                <strong>@(detalle?.PorcentajeAvanceEjecucion?.ToString("N2") ?? "—")%</strong>
-                                <div class="pam-avance"><i style="width:@(Math.Clamp(detalle?.PorcentajeAvanceEjecucion ?? 0, 0, 100).ToString("F1", inv))%"></i></div>
-                            </article>
-                            <article><span>FEO indicada (oficio SENER)</span><strong>@(string.IsNullOrWhiteSpace(detalle?.FeoIndicadaOficioSener) ? "—" : detalle.FeoIndicadaOficioSener)</strong></article>
-                            <article><span>FEO factible</span><strong>@(string.IsNullOrWhiteSpace(detalle?.FeoFactible) ? "—" : detalle.FeoFactible)</strong></article>
-                            <article><span>Año de instrucción</span><strong>@(detalle?.AnioInstruccion?.ToString() ?? "—")</strong></article>
-                            <article><span>Financiamiento</span><strong>@(string.IsNullOrWhiteSpace(detalle?.TipoFinanciamiento) ? "—" : detalle.TipoFinanciamiento)</strong></article>
-                            <article><span>Región</span><strong>@regionProyecto</strong></article>
-                        </div>
+                        <aside class="pam-fases-resumen @emp.Clase">
+                            <span>Lectura de alineación</span>
+                            <strong>@emp.Nivel</strong>
+                            <p>@emp.Resumen</p>
+                            <small>La línea superior compara la necesidad del sistema con la fecha en que la red puede estar disponible.</small>
+                        </aside>
                     </div>
                 </div>
                 <div class="pam-lamina-foot">
@@ -899,6 +923,114 @@
                     </span>
                 </div>
             </section>
+
+            @* ── 13A · Datos vigentes de licitación, separados para conservar legibilidad ── *@
+            <section class="pam-slide pam-slide--content pam-slide--licitacion-datos" data-slide data-label="Datos de licitación" data-screen-label="13A">
+                <header class="pam-lamina-head">
+                    <span class="pam-lamina-head__kicker">@seccion01</span>
+                    <span class="pam-lamina-head__aside">Datos vigentes de licitación</span>
+                </header>
+                <h2 class="pam-lamina-title">Información de ejecución, financiamiento y fechas reportadas en la cartera maestra.</h2>
+                <div class="pam-lamina-body pam-licitacion-datos-body">
+                    <div class="pam-licitacion-estado">
+                        <div class="pam-licitacion-estado__marca @NSIE.Models.PamSemaforo.Clase(Model.Proyecto.EstatusLicitacion)"><i></i></div>
+                        <div>
+                            <span>Estatus de licitación</span>
+                            <strong>@(string.IsNullOrWhiteSpace(Model.Proyecto.EstatusLicitacion) ? "Por clasificar" : Model.Proyecto.EstatusLicitacion)</strong>
+                            <p>@(string.IsNullOrWhiteSpace(Model.Proyecto.EtapaProyecto) ? "Etapa sin registrar en el corte vigente." : Model.Proyecto.EtapaProyecto)</p>
+                        </div>
+                        <aside><span>Fuente del estado</span><strong>Informe Pormenorizado vigente</strong></aside>
+                    </div>
+                    <div class="pam-licitacion__datos pam-licitacion__datos--wide">
+                        <article>
+                            <span>Avance de ejecución</span>
+                            <strong>@(detalle?.PorcentajeAvanceEjecucion.HasValue == true ? $"{detalle.PorcentajeAvanceEjecucion:N2}%" : "—")</strong>
+                            <div class="pam-avance"><i style="width:@(Math.Clamp(detalle?.PorcentajeAvanceEjecucion ?? 0, 0, 100).ToString("F1", inv))%"></i></div>
+                        </article>
+                        <article><span>FEO indicada (oficio SENER)</span><strong>@(string.IsNullOrWhiteSpace(detalle?.FeoIndicadaOficioSener) ? "—" : detalle.FeoIndicadaOficioSener)</strong></article>
+                        <article><span>Año de instrucción</span><strong>@(detalle?.AnioInstruccion?.ToString() ?? "—")</strong></article>
+                        <article class="is-wide"><span>FEO factible</span><strong class="@((detalle?.FeoFactible?.Length ?? 0) > 42 ? "is-compact" : null)">@(string.IsNullOrWhiteSpace(detalle?.FeoFactible) ? "—" : detalle.FeoFactible)</strong></article>
+                        <article><span>Financiamiento</span><strong class="@((detalle?.TipoFinanciamiento?.Length ?? 0) > 34 ? "is-compact" : null)">@(string.IsNullOrWhiteSpace(detalle?.TipoFinanciamiento) ? "—" : detalle.TipoFinanciamiento)</strong></article>
+                        <article><span>Región</span><strong>@regionProyecto</strong></article>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot">
+                    <span>Los valores se muestran completos y separados de la lectura de fases para conservar legibilidad en pantalla, PDF y PowerPoint.</span>
+                    <span class="pam-lamina-foot__meta">
+                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                        13A
+                    </span>
+                </div>
+            </section>
+
+            @if (seguimientoFicha.Count > 0)
+            {
+                @* ── 13B · Seguimiento operativo complementario ── *@
+                <section class="pam-slide pam-slide--content" data-slide data-label="Seguimiento operativo" data-screen-label="13B">
+                    <header class="pam-lamina-head">
+                        <span class="pam-lamina-head__kicker">@seccion01</span>
+                        <span class="pam-lamina-head__aside">Seguimiento CFE Transmisión</span>
+                    </header>
+                    <h2 class="pam-lamina-title">Seguimiento operativo del último corte vinculado al proyecto.</h2>
+                    <div class="pam-lamina-body pam-seguimiento-slide">
+                        <div class="pam-seguimiento-kpis">
+                            <article><span>Corte</span><strong>@seguimientoCorteFicha?.FechaCorte.ToString("dd MMM yyyy", esMX)</strong></article>
+                            <article><span>Unidades vinculadas</span><strong>@(seguimientoCorteFicha?.TotalUnidades ?? seguimientoFicha.Select(x => x.SeguimientoUnidadId).Distinct().Count())</strong></article>
+                            <article><span>Importe reportado</span><strong>@seguimientoImporteFicha.ToString("N3")</strong><small>MDP</small></article>
+                            <article><span>Cortes preservados</span><strong>@(Model.Detalle?.SeguimientoHistorial?.Count ?? 0)</strong></article>
+                        </div>
+
+                        <div class="pam-seguimiento-comparacion">
+                            <div>
+                                <span>Avance programado</span>
+                                <strong>@(seguimientoProgramadoPromedio?.ToString("N1") ?? "—")%</strong>
+                                <i><b style="width:@(Math.Clamp(seguimientoProgramadoPromedio ?? 0, 0, 100).ToString("F1", inv))%"></b></i>
+                            </div>
+                            <div class="is-real">
+                                <span>Avance real</span>
+                                <strong>@(seguimientoRealPromedio?.ToString("N1") ?? "—")%</strong>
+                                <i><b style="width:@(Math.Clamp(seguimientoRealPromedio ?? 0, 0, 100).ToString("F1", inv))%"></b></i>
+                            </div>
+                            <aside>
+                                <span>Diferencia promedio</span>
+                                <strong>@(seguimientoProgramadoPromedio.HasValue && seguimientoRealPromedio.HasValue ? $"{seguimientoRealPromedio - seguimientoProgramadoPromedio:+0.0;-0.0;0.0} pp" : "Sin comparación")</strong>
+                                <small>El seguimiento complementa la cartera maestra y conserva su fuente por corte.</small>
+                            </aside>
+                        </div>
+
+                        <div class="pam-seguimiento-tabla">
+                            <div class="pam-seguimiento-tabla__head"><span>Unidad / fase</span><span>Inicio</span><span>Término</span><span>Avance real</span><span>Importe MDP</span></div>
+                            @foreach (var registro in seguimientoMuestra)
+                            {
+                                var avanceRegistro = registro.AvanceReal.HasValue
+                                    ? (registro.AvanceReal <= 1 ? registro.AvanceReal.Value * 100 : registro.AvanceReal.Value)
+                                    : (decimal?)null;
+                                var inicioRegistro = registro.FechaInicioConstruccionReal ?? registro.FechaInicioConstruccionProgramada
+                                    ?? registro.FechaInicioConcursoReal ?? registro.FechaInicioConcursoProgramada;
+                                var terminoRegistro = registro.FechaTerminoConstruccion ?? registro.FechaEstimadaTerminoCalculada;
+                                <article>
+                                    <div><code>@Recortar(registro.CodigoUnico, 34)</code><strong>@registro.FaseEtiqueta</strong></div>
+                                    <span>@(inicioRegistro?.ToString("MMM yyyy", esMX) ?? "—")</span>
+                                    <span>@(terminoRegistro?.ToString("MMM yyyy", esMX) ?? (string.IsNullOrWhiteSpace(registro.FeoFactible) ? "—" : Recortar(registro.FeoFactible, 18)))</span>
+                                    <span>@(avanceRegistro?.ToString("N1") ?? "—")%</span>
+                                    <span>@(registro.ImporteMdp?.ToString("N3") ?? "—")</span>
+                                </article>
+                            }
+                        </div>
+                        @if (seguimientoFicha.Count > seguimientoMuestra.Count)
+                        {
+                            <p class="pam-seguimiento-restantes">Se muestran @seguimientoMuestra.Count de @seguimientoFicha.Count registros; el detalle navegable conserva todas las unidades y fases.</p>
+                        }
+                    </div>
+                    <div class="pam-lamina-foot">
+                        <span>@seguimientoCorteFicha?.FuenteDocumento · corte @seguimientoCorteFicha?.FechaCorte.ToString("dd/MM/yyyy") · evidencia complementaria con trazabilidad propia.</span>
+                        <span class="pam-lamina-foot__meta">
+                            <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                            13B
+                        </span>
+                    </div>
+                </section>
+            }
 
             @* ── 14 · Divisoria Sección 02 ── *@
             <section class="pam-slide pam-slide--divider" data-slide data-label="Sección 02" data-screen-label="14">
@@ -959,7 +1091,7 @@
                         </div>
                         <dl class="pam-evidence__facts">
                             <div><dt>Versión vigente</dt><dd>V@(versionVigente?.NumeroVersion ?? detalle?.NumeroVersion ?? 1)</dd></div>
-                            <div><dt>Vigente desde</dt><dd>@(versionVigente?.VigenteDesde ?? detalle?.VigenteDesde).ToString("yyyy-MM-dd")</dd></div>
+                            <div><dt>Vigente desde</dt><dd>@((versionVigente?.VigenteDesde ?? detalle?.VigenteDesde)?.ToString("yyyy-MM-dd") ?? "—")</dd></div>
                             <div><dt>Estado de cartera</dt><dd>@Model.Proyecto.EstadoVigenciaCartera</dd></div>
                             <div><dt>Fuente y corte</dt><dd>@fechaCorte.ToString("yyyy-MM-dd") · @Model.Proyecto.FuenteDocumento</dd></div>
                         </dl>
@@ -1129,68 +1261,87 @@
             </section>
 
             @* ── 19 · Anexo B: Línea de tiempo de modificaciones ── *@
-            <section class="pam-slide pam-slide--content" data-slide data-label="Línea de tiempo" data-screen-label="19">
-                <header class="pam-lamina-head">
-                    <span class="pam-lamina-head__kicker">Sección 03 · Anexos</span>
-                    <span class="pam-lamina-head__aside">Anexo B · Línea de tiempo</span>
-                </header>
-                <h2 class="pam-lamina-title">Trazabilidad del seguimiento: qué cambió, cuándo y desde qué fuente.</h2>
-                <div class="pam-lamina-body">
-                    @if (historialCambios.Count == 0)
-                    {
+            @if (paginasCambios.Count == 0)
+            {
+                <section class="pam-slide pam-slide--content" data-slide data-label="Línea de tiempo" data-screen-label="19">
+                    <header class="pam-lamina-head">
+                        <span class="pam-lamina-head__kicker">Sección 03 · Anexos</span>
+                        <span class="pam-lamina-head__aside">Anexo B · Línea de tiempo</span>
+                    </header>
+                    <h2 class="pam-lamina-title">Trazabilidad del seguimiento: qué cambió, cuándo y desde qué fuente.</h2>
+                    <div class="pam-lamina-body">
                         <div class="pam-annex-empty">
                             <i class="fas fa-timeline"></i>
                             <strong>No hay cambios detallados capturados.</strong>
                             <span>Al aplicar cada actualización del Informe Pormenorizado, sus diferencias quedarán aquí con antes, después y fuente.</span>
                         </div>
-                    }
-                    else
-                    {
-                        var gruposCambios = historialCambios
-                            .GroupBy(c => new { c.FechaCorte, c.FuenteDocumento })
-                            .OrderByDescending(g => g.Key.FechaCorte)
-                            .ToList();
+                    </div>
+                    <div class="pam-lamina-foot">
+                        <span>Historial reconstruido desde dgmesnie.PAMCambio; cada bloque corresponde a una actualización aplicada con su fuente y corte.</span>
+                        <span class="pam-lamina-foot__meta">
+                            <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                            19
+                        </span>
+                    </div>
+                </section>
+            }
+            else
+            {
+                @for (var paginaIndex = 0; paginaIndex < paginasCambios.Count; paginaIndex++)
+                {
+                    var paginaCambio = paginasCambios[paginaIndex];
+                    var etiquetaPantalla = paginaIndex == 0 ? "19" : $"19-{paginaIndex + 1}";
+                    var folioPagina = paginaIndex == 0 ? "19" : $"19·{paginaIndex + 1}";
+                    <section class="pam-slide pam-slide--content" data-slide data-label="Línea de tiempo @(paginaIndex + 1)" data-screen-label="@etiquetaPantalla">
+                        <header class="pam-lamina-head">
+                            <span class="pam-lamina-head__kicker">Sección 03 · Anexos</span>
+                            <span class="pam-lamina-head__aside">Anexo B · Línea de tiempo · @(paginaIndex + 1)/@paginasCambios.Count</span>
+                        </header>
+                        <h2 class="pam-lamina-title">Trazabilidad del seguimiento: qué cambió, cuándo y desde qué fuente.</h2>
+                        <div class="pam-lamina-body">
                         <ol class="pam-trace-log">
-                            @foreach (var grupo in gruposCambios)
-                            {
-                                <li class="pam-trace-log__item">
-                                    <div class="pam-trace-log__hito">
-                                        <time>@grupo.Key.FechaCorte.ToString("dd MMM yyyy", esMX)</time>
-                                        <span title="@grupo.Key.FuenteDocumento">@grupo.Key.FuenteDocumento</span>
-                                    </div>
-                                    <div class="pam-trace-log__cambios">
-                                        @foreach (var c in grupo)
+                            <li class="pam-trace-log__item">
+                                <div class="pam-trace-log__hito">
+                                    <time>@paginaCambio.FechaCorte.ToString("dd MMM yyyy", esMX)</time>
+                                    <span title="@paginaCambio.FuenteDocumento">@paginaCambio.FuenteDocumento</span>
+                                    @if (paginaCambio.TotalPartesFuente > 1)
+                                    {
+                                        <small>Bloque @paginaCambio.ParteFuente de @paginaCambio.TotalPartesFuente</small>
+                                    }
+                                </div>
+                                <div class="pam-trace-log__cambios">
+                                    @foreach (var c in paginaCambio.Cambios)
+                                    {
+                                        if (c.EsAlta)
                                         {
-                                            if (c.EsAlta)
-                                            {
-                                                <div class="pam-trace-chip is-alta"><b>Alta en la cartera</b><span>Fotografía inicial del proyecto</span></div>
-                                            }
-                                            else
-                                            {
-                                                <div class="pam-trace-chip">
-                                                    <b>@c.CampoEtiqueta</b>
-                                                    <span class="pam-trace-diff">
-                                                        <del title="@c.AntesLimpio">@c.AntesLimpio</del>
-                                                        <i aria-hidden="true">→</i>
-                                                        <ins title="@c.DespuesLimpio">@c.DespuesLimpio</ins>
-                                                    </span>
-                                                </div>
-                                            }
+                                            <div class="pam-trace-chip is-alta"><b>Alta en la cartera</b><span>Fotografía inicial del proyecto</span></div>
                                         }
-                                    </div>
-                                </li>
-                            }
+                                        else
+                                        {
+                                            <div class="pam-trace-chip">
+                                                <b>@c.CampoEtiqueta</b>
+                                                <span class="pam-trace-diff">
+                                                    <del title="@c.AntesLimpio">@c.AntesLimpio</del>
+                                                    <i aria-hidden="true">→</i>
+                                                    <ins title="@c.DespuesLimpio">@c.DespuesLimpio</ins>
+                                                </span>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </li>
                         </ol>
-                    }
-                </div>
-                <div class="pam-lamina-foot">
-                    <span>Historial reconstruido desde dgmesnie.PAMCambio; cada bloque corresponde a una actualización aplicada con su fuente y corte.</span>
-                    <span class="pam-lamina-foot__meta">
-                        <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
-                        19
-                    </span>
-                </div>
-            </section>
+                        </div>
+                        <div class="pam-lamina-foot">
+                            <span>Historial reconstruido desde dgmesnie.PAMCambio; se conserva el antes, después, fuente y corte de cada cambio.</span>
+                            <span class="pam-lamina-foot__meta">
+                                <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                                @folioPagina
+                            </span>
+                        </div>
+                    </section>
+                }
+            }
 
             @* ── 20 · Contraportada (patrón insumo: mujer, banda Gracias, divisor dorado, social, código, QR) ── *@
             <section class="pam-slide pam-slide--back" data-slide data-label="Contraportada" data-screen-label="20">

@@ -335,6 +335,12 @@ OR EXISTS
     INNER JOIN dgmesnie.PAMCarga carga ON carga.CargaId = c.CargaId
     WHERE c.ProyectoId = @ProyectoId AND carga.FuenteId = f.FuenteId
 )
+OR EXISTS
+(
+    SELECT 1
+    FROM dgmesnie.PAMSeguimientoUnidadProyecto seguimiento
+    WHERE seguimiento.ProyectoId = @ProyectoId AND seguimiento.FuenteId = f.FuenteId
+)
 ORDER BY f.FechaCorte DESC, f.FuenteId DESC;
 
 SELECT
@@ -350,7 +356,72 @@ INNER JOIN dgmesnie.PAMFuente f ON f.FuenteId = r.FuenteId
 LEFT JOIN dgmesnie.vw_PAMProyectoVigente padre ON padre.ProyectoId = r.ProyectoPadreId
 LEFT JOIN dgmesnie.vw_PAMProyectoVigente hijo ON hijo.ProyectoId = r.ProyectoHijoId
 WHERE r.ProyectoPadreId = @ProyectoId OR r.ProyectoHijoId = @ProyectoId
-ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;";
+ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;
+
+;WITH relacionesSeguimiento AS
+(
+    SELECT ProyectoId, SeguimientoUnidadId, LoteId,
+           MAX(TipoCoincidencia) AS TipoCoincidencia
+    FROM dgmesnie.PAMSeguimientoUnidadProyecto
+    WHERE ProyectoId = @ProyectoId
+    GROUP BY ProyectoId, SeguimientoUnidadId, LoteId
+)
+SELECT DISTINCT
+    seguimiento.SeguimientoDetalleId, seguimiento.SeguimientoUnidadId,
+    seguimiento.LoteId, seguimiento.FuenteId, seguimiento.NumeroFila, seguimiento.CodigoUnico,
+    seguimiento.CodigoPem, relacion.TipoCoincidencia,
+    seguimiento.NombreProyecto, seguimiento.Categoria,
+    seguimiento.ProyectoEnFases, seguimiento.FaseInicial, seguimiento.FasesSubsecuentes,
+    seguimiento.Mva, seguimiento.Mvar, seguimiento.KmC, seguimiento.OtraMetaFisica,
+    seguimiento.ImporteMdp, seguimiento.FinanciamientoCfe,
+    seguimiento.FinanciamientoPormenorizado, seguimiento.AnioInstruccion,
+    seguimiento.FechaInicioConcursoProgramada, seguimiento.FechaInicioConcursoReal,
+    seguimiento.FechaAdjudicacionProgramada, seguimiento.FechaAdjudicacionReal,
+    seguimiento.FechaFirmaContratoProgramada, seguimiento.FechaFirmaContratoReal,
+    seguimiento.FechaInicioConstruccionProgramada, seguimiento.FechaInicioConstruccionReal,
+    seguimiento.FechaTerminoConstruccion, seguimiento.FeoIndicada, seguimiento.FeoFactible,
+    seguimiento.FechaEstimadaTerminoCalculada, seguimiento.PlazoEjecucionDias,
+    seguimiento.AvanceProgramado, seguimiento.AvanceReal, seguimiento.DiferenciaAvance,
+    seguimiento.ComentariosPpt, seguimiento.NotaPpt, seguimiento.ElementosEquipos,
+    seguimiento.ActualizacionEstatus, seguimiento.UltimaActualizacionFecha,
+    seguimiento.DetalleUltimaActualizacion, seguimiento.OrigenUltimaActualizacion,
+    seguimiento.ComentariosInternos, seguimiento.FechaCorte,
+    fuente.NombreDocumento AS FuenteDocumento,
+    CONCAT(seguimiento.Hoja, N', fila ', seguimiento.NumeroFila) AS FuenteUbicacion
+FROM dgmesnie.vw_PAMSeguimientoActual seguimiento
+INNER JOIN relacionesSeguimiento relacion
+    ON relacion.SeguimientoUnidadId = seguimiento.SeguimientoUnidadId
+   AND relacion.LoteId = seguimiento.LoteId
+INNER JOIN dgmesnie.PAMFuente fuente ON fuente.FuenteId = seguimiento.FuenteId
+ORDER BY seguimiento.FechaCorte DESC, seguimiento.CodigoUnico, seguimiento.NumeroFila;
+
+;WITH relacionesSeguimiento AS
+(
+    SELECT DISTINCT ProyectoId, SeguimientoUnidadId, LoteId
+    FROM dgmesnie.PAMSeguimientoUnidadProyecto
+    WHERE ProyectoId = @ProyectoId
+), registrosProyecto AS
+(
+    SELECT DISTINCT detalle.SeguimientoDetalleId, detalle.SeguimientoUnidadId,
+           detalle.LoteId, detalle.FuenteId, detalle.ImporteMdp,
+           detalle.AvanceProgramado, detalle.AvanceReal, detalle.FechaRegistroUtc
+    FROM dgmesnie.PAMSeguimientoCorteDetalle detalle
+    INNER JOIN relacionesSeguimiento relacion
+        ON relacion.SeguimientoUnidadId = detalle.SeguimientoUnidadId
+       AND relacion.LoteId = detalle.LoteId
+)
+SELECT registros.LoteId, lote.FechaCorte, fuente.NombreDocumento AS FuenteDocumento,
+       COUNT(DISTINCT registros.SeguimientoUnidadId) AS TotalUnidades,
+       COUNT(*) AS TotalRegistros,
+       SUM(registros.ImporteMdp) AS ImporteMdp,
+       AVG(registros.AvanceProgramado) AS AvanceProgramadoPromedio,
+       AVG(registros.AvanceReal) AS AvanceRealPromedio,
+       MAX(registros.FechaRegistroUtc) AS FechaRegistroUtc
+FROM registrosProyecto registros
+INNER JOIN dgmesnie.PAMLoteActualizacion lote ON lote.LoteId = registros.LoteId
+INNER JOIN dgmesnie.PAMFuente fuente ON fuente.FuenteId = registros.FuenteId
+GROUP BY registros.LoteId, lote.FechaCorte, fuente.NombreDocumento
+ORDER BY lote.FechaCorte DESC, registros.LoteId DESC;";
 
             await using var connection = new SqlConnection(_connectionString);
             using var multi = await connection.QueryMultipleAsync(sql, new { ProyectoId = proyectoId });
@@ -363,7 +434,9 @@ ORDER BY r.EsRelacionVigente DESC, r.VigenteDesde DESC;";
                 Historial = (await multi.ReadAsync<PamProyectoVersionResumen>()).ToList(),
                 Cambios = (await multi.ReadAsync<PamCambioDetalle>()).ToList(),
                 Fuentes = (await multi.ReadAsync<PamFuenteDetalle>()).ToList(),
-                Relaciones = (await multi.ReadAsync<PamRelacionDetalle>()).ToList()
+                Relaciones = (await multi.ReadAsync<PamRelacionDetalle>()).ToList(),
+                SeguimientoActual = (await multi.ReadAsync<PamSeguimientoProyectoRegistro>()).ToList(),
+                SeguimientoHistorial = (await multi.ReadAsync<PamSeguimientoCorteResumen>()).ToList()
             };
         }
 

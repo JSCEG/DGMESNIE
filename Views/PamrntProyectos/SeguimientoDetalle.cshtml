@@ -1,0 +1,195 @@
+@model NSIE.Models.PamSeguimientoPreparacionViewModel
+
+@{
+    ViewData["Title"] = "Vista previa de seguimiento de transmisión";
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<div class="container-fluid shell-page-container py-3 pam-track-page">
+    <div class="pam-track-nav">
+        <a asp-action="NuevaActualizacion" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Volver a actualizaciones
+        </a>
+        <a asp-action="Index" class="pam-track-dashboard"><i class="fas fa-table-columns"></i>Dashboard de proyectos</a>
+    </div>
+
+    @if (TempData["PamActualizacionSuccess"] is string receptionMessage)
+    {
+        <div class="pam-track-alert is-info" role="status">
+            <i class="fas fa-inbox"></i><span>@receptionMessage</span>
+        </div>
+    }
+    @if (TempData["PamSeguimientoSuccess"] is string successMessage)
+    {
+        <div class="pam-track-alert is-success" role="status">
+            <i class="fas fa-circle-check"></i><span>@successMessage</span>
+        </div>
+    }
+    @if (TempData["PamSeguimientoError"] is string errorMessage)
+    {
+        <div class="pam-track-alert is-error" role="alert">
+            <i class="fas fa-circle-xmark"></i><span>@errorMessage</span>
+        </div>
+    }
+
+    <section class="pam-track-hero">
+        <div>
+            <span class="pam-track-eyebrow">Vista previa controlada · @Model.PerfilVersion</span>
+            <h1>@Model.NombreLote</h1>
+            <p>Seguimiento CFE Transmisión · corte @Model.FechaCorte.ToString("dd MMM yyyy")</p>
+            <div class="pam-track-meta">
+                <span><i class="fas fa-file-excel"></i>@Model.FuenteNombre</span>
+                <span><i class="fas fa-fingerprint"></i>Lote #@Model.LoteId · @Model.LoteUid.ToString("N").Substring(0, 8)</span>
+            </div>
+        </div>
+        <span class="pam-track-state @(Model.YaIncorporado ? "is-applied" : "")">
+            <i class="fas @(Model.YaIncorporado ? "fa-circle-check" : "fa-magnifying-glass")"></i>
+            @(Model.YaIncorporado ? "Seguimiento incorporado" : "Listo para incorporar")
+        </span>
+    </section>
+
+    <section class="pam-track-safety">
+        <i class="fas fa-shield-halved"></i>
+        <div>
+            <strong>Esta operación no cambia la cartera maestra.</strong>
+            <span>Se conservarán fases, fechas, finanzas y avances como fotografía del corte. Cualquier actualización posterior del PAM se revisará por separado.</span>
+        </div>
+    </section>
+
+    <section class="pam-track-kpis" aria-label="Resumen de la vista previa">
+        <article><span>Filas recibidas</span><strong>@Model.TotalRegistros.ToString("N0")</strong><small>Base_Transmisión</small></article>
+        <article><span>Unidades</span><strong>@Model.TotalUnidades.ToString("N0")</strong><small>por Código Único</small></article>
+        <article><span>Claves PEM</span><strong>@Model.TotalClavesPem.ToString("N0")</strong><small>detectadas</small></article>
+        <article class="is-good"><span>Vinculadas</span><strong>@Model.ClavesVinculadas.ToString("N0")</strong><small>con la cartera</small></article>
+        <article class="@(Model.ClavesNoEncontradas > 0 ? "is-warning" : "is-good")"><span>Por conciliar</span><strong>@Model.ClavesNoEncontradas.ToString("N0")</strong><small>no bloquean el corte</small></article>
+        <article><span>Importe reportado</span><strong>@Model.ImporteTotalMdp.ToString("N3")</strong><small>MDP · suma fuente</small></article>
+    </section>
+
+    <div class="pam-track-layout">
+        <main>
+            <section class="pam-track-card">
+                <div class="pam-track-card__header">
+                    <div><span class="pam-track-eyebrow">Validaciones</span><h2>Qué incorporará este corte</h2></div>
+                    <span class="pam-track-phase"><i class="fas fa-code-branch"></i>@Model.RegistrosConFases.ToString("N0") fila(s) con fases</span>
+                </div>
+                <div class="pam-track-columns">
+                    <div><i class="fas fa-key"></i><span><strong>Identidad operativa</strong><small>Código Único, PEM, SEPI y procedimiento.</small></span></div>
+                    <div><i class="fas fa-diagram-project"></i><span><strong>Fases y metas físicas</strong><small>Fases, MVA, MVAR, km-C y otros elementos.</small></span></div>
+                    <div><i class="fas fa-coins"></i><span><strong>Información financiera</strong><small>Importe y fuentes de financiamiento.</small></span></div>
+                    <div><i class="fas fa-calendar-days"></i><span><strong>Hitos y avance</strong><small>Fechas programadas, reales y porcentajes.</small></span></div>
+                </div>
+            </section>
+
+            <section class="pam-track-card">
+                <div class="pam-track-card__header">
+                    <div><span class="pam-track-eyebrow">Conciliación</span><h2>Claves que requieren atención</h2></div>
+                    <span class="pam-track-count">@Model.ClavesNoEncontradas pendiente(s)</span>
+                </div>
+                @if (Model.Pendientes.Count == 0)
+                {
+                    <div class="pam-track-empty"><i class="fas fa-circle-check"></i><strong>Todas las claves detectadas tienen una coincidencia única.</strong></div>
+                }
+                else
+                {
+                    <p class="pam-track-help">La fotografía completa puede incorporarse. Estas claves quedarán señaladas para conciliarlas con la cartera sin inventar relaciones.</p>
+                    <div class="table-responsive">
+                        <table class="table pam-track-table align-middle mb-0">
+                            <thead><tr><th>Clave PEM</th><th>Código Único</th><th>Proyecto recibido</th><th>Motivo</th></tr></thead>
+                            <tbody>
+                            @foreach (var pendiente in Model.Pendientes.Take(50))
+                            {
+                                <tr>
+                                    <td><strong>@pendiente.CodigoPem</strong><small>Fila @pendiente.NumeroFila</small></td>
+                                    <td>@pendiente.CodigoUnico</td>
+                                    <td>@pendiente.NombreProyecto</td>
+                                    <td>@pendiente.Motivo</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (Model.Pendientes.Count > 50)
+                    {
+                        <div class="pam-track-more">Se muestran 50 de @Model.Pendientes.Count claves pendientes.</div>
+                    }
+                }
+            </section>
+        </main>
+
+        <aside>
+            <section class="pam-track-card pam-track-rules">
+                <span class="pam-track-eyebrow">Reglas del perfil</span>
+                <h2>Cálculos propios</h2>
+                <ul>
+                    <li><i class="fas fa-check"></i>Se lee únicamente Base_Transmisión.</li>
+                    <li><i class="fas fa-check"></i>Las fórmulas del Excel no se importan.</li>
+                    <li><i class="fas fa-check"></i>Las fases no crean proyectos nuevos.</li>
+                    <li><i class="fas fa-check"></i>Cada corte queda versionado por fuente.</li>
+                </ul>
+            </section>
+
+            @if (Model.Advertencias.Count > 0)
+            {
+                <section class="pam-track-card pam-track-notes">
+                    <span class="pam-track-eyebrow">Observaciones</span>
+                    @foreach (var warning in Model.Advertencias)
+                    {
+                        <p><i class="fas fa-circle-info"></i>@warning</p>
+                    }
+                </section>
+            }
+
+            <section class="pam-track-card pam-track-action">
+                @if (Model.YaIncorporado)
+                {
+                    <i class="fas fa-circle-check pam-track-action__icon"></i>
+                    <h2>Corte incorporado</h2>
+                    <p>Los registros están disponibles para vistas de seguimiento y calendario.</p>
+                }
+                else
+                {
+                    <h2>Confirmación final</h2>
+                    <p>Se insertará una fotografía histórica. No se ejecutará ninguna actualización sobre PAMProyectoVersion.</p>
+                    <form asp-action="AplicarSeguimiento" asp-route-loteId="@Model.LoteId" method="post" id="pam-track-apply-form">
+                        @Html.AntiForgeryToken()
+                        <label class="pam-track-confirm">
+                            <input type="checkbox" required />
+                            <span>Revisé el resumen y deseo incorporar este corte.</span>
+                        </label>
+                        <button type="submit" class="btn btn-primary w-100" id="pam-track-apply">
+                            <i class="fas fa-layer-group me-2"></i>Incorporar seguimiento
+                        </button>
+                    </form>
+                }
+            </section>
+        </aside>
+    </div>
+</div>
+
+<style>
+    .shell-page-container.pam-track-page{width:100%;max-width:1500px;padding-inline:clamp(.8rem,2vw,2rem);--track-accent:var(--shell-accent,#9b2247);--track-gold:var(--shell-accent-2,#b38e5d);--track-ink:var(--shell-ink,#292421);--track-line:var(--shell-line,#eadfe3);--track-surface:var(--shell-surface,#fff);color:var(--track-ink)}
+    .pam-track-nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}.pam-track-dashboard{display:flex;align-items:center;gap:.5rem;color:var(--track-accent);font-weight:800;text-decoration:none}
+    .pam-track-alert{display:flex;align-items:center;gap:.65rem;margin-bottom:1rem;padding:.8rem 1rem;border:1px solid #bdd4e7;border-radius:.75rem;background:#eef6fc;color:#345f7d}.pam-track-alert.is-success{border-color:#b9dec7;background:#edf8f1;color:#235e39}.pam-track-alert.is-error{border-color:#e4b9b9;background:#fbefee;color:#812f2c}
+    .pam-track-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:1.5rem;padding:1.5rem;margin-bottom:1rem;border:1px solid var(--track-line);border-left:4px solid var(--track-gold);border-radius:1rem;background:var(--track-surface)}.pam-track-eyebrow{color:var(--track-accent);font-size:.7rem;font-weight:850;letter-spacing:.12em;text-transform:uppercase}.pam-track-hero h1{margin:.3rem 0 .2rem;font-size:clamp(1.5rem,2vw,2.1rem);font-weight:800}.pam-track-hero p{margin:0;color:#6f6864}.pam-track-meta{display:flex;flex-wrap:wrap;gap:.45rem 1rem;margin-top:.9rem;color:#776f6b;font-size:.78rem}.pam-track-meta span{display:flex;align-items:center;gap:.35rem}.pam-track-state{display:flex;align-items:center;gap:.45rem;flex:0 0 auto;padding:.45rem .7rem;border-radius:1rem;background:#f4ead8;color:#745522;font-size:.75rem;font-weight:850}.pam-track-state.is-applied{background:#e5f3ea;color:#286740}
+    .pam-track-safety{display:flex;align-items:flex-start;gap:.8rem;margin-bottom:1rem;padding:1rem 1.2rem;border:1px solid #bddcca;border-radius:.85rem;background:#eef8f2;color:#2b6743}.pam-track-safety>i{margin-top:.1rem}.pam-track-safety strong,.pam-track-safety span{display:block}.pam-track-safety span{margin-top:.15rem;font-size:.82rem}
+    .pam-track-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.7rem;margin-bottom:1rem}.pam-track-kpis article{padding:1rem;border:1px solid var(--track-line);border-radius:.85rem;background:var(--track-surface)}.pam-track-kpis span,.pam-track-kpis small{display:block;color:#77706c;font-size:.72rem}.pam-track-kpis strong{display:block;margin:.25rem 0;color:var(--track-accent);font-size:1.35rem}.pam-track-kpis article.is-good{border-color:#cce2d4;background:#f5fbf7}.pam-track-kpis article.is-warning{border-color:#ecd8ad;background:#fdf9f0}
+    .pam-track-layout{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(280px,.72fr);gap:1rem;align-items:start}.pam-track-layout main,.pam-track-layout aside{display:grid;gap:1rem}.pam-track-card{overflow:hidden;border:1px solid var(--track-line);border-radius:1rem;background:var(--track-surface)}.pam-track-card__header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.1rem 1.2rem;border-bottom:1px solid var(--track-line)}.pam-track-card h2{margin:.2rem 0 0;font-size:1.05rem;font-weight:800}.pam-track-phase,.pam-track-count{padding:.3rem .55rem;border-radius:1rem;background:#f2ece8;color:#6d625b;font-size:.7rem;font-weight:800}.pam-track-phase{display:flex;align-items:center;gap:.35rem;background:#f6eedf;color:#755823}
+    .pam-track-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;padding:1.1rem}.pam-track-columns>div{display:flex;align-items:flex-start;gap:.7rem;padding:.9rem;border-radius:.75rem;background:#faf8f6}.pam-track-columns>div>i{margin-top:.12rem;color:var(--track-accent)}.pam-track-columns strong,.pam-track-columns small{display:block}.pam-track-columns small{margin-top:.16rem;color:#79716c;font-size:.76rem}
+    .pam-track-help{margin:0;padding:.9rem 1.2rem;background:#faf8f6;color:#706863;font-size:.8rem}.pam-track-table th{padding:.7rem 1rem;background:#f5f1ee;color:#675f5a;font-size:.68rem;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}.pam-track-table td{padding:.75rem 1rem;border-color:#eee7e4;color:#514a46;font-size:.78rem}.pam-track-table td strong,.pam-track-table td small{display:block}.pam-track-table td strong{color:var(--track-accent)}.pam-track-table td small{color:#8a817c}.pam-track-empty{display:flex;align-items:center;justify-content:center;gap:.7rem;padding:2rem;color:#2d7149}.pam-track-more{padding:.6rem 1rem;background:#faf8f6;color:#7d746f;font-size:.73rem;text-align:center}
+    .pam-track-rules,.pam-track-notes,.pam-track-action{padding:1.2rem}.pam-track-rules ul{display:grid;gap:.65rem;margin:1rem 0 0;padding:0;list-style:none}.pam-track-rules li{display:flex;gap:.55rem;color:#665e59;font-size:.8rem}.pam-track-rules li i{margin-top:.1rem;color:#368056}.pam-track-notes p{display:flex;align-items:flex-start;gap:.5rem;margin:.7rem 0 0;color:#70655d;font-size:.78rem}.pam-track-notes p i{margin-top:.12rem;color:var(--track-gold)}.pam-track-action{text-align:center}.pam-track-action p{color:#746c67;font-size:.8rem}.pam-track-action__icon{color:#3f875a;font-size:2rem}.pam-track-confirm{display:flex;align-items:flex-start;gap:.55rem;margin:1rem 0;padding:.75rem;border-radius:.65rem;background:#f7f3f1;color:#665e59;font-size:.75rem;text-align:left}.pam-track-confirm input{margin-top:.15rem}
+    @@media(max-width:1100px){.pam-track-kpis{grid-template-columns:repeat(3,1fr)}.pam-track-layout{grid-template-columns:1fr}.pam-track-layout aside{grid-template-columns:repeat(3,1fr)}}
+    @@media(max-width:720px){.pam-track-hero,.pam-track-nav{align-items:flex-start;flex-direction:column}.pam-track-kpis{grid-template-columns:repeat(2,1fr)}.pam-track-layout aside,.pam-track-columns{grid-template-columns:1fr}}
+</style>
+
+<script>
+    (() => {
+        const form = document.getElementById('pam-track-apply-form');
+        const button = document.getElementById('pam-track-apply');
+        if (!form || !button) return;
+        form.addEventListener('submit', () => {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Incorporando corte…';
+        });
+    })();
+</script>

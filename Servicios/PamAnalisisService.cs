@@ -93,12 +93,14 @@ namespace NSIE.Servicios
 
             try
             {
-                var loteEstado = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(@"
-SELECT Estado
+                var lote = await connection.QuerySingleOrDefaultAsync<LoteAnalisisContexto>(new CommandDefinition(@"
+SELECT Estado, TipoActualizacion
 FROM dgmesnie.PAMLoteActualizacion WITH (UPDLOCK, HOLDLOCK)
 WHERE LoteId = @LoteId;", new { LoteId = loteId }, transaction, cancellationToken: cancellationToken));
-                if (loteEstado == null) throw new InvalidOperationException("El lote solicitado no existe.");
-                if (loteEstado is "Aplicado" or "Rechazado")
+                if (lote == null) throw new InvalidOperationException("El lote solicitado no existe.");
+                if (lote.TipoActualizacion != PamTiposActualizacion.InformePormenorizado)
+                    throw new InvalidOperationException("Los lotes de seguimiento se incorporan desde su vista previa y no se envían al comparador de la cartera maestra.");
+                if (lote.Estado is "Aplicado" or "Rechazado")
                     throw new InvalidOperationException("El lote ya está cerrado. Registra una actualización nueva para conservar la trazabilidad.");
 
                 var fuentes = (await connection.QueryAsync<FuenteHuella>(new CommandDefinition(@"
@@ -3815,6 +3817,12 @@ WHERE e.Estado = N'Error';";
             public int NoEncontrados { get; set; }
             public int Cambios { get; set; }
             public int Observados { get; set; }
+        }
+
+        private sealed class LoteAnalisisContexto
+        {
+            public string Estado { get; set; }
+            public string TipoActualizacion { get; set; }
         }
 
         private sealed class CambioPropuestoRow

@@ -13,6 +13,7 @@ namespace NSIE.Controllers
     {
         private readonly IPamrntProyectosIdentificadosService _service;
         private readonly IPamActualizacionService _actualizacionService;
+        private readonly IPamSeguimientoTransmisionService _seguimientoService;
         private readonly IPamAnalisisService _analisisService;
         private readonly IServicioEmailSMTP _emailService;
         private readonly ILogger<PamrntProyectosController> _logger;
@@ -20,12 +21,14 @@ namespace NSIE.Controllers
         public PamrntProyectosController(
             IPamrntProyectosIdentificadosService service,
             IPamActualizacionService actualizacionService,
+            IPamSeguimientoTransmisionService seguimientoService,
             IPamAnalisisService analisisService,
             IServicioEmailSMTP emailService,
             ILogger<PamrntProyectosController> logger)
         {
             _service = service;
             _actualizacionService = actualizacionService;
+            _seguimientoService = seguimientoService;
             _analisisService = analisisService;
             _emailService = emailService;
             _logger = logger;
@@ -90,7 +93,9 @@ namespace NSIE.Controllers
 
                 var usuarioNombre = string.IsNullOrWhiteSpace(perfil.Nombre) ? $"Usuario {usuarioId}" : perfil.Nombre;
                 var resultado = await _actualizacionService.CrearLoteAsync(input, usuarioId, usuarioNombre);
-                TempData["PamActualizacionSuccess"] = $"Lote {resultado.LoteId} registrado con {resultado.TotalArchivos} archivo(s). Ningún proyecto fue modificado.";
+                TempData["PamActualizacionSuccess"] = resultado.TipoActualizacion == PamTiposActualizacion.SeguimientoTransmision
+                    ? $"Lote {resultado.LoteId} registrado. Revisa la vista previa antes de incorporar la fotografía de seguimiento."
+                    : $"Lote {resultado.LoteId} registrado con {resultado.TotalArchivos} archivo(s). Ningún proyecto fue modificado.";
                 return RedirectToAction(nameof(ActualizacionDetalle), new { loteId = resultado.LoteId });
             }
             catch (InvalidOperationException ex)
@@ -124,10 +129,57 @@ namespace NSIE.Controllers
             if (!PuedeGestionarActualizaciones(ObtenerPerfilUsuario()))
                 return StatusCode(StatusCodes.Status403Forbidden);
 
+            if (await _seguimientoService.EsLoteSeguimientoAsync(loteId, cancellationToken))
+            {
+                var seguimiento = await _seguimientoService.PrepararAsync(loteId, cancellationToken);
+                seguimiento.Header = BuildHeader();
+                return View("SeguimientoDetalle", seguimiento);
+            }
+
             var model = await _analisisService.ObtenerDetalleAsync(loteId, filtro, cancellationToken);
             if (model == null) return NotFound();
             model.Header = BuildHeader();
             return View(model);
+        }
+
+        [HttpPost("Actualizacion/{loteId:long}/Seguimiento/Aplicar")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> AplicarSeguimiento(
+            long loteId,
+            CancellationToken cancellationToken)
+        {
+            var perfil = ObtenerPerfilUsuario();
+            if (!PuedeGestionarActualizaciones(perfil))
+                return StatusCode(StatusCodes.Status403Forbidden);
+
+            try
+            {
+                if (perfil == null || !int.TryParse(perfil.IdUsuario, out var usuarioId))
+                    throw new InvalidOperationException("No fue posible identificar al usuario de la sesión.");
+
+                var usuarioNombre = string.IsNullOrWhiteSpace(perfil.Nombre) ? $"Usuario {usuarioId}" : perfil.Nombre;
+                var resultado = await _seguimientoService.AplicarAsync(
+                    loteId,
+                    usuarioId,
+                    usuarioNombre,
+                    cancellationToken);
+
+                TempData["PamSeguimientoSuccess"] = resultado.YaExistia
+                    ? "La fotografía de seguimiento ya estaba incorporada; no se duplicó ningún registro."
+                    : $"Seguimiento incorporado: {resultado.RegistrosIncorporados} fila(s), {resultado.UnidadesIncorporadas} unidad(es) y {resultado.VinculacionesRegistradas} vínculo(s) con la cartera. Ningún proyecto maestro fue modificado.";
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "No fue posible incorporar el seguimiento PAM del lote {LoteId}.", loteId);
+                TempData["PamSeguimientoError"] = ex.Message;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al incorporar el seguimiento PAM del lote {LoteId}.", loteId);
+                TempData["PamSeguimientoError"] = "No fue posible incorporar el seguimiento. El incidente quedó registrado para revisión.";
+            }
+
+            return RedirectToAction(nameof(ActualizacionDetalle), new { loteId });
         }
 
         [HttpGet("Actualizacion/{loteId:long}/PrepararAplicacion")]

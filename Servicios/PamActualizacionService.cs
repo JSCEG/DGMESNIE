@@ -53,7 +53,7 @@ namespace NSIE.Servicios
         {
             const string sql = @"
 SELECT TOP (@Limite)
-    l.LoteId, l.LoteUid, l.Nombre, l.FechaCorte, l.Estado, l.TotalArchivos,
+    l.LoteId, l.LoteUid, l.Nombre, l.TipoActualizacion, l.FechaCorte, l.Estado, l.TotalArchivos,
     l.TotalRegistrosDetectados, l.TotalCambiosPropuestos, l.TotalObservados,
     l.FechaRegistroUtc, l.UsuarioNombre,
     archivos.Archivos,
@@ -96,6 +96,7 @@ ORDER BY l.FechaRegistroUtc DESC, l.LoteId DESC;";
             var resultado = new PamLoteCreadoResultado
             {
                 LoteUid = loteUid,
+                TipoActualizacion = input.TipoActualizacion,
                 TotalArchivos = input.Archivos.Count
             };
 
@@ -115,15 +116,16 @@ ORDER BY l.FechaRegistroUtc DESC, l.LoteId DESC;";
                 {
                     const string insertLote = @"
 INSERT dgmesnie.PAMLoteActualizacion
-    (LoteUid, Nombre, FechaCorte, Notas, Estado, TotalArchivos, UsuarioId, UsuarioNombre)
+    (LoteUid, Nombre, TipoActualizacion, FechaCorte, Notas, Estado, TotalArchivos, UsuarioId, UsuarioNombre)
 VALUES
-    (@LoteUid, @Nombre, @FechaCorte, @Notas, N'Cargado', @TotalArchivos, @UsuarioId, @UsuarioNombre);
+    (@LoteUid, @Nombre, @TipoActualizacion, @FechaCorte, @Notas, N'Cargado', @TotalArchivos, @UsuarioId, @UsuarioNombre);
 SELECT CAST(SCOPE_IDENTITY() AS BIGINT);";
 
                     var loteId = await connection.ExecuteScalarAsync<long>(insertLote, new
                     {
                         LoteUid = loteUid,
                         Nombre = input.Nombre.Trim(),
+                        input.TipoActualizacion,
                         FechaCorte = input.FechaCorte!.Value.Date,
                         Notas = Normalizar(input.Notas),
                         TotalArchivos = preparados.Count,
@@ -293,6 +295,8 @@ VALUES
         private static void Validar(PamNuevaActualizacionInput input)
         {
             if (input == null) throw new ArgumentNullException(nameof(input));
+            if (!PamTiposActualizacion.EsValido(input.TipoActualizacion))
+                throw new InvalidOperationException("El propósito de la actualización no es válido.");
             if (string.IsNullOrWhiteSpace(input.Nombre)) throw new InvalidOperationException("Escribe un nombre para la actualización.");
             if (input.Nombre.Trim().Length > 200) throw new InvalidOperationException("El nombre de la actualización no puede superar 200 caracteres.");
             if (!string.IsNullOrWhiteSpace(input.Notas) && input.Notas.Trim().Length > 1000) throw new InvalidOperationException("La nota no puede superar 1000 caracteres.");
@@ -300,6 +304,13 @@ VALUES
             if (input.FechaCorte.Value.Date > DateTime.Today) throw new InvalidOperationException("La fecha de corte no puede estar en el futuro.");
             if (input.Archivos == null || input.Archivos.Count == 0) throw new InvalidOperationException("Selecciona al menos un archivo.");
             if (input.Archivos.Count > MaximoArchivos) throw new InvalidOperationException($"Se permiten hasta {MaximoArchivos} archivos por lote.");
+
+            if (input.TipoActualizacion == PamTiposActualizacion.SeguimientoTransmision
+                && (input.Archivos.Count != 1
+                    || !string.Equals(Path.GetExtension(input.Archivos[0].FileName), ".xlsx", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException("El seguimiento de transmisión requiere un solo archivo .xlsx con la hoja Base_Transmisión.");
+            }
 
             long totalBytes = 0;
             foreach (var archivo in input.Archivos)

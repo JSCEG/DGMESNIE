@@ -3,6 +3,16 @@
 @{
     ViewData["Title"] = $"Detalle {Model.Actual.ClaveProyecto ?? Model.Actual.ProyectoId.ToString()}";
     var proyecto = Model.Actual;
+    var seguimientoActual = Model.SeguimientoActual ?? new List<NSIE.Models.PamSeguimientoProyectoRegistro>();
+    var seguimientoCorte = Model.SeguimientoHistorial?.FirstOrDefault();
+    var seguimientoImporte = seguimientoActual.Where(x => x.ImporteMdp.HasValue).Sum(x => x.ImporteMdp ?? 0);
+    var avancesProgramados = seguimientoActual.Where(x => x.AvanceProgramado.HasValue)
+        .Select(x => x.AvanceProgramado <= 1 ? x.AvanceProgramado.Value * 100 : x.AvanceProgramado.Value).ToList();
+    var avancesReales = seguimientoActual.Where(x => x.AvanceReal.HasValue)
+        .Select(x => x.AvanceReal <= 1 ? x.AvanceReal.Value * 100 : x.AvanceReal.Value).ToList();
+    decimal? avanceProgramadoPromedio = avancesProgramados.Count > 0 ? avancesProgramados.Average() : null;
+    decimal? avanceRealPromedio = avancesReales.Count > 0 ? avancesReales.Average() : null;
+    var culturaMx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
 }
 
 @await Html.PartialAsync("_ViewHeader", Model.Header)
@@ -48,6 +58,7 @@
     <section class="card border-0 shadow-sm pam-detail-card">
         <nav class="pam-detail-tabs" aria-label="Secciones del proyecto">
             <button class="is-active" type="button" data-detail-tab="vigente"><i class="fas fa-circle-info"></i>Datos vigentes</button>
+            <button type="button" data-detail-tab="seguimiento"><i class="fas fa-chart-line"></i>Seguimiento <span>@seguimientoActual.Count</span></button>
             <button type="button" data-detail-tab="historial"><i class="fas fa-clock-rotate-left"></i>Historial <span>@Model.Historial.Count</span></button>
             <button type="button" data-detail-tab="fuentes"><i class="fas fa-file-lines"></i>Fuentes <span>@Model.Fuentes.Count</span></button>
             <button type="button" data-detail-tab="relaciones"><i class="fas fa-diagram-project"></i>Relaciones <span>@Model.Relaciones.Count</span></button>
@@ -83,6 +94,122 @@
                 {
                     <article class="pam-detail-text"><h5>@bloque.Item1</h5><p>@bloque.Item2</p></article>
                 }
+            }
+        </div>
+
+        <div class="pam-detail-panel" data-detail-panel="seguimiento">
+            @if (!Model.TieneSeguimiento)
+            {
+                <div class="pam-detail-empty">
+                    <i class="fas fa-chart-line"></i>
+                    <strong>Este proyecto todavía no tiene un corte de seguimiento vinculado.</strong>
+                    <p>La cartera maestra permanece disponible; el seguimiento aparecerá cuando una clave del archivo recurrente coincida con el proyecto.</p>
+                </div>
+            }
+            else
+            {
+                <div class="pam-followup-intro">
+                    <div>
+                        <span class="pam-followup-kicker">Último corte operativo</span>
+                        <h4>@seguimientoCorte?.FechaCorte.ToString("dd 'de' MMMM 'de' yyyy", culturaMx)</h4>
+                        <p>@seguimientoCorte?.FuenteDocumento</p>
+                    </div>
+                    <span class="pam-followup-note"><i class="fas fa-shield-halved"></i> Complementa la cartera; no la sobrescribe</span>
+                </div>
+
+                <div class="pam-followup-kpis">
+                    <article><span>Unidades vinculadas</span><strong>@(seguimientoCorte?.TotalUnidades ?? seguimientoActual.Select(x => x.SeguimientoUnidadId).Distinct().Count())</strong></article>
+                    <article><span>Importe reportado</span><strong>@seguimientoImporte.ToString("N3")</strong><small>MDP</small></article>
+                    <article><span>Avance programado</span><strong>@(avanceProgramadoPromedio?.ToString("N1") ?? "—")%</strong></article>
+                    <article><span>Avance real</span><strong>@(avanceRealPromedio?.ToString("N1") ?? "—")%</strong></article>
+                </div>
+
+                <div class="pam-followup-records">
+                    @foreach (var registro in seguimientoActual)
+                    {
+                        var avanceProgramado = registro.AvanceProgramado.HasValue
+                            ? (registro.AvanceProgramado <= 1 ? registro.AvanceProgramado.Value * 100 : registro.AvanceProgramado.Value)
+                            : (decimal?)null;
+                        var avanceReal = registro.AvanceReal.HasValue
+                            ? (registro.AvanceReal <= 1 ? registro.AvanceReal.Value * 100 : registro.AvanceReal.Value)
+                            : (decimal?)null;
+                        var diferencia = avanceProgramado.HasValue && avanceReal.HasValue ? avanceReal - avanceProgramado : null;
+
+                        <article class="pam-followup-record">
+                            <header>
+                                <div>
+                                    <code>@registro.CodigoUnico</code>
+                                    <h5>@registro.FaseEtiqueta</h5>
+                                    <p>@registro.NombreProyecto</p>
+                                </div>
+                                <span>@(string.IsNullOrWhiteSpace(registro.TipoCoincidencia) ? "Clave vinculada" : $"Coincidencia {registro.TipoCoincidencia.ToLowerInvariant()}")</span>
+                            </header>
+
+                            <div class="pam-followup-metrics">
+                                <div><span>Importe</span><strong>@(registro.ImporteMdp?.ToString("N3") ?? "—") MDP</strong></div>
+                                <div><span>Programado</span><strong>@(avanceProgramado?.ToString("N1") ?? "—")%</strong></div>
+                                <div><span>Real</span><strong>@(avanceReal?.ToString("N1") ?? "—")%</strong></div>
+                                <div class="@(diferencia < 0 ? "is-delay" : "")"><span>Diferencia</span><strong>@(diferencia.HasValue ? $"{diferencia:+0.0;-0.0;0.0} pp" : "—")</strong></div>
+                            </div>
+
+                            @if (avanceProgramado.HasValue || avanceReal.HasValue)
+                            {
+                                <div class="pam-followup-progress" aria-label="Comparación de avance programado y real">
+                                    <div><span>Programado</span><i><b style="width:@Math.Clamp(avanceProgramado ?? 0, 0, 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></b></i></div>
+                                    <div class="is-real"><span>Real</span><i><b style="width:@Math.Clamp(avanceReal ?? 0, 0, 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%"></b></i></div>
+                                </div>
+                            }
+
+                            <div class="pam-followup-dates">
+                                <div><span>Inicio concurso</span><strong>@((registro.FechaInicioConcursoReal ?? registro.FechaInicioConcursoProgramada)?.ToString("dd MMM yyyy", culturaMx) ?? "—")</strong></div>
+                                <div><span>Adjudicación</span><strong>@((registro.FechaAdjudicacionReal ?? registro.FechaAdjudicacionProgramada)?.ToString("dd MMM yyyy", culturaMx) ?? "—")</strong></div>
+                                <div><span>Firma de contrato</span><strong>@((registro.FechaFirmaContratoReal ?? registro.FechaFirmaContratoProgramada)?.ToString("dd MMM yyyy", culturaMx) ?? "—")</strong></div>
+                                <div><span>Inicio construcción</span><strong>@((registro.FechaInicioConstruccionReal ?? registro.FechaInicioConstruccionProgramada)?.ToString("dd MMM yyyy", culturaMx) ?? "—")</strong></div>
+                                <div><span>Término estimado</span><strong>@((registro.FechaTerminoConstruccion ?? registro.FechaEstimadaTerminoCalculada)?.ToString("dd MMM yyyy", culturaMx) ?? "—")</strong></div>
+                                <div><span>Financiamiento</span><strong>@(string.IsNullOrWhiteSpace(registro.Financiamiento) ? "—" : registro.Financiamiento)</strong></div>
+                            </div>
+
+                            @foreach (var nota in new[]
+                            {
+                                ("Última actualización", registro.DetalleUltimaActualizacion),
+                                ("Estatus reportado", registro.ActualizacionEstatus),
+                                ("Comentario ejecutivo", registro.ComentariosPpt),
+                                ("Elementos y equipos", registro.ElementosEquipos)
+                            })
+                            {
+                                @if (!string.IsNullOrWhiteSpace(nota.Item2))
+                                {
+                                    <div class="pam-followup-text"><strong>@nota.Item1</strong><p>@nota.Item2</p></div>
+                                }
+                            }
+
+                            <footer><i class="fas fa-file-excel"></i> @registro.FuenteDocumento · @registro.FuenteUbicacion</footer>
+                        </article>
+                    }
+                </div>
+
+                <h4 class="pam-followup-history-title">Histórico de cortes</h4>
+                <div class="table-responsive">
+                    <table class="table pam-history-table align-middle">
+                        <thead><tr><th>Corte</th><th>Fuente</th><th>Unidades</th><th>Registros</th><th>Importe MDP</th><th>Avance real</th></tr></thead>
+                        <tbody>
+                        @foreach (var corte in Model.SeguimientoHistorial)
+                        {
+                            var avanceCorte = corte.AvanceRealPromedio.HasValue
+                                ? (corte.AvanceRealPromedio <= 1 ? corte.AvanceRealPromedio.Value * 100 : corte.AvanceRealPromedio.Value)
+                                : (decimal?)null;
+                            <tr>
+                                <td><strong>@corte.FechaCorte.ToString("yyyy-MM-dd")</strong><br /><small>Lote @corte.LoteId</small></td>
+                                <td>@corte.FuenteDocumento</td>
+                                <td>@corte.TotalUnidades</td>
+                                <td>@corte.TotalRegistros</td>
+                                <td>@(corte.ImporteMdp?.ToString("N3") ?? "—")</td>
+                                <td>@(avanceCorte?.ToString("N1") ?? "—")%</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
             }
         </div>
 
@@ -278,6 +405,46 @@
     .pam-relation-list small,.pam-relation-list span { display:block; color:var(--pd-muted); }
     .pam-relation-direction { font-weight:800; color:var(--pd-guinda)!important; }
 
+    .pam-followup-intro { display:flex; flex-direction:column; gap:1rem; margin-bottom:1rem; padding:1rem; border:1px solid rgba(30,91,79,.18); border-left:4px solid var(--pd-verde); border-radius:12px; background:rgba(30,91,79,.05); }
+    .pam-followup-intro h4,.pam-followup-intro p { margin:0; }
+    .pam-followup-intro p { color:var(--pd-muted); }
+    .pam-followup-kicker { display:block; margin-bottom:.2rem; color:var(--pd-verde); font-size:.7rem; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+    .pam-followup-note { align-self:flex-start; padding:.45rem .7rem; border-radius:999px; background:var(--pd-surface); color:var(--pd-verde); font-size:.74rem; font-weight:800; }
+    .pam-followup-kpis { display:grid; grid-template-columns:1fr; gap:.7rem; margin-bottom:1.2rem; }
+    .pam-followup-kpis article { padding:1rem; border:1px solid var(--pd-line); border-radius:12px; background:var(--pd-surface-2); }
+    .pam-followup-kpis span,.pam-followup-kpis small { display:block; color:var(--pd-muted); font-size:.75rem; }
+    .pam-followup-kpis strong { color:var(--pd-guinda); font-family:var(--font-display,"Patria",Georgia,serif); font-size:1.45rem; font-variant-numeric:tabular-nums; }
+    .pam-followup-records { display:grid; gap:1rem; }
+    .pam-followup-record { overflow:hidden; border:1px solid var(--pd-line); border-radius:14px; background:var(--pd-surface); }
+    .pam-followup-record>header { display:flex; flex-direction:column; gap:.75rem; padding:1rem; border-bottom:1px solid var(--pd-line); background:var(--pd-surface-2); }
+    .pam-followup-record>header code { color:var(--pd-guinda); font-weight:900; }
+    .pam-followup-record>header h5,.pam-followup-record>header p { margin:.2rem 0 0; }
+    .pam-followup-record>header p { color:var(--pd-muted); }
+    .pam-followup-record>header>span { align-self:flex-start; padding:.3rem .6rem; border-radius:999px; background:rgba(30,91,79,.12); color:var(--pd-verde); font-size:.7rem; font-weight:900; }
+    .pam-followup-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.6rem; padding:1rem; }
+    .pam-followup-metrics div { padding:.65rem; border-radius:9px; background:var(--pd-surface-2); }
+    .pam-followup-metrics span,.pam-followup-metrics strong { display:block; }
+    .pam-followup-metrics span { color:var(--pd-muted); font-size:.7rem; }
+    .pam-followup-metrics strong { font-size:.88rem; }
+    .pam-followup-metrics .is-delay strong { color:#b34734; }
+    .pam-followup-progress { display:grid; gap:.5rem; padding:0 1rem 1rem; }
+    .pam-followup-progress>div { display:grid; grid-template-columns:85px 1fr; align-items:center; gap:.7rem; }
+    .pam-followup-progress span { color:var(--pd-muted); font-size:.7rem; }
+    .pam-followup-progress i { display:block; height:7px; overflow:hidden; border-radius:99px; background:#ece7e2; }
+    .pam-followup-progress b { display:block; height:100%; border-radius:inherit; background:var(--pd-gold); }
+    .pam-followup-progress .is-real b { background:var(--pd-verde); }
+    .pam-followup-dates { display:grid; grid-template-columns:1fr; gap:0; margin:0 1rem 1rem; border:1px solid var(--pd-line); border-radius:10px; }
+    .pam-followup-dates div { padding:.65rem .75rem; border-bottom:1px solid var(--pd-line); }
+    .pam-followup-dates div:last-child { border-bottom:0; }
+    .pam-followup-dates span,.pam-followup-dates strong { display:block; }
+    .pam-followup-dates span { color:var(--pd-muted); font-size:.68rem; }
+    .pam-followup-dates strong { font-size:.8rem; overflow-wrap:anywhere; }
+    .pam-followup-text { margin:0 1rem 1rem; padding:.8rem; border-left:3px solid var(--pd-gold); background:var(--pd-surface-2); }
+    .pam-followup-text strong { color:var(--pd-guinda); font-size:.75rem; }
+    .pam-followup-text p { margin:.25rem 0 0; color:var(--pd-muted); white-space:pre-line; }
+    .pam-followup-record>footer { padding:.65rem 1rem; border-top:1px solid var(--pd-line); color:var(--pd-muted); font-size:.7rem; }
+    .pam-followup-history-title { margin:1.6rem 0 .8rem; }
+
     .pam-detail-empty { padding:2.5rem 1.5rem; text-align:center; color:var(--pd-muted); background:var(--pd-surface-2); border-radius:12px; }
     .pam-detail-empty i,.pam-detail-empty strong { display:block; }
     .pam-detail-empty i { margin-bottom:.6rem; font-size:2rem; color:var(--pd-gold); }
@@ -286,6 +453,10 @@
     @@media (min-width: 576px) {
         .pam-detail-kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .pam-detail-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .pam-followup-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .pam-followup-dates { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .pam-followup-dates div:nth-last-child(2) { border-bottom:0; }
+        .pam-followup-dates div:nth-child(odd) { border-right:1px solid var(--pd-line); }
         .pam-source-grid dl { grid-template-columns:100px 1fr; }
     }
 
@@ -293,12 +464,16 @@
         .pam-detail-hero { flex-direction:row; align-items:center; justify-content:space-between; gap:2rem; padding:1.6rem 1.75rem; }
         .pam-detail-version { width:auto; min-width:150px; }
         .pam-detail-panel { padding:1.5rem; }
+        .pam-followup-intro,.pam-followup-record>header { flex-direction:row; align-items:flex-start; justify-content:space-between; }
+        .pam-followup-note,.pam-followup-record>header>span { flex:0 0 auto; }
+        .pam-followup-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); }
         .pam-change-list p { flex-direction:row; align-items:center; gap:.8rem; }
         .pam-relation-list article { grid-template-columns:1fr 2fr; gap:1rem; }
     }
 
     @@media (min-width: 992px) {
         .pam-detail-kpis { grid-template-columns:repeat(4, minmax(0, 1fr)); }
+        .pam-followup-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); }
     }
 
     @@media (min-width: 1100px) {
