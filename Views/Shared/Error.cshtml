@@ -1,25 +1,58 @@
 @model ErrorViewModel
 @{
-    ViewData["Title"] = "Error";
+    ViewData["Title"] = "No pudimos completar la consulta";
+
+    // El folio es lo que el usuario le da a la mesa de servicio. Si ASP.NET no
+    // trajo un RequestId, se arma uno corto para que siempre haya algo que citar.
+    var folio = Model?.ShowRequestId == true
+        ? Model.RequestId
+        : Guid.NewGuid().ToString("N").Substring(0, 8).ToUpperInvariant();
+    var folioCorto = folio.Length > 13 ? folio.Substring(0, 13) : folio;
 }
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
-
-@if (Model.ShowRequestId)
-{
-    <p>
-        <strong>Request ID:</strong> <code>@Model.RequestId</code>
-    </p>
+@section Styles {
+    <link rel="stylesheet" href="~/css/estados.css" asp-append-version="true" />
 }
 
-<h3>Development Mode</h3>
-<p>
-    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
-</p>
-<p>
-    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
-    It can result in displaying sensitive information from exceptions to end users.
-    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
-    and restarting the app.
-</p>
+<div class="container-fluid px-3 px-lg-4">
+    <div class="estado-pagina">
+        <div class="estado">
+            <div>
+                <span class="estado__codigo">500</span>
+                <span class="estado__titulo">No pudimos completar la consulta</span>
+                <p class="estado__texto">
+                    El módulo no respondió. Tus datos capturados no se perdieron.
+                    Si vuelve a ocurrir, comparte el folio con la mesa de servicio.
+                </p>
+
+                <p class="estado__folio">
+                    <span class="estado__folio-etiqueta">Folio</span>
+                    <span id="folioError">@folioCorto</span>
+                    <button type="button" onclick="copiarFolio(this)" title="Copiar folio" aria-label="Copiar folio">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </p>
+
+                <div class="estado__acciones">
+                    <button type="button" class="shell-btn shell-btn--primary" onclick="location.reload()">
+                        <i class="fas fa-rotate-right"></i> Reintentar
+                    </button>
+                    <a class="shell-btn" href="@Url.Action("Index", "Home")">Volver al inicio</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function copiarFolio(boton) {
+            const folio = document.getElementById('folioError').textContent.trim();
+            navigator.clipboard.writeText(folio).then(function () {
+                const icono = boton.querySelector('i');
+                icono.className = 'fas fa-check';
+                setTimeout(function () { icono.className = 'fas fa-copy'; }, 1600);
+            });
+        }
+    </script>
+}
