@@ -116,7 +116,11 @@ public class AutorizacionFiltro : ActionFilterAttribute
                         if (string.IsNullOrEmpty(seccionesUsuarioJson))
                         {
                             Console.WriteLine($"Acceso denegado: menú de sesión vacío para {perfilUsuario.Nombre} ({idUsuario}) al intentar entrar a {controller}/{action}");
-                            context.Result = new RedirectToActionResult("Index", "Home", null);
+                            // Antes esto mandaba al inicio sin decir nada: el usuario
+                            // hacía clic y aparecía en otra pantalla, sin saber si
+                            // falló, si se perdió o si no tiene el permiso.
+                            context.Result = new RedirectToActionResult("SinPermiso", "Acceso",
+                                new { modulo = controller });
                             return;
                         }
 
@@ -161,12 +165,8 @@ public class AutorizacionFiltro : ActionFilterAttribute
                         {
                             Console.WriteLine($"Acceso denegado dinámicamente: {perfilUsuario.Nombre} ({idUsuario}) no tiene el módulo {controller} (o acción {action}) en su menú.");
                             
-                            bool tieneGestor = seccionesUsuario
-                                .SelectMany(s => s.Modulos)
-                                .Any(m => string.Equals(m.Controller, "Gestor", StringComparison.OrdinalIgnoreCase));
-                            
-                            string redirectController = tieneGestor ? "Gestor" : "Home";
-                            context.Result = new RedirectToActionResult("Index", redirectController, null);
+                            context.Result = new RedirectToActionResult("SinPermiso", "Acceso",
+                                new { modulo = controller });
                             return;
                         }
                     }

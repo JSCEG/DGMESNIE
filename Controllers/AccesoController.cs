@@ -445,6 +445,18 @@ namespace NSIE.Controllers
             return View();
         }
 
+        /// <summary>
+        /// Explica por qué no se pudo entrar a un módulo. Antes el filtro de
+        /// autorización mandaba al inicio sin decir nada: el usuario hacía clic
+        /// y aparecía en otra pantalla, sin saber si falló, si se perdió o si
+        /// no tiene el permiso.
+        /// </summary>
+        public IActionResult SinPermiso(string modulo)
+        {
+            ViewData["ModuloSolicitado"] = modulo;
+            return View();
+        }
+
         #region Metodo para cerrar la Sesión
         public IActionResult CerrarSesion()
         {

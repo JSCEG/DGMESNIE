@@ -1,0 +1,65 @@
+@using Microsoft.AspNetCore.Http
+@using Newtonsoft.Json
+@using NSIE.Models
+@inject IHttpContextAccessor HttpContextAccessor
+
+@{
+    ViewData["Title"] = "Sin acceso a este módulo";
+
+    var perfilJson = HttpContextAccessor.HttpContext.Session.GetString("PerfilUsuario");
+    var perfil = string.IsNullOrEmpty(perfilJson)
+        ? null
+        : JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+
+    // Se dice con qué rol está el usuario en el sistema: sin eso, el aviso no
+    // le explica nada y acaba escribiendo a la mesa de servicio para saberlo.
+    var rol = perfil?.Rol_Nombre;
+    var unidad = perfil?.Unidad_de_Adscripcion;
+    var identidad = string.IsNullOrWhiteSpace(rol)
+        ? null
+        : (string.IsNullOrWhiteSpace(unidad) ? rol : $"{rol} · {unidad}");
+
+    var modulo = ViewData["ModuloSolicitado"] as string;
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/estados.css" asp-append-version="true" />
+}
+
+<div class="container-fluid px-3 px-lg-4">
+    <div class="estado-pagina">
+        <div class="estado">
+            <div>
+                <span class="estado__icono estado__icono--acento">
+                    <i class="fas fa-lock"></i>
+                </span>
+
+                <span class="estado__titulo">Tu perfil no tiene acceso a este módulo</span>
+
+                <p class="estado__texto">
+                    @if (identidad != null)
+                    {
+                        <text>Estás en el sistema como <strong>@identidad</strong>.</text>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(modulo))
+                    {
+                        <text> El módulo <strong>@modulo</strong> no está entre los que tienes asignados.</text>
+                    }
+                    else
+                    {
+                        <text> Ese módulo no está entre los que tienes asignados.</text>
+                    }
+                    Si lo necesitas para tu trabajo, pídelo a la Unidad SNIEr; el acceso se otorga por rol.
+                </p>
+
+                <div class="estado__acciones">
+                    <a class="shell-btn shell-btn--primary"
+                       href="mailto:contacto@energia.gob.mx?subject=Solicitud%20de%20acceso%20a%20m%C3%B3dulo@(string.IsNullOrWhiteSpace(modulo) ? "" : "%20" + Uri.EscapeDataString(modulo))">
+                        <i class="fas fa-envelope"></i> Solicitar acceso
+                    </a>
+                    <a class="shell-btn" href="@Url.Action("Index", "Home")">Ver mis módulos</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
