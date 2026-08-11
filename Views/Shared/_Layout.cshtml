@@ -20,6 +20,8 @@
     ViewData["Mercado_ID"] = perfilUsuario?.Mercado_ID ?? "";
  var currentController = ViewContext.RouteData.Values["Controller"].ToString();
     var currentAction = ViewContext.RouteData.Values["Action"].ToString(); 
+    var esFichaPam = string.Equals(currentController, "PamrntProyectos", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(currentAction, "Ficha", StringComparison.OrdinalIgnoreCase);
     string LimpiarEtiquetaMenu(string texto)
     {
         if (string.IsNullOrWhiteSpace(texto))
@@ -604,17 +606,91 @@
     </a>
 </nav>
 
+@{
+    // Migas de pan del shell. Se arman con el mismo menú de la sesión que
+    // dibuja la navegación de arriba, así que dicen dónde está el usuario
+    // dentro de la estructura real, no dentro de lo que cada vista creyó.
+    // Antes cada pantalla escribía las suyas: 150 vistas y cuatro marcados
+    // distintos para lo mismo.
+    string migaSeccion = null, migaModulo = null, migaVista = null;
+
+    foreach (var sec in seccionesUsuario)
+    {
+        if (sec.Modulos == null) continue;
+        foreach (var mod in sec.Modulos)
+        {
+            var vista = mod.Vistas?.FirstOrDefault(v =>
+                string.Equals(v.VistaController, currentController, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(v.VistaAction, currentAction, StringComparison.OrdinalIgnoreCase));
+
+            var esModulo = string.Equals(mod.Controller, currentController, StringComparison.OrdinalIgnoreCase) &&
+                           string.Equals(mod.Action, currentAction, StringComparison.OrdinalIgnoreCase);
+
+            if (vista != null || esModulo)
+            {
+                migaSeccion = LimpiarEtiquetaMenu(sec.Titulo);
+                migaModulo = LimpiarEtiquetaMenu(mod.Title);
+                if (vista != null) migaVista = LimpiarEtiquetaMenu(vista.VistaTitle);
+                break;
+            }
+        }
+        if (migaSeccion != null) break;
+    }
+
+    // Si la ruta no está en el menú —una vista de detalle, por ejemplo— se usa
+    // el título que la vista ya declara.
+    var migaFinal = migaVista ?? migaModulo ?? (ViewData["Title"]?.ToString());
+    var esInicio = string.Equals(currentController, "Home", StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(currentAction, "Index", StringComparison.OrdinalIgnoreCase);
+}
+
     <!-- CONTENIDO PRINCIPAL -->
     <main class="main-content content flex-fill">
-        <div id="page-preloader" style="display:flex;">
+@if (!esInicio && !string.IsNullOrWhiteSpace(migaFinal))
+{
+    <div class="shell-subbar">
+        <nav class="shell-migas" aria-label="Ruta de navegación">
+            <a href="@Url.Action("Index", "Home")">Inicio</a>
+            @if (migaSeccion != null)
+            {
+                <span class="shell-migas__sep" aria-hidden="true">›</span>
+                <span>@migaSeccion</span>
+            }
+            @if (migaVista != null && migaModulo != null)
+            {
+                <span class="shell-migas__sep" aria-hidden="true">›</span>
+                <span>@migaModulo</span>
+            }
+            <span class="shell-migas__sep" aria-hidden="true">›</span>
+            <span class="shell-migas__actual">@migaFinal</span>
+        </nav>
+    </div>
+}
+
+        <div id="page-preloader"
+             data-ficha-pam="@(esFichaPam ? "true" : "false")"
+             data-hold-until-ready="@(esFichaPam ? "true" : "false")"
+             data-ficha-ready="false"
+             style="display:flex;">
             <div class="preloader-container" role="status" aria-live="polite">
                 <div class="spinner" aria-hidden="true"></div>
                 <div class="preloader-brand" aria-label="Secretaría de Energía">
                     <img src="https://cdn.sassoapps.com/dgmesnie/logo_sener.png" alt="Secretaría de Energía" class="preloader-brand__logo">
                 </div>
                 <span class="preloader-accent" aria-hidden="true"></span>
-                <div class="loading-text">Cargando la página, por favor espere<span id="page-dots">...</span></div>
-                <div class="preloader-steps" aria-hidden="true">
+                <div class="loading-text" data-page-preloader-default hidden="@esFichaPam">Cargando la página, por favor espere<span id="page-dots">...</span></div>
+                <div class="preloader-ficha-status" data-page-preloader-ficha hidden="@(!esFichaPam)">
+                    <strong class="preloader-title">Generando ficha</strong>
+                    <span class="preloader-message" data-ficha-preloader-message>Integrando los datos del proyecto y sus fuentes.</span>
+                    <div class="preloader-progress" role="progressbar" aria-label="Avance de generación de la ficha" aria-valuemin="0" aria-valuemax="100" aria-valuenow="78">
+                        <span class="preloader-progress-bar" data-ficha-preloader-bar style="width:78%"></span>
+                    </div>
+                    <div class="preloader-ficha-meta">
+                        <small data-ficha-preloader-stage>Datos del proyecto integrados</small>
+                        <strong data-ficha-preloader-value>78%</strong>
+                    </div>
+                </div>
+                <div class="preloader-steps" data-page-preloader-steps aria-hidden="true">
                     <span class="preloader-step is-active"></span>
                     <span class="preloader-step"></span>
                     <span class="preloader-step"></span>
@@ -782,9 +858,79 @@
 
     @*Preloader*@
     <script>
-        function ocultarPreloaderPrincipal() {
-            $('#page-preloader').stop(true, true).fadeOut('slow');
+        let temporizadoresFicha = [];
+
+        function actualizarPreloaderFicha(porcentaje, mensaje, etapa) {
+            const preloader = document.getElementById('page-preloader');
+            if (!preloader) return;
+
+            const valor = Math.max(0, Math.min(100, Number(porcentaje) || 0));
+            const barra = preloader.querySelector('[data-ficha-preloader-bar]');
+            const progreso = barra?.closest('[role="progressbar"]');
+            const textoValor = preloader.querySelector('[data-ficha-preloader-value]');
+            const textoMensaje = preloader.querySelector('[data-ficha-preloader-message]');
+            const textoEtapa = preloader.querySelector('[data-ficha-preloader-stage]');
+            const pasos = Array.from(preloader.querySelectorAll('[data-page-preloader-steps] .preloader-step'));
+
+            if (barra) barra.style.width = `${valor}%`;
+            if (progreso) progreso.setAttribute('aria-valuenow', String(valor));
+            if (textoValor) textoValor.textContent = `${Math.round(valor)}%`;
+            if (textoMensaje && mensaje) textoMensaje.textContent = mensaje;
+            if (textoEtapa && etapa) textoEtapa.textContent = etapa;
+            pasos.forEach((paso, indice) => {
+                const activo = valor >= (indice === 0 ? 1 : indice === 1 ? 45 : 82);
+                paso.classList.toggle('is-active', activo);
+                paso.classList.toggle('is-complete', activo && valor >= (indice === 0 ? 45 : indice === 1 ? 82 : 100));
+            });
         }
+
+        function mostrarPreloaderFicha(claveProyecto) {
+            const preloader = document.getElementById('page-preloader');
+            if (!preloader) return;
+
+            temporizadoresFicha.forEach(window.clearTimeout);
+            temporizadoresFicha = [];
+            preloader.dataset.fichaPam = 'true';
+            preloader.dataset.holdUntilReady = 'true';
+            preloader.dataset.fichaReady = 'false';
+            preloader.querySelector('[data-page-preloader-default]')?.setAttribute('hidden', '');
+            preloader.querySelector('[data-page-preloader-ficha]')?.removeAttribute('hidden');
+            $(preloader).stop(true, true).show();
+
+            const clave = claveProyecto ? ` ${claveProyecto}` : '';
+            actualizarPreloaderFicha(8, `Consultando la cartera y las fuentes de${clave}.`, 'Consulta de información vigente');
+            [
+                [450, 24, 'Integrando datos técnicos y financieros.', 'Datos del proyecto'],
+                [1200, 43, 'Organizando fases, subfases y calendario.', 'Seguimiento del proyecto'],
+                [2400, 61, 'Preparando mapas y contexto territorial.', 'Ubicación e infraestructura'],
+                [4200, 76, 'Componiendo las láminas ejecutivas.', 'Presentación navegable'],
+                [7000, 86, 'Validando el orden y la navegación.', 'Preparación final']
+            ].forEach(([espera, valor, mensaje, etapa]) => {
+                temporizadoresFicha.push(window.setTimeout(() => actualizarPreloaderFicha(valor, mensaje, etapa), espera));
+            });
+        }
+
+        function completarPreloaderFicha() {
+            const preloader = document.getElementById('page-preloader');
+            if (!preloader) return;
+            temporizadoresFicha.forEach(window.clearTimeout);
+            temporizadoresFicha = [];
+            preloader.dataset.fichaReady = 'true';
+            actualizarPreloaderFicha(100, 'La ficha está lista para consulta, presentación y descarga.', 'Ficha generada');
+            window.setTimeout(() => ocultarPreloaderPrincipal(true), 280);
+        }
+
+        function ocultarPreloaderPrincipal(forzar) {
+            const preloader = document.getElementById('page-preloader');
+            if (!preloader) return;
+            const debeEsperar = preloader.dataset.holdUntilReady === 'true' && preloader.dataset.fichaReady !== 'true';
+            if (debeEsperar && forzar !== true) return;
+            $(preloader).stop(true, true).fadeOut('slow');
+        }
+
+        window.actualizarPreloaderFicha = actualizarPreloaderFicha;
+        window.mostrarPreloaderFicha = mostrarPreloaderFicha;
+        window.completarPreloaderFicha = completarPreloaderFicha;
 
         // ⏳ Ocultar preloader de página cuando todo (scripts, imágenes, etc.) ha cargado
         $(window).on('load', function () {
@@ -793,8 +939,11 @@
 
         // Fallback para producción: si algún recurso externo retrasa el evento load,
         // no dejamos el overlay visible indefinidamente.
-        window.setTimeout(ocultarPreloaderPrincipal, 3500);
-        window.addEventListener('pageshow', ocultarPreloaderPrincipal);
+        window.setTimeout(() => ocultarPreloaderPrincipal(true), document.getElementById('page-preloader')?.dataset.fichaPam === 'true' ? 15000 : 3500);
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) ocultarPreloaderPrincipal(true);
+            else ocultarPreloaderPrincipal();
+        });
 
         // ✅ Cuando el DOM está listo (solo estructura HTML, no scripts externos)
         $(document).ready(function () {
@@ -816,6 +965,15 @@
                 if ($(this).attr('id') === 'form-upload-files' || $(this).valid()) {
                     $('#page-preloader').show();
                 }
+            });
+
+            // La generación inicia desde el clic para cubrir también el tiempo de
+            // respuesta del servidor antes de que la nueva página pueda dibujarse.
+            $(document).on('click', 'a[href*="/InformePormenorizado/ProyectosIdentificados/Ficha/"]', function (event) {
+                if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || this.target === '_blank' || this.hasAttribute('download')) return;
+                const url = new URL(this.href, window.location.href);
+                const segmentos = url.pathname.split('/').filter(Boolean);
+                mostrarPreloaderFicha(decodeURIComponent(segmentos[segmentos.length - 1] || ''));
             });
 
             // Si hay errores en servidor, ocultar preloader y alertar
