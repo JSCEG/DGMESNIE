@@ -12,14 +12,15 @@
         ? "Cuadro 8.4.3 del PAMRNT 2026–2040."
         : $"Proyectos vigentes de la misma región en la cartera PAM/PAMRNT.";
     var alternativa1 = Model.Ficha.Alternativas.FirstOrDefault(x => x.Recomendada) ?? Model.Ficha.Alternativas.FirstOrDefault();
+    var esMX = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
     var fechaCorte = detalle?.FechaCorte ?? Model.Proyecto.FechaCorte ?? DateTime.Today;
     var fuentes = Model.Detalle?.Fuentes?.Count ?? 0;
     var versiones = Model.Detalle?.Historial?.Count ?? 0;
     var cambios = Model.Detalle?.Cambios?.Count ?? 0;
     var recursosVisuales = Model.Diagramas.ToList();
-    var bcTexto = Model.Ficha.RelacionBeneficioCosto > 0 ? Model.Ficha.RelacionBeneficioCosto.ToString("N2") : "En integración";
-    var beneficioTexto = Model.Ficha.BeneficioNetoUsdMiles.HasValue ? $"{Model.Ficha.BeneficioNetoUsdMiles:N0} miles USD" : "En integración";
-    var crecimientoTexto = Model.Ficha.CrecimientoDemandaPorcentaje.HasValue ? $"{Model.Ficha.CrecimientoDemandaPorcentaje:N2}%" : "En integración";
+    var bcTexto = Model.Ficha.RelacionBeneficioCosto > 0 ? Model.Ficha.RelacionBeneficioCosto.ToString("N2", esMX) : "En integración";
+    var beneficioTexto = Model.Ficha.BeneficioNetoUsdMiles.HasValue ? $"USD {Model.Ficha.BeneficioNetoUsdMiles.Value.ToString("N0", esMX)} mil" : "En integración";
+    var crecimientoTexto = Model.Ficha.CrecimientoDemandaPorcentaje.HasValue ? $"{Model.Ficha.CrecimientoDemandaPorcentaje.Value.ToString("N2", esMX)}%" : "En integración";
     var tipoProyecto = string.IsNullOrWhiteSpace(Model.Proyecto.TipoProyecto) ? Model.Ficha.TipoFicha : Model.Proyecto.TipoProyecto;
     var regionProyecto = string.IsNullOrWhiteSpace(Model.Proyecto.Gcr) ? "Región por definir" : Model.Proyecto.Gcr;
     var historialVersiones = (Model.Detalle?.Historial ?? new List<NSIE.Models.PamProyectoVersionResumen>())
@@ -114,8 +115,6 @@
         > 240 => "is-md",
         _ => string.Empty
     };
-    var esMX = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
-
     // ── Datos para gráficos ECharts (dona de cartera y anillo B/C) ──
     var datosDona = panorama
         .Where(p => (p.InversionMdp ?? 0) > 0)
@@ -133,7 +132,7 @@
     // Cuando la ficha es de un proyecto PAM que no está entre los 8 identificados,
     // la dona se muestra como referencia de cartera (sin porcentaje del proyecto).
     var proyectoEnDona = datosDona.Any(d => d.activo);
-    var donaCentroValor = proyectoEnDona ? $"{pctCartera.ToString("N1", inv)}%" : totalCartera.ToString("N0", inv);
+    var donaCentroValor = proyectoEnDona ? $"{pctCartera.ToString("N1", esMX)}%" : $"${totalCartera.ToString("N0", esMX)}";
     var donaCentroEtiqueta = proyectoEnDona ? "de la cartera" : "MDP · 8 proyectos";
 
     // ── Barra de tiempo hacia la fecha necesaria (parsea "abril de 2031") ──
@@ -323,7 +322,7 @@
                     <button type="button" class="pam-index__entry" data-goto-label="04"><span>Decisión ejecutiva</span><i></i><small>04</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="05"><span>@(Model.EsPamrntIdentificado ? "Panorama del PAMRNT 2026–2040" : "Contexto regional de cartera")</span><i></i><small>05</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="06"><span>Diagnóstico operativo</span><i></i><small>06</small></button>
-                    <button type="button" class="pam-index__entry" data-goto-label="06B"><span>Red de transmisión regional</span><i></i><small>06·red</small></button>
+                    <button type="button" class="pam-index__entry" data-goto-label="06B"><span>Ubicación territorial y red</span><i></i><small>06·red</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="07"><span>Pronóstico e impacto regional</span><i></i><small>07</small></button>
                     <button type="button" class="pam-index__entry" data-goto-label="08"><span>Riesgos y dependencias</span><i></i><small>08</small></button>
                     @if (Model.FichaEnriquecida)
@@ -430,10 +429,10 @@
                 <div class="pam-lamina-body">
                     <p class="pam-lead">@Model.Ficha.ResumenEjecutivo</p>
                     <div class="pam-metrics pam-metrics--four">
-                        <article><span>Inversión</span><strong>@Model.Ficha.InversionMdp.ToString("N3")</strong><small>MDP 2025</small></article>
+                        <article><span>Inversión</span><strong>$@Model.Ficha.InversionMdp.ToString("N3", esMX)</strong><small>MDP 2025</small></article>
                         <article><span>Fecha necesaria</span><strong>@Model.Ficha.FechaNecesaria</strong><small>necesaria y factible</small></article>
                         <article><span>Beneficio / Costo</span><strong>@bcTexto</strong><small>pesos por peso invertido</small></article>
-                        <article><span>Obras</span><strong>@Model.Ficha.TotalObras</strong><small>componentes asociados</small></article>
+                        <article><span>Obras</span><strong>@Model.Ficha.TotalObras.ToString("N0", esMX)</strong><small>componentes asociados</small></article>
                     </div>
                     <div class="pam-decision-strip"><strong>Recomendación</strong><span>@Model.Ficha.RecomendacionEjecutiva</span></div>
                     @if (pctTiempo.HasValue)
@@ -446,7 +445,7 @@
                             <div class="pam-timebar__track"><i style="width:@pctTiempo.Value.ToString("F1", inv)%"></i></div>
                             <div class="pam-timebar__scale">
                                 <span>Inicio del ejercicio · 2026</span>
-                                <span>@pctTiempo.Value.ToString("N0")% del plazo transcurrido</span>
+                                <span>@pctTiempo.Value.ToString("N0", esMX)% del plazo transcurrido</span>
                                 <span>@Model.Ficha.FechaNecesaria</span>
                             </div>
                         </div>
@@ -471,7 +470,7 @@
                 <div class="pam-lamina-body pam-panorama">
                     <table class="pam-table pam-table--portfolio">
                         <thead>
-                            <tr><th>Prioridad</th><th>Clave</th><th>Proyecto</th><th>Región</th><th>Inversión MDP</th></tr>
+                            <tr><th>Prioridad</th><th>Clave</th><th>Proyecto</th><th>Región</th><th>Inversión (MDP)</th></tr>
                         </thead>
                         <tbody>
                             @foreach (var item in panorama)
@@ -481,7 +480,7 @@
                                     <td>@item.ClavePem</td>
                                     <td>@item.Proyecto</td>
                                     <td>@item.Gcr</td>
-                                    <td>@(item.InversionMdp?.ToString("N3") ?? "—")</td>
+                                    <td>@(item.InversionMdp.HasValue ? $"${item.InversionMdp.Value.ToString("N3", esMX)}" : "—")</td>
                                 </tr>
                             }
                         </tbody>
@@ -491,7 +490,7 @@
                         <div id="pam-chart-dona" class="pam-chart-dona"></div>
                         @if (proyectoEnDona)
                         {
-                            <p class="pam-chart-note"><strong>@Model.Ficha.ClavePem</strong> representa el <strong>@pctCartera.ToString("N1")%</strong> de los @totalCartera.ToString("N3") MDP de los ocho proyectos identificados.</p>
+                            <p class="pam-chart-note"><strong>@Model.Ficha.ClavePem</strong> representa el <strong>@pctCartera.ToString("N1", esMX)%</strong> de los $@totalCartera.ToString("N3", esMX) MDP de los ocho proyectos identificados.</p>
                         }
                         else
                         {
@@ -529,12 +528,14 @@
                         </div>
                     </div>
                     <aside class="pam-diagnostico__mapa">
-                        <div class="pam-chart-caption">Gerencia de Control Regional</div>
+                        <div id="pam-mapa-caption" class="pam-chart-caption">Gerencia de Control Regional</div>
                         <div id="pam-mapa-gcr" class="pam-mapa-gcr" data-gcr="@regionProyecto"
-                             data-proyectos="@(Model.ImpactoRegional?.TotalProyectos ?? 0)"></div>
+                             data-proyectos="@(Model.ImpactoRegional?.TotalProyectos ?? 0)"
+                             data-project-id="@Model.Proyecto.ProyectoId"
+                             data-territorial-url="/DashboardProyectos/PamTerritorial/@Model.Proyecto.ProyectoId"></div>
                         <div class="pam-mapa-leyenda">
                             <span class="pam-mapa-leyenda__punto"></span>
-                            <strong>@regionProyecto</strong>
+                            <strong id="pam-mapa-resumen">@regionProyecto</strong>
                             <span id="pam-mapa-datos"></span>
                         </div>
                     </aside>
@@ -548,23 +549,42 @@
                 </div>
             </section>
 
-            @* ── 06B · Red de transmisión regional (capas GeoJSON del Geovisualizador) ── *@
-            <section class="pam-slide pam-slide--content" data-slide data-label="Red regional" data-screen-label="06B">
+            @* ── 06B · Ubicación territorial y red (capas del Dashboard de Proyectos) ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Ubicación y red" data-screen-label="06B">
                 <header class="pam-lamina-head">
                     <span class="pam-lamina-head__kicker">@seccion01</span>
-                    <span class="pam-lamina-head__aside">Red de transmisión regional</span>
+                    <span class="pam-lamina-head__aside">Ubicación territorial y red</span>
                 </header>
-                <h2 class="pam-lamina-title">Red de transmisión en la GCR @regionProyecto.</h2>
+                <h2 class="pam-lamina-title">Ubicación del proyecto y contexto de la Red Nacional de Transmisión.</h2>
                 <div class="pam-lamina-body pam-red">
-                    <div id="pam-mapa-red" class="pam-mapa-red" data-gcr="@regionProyecto"></div>
+                    <div class="pam-red__layout">
+                        <div id="pam-mapa-red" class="pam-mapa-red"
+                             data-gcr="@regionProyecto"
+                             data-project-id="@Model.Proyecto.ProyectoId"
+                             data-territorial-url="/DashboardProyectos/PamTerritorial/@Model.Proyecto.ProyectoId"></div>
+                        <aside class="pam-red__panel" aria-label="Capas y ubicaciones territoriales">
+                            <span class="pam-chart-caption">Capas visibles</span>
+                            <div class="pam-red__capas" role="group" aria-label="Capas del mapa">
+                                <button type="button" class="pam-red__capa is-active" data-pam-layer="proyecto" aria-pressed="true"><i class="pam-red__proyecto"></i><span>Ubicación PAM</span></button>
+                                <button type="button" class="pam-red__capa is-active" data-pam-layer="lineas" aria-pressed="true"><i class="pam-red__lt"></i><span>Líneas RNT</span></button>
+                                <button type="button" class="pam-red__capa is-active" data-pam-layer="subestaciones" aria-pressed="true"><i class="pam-red__se"></i><span>Subestaciones</span></button>
+                                <button type="button" class="pam-red__capa is-active" data-pam-layer="gcr" aria-pressed="true"><i class="pam-red__gcr"></i><span>Gerencias</span></button>
+                            </div>
+                            <div class="pam-red__ubicaciones-head">
+                                <span class="pam-chart-caption">Ubicaciones del proyecto</span>
+                                <strong id="pam-red-ubicacion-meta">Cargando…</strong>
+                            </div>
+                            <div id="pam-red-ubicaciones" class="pam-red__ubicaciones" aria-live="polite"></div>
+                        </aside>
+                    </div>
                     <div class="pam-red__leyenda">
-                        <span class="pam-red__item"><i class="pam-red__gcr"></i>GCR @regionProyecto</span>
+                        <span class="pam-red__item"><i class="pam-red__gcr"></i><span id="pam-red-gcr-label">GCR @regionProyecto</span></span>
                         <span id="pam-red-kv" class="pam-red__kv" aria-label="Niveles de tensión"></span>
                         <span class="pam-red__conteo" id="pam-red-conteo"></span>
                     </div>
                 </div>
                 <div class="pam-lamina-foot">
-                    <span>Red Nacional de Transmisión y subestaciones con nivel de tensión (GeoJSON oficial DGMESNIE · CDN). Diagramas unifilares del proyecto pendientes de integrar.</span>
+                    <span>Ubicación territorial PAM y capas de red del Dashboard de Proyectos · las ubicaciones validadas prevalecen sobre asociaciones sugeridas.</span>
                     <span class="pam-lamina-foot__meta">
                         <button type="button" class="pam-home" data-goto="1" title="Volver al índice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
                         06·red
@@ -604,25 +624,25 @@
                     {
                         var ir = Model.ImpactoRegional;
                         <div class="pam-impacto">
-                            <div class="pam-impacto__titulo">Contribución del proyecto en la GCR @ir.Region · @ir.TotalProyectos proyectos vigentes</div>
+                            <div class="pam-impacto__titulo">Contribución del proyecto en la GCR @ir.Region · @ir.TotalProyectos.ToString("N0", esMX) proyectos vigentes</div>
                             <div class="pam-impacto__barras">
                                 <div class="pam-impacto__barra">
                                     <span>Inversión</span>
                                     <div class="pam-impacto__track"><i style="width:@(Math.Clamp(ir.PorcentajeInversion, 0, 100).ToString("F1", inv))%"></i></div>
-                                    <strong>@ir.PorcentajeInversion.ToString("N1")%</strong>
-                                    <small>@ir.InversionProyecto.ToString("N0") de @ir.InversionRegion.ToString("N0") MDP</small>
+                                    <strong>@ir.PorcentajeInversion.ToString("N1", esMX)%</strong>
+                                    <small>$@ir.InversionProyecto.ToString("N0", esMX) de $@ir.InversionRegion.ToString("N0", esMX) MDP</small>
                                 </div>
                                 <div class="pam-impacto__barra">
                                     <span>Transmisión</span>
                                     <div class="pam-impacto__track"><i style="width:@(Math.Clamp(ir.PorcentajeKmC, 0, 100).ToString("F1", inv))%"></i></div>
-                                    <strong>@ir.PorcentajeKmC.ToString("N1")%</strong>
-                                    <small>@((ir.KmCProyecto ?? 0).ToString("N1")) de @ir.KmCRegion.ToString("N1") km-C</small>
+                                    <strong>@ir.PorcentajeKmC.ToString("N1", esMX)%</strong>
+                                    <small>@((ir.KmCProyecto ?? 0).ToString("N1", esMX)) de @ir.KmCRegion.ToString("N1", esMX) km-C</small>
                                 </div>
                                 <div class="pam-impacto__barra">
                                     <span>Transformación</span>
                                     <div class="pam-impacto__track"><i style="width:@(Math.Clamp(ir.PorcentajeMva, 0, 100).ToString("F1", inv))%"></i></div>
-                                    <strong>@ir.PorcentajeMva.ToString("N1")%</strong>
-                                    <small>@((ir.MvaProyecto ?? 0).ToString("N0")) de @ir.MvaRegion.ToString("N0") MVA</small>
+                                    <strong>@ir.PorcentajeMva.ToString("N1", esMX)%</strong>
+                                    <small>@((ir.MvaProyecto ?? 0).ToString("N0", esMX)) de @ir.MvaRegion.ToString("N0", esMX) MVA</small>
                                 </div>
                             </div>
                         </div>
@@ -689,7 +709,7 @@
                                 }
                                 <small>@alternativa.Nombre</small>
                                 <h3>@alternativa.Tecnologia</h3>
-                                <strong>@alternativa.InversionMdp.ToString("N3") <em>MDP 2025</em></strong>
+                                <strong>$@alternativa.InversionMdp.ToString("N3", esMX) <em>MDP 2025</em></strong>
                                 <p>@alternativa.Alcance</p>
                                 <div>@alternativa.Ventaja</div>
                             </article>
@@ -757,7 +777,7 @@
                             <div class="pam-benefit-ring"><span>Relación B/C</span><strong>@bcTexto</strong><small>@(alternativa1?.Nombre ?? "Alcance vigente")</small></div>
                         }
                         <div class="pam-economics__facts">
-                            <article><span>Inversión seleccionada</span><strong>@Model.Ficha.InversionMdp.ToString("N3") MDP</strong></article>
+                            <article><span>Inversión seleccionada</span><strong>$@Model.Ficha.InversionMdp.ToString("N3", esMX) MDP</strong></article>
                             <article><span>Beneficio neto</span><strong>@beneficioTexto</strong></article>
                             <p>@Model.Ficha.NotaEvaluacionEconomica</p>
                         </div>
@@ -944,7 +964,7 @@
                     <div class="pam-licitacion__datos pam-licitacion__datos--wide">
                         <article>
                             <span>Avance de ejecución</span>
-                            <strong>@(detalle?.PorcentajeAvanceEjecucion.HasValue == true ? $"{detalle.PorcentajeAvanceEjecucion:N2}%" : "—")</strong>
+                            <strong>@(detalle?.PorcentajeAvanceEjecucion.HasValue == true ? $"{detalle.PorcentajeAvanceEjecucion.Value.ToString("N2", esMX)}%" : "—")</strong>
                             <div class="pam-avance"><i style="width:@(Math.Clamp(detalle?.PorcentajeAvanceEjecucion ?? 0, 0, 100).ToString("F1", inv))%"></i></div>
                         </article>
                         <article><span>FEO indicada (oficio SENER)</span><strong>@(string.IsNullOrWhiteSpace(detalle?.FeoIndicadaOficioSener) ? "—" : detalle.FeoIndicadaOficioSener)</strong></article>
@@ -975,31 +995,31 @@
                     <div class="pam-lamina-body pam-seguimiento-slide">
                         <div class="pam-seguimiento-kpis">
                             <article><span>Corte</span><strong>@seguimientoCorteFicha?.FechaCorte.ToString("dd MMM yyyy", esMX)</strong></article>
-                            <article><span>Unidades vinculadas</span><strong>@(seguimientoCorteFicha?.TotalUnidades ?? seguimientoFicha.Select(x => x.SeguimientoUnidadId).Distinct().Count())</strong></article>
-                            <article><span>Importe reportado</span><strong>@seguimientoImporteFicha.ToString("N3")</strong><small>MDP</small></article>
+                            <article><span>Unidades vinculadas</span><strong>@((seguimientoCorteFicha?.TotalUnidades ?? seguimientoFicha.Select(x => x.SeguimientoUnidadId).Distinct().Count()).ToString("N0", esMX))</strong></article>
+                            <article><span>Importe reportado</span><strong>$@seguimientoImporteFicha.ToString("N3", esMX)</strong><small>MDP</small></article>
                             <article><span>Cortes preservados</span><strong>@(Model.Detalle?.SeguimientoHistorial?.Count ?? 0)</strong></article>
                         </div>
 
                         <div class="pam-seguimiento-comparacion">
                             <div>
                                 <span>Avance programado</span>
-                                <strong>@(seguimientoProgramadoPromedio?.ToString("N1") ?? "—")%</strong>
+                                <strong>@(seguimientoProgramadoPromedio.HasValue ? seguimientoProgramadoPromedio.Value.ToString("N1", esMX) : "—")%</strong>
                                 <i><b style="width:@(Math.Clamp(seguimientoProgramadoPromedio ?? 0, 0, 100).ToString("F1", inv))%"></b></i>
                             </div>
                             <div class="is-real">
                                 <span>Avance real</span>
-                                <strong>@(seguimientoRealPromedio?.ToString("N1") ?? "—")%</strong>
+                                <strong>@(seguimientoRealPromedio.HasValue ? seguimientoRealPromedio.Value.ToString("N1", esMX) : "—")%</strong>
                                 <i><b style="width:@(Math.Clamp(seguimientoRealPromedio ?? 0, 0, 100).ToString("F1", inv))%"></b></i>
                             </div>
                             <aside>
                                 <span>Diferencia promedio</span>
-                                <strong>@(seguimientoProgramadoPromedio.HasValue && seguimientoRealPromedio.HasValue ? $"{seguimientoRealPromedio - seguimientoProgramadoPromedio:+0.0;-0.0;0.0} pp" : "Sin comparación")</strong>
+                                <strong>@(seguimientoProgramadoPromedio.HasValue && seguimientoRealPromedio.HasValue ? $"{(seguimientoRealPromedio.Value - seguimientoProgramadoPromedio.Value).ToString("+N1;-N1;N1", esMX)} pp" : "Sin comparación")</strong>
                                 <small>El seguimiento complementa la cartera maestra y conserva su fuente por corte.</small>
                             </aside>
                         </div>
 
                         <div class="pam-seguimiento-tabla">
-                            <div class="pam-seguimiento-tabla__head"><span>Unidad / fase</span><span>Inicio</span><span>Término</span><span>Avance real</span><span>Importe MDP</span></div>
+                            <div class="pam-seguimiento-tabla__head"><span>Unidad / fase</span><span>Inicio</span><span>Término</span><span>Avance real</span><span>Importe (MDP)</span></div>
                             @foreach (var registro in seguimientoMuestra)
                             {
                                 var avanceRegistro = registro.AvanceReal.HasValue
@@ -1012,8 +1032,8 @@
                                     <div><code>@Recortar(registro.CodigoUnico, 34)</code><strong>@registro.FaseEtiqueta</strong></div>
                                     <span>@(inicioRegistro?.ToString("MMM yyyy", esMX) ?? "—")</span>
                                     <span>@(terminoRegistro?.ToString("MMM yyyy", esMX) ?? (string.IsNullOrWhiteSpace(registro.FeoFactible) ? "—" : Recortar(registro.FeoFactible, 18)))</span>
-                                    <span>@(avanceRegistro?.ToString("N1") ?? "—")%</span>
-                                    <span>@(registro.ImporteMdp?.ToString("N3") ?? "—")</span>
+                                    <span>@(avanceRegistro.HasValue ? avanceRegistro.Value.ToString("N1", esMX) : "—")%</span>
+                                    <span>@(registro.ImporteMdp.HasValue ? $"${registro.ImporteMdp.Value.ToString("N3", esMX)}" : "—")</span>
                                 </article>
                             }
                         </div>
@@ -1321,9 +1341,9 @@
                                             <div class="pam-trace-chip">
                                                 <b>@c.CampoEtiqueta</b>
                                                 <span class="pam-trace-diff">
-                                                    <del title="@c.AntesLimpio">@c.AntesLimpio</del>
+                                                    <del title="@c.AntesFormateado">@c.AntesFormateado</del>
                                                     <i aria-hidden="true">→</i>
-                                                    <ins title="@c.DespuesLimpio">@c.DespuesLimpio</ins>
+                                                    <ins title="@c.DespuesFormateado">@c.DespuesFormateado</ins>
                                                 </span>
                                             </div>
                                         }
@@ -1376,7 +1396,16 @@
                             <i></i>
                             <b>gob.mx/sener</b>
                         </div>
-                        <div class="pam-back__barcode"></div>
+                        <div class="pam-back__barcode" aria-hidden="true">
+                            <svg viewBox="0 0 160 35" preserveAspectRatio="none" focusable="false">
+                                @for (var barraX = 0; barraX < 160; barraX += 15)
+                                {
+                                    <rect x="@barraX" y="0" width="2" height="35"></rect>
+                                    <rect x="@(barraX + 5)" y="0" width="1" height="35"></rect>
+                                    <rect x="@(barraX + 10)" y="0" width="3" height="35"></rect>
+                                }
+                            </svg>
+                        </div>
                         <div class="pam-back__code">SENER·PAMRNT·@Model.Ficha.ClavePem·@DateTime.Now.Year</div>
                     </div>
                     <div class="pam-back__qrblock">
