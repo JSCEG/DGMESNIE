@@ -15,39 +15,39 @@ function mostrarAyudaModulo(moduleInfo) {
             <div class="text-start">
                 <div class="mb-4">
                     <h6 class="border-bottom pb-2">
-                        <i class="fas fa-info-circle"></i> Descripción
+                        <i class="bi bi-info-circle"></i> Descripción
                     </h6>
                     <p>${moduleInfo.description}</p>
                 </div>
 
                 <div class="mb-4">
                     <h6 class="border-bottom pb-2">
-                        <i class="fas fa-tasks"></i> Funcionalidad
+                        <i class="bi bi-list-task"></i> Funcionalidad
                     </h6>
                     <p>${moduleInfo.functionality}</p>
                 </div>
 
                 <div class="mb-4">
                     <h6 class="border-bottom pb-2">
-                        <i class="fas fa-sync-alt"></i> Etapa del Ciclo
+                        <i class="bi bi-arrow-repeat"></i> Etapa del Ciclo
                     </h6>
                     <p>${moduleInfo.stage}</p>
                 </div>
 
                 <div class="mb-4">
                     <h6 class="border-bottom pb-2">
-                        <i class="fas fa-users-cog"></i> Roles
+                        <i class="bi bi-person-gear"></i> Roles
                     </h6>
                     <ul class="list-unstyled">
                         ${moduleInfo.roles.map(role =>
-            `<li><i class="fas fa-${role.icon}"></i> ${role.text}</li>`
+            `<li><i class="${Icono.clase(role.icon)}"></i> ${role.text}</li>`
         ).join('')}
                     </ul>
                 </div>
 
                 <div>
                     <h6 class="border-bottom pb-2">
-                        <i class="fas fa-check-double"></i> Orden en el Ciclo
+                        <i class="bi bi-check-all"></i> Orden en el Ciclo
                     </h6>
                     <p class="mb-0">
                         <span class="badge bg-warning">Paso ${moduleInfo.order.step}</span>
@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (header) {
         const helpButton = document.createElement('button');
         helpButton.className = 'btn btn-outline-light ms-2';
-        helpButton.innerHTML = '<i class="fas fa-question-circle"></i> Ayuda';
+        helpButton.innerHTML = '<i class="bi bi-question-circle"></i> Ayuda';
         helpButton.onclick = function () {
             const moduleInfo = document.querySelector('[data-module-info]');
             if (moduleInfo) {

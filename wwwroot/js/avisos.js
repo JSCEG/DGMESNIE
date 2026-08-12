@@ -49,10 +49,10 @@
         if (texto) cuerpo += escapar(texto);
 
         el.innerHTML =
-            '<i class="aviso__icono fas ' + ICONOS[tono] + '"></i>' +
+            '<i class="aviso__icono bi ' + ICONOS[tono] + '"></i>' +
             '<div class="aviso__cuerpo">' + cuerpo + '</div>' +
             '<button type="button" class="aviso__cerrar" aria-label="Cerrar">' +
-            '<i class="fas fa-xmark"></i></button>';
+            '<i class="bi bi-x-lg"></i></button>';
 
         el.querySelector('.aviso__cerrar').addEventListener('click', function () { quitar(el); });
         contenedor().appendChild(el);
@@ -91,7 +91,7 @@
                 '</div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>' +
                 '<div class="modal-sec__body">' +
                 (o.texto ? '<p class="mb-2">' + escapar(o.texto) + '</p>' : '') +
-                (o.nota ? '<p class="aviso aviso--atencion mb-0"><i class="aviso__icono fas fa-triangle-exclamation"></i>' +
+                (o.nota ? '<p class="aviso aviso--atencion mb-0"><i class="aviso__icono bi bi-exclamation-triangle"></i>' +
                           '<span class="aviso__cuerpo">' + escapar(o.nota) + '</span></p>' : '') +
                 '</div>' +
                 '<div class="modal-sec__foot">' +
