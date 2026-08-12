@@ -183,7 +183,7 @@ function renderDetail(filter, actividades, temas) {
                     <td><div class="track ${trackClass(t.estatus)}" style="width:100px"><span style="width:${t.avance || 0}%"></span></div><small class="muted">${t.avance || 0}%</small></td>
                     <td>
                         <span class="tabla-actions-cell">
-                            ${showReminder ? `<button type="button" class="tabla-action-btn" data-dashboard-reminder="${t.id}" title="Enviar recordatorio por correo"><i class="fa-solid fa-paper-plane"></i></button>` : ''}
+                            ${showReminder ? `<button type="button" class="tabla-action-btn" data-dashboard-reminder="${t.id}" title="Enviar recordatorio por correo"><i class="bi bi-send"></i></button>` : ''}
                             <button type="button" class="internal-button" data-dashboard-view="${t.id}" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem">Ver</button>
                         </span>
                     </td>

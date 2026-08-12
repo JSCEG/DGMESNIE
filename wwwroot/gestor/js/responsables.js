@@ -76,7 +76,7 @@ export function renderResponsables(actividades, temas) {
                 </ul>
                 <div style="margin-top: 1rem; border-top: 1px solid var(--borde); padding-top: 0.75rem; display: flex; justify-content: flex-end;">
                     <button class="internal-button btn-ver-reporte" data-resp="${escape(p)}" style="min-height: 32px; padding: 0.3rem 0.8rem; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 6px;">
-                        <i class="fa-solid fa-file-lines"></i> Ver reporte
+                        <i class="bi bi-file-earmark-text"></i> Ver reporte
                     </button>
                 </div>
             </div>`;

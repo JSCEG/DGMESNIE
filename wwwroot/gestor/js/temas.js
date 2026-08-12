@@ -82,7 +82,7 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
                     <div class="tema-card__head">
                         <h3>${escape(a.actividad)}</h3>
                         <span class="tema-card__head-actions">
-                            ${hasLink ? `<a href="${escape(a.ligaSharePoint)}" target="_blank" rel="noopener" class="tema-card__link-btn" title="Abrir enlace en SharePoint" style="display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-folder-open" style="font-size: 1.15rem; color: #b48934;"></i></a>` : ''}
+                            ${hasLink ? `<a href="${escape(a.ligaSharePoint)}" target="_blank" rel="noopener" class="tema-card__link-btn" title="Abrir enlace en SharePoint" style="display: inline-flex; align-items: center; justify-content: center;"><i class="bi bi-folder2-open" style="font-size: 1.15rem; color: #b48934;"></i></a>` : ''}
                             <span class="semaforo ${sem}" title="Semáforo"></span>
                         </span>
                     </div>
@@ -112,30 +112,30 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
                         <button type="button" class="tca-btn tca-view" data-id="${a.id}"
                             title="Ver detalle"
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(10,94,149,.08);color:#0a5e95;">
-                            <i class="fa-solid fa-eye"></i> Ver
+                            <i class="bi bi-eye"></i> Ver
                         </button>
                         ${(window.currentUser && window.currentUser.id === 1) ? `
                         <button type="button" class="tca-btn tca-edit" data-id="${a.id}"
                             title="Editar actividad"
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(155, 34, 71,.08);color:var(--g-acento, #9B2247);">
-                            <i class="fa-solid fa-pen-to-square"></i> Editar
+                            <i class="bi bi-pencil-square"></i> Editar
                         </button>
                         <button type="button" class="tca-btn tca-delete" data-id="${a.id}"
                             title="Eliminar actividad"
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(155, 34, 71,.08);color:#9B2247;">
-                            <i class="fa-solid fa-trash"></i> Eliminar
+                            <i class="bi bi-trash"></i> Eliminar
                         </button>
                         ` : ''}
                         <button type="button" class="tca-btn tca-email" data-id="${a.id}"
                             title="Compartir por correo institucional"
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(71,85,105,.08);color:var(--g-tinta-suave, #475569);">
-                            <i class="fa-solid fa-envelope"></i>
+                            <i class="bi bi-envelope"></i>
                         </button>
                         <!--
                         <button type="button" class="tca-btn tca-whatsapp" data-id="${a.id}"
                             title="Compartir por WhatsApp (incluye enlace al Gestor)"
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(37,211,102,.1);color:#128C7E;">
-                            <i class="fa-brands fa-whatsapp"></i>
+                            <i class="bi bi-whatsapp"></i>
                         </button>
                         -->
                     </div>
@@ -458,7 +458,7 @@ async function openCompartirCorreoModal(actividad) {
             <div style="display:flex;justify-content:flex-end;gap:10px;">
                 <button type="button" id="btn-cancelar-compartir" class="internal-button" style="min-height:36px;padding:.5rem 1rem;">Cancelar</button>
                 <button type="submit" id="btn-enviar-compartir" class="internal-button internal-button--primary" style="min-height:36px;padding:.5rem 1rem;display:inline-flex;align-items:center;gap:8px;">
-                    <i class="fa-solid fa-paper-plane"></i> Enviar correo
+                    <i class="bi bi-send"></i> Enviar correo
                 </button>
             </div>
         </form>`;
@@ -480,7 +480,7 @@ async function openCompartirCorreoModal(actividad) {
 
         const btnEnviar = document.getElementById('btn-enviar-compartir');
         const btnCancel = document.getElementById('btn-cancelar-compartir');
-        if (btnEnviar) { btnEnviar.disabled = true; btnEnviar.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...'; }
+        if (btnEnviar) { btnEnviar.disabled = true; btnEnviar.innerHTML = '<i class="bi bi-arrow-repeat bi-spin"></i> Enviando...'; }
         if (btnCancel) btnCancel.disabled = true;
 
         try {
@@ -494,12 +494,12 @@ async function openCompartirCorreoModal(actividad) {
                 const body = await res.json().catch(() => null);
                 throw new Error(body?.error || `Error ${res.status}`);
             }
-            if (btnEnviar) btnEnviar.innerHTML = '<i class="fa-solid fa-check"></i> ¡Enviado!';
+            if (btnEnviar) btnEnviar.innerHTML = '<i class="bi bi-check-lg"></i> ¡Enviado!';
             toast('Correo enviado correctamente.', 'ok');
             setTimeout(close, 1200);
         } catch (err) {
             toast(err.message || 'Error al enviar el correo', 'err');
-            if (btnEnviar) { btnEnviar.disabled = false; btnEnviar.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar correo'; }
+            if (btnEnviar) { btnEnviar.disabled = false; btnEnviar.innerHTML = '<i class="bi bi-send"></i> Enviar correo'; }
             if (btnCancel) btnCancel.disabled = false;
         }
     };
@@ -527,7 +527,7 @@ export function openActividadDetalle(a, temas) {
         timelineHtml = `
             <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:14px;border:1px solid rgba(155, 34, 71,0.06);margin-top:5px;margin-bottom:5px;">
                 <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:12px;display:flex;align-items:center;gap:6px;">
-                    <i class="fa-solid fa-route"></i> Línea del Tiempo / Secuencia de Temas
+                    <i class="bi bi-signpost-split"></i> Línea del Tiempo / Secuencia de Temas
                 </div>
                 <div style="position:relative;padding-left:22px;display:flex;flex-direction:column;gap:16px;">
                     <!-- Línea vertical -->
@@ -550,7 +550,7 @@ export function openActividadDetalle(a, temas) {
                                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                                     <span style="font-weight:700;font-size:0.82rem;color:var(--g-tinta, #1c1b1a);">${escape(t.tema)}</span>
                                     <span style="font-size:0.65rem;font-weight:700;padding:1px 5px;border-radius:4px;background:${t.estatus==='Concluida'?'rgba(14, 124, 90,0.1)':t.estatus==='En proceso'?'rgba(217,119,6,0.1)':t.estatus==='Vencida'?'rgba(155, 34, 71,0.1)':'rgba(111, 107, 102,0.1)'};color:${dotColor};">${escape(t.estatus)}</span>
-                                    ${isCurrentActive ? '<span style="font-size:0.62rem;font-weight:800;background:#9B2247;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;letter-spacing:0.05em;display:inline-flex;align-items:center;gap:3px;"><i class="fa-solid fa-play"></i> Tema Vigente</span>' : ''}
+                                    ${isCurrentActive ? '<span style="font-size:0.62rem;font-weight:800;background:#9B2247;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;letter-spacing:0.05em;display:inline-flex;align-items:center;gap:3px;"><i class="bi bi-play-fill"></i> Tema Vigente</span>' : ''}
                                 </div>
                                 
                                 <div style="font-size:0.75rem;color:var(--texto-suave);font-weight:500;">
@@ -634,7 +634,7 @@ export function openActividadDetalle(a, temas) {
             ${a.ligaSharePoint ? `
             <a href="${escape(a.ligaSharePoint)}" target="_blank" rel="noopener"
                style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;background:rgba(180,137,52,.1);color:#b48934;font-size:0.82rem;font-weight:700;text-decoration:none;align-self:flex-start;">
-                <i class="fa-solid fa-folder-open"></i> Abrir en SharePoint
+                <i class="bi bi-folder2-open"></i> Abrir en SharePoint
             </a>` : ''}
         </div>`;
 
@@ -733,7 +733,7 @@ export async function openActividadModal(actividad) {
             </div>
             <!-- Error Alert Area -->
             <div id="actividad-error-alert" style="display:none; color:var(--riesgo); background:rgba(155, 34, 71,0.06); border:1px solid rgba(155, 34, 71,0.15); border-radius:8px; padding:10px 14px; font-size:0.82rem; font-weight:600; margin-top:15px; margin-bottom:5px; align-items:center; gap:8px;">
-                <i class="fa-solid fa-triangle-exclamation" style="color:var(--riesgo);"></i>
+                <i class="bi bi-exclamation-triangle" style="color:var(--riesgo);"></i>
                 <span class="error-msg"></span>
             </div>
             <div class="form-actions">

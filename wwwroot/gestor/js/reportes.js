@@ -446,7 +446,7 @@ function slideAtencion(rows) {
                                         <strong>${escape(a.tema)}</strong>
                                         ${a.evidenciaUrl ? `
                                             <a href="${escape(a.evidenciaUrl)}" target="_blank" rel="noopener" class="slide-evidencia-link" title="Ver evidencia en SharePoint" style="margin-left: 6px; color: #b48934; display: inline-flex; align-items: center; text-decoration: none;">
-                                                <i class="fa-solid fa-folder-open"></i>
+                                                <i class="bi bi-folder2-open"></i>
                                             </a>
                                         ` : ''}
                                     </td>
@@ -765,7 +765,7 @@ function slideDashboardGraficos(acts, f) {
                                                     <br><small style="font-size:0.6rem; color:var(--texto-suave); font-weight:500;">${escape(parentAct?.actividad || '')}</small>
                                                     ${a.evidenciaUrl ? `
                                                         <a href="${escape(a.evidenciaUrl)}" target="_blank" rel="noopener" style="color: #b48934; margin-left: 3px; display: inline-flex; align-items: center; text-decoration: none;">
-                                                            <i class="fa-solid fa-folder-open" style="font-size: 0.65rem;"></i>
+                                                            <i class="bi bi-folder2-open" style="font-size: 0.65rem;"></i>
                                                         </a>
                                                     ` : ''}
                                                 </td>
@@ -1169,7 +1169,7 @@ function slideTema(tema, rows) {
                                     <strong>${escape(r.tema)}</strong>
                                     ${r.evidenciaUrl ? `
                                         <a href="${escape(r.evidenciaUrl)}" target="_blank" rel="noopener" class="slide-evidencia-link" title="Ver evidencia en SharePoint" style="margin-left: 6px; color: #b48934; display: inline-flex; align-items: center; text-decoration: none;">
-                                            <i class="fa-solid fa-folder-open"></i>
+                                            <i class="bi bi-folder2-open"></i>
                                         </a>
                                     ` : ''}
                                 </td>

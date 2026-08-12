@@ -142,7 +142,7 @@ export function renderAlertas(actividades, temas) {
             `;
 
             const stagesCount = al.act.etapas && al.act.etapas.length > 0
-                ? `<span class="badge-etapas" style="font-size:0.68rem;font-weight:700;color:var(--guinda);background:rgba(155, 34, 71,0.06);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;" title="Este tema tiene ${al.act.etapas.length} etapas"><i class="fa-solid fa-route" style="font-size:0.62rem;"></i> ${al.act.etapas.length} etapas</span>`
+                ? `<span class="badge-etapas" style="font-size:0.68rem;font-weight:700;color:var(--guinda);background:rgba(155, 34, 71,0.06);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;" title="Este tema tiene ${al.act.etapas.length} etapas"><i class="bi bi-signpost-split" style="font-size:0.62rem;"></i> ${al.act.etapas.length} etapas</span>`
                 : '';
 
             return `
@@ -159,7 +159,7 @@ export function renderAlertas(actividades, temas) {
                 <div class="alerta-actions" style="flex-shrink: 0; align-self: center;">
                     ${hasResponsable ? `
                         <button class="btn-recordatorio internal-button" data-act-id="${al.act.id}" title="Enviar recordatorio por correo" style="min-height: 32px; padding: 0.3rem 0.7rem; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 6px;">
-                            <i class="fa-solid fa-paper-plane"></i> Recordatorio
+                            <i class="bi bi-send"></i> Recordatorio
                         </button>
                     ` : ''}
                     <span class="chip">${al.tipo.replace(/-/g, ' ')}</span>
@@ -257,7 +257,7 @@ export async function confirmarYEnviarRecordatorio(tema, actividades) {
             if (btnCancel) btnCancel.disabled = true;
             if (btnConfirm) {
                 btnConfirm.disabled = true;
-                btnConfirm.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+                btnConfirm.innerHTML = '<i class="bi bi-arrow-repeat bi-spin"></i> Enviando...';
             }
 
             try {
@@ -278,7 +278,7 @@ export async function confirmarYEnviarRecordatorio(tema, actividades) {
 
                 // Show "Enviado!" success state
                 if (btnConfirm) {
-                    btnConfirm.innerHTML = '<i class="fa-solid fa-check"></i> ¡Enviado!';
+                    btnConfirm.innerHTML = '<i class="bi bi-check-lg"></i> ¡Enviado!';
                 }
                 toast('El recordatorio se ha enviado correctamente por correo.', 'ok');
                 

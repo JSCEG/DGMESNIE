@@ -687,7 +687,7 @@ async function enviarReporteSemanal() {
     const btn = document.getElementById('pres-enviar-semanal');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Enviando...';
+        btn.innerHTML = '<i class="bi bi-arrow-repeat bi-spin me-1"></i> Enviando...';
     }
 
     try {
@@ -766,7 +766,7 @@ async function enviarReporteSemanal() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-envelope me-1"></i> Enviar reporte semanal';
+            btn.innerHTML = '<i class="bi bi-envelope me-1"></i> Enviar reporte semanal';
         }
     }
 }

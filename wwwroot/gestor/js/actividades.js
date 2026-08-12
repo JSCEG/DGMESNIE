@@ -193,7 +193,7 @@ function renderEtapasDetailRow(t, colSpan) {
             : `Compromiso: ${fmtDate(e.fechaCompromiso)}`;
         const etapaCorr = Array.isArray(e.corresponsables) && e.corresponsables.length
             ? `<div style="font-size:0.74rem;color:#1e5b4f;display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;">
-                    <i class="fa-solid fa-users" style="font-size:.7rem;color:#b48934;margin-top:2px;"></i>
+                    <i class="bi bi-people" style="font-size:.7rem;color:#b48934;margin-top:2px;"></i>
                     <span><strong>Corresponsables:</strong> ${escape(e.corresponsables.map(c => c.nombre).join(', '))}</span>
                </div>`
             : '';
@@ -204,7 +204,7 @@ function renderEtapasDetailRow(t, colSpan) {
                     <div class="timeline-step-badge" style="display:inline-block; font-size:0.68rem; font-weight:700; padding: 2px 8px; border-radius: 6px; margin-bottom: 8px; background: ${badgeBg}; color: ${badgeColor};">${badgeText}</div>
                     <h5 style="margin: 0 0 6px 0; font-size: 0.82rem; font-weight: 700; color: var(--texto); font-family: Montserrat, sans-serif; line-height: 1.2;">${escape(e.nombre)}</h5>
                     <div style="font-size: 0.76rem; color: var(--texto-suave); display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                        <i class="fa-solid fa-user-check" style="font-size: 0.72rem; color: var(--guinda);"></i>
+                        <i class="bi bi-person-check" style="font-size: 0.72rem; color: var(--guinda);"></i>
                         <span style="font-weight: 500;">${escape(e.responsableNombre || 'Sin asignar')}</span>
                     </div>
                     ${etapaCorr}
@@ -223,7 +223,7 @@ function renderEtapasDetailRow(t, colSpan) {
         `;
     }).join(`
         <div class="timeline-connector" style="width: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-            <i class="fa-solid fa-chevron-right" style="font-size: 0.8rem; color: var(--guinda); opacity: 0.6;"></i>
+            <i class="bi bi-chevron-right" style="font-size: 0.8rem; color: var(--guinda); opacity: 0.6;"></i>
         </div>
     `);
 
@@ -231,7 +231,7 @@ function renderEtapasDetailRow(t, colSpan) {
         <tr class="etapas-detail-row" id="etapas-detail-${t.id}" style="display:none; background: rgba(155, 34, 71, 0.015);">
             <td colspan="${colSpan}" style="padding: 16px 24px; border-bottom: 1px solid rgba(155, 34, 71,0.08);">
                 <div style="font-weight: 700; font-size: 0.8rem; color: var(--guinda); text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; font-family: Montserrat, sans-serif; letter-spacing: 0.5px;">
-                    <i class="fa-solid fa-route" style="font-size: 0.9rem;"></i> Secuencia y Trazabilidad de Etapas (${t.etapas.length})
+                    <i class="bi bi-signpost-split" style="font-size: 0.9rem;"></i> Secuencia y Trazabilidad de Etapas (${t.etapas.length})
                 </div>
                 <div class="timeline-container" style="display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px 0; align-items: stretch;">
                     ${points}
@@ -364,12 +364,12 @@ export function renderTabla(temas, actividades, filters = {}) {
             const showReminder = t.estatus !== 'Concluida' && t.responsableId && typeof rest === 'number' && rest <= 7;
             const coEtapas = resumenParticipantesEtapas(t);
             const coText = coEtapas
-                ? `<br><small class="muted" title="${escape(coEtapas)}" style="font-size: 0.72rem; display: block; margin-top: 2px; color:#1e5b4f;"><i class="fa-solid fa-users" style="color:#b48934;"></i> Participan por etapa</small>`
+                ? `<br><small class="muted" title="${escape(coEtapas)}" style="font-size: 0.72rem; display: block; margin-top: 2px; color:#1e5b4f;"><i class="bi bi-people" style="color:#b48934;"></i> Participan por etapa</small>`
                 : '';
             
             const hasEtapas = t.etapas && t.etapas.length > 0;
             const expandBtn = hasEtapas 
-                ? `<button class="btn-toggle-etapas" data-id="${t.id}" style="background:none; border:none; padding: 2px 6px; cursor:pointer; font-size: 0.8rem; color: var(--guinda); display: inline-flex; align-items: center; margin-right: 4px;" title="Ver etapas"><i class="fa-solid fa-chevron-right" style="transition: transform 0.2s; display: inline-block;"></i></button>`
+                ? `<button class="btn-toggle-etapas" data-id="${t.id}" style="background:none; border:none; padding: 2px 6px; cursor:pointer; font-size: 0.8rem; color: var(--guinda); display: inline-flex; align-items: center; margin-right: 4px;" title="Ver etapas"><i class="bi bi-chevron-right" style="transition: transform 0.2s; display: inline-block;"></i></button>`
                 : '';
 
             const mainRow = `
@@ -392,17 +392,17 @@ export function renderTabla(temas, actividades, filters = {}) {
                     <td><span class="semaforo ${sem}"></span></td>
                     <td>
                         <span class="tabla-actions-cell">
-                            ${t.evidenciaUrl ? `<a href="${escape(t.evidenciaUrl)}" target="_blank" rel="noopener" class="tabla-link-btn" title="Abrir evidencia" style="margin-right: 8px; display: inline-flex; align-items: center;"><i class="fa-solid fa-folder-open" style="font-size: 1.15rem; color: #b48934;"></i></a>` : ''}
+                            ${t.evidenciaUrl ? `<a href="${escape(t.evidenciaUrl)}" target="_blank" rel="noopener" class="tabla-link-btn" title="Abrir evidencia" style="margin-right: 8px; display: inline-flex; align-items: center;"><i class="bi bi-folder2-open" style="font-size: 1.15rem; color: #b48934;"></i></a>` : ''}
                             <button class="tabla-action-btn" data-email="${t.id}" title="Enviar por correo" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
-                                <i class="fa-solid fa-envelope" style="font-size: 1.15rem; color: var(--g-acento, #9B2247);"></i>
+                                <i class="bi bi-envelope" style="font-size: 1.15rem; color: var(--g-acento, #9B2247);"></i>
                             </button>
                             ${showReminder ? `
                             <button class="tabla-action-btn" data-reminder="${t.id}" title="Enviar recordatorio por correo" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
-                                <i class="fa-solid fa-paper-plane" style="font-size: 1.1rem; color: var(--g-acento, #9B2247);"></i>
+                                <i class="bi bi-send" style="font-size: 1.1rem; color: var(--g-acento, #9B2247);"></i>
                             </button>` : ''}
                             <!--
                             <button class="tabla-action-btn" data-whatsapp="${t.id}" title="Enviar por WhatsApp" style="background: none; border: none; padding: 4px 8px; cursor: pointer; margin-right: 4px; display: inline-flex; align-items: center; border-radius: 4px; transition: background 0.2s;">
-                                <i class="fa-brands fa-whatsapp" style="font-size: 1.15rem; color: #128C7E;"></i>
+                                <i class="bi bi-whatsapp" style="font-size: 1.15rem; color: #128C7E;"></i>
                             </button>
                             -->
                             <button class="internal-button" style="min-height:32px;padding:.3rem .7rem;font-size:.78rem;margin-right: 4px;" data-view="${t.id}">Ver</button>
@@ -760,7 +760,7 @@ export async function openTemaModal(tema, actividades) {
             </div>
             <!-- Error Alert Area -->
             <div id="tema-error-alert" style="display:none; color:var(--riesgo); background:rgba(155, 34, 71,0.06); border:1px solid rgba(155, 34, 71,0.15); border-radius:8px; padding:10px 14px; font-size:0.82rem; font-weight:600; margin-top:15px; margin-bottom:5px; align-items:center; gap:8px;">
-                <i class="fa-solid fa-triangle-exclamation" style="color:var(--riesgo);"></i>
+                <i class="bi bi-exclamation-triangle" style="color:var(--riesgo);"></i>
                 <span class="error-msg"></span>
             </div>
             <div class="form-actions">
@@ -1057,9 +1057,9 @@ export async function openTemaModal(tema, actividades) {
                     <span style="font-weight: 700; font-size: 0.8rem; color: var(--guinda);">Etapa ${index + 1}</span>
                     ${canEdit ? `
                     <div style="display: flex; gap: 6px; align-items: center;">
-                        <button type="button" class="btn-move-up-etapa" title="Subir" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-arrow-up" style="font-size:0.8rem; color:var(--g-acento, #9B2247);"></i></button>
-                        <button type="button" class="btn-move-down-etapa" title="Bajar" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-arrow-down" style="font-size:0.8rem; color:var(--g-acento, #9B2247);"></i></button>
-                        <button type="button" class="btn-del-etapa" title="Eliminar" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="fa-solid fa-trash" style="font-size:0.8rem; color:var(--riesgo);"></i></button>
+                        <button type="button" class="btn-move-up-etapa" title="Subir" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="bi bi-arrow-up" style="font-size:0.8rem; color:var(--g-acento, #9B2247);"></i></button>
+                        <button type="button" class="btn-move-down-etapa" title="Bajar" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="bi bi-arrow-down" style="font-size:0.8rem; color:var(--g-acento, #9B2247);"></i></button>
+                        <button type="button" class="btn-del-etapa" title="Eliminar" style="background:none; border:none; padding: 2px; cursor:pointer;"><i class="bi bi-trash" style="font-size:0.8rem; color:var(--riesgo);"></i></button>
                     </div>
                     ` : ''}
                 </div>
@@ -1351,7 +1351,7 @@ export function openTemaDetalle(t, actividades) {
         etapasTimelineHtml = `
             <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:14px;border:1px solid rgba(155, 34, 71,0.06);margin-top:10px;">
                 <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:12px;display:flex;align-items:center;gap:6px;">
-                    <i class="fa-solid fa-route"></i> Secuencia y Trazabilidad de Etapas (${t.etapas.length})
+                    <i class="bi bi-signpost-split"></i> Secuencia y Trazabilidad de Etapas (${t.etapas.length})
                 </div>
                 <div style="position:relative;padding-left:22px;display:flex;flex-direction:column;gap:16px;">
                     <!-- Línea vertical -->
@@ -1374,7 +1374,7 @@ export function openTemaDetalle(t, actividades) {
                                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                                     <span style="font-weight:700;font-size:0.82rem;color:var(--g-tinta, #1c1b1a);">Etapa ${idx + 1}: ${escape(e.nombre)}</span>
                                     <span style="font-size:0.65rem;font-weight:700;padding:1px 5px;border-radius:4px;background:${isCompleted ? 'rgba(14, 124, 90,0.1)' : isActive ? 'rgba(217,119,6,0.1)' : 'rgba(111, 107, 102,0.1)'};color:${dotColor};">${escape(e.estatus)}</span>
-                                    ${isActive ? '<span style="font-size:0.62rem;font-weight:800;background:#9B2247;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;letter-spacing:0.05em;display:inline-flex;align-items:center;gap:3px;"><i class="fa-solid fa-play"></i> Etapa Activa</span>' : ''}
+                                    ${isActive ? '<span style="font-size:0.62rem;font-weight:800;background:#9B2247;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;letter-spacing:0.05em;display:inline-flex;align-items:center;gap:3px;"><i class="bi bi-play-fill"></i> Etapa Activa</span>' : ''}
                                 </div>
                                 
                                 <div style="font-size:0.75rem;color:var(--texto-suave);font-weight:500;">
@@ -1457,7 +1457,7 @@ export function openTemaDetalle(t, actividades) {
             ${t.evidenciaUrl ? `
             <a href="${escape(t.evidenciaUrl)}" target="_blank" rel="noopener"
                style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;background:rgba(180,137,52,.1);color:#b48934;font-size:0.82rem;font-weight:700;text-decoration:none;align-self:flex-start;margin-top:5px;">
-                <i class="fa-solid fa-folder-open"></i> Ver Evidencia
+                <i class="bi bi-folder2-open"></i> Ver Evidencia
             </a>` : ''}
         </div>`;
 
