@@ -243,8 +243,9 @@
         <sc-for list="{{ legendGroups }}" as="lgc" hint-placeholder-count="2">
           <div style="font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--dash-guinda);margin:{{ lgc.mt }} 0 8px">{{ lgc.title }}</div>
           <sc-for list="{{ lgc.items }}" as="lg" hint-placeholder-count="4">
-            <div onClick="{{ lg.onClick }}" style="display:flex;align-items:center;gap:9px;margin:0 -5px 3px;padding:2px 5px;border-radius:6px;cursor:{{ lg.cursor }};opacity:{{ lg.op }}" style-hover="background:var(--dash-papel)">
-              <span style="width:{{ lg.w }};height:{{ lg.h }};border-radius:{{ lg.r }};flex:none;background:{{ lg.color }};border:{{ lg.border }};box-sizing:border-box"></span>
+            <div onClick="{{ lg.onClick }}" class="dg-legend-row" style="display:flex;align-items:center;gap:9px;margin:0 -5px 3px;padding:2px 5px;border-radius:6px;cursor:{{ lg.cursor }};opacity:{{ lg.op }}" style-hover="background:var(--dash-papel)">
+              <sc-if value="{{ lg.esSwitch }}" hint-placeholder-val="{{ true }}"><span class="dg-switch{{ lg.swClass }}" title="{{ lg.swEstado }}" style="--dg-switch-color:{{ lg.swColor }}"><span class="dg-switch__bola"></span></span></sc-if>
+              <sc-if value="{{ lg.esMuestra }}" hint-placeholder-val="{{ false }}"><span style="width:{{ lg.w }};height:{{ lg.h }};border-radius:{{ lg.r }};flex:none;background:{{ lg.color }};border:{{ lg.border }};box-sizing:border-box"></span></sc-if>
               <span style="flex:1;min-width:0;font-size:11.5px;color:var(--dash-tinta-suave);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ lg.label }}</span>
               <sc-if value="{{ lg.hasCount }}" hint-placeholder-val="{{ false }}"><span style="font-size:9.5px;font-family:'IBM Plex Mono',monospace;color:var(--dash-gris-claro);flex:none">{{ lg.count }}</span></sc-if>
             </div>
@@ -1885,8 +1886,17 @@ class Component extends DCLogic {
       satelite: L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { subdomains:['0','1','2','3'], maxZoom:19 }),
       oscuro:   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19, crossOrigin:'anonymous' }),
     };
+    // El mapa base sigue al tema de la plataforma: si se entra en oscuro, se
+    // arranca con la base oscura, porque una teja clara a pantalla completa
+    // sobre el resto oscuro deslumbra. En cuanto el usuario elige una base a
+    // mano dejamos de seguirlo: su elección manda sobre el tema.
+    this._baseSeguirTema = true;
+    if (this._temaOscuro() && this.state.basemap === 'color') this.state.basemap = 'oscuro';
+
     this.bases[this.state.basemap].addTo(map);
-    map.getContainer().style.backgroundColor='#F4F0EA';
+    map.getContainer().style.backgroundColor = this.state.basemap === 'oscuro' ? '#111820' : '#F4F0EA';
+
+    this._vigilarTema();
 
     // Los permisos deben recibir el clic aun cuando el contorno del análisis
     // (pane draw) cubra la misma zona. También se usa para sus clústeres.
@@ -8034,7 +8044,22 @@ class Component extends DCLogic {
     });
   };
   toggleDatasetsMenu = () => this.setState({ menuOpen:this.state.menuOpen==='datasets'?null:'datasets', anaOpen:false, exportOpen:false, mobilePanel:null });
-  setBasemap = (key) => {
+  _temaOscuro = () => document.documentElement.getAttribute('data-bs-theme') === 'dark';
+
+  /* El botón de tema del shell cambia data-bs-theme en <html>. Aquí se escucha
+     ese cambio para mover la base del mapa con él, mientras el usuario no haya
+     elegido una base a mano. */
+  _vigilarTema = () => {
+    if (this._observadorTema) return;
+    this._observadorTema = new MutationObserver(() => {
+      if (!this._baseSeguirTema) return;
+      const quiere = this._temaOscuro() ? 'oscuro' : 'color';
+      if (this.state.basemap !== quiere) this._aplicarBasemap(quiere);
+    });
+    this._observadorTema.observe(document.documentElement, { attributes:true, attributeFilter:['data-bs-theme'] });
+  };
+
+  _aplicarBasemap = (key) => {
     if (this.state.basemap===key||!this.bases[key]) return;
     const current=this.bases[this.state.basemap];
     if(current) this.map.removeLayer(current);
@@ -8043,6 +8068,12 @@ class Component extends DCLogic {
     // re-stack data sobre el tile
     Object.values(this.groups).forEach(g => g.bringToFront && g.bringToFront());
     this.setState({ basemap:key });
+  };
+
+  setBasemap = (key) => {
+    // Elegida a mano: a partir de aquí el tema ya no la mueve.
+    this._baseSeguirTema = false;
+    this._aplicarBasemap(key);
   };
   // Restablece una sesión completa, no sólo el zoom: quita datasets, zona, resultados,
   // filtros, paneles y herramientas para volver al mismo mapa limpio del arranque.
@@ -8525,6 +8556,18 @@ class Component extends DCLogic {
       });
     }
     groups.forEach((g,i)=>{ g.mt = i===0 ? '0' : '12px'; });
+
+    /* Las filas que se pueden encender llevan interruptor; las que sólo
+       explican un símbolo del mapa se quedan con su muestra de color, porque
+       ahí no hay nada que apagar. El interruptor toma el color de la capa
+       cuando está encendido, así que sigue diciendo de qué color se pinta. */
+    groups.forEach(g => g.items.forEach(it => {
+      it.esSwitch = !!it.onClick;
+      it.esMuestra = !it.onClick;
+      it.swClass = it.active ? ' is-on' : '';
+      it.swColor = it.active ? it.color : 'var(--dash-linea-fuerte)';
+      it.swEstado = it.active ? 'Encendida' : 'Apagada';
+    }));
     return groups;
   }
 
