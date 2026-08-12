@@ -1,0 +1,811 @@
+/*
+ * ==========================================================================
+ * DASHBOARD-PROYECTOS.CSS — el tablero de planeación energética con el mapa
+ * --------------------------------------------------------------------------
+ * Estas reglas vivían en dos <style> dentro de Views/DashboardProyectos/
+ * Index.cshtml, un archivo de 874 KB. Salieron aquí para que el navegador las
+ * pueda cachear y para poder encontrarlas.
+ *
+ * Se quedó en la vista un tercer <style>, el de cuatro líneas que oculta
+ * .dg-boot: ese tiene que aplicar antes de que baje cualquier hoja externa,
+ * porque si no se ve el esqueleto parpadear antes del preloader.
+ *
+ * El orden de las reglas es el mismo que tenían.
+ * ==========================================================================
+ */
+
+/* --------------------------------------------------------------------------
+ * Paleta del tablero
+ * --------------------------------------------------------------------------
+ * Un solo lugar donde cambiar los colores de esta pantalla. Lo que tiene token
+ * de marca apunta al token; lo que no, se queda con su valor y su nombre.
+ *
+ * Esta hoja traía dos paletas locales con los mismos valores, --report-* y
+ * --pam-*, cada una repitiendo a mano lo que ya definía --sener-*. Las dos
+ * siguen existiendo porque hay unas sesenta reglas que las usan por nombre,
+ * pero ahora son alias de ésta: se cambia aquí y se mueven las tres.
+ *
+ * El bloque oscuro de abajo hace falta porque el tablero se quedaba claro
+ * cuando el resto de la plataforma cambiaba de tema: la cabecera, la leyenda
+ * y los paneles seguían en blanco sobre un cuerpo oscuro.
+ * -------------------------------------------------------------------------- */
+
+:root {
+    --dash-guinda: var(--sener-guinda, #9B2247);
+    --dash-guinda-dark: var(--sener-guinda-dark, #8E1F40);
+    --dash-dorado: var(--sener-dorado, #E0A12E);
+    --dash-verde: var(--sener-esmeralda, #0E8A6E);
+    --dash-cian: var(--sener-cian, #1E9CB8);
+
+    --dash-tinta: var(--sener-tinta, #1c1b1a);
+    --dash-gris: var(--sener-gris, #6F6B66);
+    --dash-gris-claro: var(--sener-gris-claro, #9A958E);
+    --dash-blanco: var(--sener-blanco, #ffffff);
+    --dash-papel: var(--sener-papel, #FAF8F5);
+    --dash-linea: var(--sener-linea, #ECE8E2);
+    --dash-linea-suave: var(--sener-linea-suave, #F0ECE6);
+
+    /* Sin equivalente en la marca */
+    --dash-linea-fuerte: #DCD6CE;   /* el borde que sí se ve sobre papel */
+    --dash-superficie-2: #F2F0ED;   /* fondo de zonas hundidas */
+    --dash-guinda-tenue: #FFF8FA;   /* fondo de la fila seleccionada */
+    --dash-alerta: #C96C1B;         /* ámbar de aviso, legible sobre blanco */
+    --dash-frio: #3C4859;           /* gris azulado de datos secundarios */
+    --dash-cian-oscuro: #1E6F86;
+    --dash-velo-rgb: 255, 255, 255;  /* el blanco de los velos y cristales */
+
+    /* Los que faltaban al tokenizar los style= del marcado */
+    --dash-dorado-soft: var(--sener-dorado-soft, #C9A24B);
+    --dash-dorado-oscuro: var(--sener-dorado-oscuro, #A57F2C);
+    --dash-tinta-suave: #3A3A3A;    /* texto secundario, más suave que la tinta */
+    --dash-dorado-tenue: #FFF8EA;   /* fondo de aviso en ámbar */
+    --dash-dorado-texto: #7A5D1D;   /* ámbar que sí se lee sobre ese fondo */
+    --dash-terracota: #9A3F27;
+    --dash-ciruela: #6B3654;
+}
+
+[data-bs-theme="dark"] {
+    /* El guinda de marca no se lee sobre fondo oscuro: los antetítulos
+       —«Capas», «Leyenda»— quedaban casi invisibles. Se aclara al mismo tono
+       que el shell usa en --shell-accent, para que las dos capas coincidan.
+       Sólo afecta al cromado; los colores de las capas del mapa no pasan por
+       aquí, siguen literales, porque un parque eólico es cian en los dos temas. */
+    --dash-guinda: #d4537e;
+    --dash-guinda-dark: #b8386a;
+    --dash-dorado: #d4ab52;
+    --dash-verde: #4ccfae;
+    --dash-cian: #58bcd4;
+
+    --dash-linea-fuerte: rgba(255, 255, 255, .16);
+    --dash-superficie-2: #241f2e;
+    --dash-guinda-tenue: rgba(212, 83, 126, .12);
+    --dash-alerta: #E5A85C;
+    --dash-frio: #a8b4c2;
+    --dash-cian-oscuro: #6fc3d8;
+    --dash-velo-rgb: 36, 31, 46;
+
+    --dash-tinta-suave: #cfc8c2;
+    --dash-dorado-tenue: rgba(224, 161, 46, .14);
+    --dash-dorado-texto: #e0b45e;
+    --dash-terracota: #d98a6e;
+    --dash-ciruela: #c489ab;
+}
+
+/* ----- del <style> 1 de la vista ----- */
+        /* Ocultar el footer de la plataforma */
+        footer.footer-snier {
+            display: none !important;
+        }
+
+        /* Ocultar el preloader por defecto de la plataforma */
+        #page-preloader {
+            display: none !important;
+        }
+
+        /* Estilo para que la sección main-content ocupe exactamente la pantalla completa debajo del header */
+        .main-content {
+            padding-top: 65px !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            padding-bottom: 0 !important;
+            height: 100vh !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+            margin-left: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            background: var(--dash-papel) !important;
+        }
+
+        /* El shell global crea un stacking context con isolation:isolate. Al abrir
+           el reporte se eleva únicamente este módulo por encima del header. */
+        html.dg-report-shell .main-content {
+            position: relative !important;
+            z-index: 2000 !important;
+        }
+
+        .dashboard-container-native {
+            position: relative;
+            width: 100% !important;
+            height: 100% !important;
+            overflow: hidden;
+            display: flex !important;
+            flex-direction: column !important;
+            flex: 1 1 auto !important;
+        }
+        
+        x-dc {
+            display: flex !important;
+            flex-direction: column !important;
+            width: 100% !important;
+            height: 100% !important;
+            flex: 1 1 auto !important;
+        }
+
+        /* Forzar a que el root de React y sus contenedores ocupen todo el alto disponible sin colapsar */
+        #dc-root {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            flex: 1 1 auto !important;
+        }
+
+        /* El runtime reemplaza x-dc por .sc-host. Tanto el host como el árbol React
+           deben participar en el flex; de otro modo Leaflet termina con height: 0. */
+        #dc-root > .sc-host,
+        #dc-root > .sc-host > :first-child {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            flex: 1 1 0% !important;
+        }
+        
+        /* Asegurar que Leaflet se dibuje bien sin cortes y con fuentes institucionales */
+        #dg-map-container,
+        .leaflet-container {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            font-family: 'Noto Sans', sans-serif !important;
+        }
+
+        .dg-report {
+          --report-guinda: var(--dash-guinda);
+          --report-guinda-dark: var(--dash-guinda-dark);
+          --report-dorado: var(--dash-dorado);
+          --report-verde: var(--dash-verde);
+          --report-tinta: var(--dash-tinta);
+          --report-gris: var(--dash-gris);
+          --report-gris-claro: var(--dash-gris-claro);
+          --report-papel: var(--dash-papel);
+          --report-linea: var(--dash-linea);
+          font-family: 'Noto Sans PAM', 'Noto Sans', sans-serif !important;
+          color: var(--report-tinta);
+          background: var(--report-papel);
+        }
+
+        .dg-report [style*="Patria"],
+        .dg-report__title,
+        .dg-report-section__title,
+        .dg-report-kpi__value {
+          font-family: 'Patria', Georgia, serif !important;
+        }
+
+        .dg-report-toolbar {
+          position: sticky;
+          top: 0;
+          z-index: 280;
+          min-height: 64px;
+          display: grid;
+          grid-template-columns: minmax(190px, auto) minmax(180px, 1fr) auto;
+          align-items: center;
+          gap: 14px;
+          padding: 10px 20px;
+          border-bottom: 1px solid var(--report-linea);
+          background: rgba(var(--dash-velo-rgb), .97);
+          box-shadow: 0 8px 24px rgba(var(--sener-tinta-rgb),.08);
+          backdrop-filter: blur(12px);
+        }
+
+        .dg-report-back,
+        .dg-report-action,
+        .dg-report-close {
+          min-height: 40px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border-radius: 7px;
+          padding: 0 14px;
+          font: 700 12px/1 'Noto Sans PAM', 'Noto Sans', sans-serif;
+          cursor: pointer;
+          transition: border-color .18s ease, color .18s ease, background .18s ease, transform .18s ease;
+        }
+
+        .dg-report-back {
+          justify-self: start;
+          border: 1px solid var(--report-guinda);
+          background: var(--report-guinda);
+          color: var(--dash-blanco);
+          box-shadow: 0 5px 14px rgba(var(--sener-guinda-rgb),.2);
+        }
+
+        .dg-report-back:hover { background: var(--report-guinda-dark); transform: translateY(-1px); }
+        .dg-report-back kbd {
+          padding: 2px 6px;
+          border: 1px solid rgba(var(--dash-velo-rgb), .45);
+          border-radius: 4px;
+          background: transparent;
+          color: inherit;
+          font: 600 9px/1 'Noto Sans PAM', sans-serif;
+        }
+
+        .dg-report-toolbar__identity { min-width: 0; }
+        .dg-report-toolbar__identity strong {
+          display: block;
+          overflow: hidden;
+          color: var(--report-guinda);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: .14em;
+          text-overflow: ellipsis;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+        .dg-report-toolbar__identity span { display:block;margin-top:3px;color:var(--report-gris);font-size:11px; }
+        .dg-report-toolbar__actions { display:flex;align-items:center;justify-content:flex-end;gap:7px; }
+        .dg-report-action { border:1px solid var(--dash-linea-fuerte);background:var(--dash-blanco);color:var(--dash-frio); }
+        .dg-report-action:hover { border-color:var(--report-guinda);color:var(--report-guinda);transform:translateY(-1px); }
+        .dg-report-action--primary { border-color:var(--report-guinda);background:var(--report-guinda);color:var(--dash-blanco); }
+        .dg-report-action--primary:hover { background:var(--report-guinda-dark);color:var(--dash-blanco); }
+        .dg-report-close { border:1px solid var(--dash-linea-fuerte);background:var(--dash-blanco);color:var(--report-guinda); }
+        .dg-report-close:hover { border-color:var(--report-guinda);background:var(--dash-guinda-tenue); }
+
+        .dg-report-fab {
+          position: fixed;
+          right: 18px;
+          bottom: 18px;
+          z-index: 340;
+          min-height: 46px;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0 16px;
+          border: 1px solid var(--report-guinda);
+          border-radius: 999px;
+          background: var(--report-guinda);
+          color: var(--dash-blanco);
+          font: 800 12px/1 'Noto Sans PAM', 'Noto Sans', sans-serif;
+          letter-spacing: .02em;
+          box-shadow: 0 12px 28px rgba(35, 32, 30, .24);
+          cursor: pointer;
+          transition: transform .18s ease, background .18s ease;
+        }
+
+        .dg-report-fab:hover {
+          background: var(--report-guinda-dark);
+          transform: translateY(-1px);
+        }
+
+        .dg-report-hero { position:relative;overflow:hidden;background:var(--dash-blanco);border-bottom:1px solid var(--report-linea); }
+        .dg-report-hero__logos { display:flex;align-items:center;gap:17px;margin-bottom:22px; }
+        .dg-report-hero__logos img:first-child { height:34px;width:auto; }
+        .dg-report-hero__logos img:last-child { height:28px;width:auto; }
+        .dg-report-hero__logos i { width:1px;height:30px;background:var(--dash-linea-fuerte); }
+        .dg-report__title { max-width:19ch;font-weight:700 !important;letter-spacing:-.015em !important; }
+
+        .dg-report-content { max-width:1080px !important;padding-top:30px !important; }
+        .dg-report-metrics { gap:14px !important; }
+        .dg-report-kpi {
+          min-height:132px;
+          padding:19px 20px 16px !important;
+          border:1px solid var(--report-linea) !important;
+          border-top:5px solid var(--report-dorado) !important;
+          border-radius:0 !important;
+          background:var(--dash-blanco);
+          box-shadow:none !important;
+        }
+        .dg-report-kpi__label { color:var(--report-gris) !important;font-size:10px !important;letter-spacing:.10em !important; }
+        .dg-report-kpi__value {
+          color:var(--report-guinda) !important;
+          max-width:100%;
+          min-width:0;
+          overflow-wrap:anywhere;
+          font-size:clamp(26px,2.7vw,34px) !important;
+          font-weight:700 !important;
+          font-family:"IBM Plex Mono",Consolas,"Courier New",monospace !important;
+        }
+
+        .dg-report-section {
+          padding:28px 30px !important;
+          border:1px solid var(--report-linea) !important;
+          border-radius:0 !important;
+          background:var(--dash-blanco);
+          box-shadow:none !important;
+        }
+        .dg-report-section__head {
+          padding-bottom:10px;
+          border-bottom:1px solid var(--report-linea);
+        }
+        .dg-report-section__marker { width:8px !important;height:8px !important;border-radius:50% !important; }
+        .dg-report-section__kicker { color:var(--report-guinda) !important;font-size:11px !important;letter-spacing:.14em !important; }
+        .dg-report-section__title { margin-top:15px;font-size:29px !important;font-weight:700 !important;line-height:1.08 !important; }
+        .dg-report-section__intro { max-width:90ch;font-size:13.5px !important;line-height:1.55 !important; }
+        .dg-report-map {
+          margin:18px 0 21px;
+          border:1px solid var(--report-linea);
+          background:var(--dash-papel);
+        }
+        .dg-report-map img {
+          display:block;
+          width:100%;
+          height:auto;
+          aspect-ratio:1.84/1;
+          object-fit:contain;
+          background:var(--dash-superficie-2);
+        }
+        .dg-report-map figcaption {
+          padding:9px 12px;
+          border-top:1px solid var(--report-linea);
+          color:var(--report-gris);
+          font-size:10.5px;
+          line-height:1.4;
+        }
+        .dg-report-map-gallery {
+          display:grid;
+          grid-template-columns:minmax(0,1fr);
+          gap:16px;
+          margin:18px 0 21px;
+        }
+        .dg-report-map__title {
+          padding:11px 12px 0;
+          color:var(--report-tinta);
+          font-family:"Patria",Georgia,serif;
+          font-size:17px;
+          font-weight:700;
+        }
+
+        .dg-report-table-wrap { overflow-x:auto;margin:15px 0 18px; }
+        .dg-report-table { width:100%;min-width:560px;border-collapse:collapse;color:var(--report-tinta);font-size:12px;font-weight:500; }
+        .dg-report-table th,
+        .dg-report-table td { padding:10px 12px;text-align:left;vertical-align:middle;border-bottom:1px solid var(--dash-linea-suave); }
+        .dg-report-table thead th {
+          border-bottom:3px solid var(--report-guinda);
+          background:var(--dash-blanco);
+          color:var(--report-guinda);
+          font-size:10px;
+          font-weight:800;
+          letter-spacing:.07em;
+          text-transform:uppercase;
+          white-space:nowrap;
+        }
+        .dg-report-table--gold thead th { border-bottom-color:var(--report-dorado);color:var(--dash-alerta); }
+        .dg-report-table tbody tr:nth-child(even) { background:rgba(250,248,245,.65); }
+        .dg-report-table tbody tr:hover { background:rgba(var(--sener-guinda-rgb),.05); }
+        .dg-report-table td:not(:first-child) {
+          font-variant-numeric:tabular-nums;
+          font-family:"IBM Plex Mono",Consolas,"Courier New",monospace;
+        }
+
+        .dg-report-chart-grid {
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:16px;
+          margin-top:18px;
+        }
+        .dg-report-section[data-report-key="demanda-pronostico"] .dg-report-chart-grid {
+          grid-template-columns:minmax(0,1fr);
+        }
+        .dg-report-chart-card {
+          min-width:0;
+          padding:18px 18px 14px;
+          border:1px solid var(--report-linea);
+          border-top:4px solid var(--report-dorado);
+          background:var(--dash-blanco);
+        }
+        .dg-report-chart-card__title {
+          color:var(--report-tinta);
+          font-family:"Patria",Georgia,serif;
+          font-size:19px;
+          font-weight:700;
+          line-height:1.15;
+        }
+        .dg-report-chart-card__subtitle {
+          min-height:32px;
+          margin:5px 0 10px;
+          color:var(--report-gris);
+          font-size:11px;
+          font-weight:600;
+          line-height:1.4;
+        }
+        .dg-report-chart-card img { display:block;width:100%;height:auto;aspect-ratio:720/290; }
+        .dg-report-chart-card__source {
+          margin-top:8px;
+          color:var(--report-gris-claro);
+          font-size:9px;
+          font-weight:700;
+          letter-spacing:.07em;
+          text-transform:uppercase;
+        }
+
+        .dg-report-footnote { border-top:1px solid var(--report-linea);padding-top:14px !important; }
+
+        /* Homologación del modal de envío (pam-envio-*): esta vista no tiene la clase
+           .pam-ficha-page, así que los tokens --pam-* de pam-ficha-presentacion.css no
+           existen aquí. Se declaran localmente para que el modal luzca consistente con
+           el sistema de diseño (antes el botón "Enviar" quedaba transparente por variables
+           sin resolver y sólo se veía al pasar el hover, que usa un color fijo). */
+        .pam-envio-modal {
+          --pam-guinda: var(--dash-guinda);
+          --pam-guinda-dark: var(--dash-guinda-dark);
+          --pam-dorado: var(--dash-dorado);
+          --pam-tinta: var(--dash-tinta);
+          --pam-gris: var(--dash-gris);
+          --pam-gris-claro: var(--dash-gris-claro);
+          --pam-crema: var(--dash-papel);
+          --pam-linea: var(--dash-linea);
+          --pam-linea-suave: var(--dash-linea-suave);
+          --pam-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+          font-family: 'Noto Sans PAM', 'Noto Sans', sans-serif;
+        }
+
+        @media (max-width: 900px) {
+          .dg-report-toolbar { grid-template-columns:auto 1fr;gap:8px;padding:9px 10px; }
+          .dg-report-toolbar__identity { display:none; }
+          .dg-report-toolbar__actions { min-width:0;overflow-x:auto;justify-content:flex-start; }
+          .dg-report-action { min-width:40px;padding:0 11px; }
+          .dg-report-action span { display:none; }
+          .dg-report-close span { display:none; }
+          .dg-report-back { padding:0 12px;white-space:nowrap; }
+          .dg-report-back kbd { display:none; }
+          .dg-report-section { padding:22px 18px !important; }
+          .dg-report-section__title { font-size:24px !important; }
+          .dg-report-chart-grid { grid-template-columns:1fr; }
+          .dg-report-chart-card { padding:15px 12px 12px; }
+          .dg-report-fab { right: 12px; bottom: 72px; min-height: 44px; padding: 0 14px; font-size: 11.5px; }
+        }
+    
+
+/* ----- del <style> 2 de la vista ----- */
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    .leaflet-container{font-family:'Noto Sans',sans-serif;background:var(--dash-superficie-2)}
+    .leaflet-popup-content-wrapper{border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);border-top:3px solid var(--dash-guinda)}
+    .leaflet-popup-content{margin:12px 14px;font-family:'Noto Sans',sans-serif}
+    .leaflet-bar a{color:var(--dash-tinta)}
+    .leaflet-draw-toolbar a{background-color:var(--dash-blanco)}
+    ::-webkit-scrollbar{width:9px;height:9px}
+    ::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18);border-radius:6px}
+    ::-webkit-scrollbar-track{background:transparent}
+    @keyframes dgFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    @keyframes dgSpin{to{transform:rotate(360deg)}}
+    @keyframes dgBar{0%{left:-45%;width:45%}50%{width:60%}100%{left:100%;width:45%}}
+    .dg-pulse{position:absolute;left:0;top:0}
+    .dg-pulse i{position:absolute;left:0;top:0;transform:translate(-50%,-50%);border-radius:50%;border:3px solid var(--c);box-sizing:border-box}
+    .dg-pulse i:nth-child(1){width:16px;height:16px;background:var(--c);opacity:.85}
+    .dg-pulse i:nth-child(2){width:16px;height:16px;animation:dgPulse 1.5s ease-out infinite}
+    .dg-pulse i:nth-child(3){width:16px;height:16px;animation:dgPulse 1.5s ease-out .75s infinite}
+    @keyframes dgPulse{0%{width:14px;height:14px;opacity:.9}100%{width:60px;height:60px;opacity:0}}
+    input:focus,select:focus{outline:2px solid rgba(var(--sener-guinda-rgb),.35);outline-offset:0}
+    /* Los controles de la barra del mapa no se comprimen: la barra hace scroll horizontal */
+    .dg-toolbar > *{flex:none}
+    .dg-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:8px 16px;
+      background:var(--dash-blanco);
+      border-bottom:1px solid var(--dash-linea);
+      box-shadow:0 1px 0 rgba(0,0,0,.02);
+      z-index:30;
+      flex:none;
+      flex-wrap:wrap;
+    }
+    .dg-brand{
+      display:flex;
+      align-items:center;
+      min-width:0;
+      flex:none;
+    }
+    .dg-brandtext{
+      min-width:0;
+      overflow:hidden;
+    }
+    .dg-title{
+      font-family:'Patria',Georgia,serif;
+      font-size:18px;
+      font-weight:700;
+      letter-spacing:-.01em;
+      line-height:1.1;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .dg-sub{
+      font-size:11px;
+      color:var(--dash-gris);
+      letter-spacing:.01em;
+      margin-top:1px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .dg-header-controls{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      flex:1 1 auto;
+      justify-content:center;
+    }
+    .dg-actions-right{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex:none;
+    }
+    .dg-headsearch{
+      position:relative;
+      width:150px;
+      min-width:140px;
+      display:flex;
+      align-items:center;
+    }
+    .dg-basemaps{
+      display:flex;
+      gap:2px;
+      background:var(--dash-papel);
+      border:1px solid var(--dash-linea);
+      border-radius:8px;
+      padding:2px;
+    }
+    .dg-basesep{
+      width:1px;
+      height:20px;
+      background:var(--dash-linea);
+    }
+    .dg-util{
+      display:flex;
+      align-items:center;
+      gap:5px;
+      padding:6px 10px;
+      border:1px solid var(--dash-linea);
+      background:var(--dash-blanco);
+      color:var(--dash-tinta);
+      border-radius:8px;
+      font-size:11.5px;
+      font-weight:600;
+      cursor:pointer;
+      font-family:inherit;
+      min-height:32px;
+    }
+    .dg-util:hover{
+      background:var(--dash-papel);
+    }
+    .dg-util[disabled]{
+      cursor:not-allowed;
+      opacity:.52;
+      background:var(--dash-superficie-2);
+    }
+    .dg-estado-boundary{
+      filter:drop-shadow(0 1px 1px rgba(0,0,0,.14));
+      transition:color .18s ease, weight .18s ease, opacity .18s ease;
+      stroke-linejoin:round;
+      stroke-linecap:round;
+    }
+    .dg-estado-boundary.dg-highlight{
+      filter:drop-shadow(0 1px 3px rgba(var(--sener-guinda-rgb),.28));
+    }
+    .dg-map-fullscreen{
+      position:fixed !important;
+      inset:0;
+      width:100vw !important;
+      height:100vh !important;
+      z-index:9999;
+    }
+    .dg-map-fullscreen .dg-map-canvas{
+      height:100% !important;
+    }
+    .dg-map-fullscreen-toggle{
+      position:absolute;
+      top:12px;
+      right:12px;
+      z-index:40;
+      width:36px;
+      height:36px;
+      border:1px solid var(--dash-linea);
+      border-radius:8px;
+      background:var(--dash-blanco);
+      color:var(--dash-tinta);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      box-shadow:0 8px 24px rgba(0,0,0,.16);
+    }
+    .dg-map-fullscreen-toggle:hover{
+      background:var(--dash-papel);
+      border-color:var(--dash-guinda);
+      color:var(--dash-guinda);
+    }
+    /* Los controles de Leaflet (zoom, escala) bajan para no quedar debajo de la barra de controles */
+    /* .leaflet-top override removed to show zoom controls +/- */
+    .dg-measure-tip{background:var(--dash-blanco);border:1px solid var(--dash-guinda);border-radius:6px;color:var(--dash-guinda);font-weight:700;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 7px}
+    .dg-market-tray{
+      position:absolute;left:0;right:0;bottom:0;z-index:26;height:270px;
+      display:flex;flex-direction:column;background:rgba(var(--dash-velo-rgb), .985);
+      border-top:1px solid var(--dash-linea-fuerte);box-shadow:0 -12px 34px rgba(var(--sener-tinta-rgb),.13);
+      animation:dgMarketUp .24s cubic-bezier(.2,.7,.2,1) both;
+      transition:height .24s cubic-bezier(.2,.7,.2,1)
+    }
+    .dg-map-stage{position:relative;flex:1;overflow:hidden}
+    .dg-map-canvas{position:absolute;inset:0;z-index:0;transition:height .24s cubic-bezier(.2,.7,.2,1)}
+    .dg-demand-region-focus,
+    .dg-demand-region-focus-halo{
+      pointer-events:none;vector-effect:non-scaling-stroke;
+      transform-box:fill-box;transform-origin:center
+    }
+    .dg-demand-region-focus{
+      filter:drop-shadow(0 0 7px rgba(var(--sener-guinda-rgb),.42));
+      animation:dgDemandRegionFill 1.7s ease-in-out 2
+    }
+    .dg-demand-region-focus-halo{
+      filter:drop-shadow(0 0 9px rgba(var(--sener-guinda-rgb),.34));
+      animation:dgDemandRegionHalo 1.7s ease-in-out 2
+    }
+    .leaflet-tooltip.dg-demand-region-label{
+      margin:0;padding:6px 10px;border:1px solid rgba(var(--dash-velo-rgb), .92);
+      border-radius:999px;background:var(--dash-guinda);color:var(--dash-blanco);
+      box-shadow:0 4px 16px rgba(54,15,29,.28);
+      font-size:10px;font-weight:800;letter-spacing:.025em;
+      line-height:1.15;pointer-events:none;white-space:nowrap
+    }
+    .leaflet-tooltip.dg-demand-region-label:before{display:none}
+    @keyframes dgDemandRegionFill{
+      0%,100%{fill-opacity:.24}
+      50%{fill-opacity:.42}
+    }
+    @keyframes dgDemandRegionHalo{
+      0%,100%{stroke-opacity:.22;stroke-width:10px}
+      50%{stroke-opacity:.62;stroke-width:18px}
+    }
+    @media (prefers-reduced-motion:reduce){
+      .dg-demand-region-focus,
+      .dg-demand-region-focus-halo{animation:none}
+    }
+    .dg-market-tray.is-expanded{height:clamp(390px,54vh,520px)}
+    @keyframes dgMarketUp{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+    .dg-market-tray__head{height:48px;display:flex;align-items:center;gap:10px;padding:7px 14px;border-bottom:1px solid var(--dash-linea);flex:none}
+    .dg-market-tray__body{display:grid;grid-template-columns:286px minmax(0,1fr);gap:18px;padding:12px 16px 10px;min-height:0;flex:1}
+    .dg-market-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start}
+    .dg-market-kpi{min-width:0;padding:9px 11px;background:var(--dash-papel);border:1px solid var(--dash-linea);border-radius:9px}
+    .dg-market-kpi:first-child{grid-column:1/-1}
+    .dg-market-chart{position:relative;min-width:0;min-height:0;border-left:1px solid var(--dash-linea-suave);padding-left:18px;display:flex;flex-direction:column}
+    .dg-market-plot{
+      position:relative;width:min(100%,1800px);min-height:0;aspect-ratio:20/3;
+      flex:0 1 auto;margin-inline:auto
+    }
+    .dg-market-chart svg{display:block;width:100%;height:100%;overflow:visible;touch-action:none}
+    .dg-market-chart line,.dg-market-chart polyline,.dg-market-chart circle{vector-effect:non-scaling-stroke}
+    .dg-market-chart__head{display:flex;align-items:flex-start;gap:10px;min-height:30px}
+    .dg-market-chart__legend{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px 10px;font-size:8.5px;font-weight:700;color:var(--dash-gris)}
+    .dg-market-chart__source{display:flex;align-items:center;gap:6px;margin-top:auto;min-width:0;font-size:8.5px;color:var(--dash-gris-claro)}
+    .dg-market-chart__source span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    @media (min-width:821px){
+      .dg-map-stage.has-market .dg-map-canvas{
+        bottom:auto!important;height:max(140px,calc(100% - 270px))!important
+      }
+      .dg-market-tray.is-expanded .dg-market-tray__body{
+        grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:10px
+      }
+      .dg-market-tray.is-expanded .dg-market-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .dg-market-tray.is-expanded .dg-market-kpi:first-child{grid-column:auto}
+      .dg-market-tray.is-expanded .dg-market-chart{
+        border-left:none;border-top:1px solid var(--dash-linea-suave);padding:10px 0 0
+      }
+      .dg-market-tray.is-expanded .dg-market-plot{
+        flex:0 0 auto;height:auto
+      }
+    }
+    @media (min-width:821px) and (min-height:650px){
+      .dg-map-stage.has-market.market-expanded .dg-map-canvas{
+        bottom:auto!important;
+        height:max(160px,calc(100% - clamp(390px,54vh,520px)))!important
+      }
+    }
+    .dg-market-tooltip{
+      position:absolute;top:12px;z-index:3;min-width:172px;padding:9px 10px;
+      transform:translateX(10px);pointer-events:none;color:var(--dash-blanco);background:rgba(var(--sener-tinta-rgb),.96);
+      border:1px solid rgba(var(--dash-velo-rgb), .14);border-radius:8px;box-shadow:0 8px 22px rgba(0,0,0,.24);
+      font:700 10px/1.35 'Noto Sans',sans-serif
+    }
+    .dg-market-tooltip.is-right{transform:translateX(calc(-100% - 10px))}
+    .dg-market-tooltip__row{display:grid;grid-template-columns:8px 1fr auto;align-items:center;gap:6px;margin-top:4px}
+    .dg-market-axis{position:absolute;inset:0;pointer-events:none;color:var(--dash-gris);font:700 10px/1 'Noto Sans',sans-serif}
+    .dg-market-axis__unit{position:absolute;left:8px;top:2px;font-weight:800}
+    .dg-market-axis__y{position:absolute;left:0;width:7.2%;text-align:right;transform:translateY(-50%)}
+    .dg-market-axis__temp-unit{position:absolute;right:4px;top:2px;color:var(--dash-alerta);font-weight:800}
+    .dg-market-axis__temp{position:absolute;right:3px;color:var(--dash-alerta);transform:translateY(-50%)}
+    .dg-market-axis__x{position:absolute;bottom:10px;white-space:nowrap}
+    .dg-market-axis__title{position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);font-size:9.5px}
+    .dg-market-expand{
+      height:32px;padding:0 11px;border:1px solid var(--dash-linea-fuerte);border-radius:8px;background:var(--dash-blanco);
+      color:var(--dash-gris);font:800 10px/1 'Noto Sans',sans-serif;cursor:pointer;white-space:nowrap
+    }
+    .dg-market-expand:hover{border-color:var(--dash-guinda);color:var(--dash-guinda);background:var(--dash-guinda-tenue)}
+    .dg-legend-toggle{
+      display:flex;align-items:center;gap:7px;height:32px;padding:0 11px;
+      border:1px solid var(--dash-linea-fuerte);border-radius:999px;background:rgba(var(--dash-velo-rgb), .96);
+      color:var(--dash-gris);box-shadow:0 4px 14px rgba(0,0,0,.10);
+      font:800 10px/1 'Noto Sans',sans-serif;cursor:pointer
+    }
+    .dg-legend-toggle:hover,
+    .dg-legend-toggle.is-active{border-color:var(--dash-guinda);color:var(--dash-guinda);background:var(--dash-guinda-tenue)}
+    .dg-market-select{min-width:218px;max-width:330px;height:34px;padding:0 34px 0 10px;border:1px solid var(--dash-linea-fuerte);border-radius:8px;background:var(--dash-blanco);color:var(--dash-tinta);font:700 11.5px/1 'Noto Sans',sans-serif}
+    .dg-market-tab{height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--dash-linea-fuerte);background:var(--dash-blanco);color:var(--dash-gris);font:800 10.5px/1 'Noto Sans',sans-serif;letter-spacing:.02em;cursor:pointer}
+    .dg-market-tab.is-active{border-color:var(--dash-guinda);background:var(--dash-guinda);color:var(--dash-blanco)}
+    .dg-market-metric{padding:5px 9px;border:1px solid var(--dash-linea-fuerte);border-radius:7px;background:var(--dash-blanco);color:var(--dash-gris);font:700 9.5px/1 'Noto Sans',sans-serif;cursor:pointer}
+    .dg-market-metric.is-active{border-color:var(--dash-cian);color:var(--dash-cian-oscuro);background:rgba(30,156,184,.08)}
+    /* ── Colapso intermedio (tablet / ventana angosta) antes del modo celular ── */
+    @media (max-width: 1180px){
+      .dg-utxt{display:none}
+      .dg-util{padding:9px 10px !important}
+    }
+    @media (max-width: 1080px){
+      .dg-brandtext{display:none !important}
+      .dg-branddiv{display:none !important}
+      .dg-brand{flex:0 0 auto !important}
+    }
+    @media (max-width: 900px){
+      .dg-basemaps{display:none !important}
+      .dg-basesep{display:none !important}
+      .dg-market-tray__body{grid-template-columns:230px minmax(0,1fr);gap:12px}
+      .dg-market-tray__head{flex-wrap:wrap;height:auto;min-height:48px}
+      .dg-market-chart__head{flex-wrap:wrap}
+      .dg-market-chart__legend{width:100%;justify-content:flex-start}
+    }
+    /* ── Modo móvil (celular): paneles como hojas inferiores + barra de pestañas ── */
+    .dg-tabbar{display:none}
+    @media (max-width: 820px){
+      .dg-sub{display:none !important}
+      .dg-header{padding:9px 12px !important; gap:10px !important}
+      .dg-title{font-size:15px !important; white-space:normal !important; line-height:1.05 !important}
+      .dg-brand img{height:30px !important}
+      .dg-actions{gap:6px !important}
+      .dg-actions button{padding:8px 9px !important; font-size:0 !important}
+      .dg-actions button svg{width:17px !important; height:17px !important}
+      .dg-actions button.dg-keeptext{font-size:12px !important}
+      .dg-basemaps{display:none !important}
+      .dg-basesep{display:none !important}
+      .dg-headsearch{min-width:0 !important; max-width:none !important}
+      .dg-wmtxt{display:none}
+      .dg-toolbar{padding:6px 8px !important; gap:6px !important}
+      .dg-toolbar select{max-width:130px !important}
+      .dg-bottomright{bottom:64px !important; right:8px !important; left:auto !important}
+      .dg-legend{max-width:210px !important; max-height:30vh !important}
+      /* Objetivos táctiles ≥40px en controles del mapa y menús */
+      .dg-toolbar button, .dg-toolbar select{min-height:40px}
+      .dg-anadrop button{min-height:38px}
+      .dg-anadrop input{min-height:38px}
+      .dgp{position:fixed !important; left:0 !important; right:0 !important; top:auto !important; bottom:56px !important; width:auto !important; max-width:none !important; max-height:60vh !important; overflow-y:auto; border-radius:18px 18px 0 0 !important; transform:none !important; box-shadow:0 -10px 34px rgba(0,0,0,.22) !important; display:none !important}
+      .dgp.dgp-open{display:block !important}
+      .dgp .dg-draghdr{cursor:default !important}
+      .dg-anadrop{position:fixed !important; left:0 !important; right:0 !important; top:auto !important; bottom:56px !important; width:auto !important; transform:none !important; max-height:62vh !important; border-radius:18px 18px 0 0 !important; box-shadow:0 -10px 34px rgba(0,0,0,.22) !important}
+      .dg-detailtab{top:auto !important; bottom:120px !important}
+      .dg-tabbar{display:flex !important}
+      .dg-market-tray{position:fixed;height:min(52vh,360px);bottom:56px;overflow:auto}
+      .dg-market-tray__head{height:auto;min-height:48px;flex-wrap:wrap}
+      .dg-market-tray__body{display:flex;flex-direction:column;padding:10px 12px 14px}
+      .dg-market-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .dg-market-kpi:first-child{grid-column:auto}
+      .dg-market-chart{border-left:none;border-top:1px solid var(--dash-linea-suave);padding:10px 0 0}
+      .dg-market-tray.is-expanded{height:calc(100vh - 112px)}
+      .dg-market-tray.is-expanded .dg-market-plot{height:auto}
+      .dg-market-select{order:5;width:100%;max-width:none}
+    }
