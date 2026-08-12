@@ -499,6 +499,9 @@
       display:flex;
       align-items:center;
       justify-content:space-between;
+      /* Con todo arrimado a la izquierda la fila se pasaba de ancho y el último
+         botón quedaba cortado contra el borde. Que baje de renglón. */
+      flex-wrap:wrap;
       gap:12px;
       padding:8px 16px;
       background:var(--dash-blanco);
@@ -537,17 +540,15 @@
       overflow:hidden;
       text-overflow:ellipsis;
     }
-    /* Las herramientas del mapa crecían y se centraban, así que la cabecera
-       quedaba partida en tres: marca a la izquierda, herramientas en medio y
-       acciones a la derecha. Todo lo que se opera va junto a la derecha; a la
-       izquierda sólo el nombre de la pantalla. */
+    /* Las herramientas crecían y se centraban, y la cabecera quedaba partida en
+       tres. Van todas juntas y arrimadas a la izquierda, detrás del nombre de la
+       pantalla, para que se lea como una sola fila de trabajo. */
     .dg-header-controls{
       display:flex;
       align-items:center;
       gap:6px;
       flex:none;
-      margin-left:auto;
-      justify-content:flex-end;
+      justify-content:flex-start;
     }
     .dg-actions-right{
       display:flex;
@@ -664,7 +665,22 @@
       animation:dgMarketUp .24s cubic-bezier(.2,.7,.2,1) both;
       transition:height .24s cubic-bezier(.2,.7,.2,1)
     }
+    /* El riel se apoya en el borde izquierdo del escenario; el mapa empieza
+       después para que no le quede encima. */
     .dg-map-stage{position:relative;flex:1;overflow:hidden}
+
+    /* El mapa empieza donde acaba el riel. Va con el hijo directo, no con
+       .dg-map-canvas a secas: la regla original de esa clase trae inset:0 y
+       viene después, así que a igual especificidad ganaba ella y devolvía el
+       lienzo al borde. El relleno del escenario tampoco servía: los hijos
+       absolutos se colocan contra la caja de relleno y lo ignoran. */
+    .dg-map-stage > .dg-map-canvas{
+      left:var(--dash-riel);
+      /* Ese mismo div es .leaflet-container, y esa regla le pone
+         width:100% !important, que deja sin efecto el right:0 del inset. Hay
+         que darle el ancho ya descontado, y también con !important. */
+      width:calc(100% - var(--dash-riel)) !important;
+    }
     .dg-map-canvas{position:absolute;inset:0;z-index:0;transition:height .24s cubic-bezier(.2,.7,.2,1)}
     .dg-demand-region-focus,
     .dg-demand-region-focus-halo{
@@ -1068,7 +1084,7 @@
        Estaba abajo, en la misma orilla que la barra de la plataforma, y las dos
        competían por el mismo sitio. En bordes distintos ya no se estorban. */
     .dg-tabbar{
-      display:none;
+      display:flex;
       position:fixed;left:0;top:50%;transform:translateY(-50%);
       z-index:80;flex-direction:column;width:64px;
       max-height:min(70vh,420px);overflow-y:auto;
@@ -1106,7 +1122,25 @@
       .dg-actions button.dg-keeptext{font-size:12px !important}
       .dg-basemaps{display:none !important}
       .dg-basesep{display:none !important}
-      .dg-headsearch{min-width:0 !important; max-width:none !important}
+      /* El grupo de acciones medía 412 px dentro de 375 y traía flex:none, así
+         que no encogía ni bajaba: se cortaba contra el borde. Ahora reparte en
+         dos renglones con un reparto fijo, que si lo dejas suelto salen tres o
+         cuatro y la cabecera se come el mapa: el buscador toma un renglón
+         entero y los botones se juntan en el siguiente. */
+      /* Los dos grupos se disuelven: con sus cajas de por medio cada uno se
+         llevaba un renglón aunque cupieran juntos. Sueltos, los botones fluyen
+         y la cabecera usa los renglones que de verdad necesita. */
+      .dg-actions-right{display:contents}
+      .dg-headsearch{min-width:0 !important; max-width:none !important; flex:1 1 150px}
+      /* Medir y limpiar herramientas viven en otro contenedor, así que por muy
+         poco que ocupen siempre caían en un renglón para ellas solas. Con
+         display:contents el contenedor desaparece y sus botones fluyen con el
+         resto: dos renglones en vez de tres. */
+      .dg-header-controls{display:contents}
+      /* En 375 px el título se lleva el primer renglón entero para repetir lo
+         que la miga de pan de arriba ya dice. Fuera, y la cabecera baja de tres
+         renglones a dos. */
+      .dg-brand{display:none}
       .dg-wmtxt{display:none}
       .dg-toolbar{padding:6px 8px !important; gap:6px !important}
       .dg-toolbar select{max-width:130px !important}
