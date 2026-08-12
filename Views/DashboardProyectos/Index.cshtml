@@ -79,7 +79,7 @@
   <script src="/vendor/pam-export/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@@1.2.0/dist/xlsx.bundle.js"></script>
 </helmet>
-<div class="dg-boot" style="display:flex;flex-direction:column;height:100%;width:100%;overflow:hidden;background:var(--dash-papel);font-family:'Noto Sans',sans-serif;color:var(--dash-tinta);visibility:hidden">
+<div class="dg-boot{{ mapFullscreenClass }}" style="display:flex;flex-direction:column;height:100%;width:100%;overflow:hidden;background:var(--dash-papel);font-family:'Noto Sans',sans-serif;color:var(--dash-tinta);visibility:hidden">
   <!-- Cubre TODA la app durante el render server-side (incluye placeholders de sc-if,
        legendOn, capasOpen, modales, etc.) y se destapa cuando el componente confirma
        booting:false. Sin parpadeo de esqueletos ni leyenda antes del preloader. -->
@@ -200,7 +200,7 @@
   </div>
 </header>
 
-  <div ref="{{ mainRef }}" class="dg-map-stage{{ marketStageClass }}{{ mapFullscreenClass }}">
+  <div ref="{{ mainRef }}" class="dg-map-stage{{ marketStageClass }}">
     <div ref="{{ mapRef }}" class="dg-map-canvas"></div>
 
     <!-- PRELOADER institucional (arranque + capas pesadas, bloqueante) -->
@@ -239,7 +239,15 @@
     <!-- Leyenda flotante (abajo-derecha) -->
     <div class="dg-bottomright" style="position:absolute;right:{{ bottomRightOffset }};bottom:{{ bottomRightBottom }};z-index:20;display:flex;flex-direction:column;gap:9px;align-items:flex-end;transition:right .32s cubic-bezier(.2,.7,.2,1),bottom .24s ease">
       <sc-if value="{{ legendOn }}" hint-placeholder-val="{{ true }}">
-      <div class="dg-legend" style="background:rgba(var(--dash-velo-rgb), .97);border:1px solid var(--dash-linea);border-radius:11px;padding:12px 14px;box-shadow:0 6px 20px rgba(0,0,0,.10);min-width:184px;max-width:244px;max-height:56vh;overflow-y:auto;animation:dgFade .3s ease both">
+      <div class="dg-legend{{ legendClaseP }}" style="background:rgba(var(--dash-velo-rgb), .97);border:1px solid var(--dash-linea);border-radius:11px;box-shadow:0 6px 20px rgba(0,0,0,.10);min-width:184px;max-width:244px;animation:dgFade .3s ease both">
+        <button class="dg-legend-cab" onClick="{{ onLegendPlegar }}" title="{{ legendPista }}">
+          <span class="dg-legend-cab__txt">Leyenda</span>
+          <span style="flex:1"></span>
+          <span class="dg-legend-cab__num">{{ legendEncendidas }}</span>
+          <svg class="dg-legend-cab__flecha" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ legendFlecha }}"/></svg>
+        </button>
+        <sc-if value="{{ legendAbierta }}" hint-placeholder-val="{{ true }}">
+        <div class="dg-legend-cuerpo">
         <sc-for list="{{ legendGroups }}" as="lgc" hint-placeholder-count="2">
           <div style="font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--dash-guinda);margin:{{ lgc.mt }} 0 8px">{{ lgc.title }}</div>
           <sc-for list="{{ lgc.items }}" as="lg" hint-placeholder-count="4">
@@ -251,6 +259,8 @@
             </div>
           </sc-for>
         </sc-for>
+        </div>
+        </sc-if>
       </div>
       </sc-if>
       <sc-if value="{{ marketLegendToggleVisible }}" hint-placeholder-val="{{ false }}">
@@ -1583,6 +1593,10 @@ class Component extends DCLogic {
     ready: false, booting: true, bootMsg: 'Conectando con fuentes oficiales…',
     loading: false, loadingMsg: 'Cargando…', toast: '', layerBar: null, blocking: null,
     basemap: 'color', legendOn: true,
+    // La leyenda se puede plegar sin apagarla: ocupaba hasta 56vh sobre el
+    // mapa y a veces sólo estorba. Plegada deja su cabecera, que sigue
+    // diciendo cuántas capas hay encendidas.
+    legendPlegada: false,
     mapFullscreen: false,
     search: '', filtroEnt: '', filtroTec: '', filtroGer: '',
     measure: false, drawing: false,
@@ -8060,9 +8074,13 @@ class Component extends DCLogic {
   };
   toggleLayersMenu = () => {
     const opening=this.state.menuOpen!=='capas';
+    // En móvil el panel sólo se abre con la clase .dgp-open, que sale de
+    // mobilePanel; menuOpen no la pone. Este botón dejaba mobilePanel en null,
+    // así que en el teléfono no hacía nada. Se mueven los dos a la vez.
     this.setState({
       menuOpen:opening?'capas':null,
-      anaOpen:false,exportOpen:false,mobilePanel:null,
+      mobilePanel:opening?'capas':null,
+      anaOpen:false,exportOpen:false,
       marketLegendOpen:opening?false:this.state.marketLegendOpen
     });
   };
@@ -8548,12 +8566,18 @@ class Component extends DCLogic {
       });
     }
     const analyzedKeys=new Set((S.analysis&&S.analysis.ranKeys)||[]);
+    /* La leyenda explica lo que está pintado, no es un segundo catálogo. Antes
+       listaba las veintinueve capas y apagaba en gris las que no estaban
+       encendidas: diez filas muertas que además repetían, con otro nombre, lo
+       que ya hace «Capas disponibles» en la esquina de arriba. Ahora sólo salen
+       las que están en el mapa —o las que dejó un análisis—, y su interruptor
+       sirve para quitarlas de la vista. Para añadir se usa el otro panel. */
     const caps=this.LAYERS.filter(c=>!c.hidden&&
-      (!c.analysis || S.layers[c.key].on || analyzedKeys.has(c.key)) &&
+      (S.layers[c.key].on || analyzedKeys.has(c.key)) &&
       (c.type!=='graph'||interactive||S.layers[c.key].on)
     );
     groups.push({
-      title:interactive?'Capas · clic para encender/apagar':'Capas visibles en el mapa base',
+      title:interactive?'Capas en el mapa':'Capas visibles en el mapa base',
       items:caps.map(c=>{
         const v=S.layers[c.key];
         const analyzed=analyzedKeys.has(c.key);
@@ -8577,6 +8601,17 @@ class Component extends DCLogic {
           onClick:interactive?()=>this.toggleDataset(d.id):null
         }))
       });
+    }
+    // Un grupo sin filas deja un título huérfano: fuera.
+    for (let i=groups.length-1; i>=0; i--) if (!groups[i].items || !groups[i].items.length) groups.splice(i,1);
+    // Sin nada encendido la leyenda no tiene qué explicar, pero desaparecer sin
+    // más deja la duda de si se rompió: dice qué pasa y a dónde ir.
+    if (!groups.length && interactive) {
+      groups.push({ title:'Ninguna capa en el mapa', items:[{
+        color:'var(--dash-linea-fuerte)', label:'Enciende una en «Capas disponibles»',
+        w:'10px', h:'10px', r:'50%', border:'none',
+        hasCount:false, count:'', active:false, cursor:'default', op:1, onClick:null
+      }] });
     }
     groups.forEach((g,i)=>{ g.mt = i===0 ? '0' : '12px'; });
 
@@ -14329,6 +14364,13 @@ class Component extends DCLogic {
       // empalmarse; reaparece automáticamente al cerrar o ejecutar el análisis.
       legendOn: S.legendOn && !S.anaOpen &&
         (!S.marketOpen||S.marketLegendOpen),
+      legendPlegada: S.legendPlegada,
+      legendAbierta: !S.legendPlegada,
+      legendClaseP: S.legendPlegada ? ' is-plegada' : '',
+      legendFlecha: S.legendPlegada ? 'M6 9l6 6 6-6' : 'M18 15l-6-6-6 6',
+      legendPista: S.legendPlegada ? 'Mostrar la leyenda' : 'Plegar la leyenda',
+      legendEncendidas: String(this.LAYERS.filter(c=>!c.hidden && S.layers[c.key] && S.layers[c.key].on).length),
+      onLegendPlegar: () => this.setState({ legendPlegada: !this.state.legendPlegada }),
       marketLegendToggleVisible:!!S.marketOpen&&S.legendOn&&!S.anaOpen,
       marketLegendToggleClass:S.marketLegendOpen?' is-active':'',
       marketLegendToggleLabel:S.marketLegendOpen?'Ocultar leyenda':'Mostrar leyenda',
