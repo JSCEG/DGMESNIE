@@ -3,13 +3,13 @@
 // para que mande la superficie de la tarjeta (.chart-box) vía CSS.
 
 const PALETA_CLARA = {
-    guinda: '#8a0031',
+    guinda: '#9B2247',
     verde: '#1e5b4f',
     dorado: '#245b8f',
-    ok: '#027a48',
-    proceso: '#8a0031',
+    ok: '#0E7C5A',
+    proceso: '#9B2247',
     riesgo: '#a14d6a',
-    pendiente: '#667085',
+    pendiente: '#6F6B66',
     texto: '#243444',
     textoSuave: '#6c7a89',
     linea: '#d9e0e7',

@@ -5,11 +5,11 @@ export function renderGantt(actividades, temas) {
     if (!cont) return;
     const ts = temas.filter(t => t.fechaInicio && t.fechaCompromiso);
     if (!ts.length) {
-        cont.innerHTML = '<p style="padding:1rem;color:#667085">Sin temas con fechas de inicio y compromiso</p>';
+        cont.innerHTML = '<p style="padding:1rem;color:#6F6B66">Sin temas con fechas de inicio y compromiso</p>';
         return;
     }
 
-    const C = { ok: '#027a48', proceso: '#b54708', riesgo: '#b42318', pendiente: '#667085', guinda: '#9b2247' };
+    const C = { ok: '#0E7C5A', proceso: '#b54708', riesgo: '#b42318', pendiente: '#6F6B66', guinda: '#9b2247' };
 
     const data = [];
     ts.forEach(t => {

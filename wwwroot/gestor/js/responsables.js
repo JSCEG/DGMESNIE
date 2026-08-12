@@ -66,7 +66,7 @@ export function renderResponsables(actividades, temas) {
                                 <span>
                                     <span class="semaforo ${semaforo(t)}"></span> 
                                     ${isComp ? `<del>${escape(t.tema)}</del>` : escape(t.tema)}
-                                    ${isCo ? ' <span class="badge badge-co" style="font-size: 0.65rem; background: rgba(138, 0, 49, 0.08); color: var(--guinda); padding: 1px 4px; border-radius: 4px;">Co</span>' : ''}
+                                    ${isCo ? ' <span class="badge badge-co" style="font-size: 0.65rem; background: rgba(155, 34, 71, 0.08); color: var(--guinda); padding: 1px 4px; border-radius: 4px;">Co</span>' : ''}
                                 </span>
                                 <small>${fmtDate(t.fechaCompromiso)}</small>
                             </li>`;
@@ -202,9 +202,9 @@ function renderReporteResponsable(responsableName, ts, actividades, periodo) {
                     <div class="slide-kpis" style="grid-template-columns:repeat(6,minmax(0,1fr));">
                         ${miniKpi('Temas', r.total)}
                         ${miniKpi('Activos', r.activas.length)}
-                        ${miniKpi('Concluidos', r.concluidas.length, '#027a48')}
+                        ${miniKpi('Concluidos', r.concluidas.length, '#0E7C5A')}
                         ${miniKpi('Por vencer', r.porVencer.length, '#b48934')}
-                        ${miniKpi('Vencidos', r.vencidas.length, '#8a0031')}
+                        ${miniKpi('Vencidos', r.vencidas.length, '#9B2247')}
                         ${miniKpi('Avance', `${r.avanceProm}%`, '#1e5b4f')}
                     </div>
                     <div style="display:grid;grid-template-columns:34% 33% 33%;gap:14px;align-items:stretch;min-height:390px;">
@@ -275,7 +275,7 @@ function renderGanttResponsableSlide(responsableName, rows, periodo) {
             <div class="internal-slide__body" style="gap:10px;">
                 <div class="slide-kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));">
                     ${miniKpi('Con fechas', withDates)}
-                    ${miniKpi('Sin fecha', rows.length - withDates, '#667085')}
+                    ${miniKpi('Sin fecha', rows.length - withDates, '#6F6B66')}
                     ${miniKpi('Total', rows.length)}
                 </div>
                 <div class="resp-chart-card" style="height:480px;padding:10px;">
@@ -381,13 +381,13 @@ function miniKpi(label, value, color = '#1f2937') {
     
     const labelLower = label.toLowerCase();
     if (labelLower.includes('concluido') || labelLower.includes('activa')) {
-        bg = 'rgba(2, 122, 72, 0.04)';
-        borderLeft = '4px solid #027a48';
-        color = '#027a48';
+        bg = 'rgba(14, 124, 90, 0.04)';
+        borderLeft = '4px solid #0E7C5A';
+        color = '#0E7C5A';
     } else if (labelLower.includes('vencido')) {
-        bg = 'rgba(138, 0, 49, 0.04)';
-        borderLeft = '4px solid #8a0031';
-        color = '#8a0031';
+        bg = 'rgba(155, 34, 71, 0.04)';
+        borderLeft = '4px solid #9B2247';
+        color = '#9B2247';
     } else if (labelLower.includes('vencer')) {
         bg = 'rgba(180, 137, 52, 0.04)';
         borderLeft = '4px solid #b48934';
@@ -397,9 +397,9 @@ function miniKpi(label, value, color = '#1f2937') {
         borderLeft = '4px solid #1e5b4f';
         color = '#1e5b4f';
     } else if (labelLower.includes('activo')) {
-        bg = 'rgba(102, 112, 133, 0.04)';
-        borderLeft = '4px solid #667085';
-        color = '#667085';
+        bg = 'rgba(111, 107, 102, 0.04)';
+        borderLeft = '4px solid #6F6B66';
+        color = '#6F6B66';
     } else {
         bg = '#ffffff';
         borderLeft = '4px solid #b48934'; // Golden/primary brand left border
@@ -492,10 +492,10 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
     }).length;
     const activos = Math.max(0, rows.length - concluidos - vencidos - porVencer);
     const statusData = [
-        { name: 'Concluidos', y: concluidos, color: '#027a48' },
-        { name: 'Activos', y: activos, color: '#667085' },
+        { name: 'Concluidos', y: concluidos, color: '#0E7C5A' },
+        { name: 'Activos', y: activos, color: '#6F6B66' },
         { name: 'Por vencer', y: porVencer, color: '#b48934' },
-        { name: 'Vencidos', y: vencidos, color: '#8a0031' }
+        { name: 'Vencidos', y: vencidos, color: '#9B2247' }
     ].filter(x => x.y > 0);
 
     const byActivity = actividades.map(a => {
@@ -504,21 +504,21 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
     }).filter(x => x.y > 0).sort((a, b) => b.y - a.y).slice(0, 8);
 
     const roleData = [
-        { name: 'Responsable', y: rows.filter(t => rolEnTema(t, responsableName) === 'Responsable').length, color: '#8a0031' },
-        { name: 'Responsable de etapa', y: rows.filter(t => rolEnTema(t, responsableName) === 'Responsable de etapa').length, color: '#027a48' },
+        { name: 'Responsable', y: rows.filter(t => rolEnTema(t, responsableName) === 'Responsable').length, color: '#9B2247' },
+        { name: 'Responsable de etapa', y: rows.filter(t => rolEnTema(t, responsableName) === 'Responsable de etapa').length, color: '#0E7C5A' },
         { name: 'Corresponsable', y: rows.filter(t => rolEnTema(t, responsableName) === 'Corresponsable').length, color: '#b48934' }
     ].filter(x => x.y > 0);
     const dueData = [
-        { name: 'Vencidos', y: vencidos, color: '#8a0031' },
+        { name: 'Vencidos', y: vencidos, color: '#9B2247' },
         { name: '7 días', y: porVencer, color: '#b48934' },
         { name: '30 días', y: rows.filter(t => {
             const d = daysFromToday(t.fechaCompromiso);
             return t.estatus !== 'Concluida' && d > 7 && d <= 30;
         }).length, color: '#b48934' },
-        { name: 'Sin fecha', y: rows.filter(t => !t.fechaCompromiso).length, color: '#667085' }
+        { name: 'Sin fecha', y: rows.filter(t => !t.fechaCompromiso).length, color: '#6F6B66' }
     ].filter(x => x.y > 0);
     const priorityNames = ['Alta', 'Media', 'Baja'];
-    const priorityColors = { Alta: '#8a0031', Media: '#b48934', Baja: '#027a48' };
+    const priorityColors = { Alta: '#9B2247', Media: '#b48934', Baja: '#0E7C5A' };
     const priorityData = priorityNames.map(name => ({
         name,
         y: rows.filter(t => (t.prioridad || '').toLowerCase() === name.toLowerCase()).length,
@@ -535,7 +535,7 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
             animation: true
         },
         lang: { noData: 'Sin temas para graficar' },
-        noData: { style: { color: '#667085', fontWeight: '700' } }
+        noData: { style: { color: '#6F6B66', fontWeight: '700' } }
     };
 
     Highcharts.chart(statusCont, {
@@ -567,12 +567,12 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
         yAxis: { min: 0, allowDecimals: false, title: { text: null }, gridLineColor: '#edf2f7' },
         legend: { enabled: false },
         tooltip: { pointFormat: '<b>{point.y}</b> temas' },
-        plotOptions: { bar: { color: '#8a0031', borderRadius: 4, dataLabels: { enabled: true } } },
+        plotOptions: { bar: { color: '#9B2247', borderRadius: 4, dataLabels: { enabled: true } } },
         series: [{ name: 'Temas', data: byActivity.map(x => x.y) }]
     });
 
     const avgProgress = rows.length ? Math.round(rows.reduce((sum, t) => sum + Number(t.avance || 0), 0) / rows.length) : 0;
-    const progressColor = avgProgress >= 75 ? '#027a48' : avgProgress >= 40 ? '#b48934' : '#8a0031';
+    const progressColor = avgProgress >= 75 ? '#0E7C5A' : avgProgress >= 40 ? '#b48934' : '#9B2247';
 
     Highcharts.chart(progressCont, {
         ...baseOptions,
@@ -590,7 +590,7 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
             lineWidth: 0,
             tickWidth: 0,
             minorTickInterval: null,
-            labels: { y: 16, style: { fontSize: '10px', color: '#667085' } }
+            labels: { y: 16, style: { fontSize: '10px', color: '#6F6B66' } }
         },
         tooltip: { enabled: false },
         plotOptions: {
@@ -601,7 +601,7 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
                     useHTML: true,
                     format: `<div style="text-align:center">
                         <span style="font-size:34px;font-weight:900;color:${progressColor}">{y}%</span><br>
-                        <span style="font-size:10px;font-weight:800;color:#667085;">AVANCE</span>
+                        <span style="font-size:10px;font-weight:800;color:#6F6B66;">AVANCE</span>
                     </div>`
                 }
             }
@@ -671,7 +671,7 @@ function renderResponsableCharts(rows, actividades, responsableName = '') {
 
 function renderResponsableGantt(cont, rows) {
     const data = [];
-    const C = { ok: '#027a48', proceso: '#b48934', riesgo: '#8a0031', pendiente: '#667085' };
+    const C = { ok: '#0E7C5A', proceso: '#b48934', riesgo: '#9B2247', pendiente: '#6F6B66' };
     rows.filter(t => t.fechaInicio && t.fechaCompromiso)
         .sort((a, b) => (a.fechaInicio || '').localeCompare(b.fechaInicio || ''))
         .slice(0, 18)
@@ -696,7 +696,7 @@ function renderResponsableGantt(cont, rows) {
     }
 
     if (!data.length) {
-        cont.innerHTML = '<div style="height:100%;display:grid;place-items:center;color:#667085;font-weight:800;">Sin temas con fechas para mostrar</div>';
+        cont.innerHTML = '<div style="height:100%;display:grid;place-items:center;color:#6F6B66;font-weight:800;">Sin temas con fechas para mostrar</div>';
         return;
     }
 
@@ -712,7 +712,7 @@ function renderResponsableGantt(cont, rows) {
         navigator: { enabled: false },
         scrollbar: { enabled: data.length > 10 },
         rangeSelector: { enabled: false },
-        xAxis: [{ currentDateIndicator: { color: '#8a0031', label: { format: 'Hoy' } } }],
+        xAxis: [{ currentDateIndicator: { color: '#9B2247', label: { format: 'Hoy' } } }],
         yAxis: { labels: { style: { fontWeight: '700', fontSize: '10px', color: '#334155' } } },
         tooltip: {
             useHTML: true,

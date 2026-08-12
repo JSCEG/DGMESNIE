@@ -20,7 +20,7 @@ export function renderKanban(actividades, temas, actividadIdFilter = '') {
                         ? ` <span title="${escape(participantes)}" style="color:#1e5b4f;font-weight:700;">(+)</span>`
                         : '';
                     const stagesCount = t.etapas && t.etapas.length > 0
-                        ? `<span class="badge-etapas" style="font-size:0.68rem;font-weight:700;color:var(--guinda);background:rgba(138,0,49,0.06);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;margin-left:auto;" title="Este tema tiene ${t.etapas.length} etapas"><i class="fa-solid fa-route" style="font-size:0.62rem;"></i> ${t.etapas.length} etapas</span>`
+                        ? `<span class="badge-etapas" style="font-size:0.68rem;font-weight:700;color:var(--guinda);background:rgba(155, 34, 71,0.06);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;margin-left:auto;" title="Este tema tiene ${t.etapas.length} etapas"><i class="fa-solid fa-route" style="font-size:0.62rem;"></i> ${t.etapas.length} etapas</span>`
                         : '';
                     return `
                         <div class="kanban-card" draggable="true" data-id="${t.id}">

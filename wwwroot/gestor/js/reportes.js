@@ -241,11 +241,11 @@ function renderDonut(percent) {
     const v = Math.max(0, Math.min(100, Number(percent) || 0));
     const r = 46, c = 2 * Math.PI * r;
     const offset = c * (1 - v / 100);
-    const color = v >= 80 ? '#027a48' : v >= 40 ? '#b54708' : v > 0 ? '#b42318' : '#667085';
+    const color = v >= 80 ? '#0E7C5A' : v >= 40 ? '#b54708' : v > 0 ? '#b42318' : '#6F6B66';
     return `
         <div class="slide-donut">
             <svg viewBox="0 0 120 120" width="120" height="120">
-                <circle cx="60" cy="60" r="${r}" fill="none" stroke="rgba(15,23,42,0.10)" stroke-width="12"></circle>
+                <circle cx="60" cy="60" r="${r}" fill="none" stroke="rgba(28, 27, 26,0.10)" stroke-width="12"></circle>
                 <circle cx="60" cy="60" r="${r}" fill="none" stroke="${color}" stroke-width="12"
                     stroke-dasharray="${c}" stroke-dashoffset="${offset}"
                     transform="rotate(-90 60 60)" stroke-linecap="round"></circle>
@@ -261,16 +261,16 @@ function renderStatusStackedBar(c, p, i, pen) {
     return `
         <div class="slide-stack">
             <div class="slide-stack__bar">
-                ${seg(c, '#027a48', 'Concluidas')}
+                ${seg(c, '#0E7C5A', 'Concluidas')}
                 ${seg(p, '#b54708', 'En proceso')}
                 ${seg(i, '#b42318', 'Vencidas')}
-                ${seg(pen, '#667085', 'Pendientes')}
+                ${seg(pen, '#6F6B66', 'Pendientes')}
             </div>
             <div class="slide-stack__legend">
-                ${c ? `<span><i style="background:#027a48"></i>${c} Concluidas</span>` : ''}
+                ${c ? `<span><i style="background:#0E7C5A"></i>${c} Concluidas</span>` : ''}
                 ${p ? `<span><i style="background:#b54708"></i>${p} En proceso</span>` : ''}
                 ${i ? `<span><i style="background:#b42318"></i>${i} Vencidas</span>` : ''}
-                ${pen ? `<span><i style="background:#667085"></i>${pen} Pendientes</span>` : ''}
+                ${pen ? `<span><i style="background:#6F6B66"></i>${pen} Pendientes</span>` : ''}
             </div>
         </div>`;
 }
@@ -513,10 +513,10 @@ function slideResponsables(acts) {
                             <tr>
                                 <td><strong>${escape(r.p)}</strong></td>
                                 <td>${r.total}</td>
-                                <td><span style="font-weight:600; color:#027a48">${r.c}</span></td>
+                                <td><span style="font-weight:600; color:#0E7C5A">${r.c}</span></td>
                                 <td><span style="font-weight:600; color:#b54708">${r.prog}</span></td>
-                                <td><span style="font-weight:600; color:#667085">${r.pen}</span></td>
-                                <td>${r.vencidas ? `<span class="status-pill status-pill--issue" style="font-weight:600">${r.vencidas}</span>` : `<span style="color:#667085">0</span>`}</td>
+                                <td><span style="font-weight:600; color:#6F6B66">${r.pen}</span></td>
+                                <td>${r.vencidas ? `<span class="status-pill status-pill--issue" style="font-weight:600">${r.vencidas}</span>` : `<span style="color:#6F6B66">0</span>`}</td>
                                 <td><strong>${r.av}%</strong></td>
                             </tr>`).join('') : '<tr><td colspan="7" class="muted" style="text-align:center">Sin datos</td></tr>'}
                     </tbody>
@@ -570,10 +570,10 @@ function slideTemasDashboard(temas, acts) {
                                 </td>
                                 <td><span class="semaforo ${r.sem}"></span></td>
                                 <td>${r.total}</td>
-                                <td><span style="font-weight:600; color:#027a48">${r.c}</span></td>
+                                <td><span style="font-weight:600; color:#0E7C5A">${r.c}</span></td>
                                 <td><span style="font-weight:600; color:#b54708">${r.p}</span></td>
-                                <td><span style="font-weight:600; color:#667085">${r.pen}</span></td>
-                                <td>${r.i ? `<span class="status-pill status-pill--issue" style="font-weight:600">${r.i}</span>` : `<span style="color:#667085">0</span>`}</td>
+                                <td><span style="font-weight:600; color:#6F6B66">${r.pen}</span></td>
+                                <td>${r.i ? `<span class="status-pill status-pill--issue" style="font-weight:600">${r.i}</span>` : `<span style="color:#6F6B66">0</span>`}</td>
                                 <td>
                                     <div style="display:flex; align-items:center; gap:8px">
                                         <span style="font-weight:700; min-width:32px">${r.av}%</span>
@@ -640,36 +640,36 @@ function slideDashboardGraficos(acts, f) {
 
             <div class="internal-slide__body" style="padding: 10px 24px; gap: 12px; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
                 <!-- Narrative Paragraph -->
-                <div class="slide-narrative" style="font-family: var(--font-h), Montserrat, sans-serif; font-size: 0.82rem; line-height: 1.5; color: #2d3748; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                    Para <span style="font-weight: 700; color: #8a0031;">${escape(filterName === 'NACIONAL' ? 'el portafolio nacional' : filterName)}</span>, coordinamos <span style="font-weight: 700; color: #8a0031;">${s.total} temas</span> de <span style="font-weight: 700; color: #8a0031;">${temasCount} actividades</span>, alcanzando <span style="font-weight: 700; color: #8a0031;">${pctComplete}% de avance</span> (${s.complete} concluidos). La mayor carga se concentra en prioridad <span style="font-weight: 700; color: #8a0031;">${topPrioridad}</span> (${topPrioridadCount} tareas), con la mayoría de los temas <span style="font-weight: 700; color: #8a0031;">${formattedEstatus === 'Concluida' ? 'concluidos' : formattedEstatus === 'En proceso' ? 'en proceso' : formattedEstatus === 'Vencida' ? 'vencidos' : 'pendientes'}</span> (${topEstatusCount}).
+                <div class="slide-narrative" style="font-family: var(--font-h), Montserrat, sans-serif; font-size: 0.82rem; line-height: 1.5; color: #2d3748; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(28, 27, 26,0.06); box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                    Para <span style="font-weight: 700; color: #9B2247;">${escape(filterName === 'NACIONAL' ? 'el portafolio nacional' : filterName)}</span>, coordinamos <span style="font-weight: 700; color: #9B2247;">${s.total} temas</span> de <span style="font-weight: 700; color: #9B2247;">${temasCount} actividades</span>, alcanzando <span style="font-weight: 700; color: #9B2247;">${pctComplete}% de avance</span> (${s.complete} concluidos). La mayor carga se concentra en prioridad <span style="font-weight: 700; color: #9B2247;">${topPrioridad}</span> (${topPrioridadCount} tareas), con la mayoría de los temas <span style="font-weight: 700; color: #9B2247;">${formattedEstatus === 'Concluida' ? 'concluidos' : formattedEstatus === 'En proceso' ? 'en proceso' : formattedEstatus === 'Vencida' ? 'vencidos' : 'pendientes'}</span> (${topEstatusCount}).
                 </div>
 
                 <!-- KPI Cards Row -->
                 <div class="slide-kpi-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;">
                     <!-- Card 1 -->
-                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #8a0031; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
-                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #8a0031; line-height: 1;">${s.total}</span>
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(28, 27, 26,0.06); border-left: 4px solid #9B2247; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
+                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #9B2247; line-height: 1;">${s.total}</span>
                         <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
                             TOTAL DE<br>TEMAS
                         </div>
                     </div>
                     <!-- Card 2 -->
-                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #027a48; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
-                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #027a48; line-height: 1;">${s.complete}</span>
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(28, 27, 26,0.06); border-left: 4px solid #0E7C5A; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
+                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #0E7C5A; line-height: 1;">${s.complete}</span>
                         <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
                             TEMAS<br>CONCLUIDOS
                         </div>
                     </div>
                     <!-- Card 3 -->
-                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #b48934; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(28, 27, 26,0.06); border-left: 4px solid #b48934; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
                         <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #b48934; line-height: 1;">${pctComplete}%</span>
                         <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
                             AVANCE PROMEDIO<br>GLOBAL
                         </div>
                     </div>
                     <!-- Card 4 -->
-                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(15,23,42,0.06); border-left: 4px solid #667085; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
-                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #667085; line-height: 1;">${s.progress + s.issue}</span>
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(28, 27, 26,0.06); border-left: 4px solid #6F6B66; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 58px;">
+                        <span style="font-family: Montserrat, sans-serif; font-size: 1.65rem; font-weight: 800; color: #6F6B66; line-height: 1;">${s.progress + s.issue}</span>
                         <div style="font-family: Montserrat, sans-serif; font-size: 0.6rem; font-weight: 700; color: #6c7a89; text-transform: uppercase; text-align: right; line-height: 1.2;">
                             TEMAS<br>EN ATENCIÓN
                         </div>
@@ -682,16 +682,16 @@ function slideDashboardGraficos(acts, f) {
                     <!-- Column 1 (Left) -->
                     <div style="display: flex; flex-direction: column; gap: 12px; min-height: 0;">
                         <!-- Chart Box -->
-                        <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 215px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                            <h3 style="font-size: 10px; margin: 0 0 5px; color: #8a0031; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
-                                <span style="display: inline-block; width: 5px; height: 5px; background-color: #8a0031; border-radius: 50%;"></span>
+                        <div style="background: #fff; border: 1px solid rgba(28, 27, 26,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 215px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                            <h3 style="font-size: 10px; margin: 0 0 5px; color: #9B2247; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
+                                <span style="display: inline-block; width: 5px; height: 5px; background-color: #9B2247; border-radius: 50%;"></span>
                                 Estatus por Prioridad
                             </h3>
                             <div id="slide-dash-priority-chart" style="flex: 1; min-height: 0; width: 100%;"></div>
                         </div>
                         
                         <!-- Mini Table Box -->
-                        <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 165px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); overflow: hidden;">
+                        <div style="background: #fff; border: 1px solid rgba(28, 27, 26,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 165px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); overflow: hidden;">
                             <h3 style="font-size: 10px; margin: 0 0 8px; color: #b48934; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
                                 <span style="display: inline-block; width: 5px; height: 5px; background-color: #b48934; border-radius: 50%;"></span>
                                 Resumen por Prioridad
@@ -714,7 +714,7 @@ function slideDashboardGraficos(acts, f) {
         return `
                                                 <tr style="border-bottom: 1px solid #f0f2f5;">
                                                     <td style="padding: 5px 6px; font-weight: 600; color: #2d3748;">
-                                                        <span style="display:inline-block; width: 6px; height: 6px; background-color: ${PRIORIDAD_COLOR[p] || '#667085'}; border-radius: 50%; margin-right: 5px; vertical-align: middle;"></span>
+                                                        <span style="display:inline-block; width: 6px; height: 6px; background-color: ${PRIORIDAD_COLOR[p] || '#6F6B66'}; border-radius: 50%; margin-right: 5px; vertical-align: middle;"></span>
                                                         ${p}
                                                     </td>
                                                     <td style="padding: 5px 6px; text-align: right; font-weight: 700; color: #2d3748;">
@@ -733,7 +733,7 @@ function slideDashboardGraficos(acts, f) {
                     </div>
 
                     <!-- Column 2 (Center) -->
-                    <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 392px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); min-height: 0;">
+                    <div style="background: #fff; border: 1px solid rgba(28, 27, 26,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 392px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); min-height: 0;">
                         <h3 style="font-size: 10px; margin: 0 0 8px; color: #1e5b4f; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px; border-bottom: 2px solid #1e5b4f; padding-bottom: 4px;">
                             <span style="display: inline-block; width: 5px; height: 5px; background-color: #1e5b4f; border-radius: 50%;"></span>
                             Top 10 Temas en Atención
@@ -789,7 +789,7 @@ function slideDashboardGraficos(acts, f) {
                     <!-- Column 3 (Right) -->
                     <div style="display: flex; flex-direction: column; gap: 12px; min-height: 0;">
                         <!-- Chart Box 1 (Donut) -->
-                        <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                        <div style="background: #fff; border: 1px solid rgba(28, 27, 26,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                             <h3 style="font-size: 10px; margin: 0 0 5px; color: #1e5b4f; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
                                 <span style="display: inline-block; width: 5px; height: 5px; background-color: #1e5b4f; border-radius: 50%;"></span>
                                 Participación por Estatus
@@ -798,9 +798,9 @@ function slideDashboardGraficos(acts, f) {
                         </div>
                         
                         <!-- Chart Box 2 (Horizontal Workload Bar) -->
-                        <div style="background: #fff; border: 1px solid rgba(15,23,42,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                            <h3 style="font-size: 10px; margin: 0 0 5px; color: #667085; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
-                                <span style="display: inline-block; width: 5px; height: 5px; background-color: #667085; border-radius: 50%;"></span>
+                        <div style="background: #fff; border: 1px solid rgba(28, 27, 26,0.06); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                            <h3 style="font-size: 10px; margin: 0 0 5px; color: #6F6B66; text-transform: uppercase; font-family: Montserrat, sans-serif; font-weight: 700; display: flex; align-items: center; gap: 5px;">
+                                <span style="display: inline-block; width: 5px; height: 5px; background-color: #6F6B66; border-radius: 50%;"></span>
                                 Temas por Responsable
                             </h3>
                             <div id="slide-dash-workload-bar" style="flex: 1; min-height: 0; width: 100%;"></div>
@@ -1013,7 +1013,7 @@ function slideTreemap(temas, acts) {
             ${renderSlideHeader('Estructura jerárquica de actividades y temas')}
             <div class="internal-slide__body" style="gap: 0.5rem;">
                 <h2>Mapa de calor general (Treemap)</h2>
-                <div id="slide-treemap-container" style="width: 100%; height: 500px; background: #fff; border-radius: 8px; border: 1px solid rgba(15, 23, 42, 0.08); overflow: hidden;"></div>
+                <div id="slide-treemap-container" style="width: 100%; height: 500px; background: #fff; border-radius: 8px; border: 1px solid rgba(28, 27, 26, 0.08); overflow: hidden;"></div>
             </div>
             ${renderSlideFooter()}
         </section>`;
@@ -1033,7 +1033,7 @@ function initSlideTreemap(temas, actividades) {
         data.push({
             id: `a_${t.id}`,
             name: t.actividad,
-            color: 'rgba(138, 0, 49, 0.06)',
+            color: 'rgba(155, 34, 71, 0.06)',
             value: subTemas.length || 1
         });
     });
@@ -1108,11 +1108,11 @@ function initSlideTreemap(temas, actividades) {
                         style: {
                             fontSize: '13px',
                             fontWeight: 'bold',
-                            color: '#8a0031'
+                            color: '#9B2247'
                         }
                     },
                     borderWidth: 2,
-                    borderColor: '#8a0031'
+                    borderColor: '#9B2247'
                 }, {
                     level: 2,
                     dataLabels: {

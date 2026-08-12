@@ -108,7 +108,7 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
                     </div>
 
                     <!-- ── Barra de acciones ── -->
-                    <div class="tema-card__actions" style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 8px 14px 10px; border-top: 1px solid rgba(138,0,49,0.07); margin-top: 6px;">
+                    <div class="tema-card__actions" style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 8px 14px 10px; border-top: 1px solid rgba(155, 34, 71,0.07); margin-top: 6px;">
                         <button type="button" class="tca-btn tca-view" data-id="${a.id}"
                             title="Ver detalle"
                             style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(10,94,149,.08);color:#0a5e95;">
@@ -117,12 +117,12 @@ export function renderTemas(actividades, temas, filtro = '', responsableFilter =
                         ${(window.currentUser && window.currentUser.id === 1) ? `
                         <button type="button" class="tca-btn tca-edit" data-id="${a.id}"
                             title="Editar actividad"
-                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(138,0,49,.08);color:var(--g-acento, #8a0031);">
+                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(155, 34, 71,.08);color:var(--g-acento, #9B2247);">
                             <i class="fa-solid fa-pen-to-square"></i> Editar
                         </button>
                         <button type="button" class="tca-btn tca-delete" data-id="${a.id}"
                             title="Eliminar actividad"
-                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(192,34,42,.08);color:#c0222a;">
+                            style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:none;border-radius:7px;font-size:0.75rem;font-weight:600;cursor:pointer;transition:all .18s;background:rgba(155, 34, 71,.08);color:#9B2247;">
                             <i class="fa-solid fa-trash"></i> Eliminar
                         </button>
                         ` : ''}
@@ -292,7 +292,7 @@ function downloadActividadShareImage(actividad, temas) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(56, 56, 1088, 648);
-    ctx.fillStyle = '#8a0031';
+    ctx.fillStyle = '#9B2247';
     ctx.fillRect(56, 56, 1088, 104);
     ctx.fillStyle = '#b48934';
     ctx.fillRect(56, 160, 1088, 8);
@@ -320,7 +320,7 @@ function downloadActividadShareImage(actividad, temas) {
         y += 70;
     });
 
-    ctx.fillStyle = '#8a0031';
+    ctx.fillStyle = '#9B2247';
     ctx.font = '700 19px Arial';
     ctx.fillText(`${window.location.origin}/Gestor/Index`, 92, 668);
     ctx.fillStyle = '#6b7280';
@@ -378,8 +378,8 @@ function openCompartirWhatsAppModal(actividad, temas) {
 
     const html = `
         <div style="display:flex;flex-direction:column;gap:14px;">
-            <div style="border:1px solid rgba(138,0,49,.16);border-radius:10px;overflow:hidden;background:#fff;">
-                <div style="background:#8a0031;color:#fff;padding:12px 14px;font-weight:800;">SENER | Gestor de Actividades DGMESNIE</div>
+            <div style="border:1px solid rgba(155, 34, 71,.16);border-radius:10px;overflow:hidden;background:#fff;">
+                <div style="background:#9B2247;color:#fff;padding:12px 14px;font-weight:800;">SENER | Gestor de Actividades DGMESNIE</div>
                 <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
                     <tbody>
                         <tr><th style="width:34%;text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Actividad</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;font-weight:700;">${escape(actividad.actividad)}</td></tr>
@@ -391,7 +391,7 @@ function openCompartirWhatsAppModal(actividad, temas) {
                     </tbody>
                 </table>
             </div>
-            <textarea readonly style="width:100%;min-height:150px;border:1px solid rgba(138,0,49,.18);border-radius:8px;padding:10px;font-size:.82rem;resize:vertical;box-sizing:border-box;">${escape(text)}</textarea>
+            <textarea readonly style="width:100%;min-height:150px;border:1px solid rgba(155, 34, 71,.18);border-radius:8px;padding:10px;font-size:.82rem;resize:vertical;box-sizing:border-box;">${escape(text)}</textarea>
             <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
                 <button type="button" id="btn-descargar-wa-img" class="internal-button">Descargar imagen</button>
                 <a href="${waUrl}" target="_blank" rel="noopener" class="internal-button internal-button--primary" style="text-decoration:none;">Abrir WhatsApp</a>
@@ -424,7 +424,7 @@ async function openCompartirCorreoModal(actividad) {
                 Selecciona uno o más usuarios <strong>y/o</strong> escribe un correo externo para compartir el reporte de esta actividad.
             </p>
 
-            <div class="usuarios-check-list" style="max-height:180px;overflow-y:auto;border:1px solid rgba(138,0,49,.15);border-radius:10px;padding:10px;background:#fff;display:flex;flex-direction:column;gap:8px;box-shadow:inset 0 2px 4px rgba(0,0,0,.02);margin-bottom:14px;">
+            <div class="usuarios-check-list" style="max-height:180px;overflow-y:auto;border:1px solid rgba(155, 34, 71,.15);border-radius:10px;padding:10px;background:#fff;display:flex;flex-direction:column;gap:8px;box-shadow:inset 0 2px 4px rgba(0,0,0,.02);margin-bottom:14px;">
                 ${filteredUsers.map(u => `
                     <label style="display:flex;align-items:center;gap:8px;font-weight:500;font-size:0.85rem;color:var(--texto);cursor:pointer;margin:0;">
                         <input type="checkbox" name="usuariosIds" value="${u.idUsuario}" style="width:16px;height:16px;accent-color:var(--guinda);cursor:pointer;">
@@ -436,12 +436,12 @@ async function openCompartirCorreoModal(actividad) {
             <div style="margin-bottom:14px;">
                 <label style="font-size:0.82rem;font-weight:700;color:var(--texto);display:block;margin-bottom:5px;">Correo externo (opcional):</label>
                 <input type="email" id="correo-libre" placeholder="ejemplo@dominio.gob.mx"
-                    style="width:100%;padding:8px 12px;border:1px solid rgba(138,0,49,.2);border-radius:8px;font-size:0.85rem;box-sizing:border-box;">
+                    style="width:100%;padding:8px 12px;border:1px solid rgba(155, 34, 71,.2);border-radius:8px;font-size:0.85rem;box-sizing:border-box;">
             </div>
 
             <div style="margin-bottom:1.2rem;">
-                <div style="font-size:0.72rem;text-transform:uppercase;color:var(--g-acento, #8a0031);font-weight:700;margin-bottom:7px;">Detalle que se enviará</div>
-                <div style="overflow-x:auto;border:1px solid rgba(138,0,49,.16);border-radius:9px;background:#fff;">
+                <div style="font-size:0.72rem;text-transform:uppercase;color:var(--g-acento, #9B2247);font-weight:700;margin-bottom:7px;">Detalle que se enviará</div>
+                <div style="overflow-x:auto;border:1px solid rgba(155, 34, 71,.16);border-radius:9px;background:#fff;">
                     <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
                         <tbody>
                             <tr><th style="width:34%;text-align:left;padding:8px 10px;background:#f7ecf1;color:#6b1034;border-bottom:1px solid #eadde4;">Actividad</th><td style="padding:8px 10px;border-bottom:1px solid #eadde4;font-weight:700;">${escape(actividad.actividad)}</td></tr>
@@ -525,17 +525,17 @@ export function openActividadDetalle(a, temas) {
     let timelineHtml = '';
     if (childTemas.length > 0) {
         timelineHtml = `
-            <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:14px;border:1px solid rgba(138,0,49,0.06);margin-top:5px;margin-bottom:5px;">
-                <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+            <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:14px;border:1px solid rgba(155, 34, 71,0.06);margin-top:5px;margin-bottom:5px;">
+                <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:12px;display:flex;align-items:center;gap:6px;">
                     <i class="fa-solid fa-route"></i> Línea del Tiempo / Secuencia de Temas
                 </div>
                 <div style="position:relative;padding-left:22px;display:flex;flex-direction:column;gap:16px;">
                     <!-- Línea vertical -->
-                    <div style="position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:rgba(138,0,49,0.12);"></div>
+                    <div style="position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:rgba(155, 34, 71,0.12);"></div>
                     
                     ${childTemas.map((t, idx) => {
                         const tSem = t.estatus === 'Concluida' ? 'verde' : t.estatus === 'Vencida' ? 'rojo' : t.estatus === 'En proceso' ? 'amarillo' : 'gris';
-                        const dotColor = tSem === 'verde' ? '#027a48' : tSem === 'amarillo' ? '#d97706' : tSem === 'rojo' ? '#c0222a' : '#667085';
+                        const dotColor = tSem === 'verde' ? '#0E7C5A' : tSem === 'amarillo' ? '#d97706' : tSem === 'rojo' ? '#9B2247' : '#6F6B66';
                         const isCurrentActive = activeTema && t.id === activeTema.id;
                         
                         const dateText = t.fechaInicio && t.fechaCompromiso
@@ -543,14 +543,14 @@ export function openActividadDetalle(a, temas) {
                             : t.fechaCompromiso ? `Fecha compromiso: ${fmtDate(t.fechaCompromiso)}` : 'Sin fechas registradas';
                             
                         return `
-                            <div style="position:relative;display:flex;flex-direction:column;gap:3px;${isCurrentActive ? 'background:rgba(138,0,49,0.03);padding:6px 10px;border-radius:6px;border-left:3px solid var(--g-acento, #8a0031);margin-left:-10px;' : ''}">
+                            <div style="position:relative;display:flex;flex-direction:column;gap:3px;${isCurrentActive ? 'background:rgba(155, 34, 71,0.03);padding:6px 10px;border-radius:6px;border-left:3px solid var(--g-acento, #9B2247);margin-left:-10px;' : ''}">
                                 <!-- Dot -->
                                 <div style="position:absolute;left:${isCurrentActive ? '-20px' : '-22px'};top:4px;width:10px;height:10px;border-radius:50%;background:${dotColor};border:2px solid #fff;box-shadow:0 0 0 1px ${dotColor};z-index:1;"></div>
                                 
                                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                                    <span style="font-weight:700;font-size:0.82rem;color:var(--g-tinta, #0f172a);">${escape(t.tema)}</span>
-                                    <span style="font-size:0.65rem;font-weight:700;padding:1px 5px;border-radius:4px;background:${t.estatus==='Concluida'?'rgba(2,122,72,0.1)':t.estatus==='En proceso'?'rgba(217,119,6,0.1)':t.estatus==='Vencida'?'rgba(192,34,42,0.1)':'rgba(102,112,133,0.1)'};color:${dotColor};">${escape(t.estatus)}</span>
-                                    ${isCurrentActive ? '<span style="font-size:0.62rem;font-weight:800;background:#8a0031;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;letter-spacing:0.05em;display:inline-flex;align-items:center;gap:3px;"><i class="fa-solid fa-play"></i> Tema Vigente</span>' : ''}
+                                    <span style="font-weight:700;font-size:0.82rem;color:var(--g-tinta, #1c1b1a);">${escape(t.tema)}</span>
+                                    <span style="font-size:0.65rem;font-weight:700;padding:1px 5px;border-radius:4px;background:${t.estatus==='Concluida'?'rgba(14, 124, 90,0.1)':t.estatus==='En proceso'?'rgba(217,119,6,0.1)':t.estatus==='Vencida'?'rgba(155, 34, 71,0.1)':'rgba(111, 107, 102,0.1)'};color:${dotColor};">${escape(t.estatus)}</span>
+                                    ${isCurrentActive ? '<span style="font-size:0.62rem;font-weight:800;background:#9B2247;color:#fff;padding:1px 5px;border-radius:4px;text-transform:uppercase;letter-spacing:0.05em;display:inline-flex;align-items:center;gap:3px;"><i class="fa-solid fa-play"></i> Tema Vigente</span>' : ''}
                                 </div>
                                 
                                 <div style="font-size:0.75rem;color:var(--texto-suave);font-weight:500;">
@@ -570,56 +570,56 @@ export function openActividadDetalle(a, temas) {
 
     const html = `
         <div style="display:flex;flex-direction:column;gap:1rem;">
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(138,0,49,0.04);border-left:4px solid var(--g-acento, #8a0031);">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(155, 34, 71,0.04);border-left:4px solid var(--g-acento, #9B2247);">
                 <span class="semaforo ${sem}" style="width:12px;height:12px;flex-shrink:0;margin-top:0;"></span>
                 <div>
-                    <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);letter-spacing:.05em;">Actividad</div>
-                    <div style="font-weight:700;font-size:1rem;color:var(--g-tinta, #0f172a);">${escape(a.actividad)}</div>
+                    <div style="font-size:0.7rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);letter-spacing:.05em;">Actividad</div>
+                    <div style="font-weight:700;font-size:1rem;color:var(--g-tinta, #1c1b1a);">${escape(a.actividad)}</div>
                 </div>
-                <span style="margin-left:auto;font-size:0.78rem;font-weight:700;color:var(--g-acento, #8a0031);">${semLabels[sem] || sem}</span>
+                <span style="margin-left:auto;font-size:0.78rem;font-weight:700;color:var(--g-acento, #9B2247);">${semLabels[sem] || sem}</span>
             </div>
 
             ${a.descripcion ? `<p style="margin:0;font-size:0.87rem;color:var(--g-tinta-suave, #475569);line-height:1.55;">${escape(a.descripcion)}</p>` : ''}
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                 <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Responsable</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${escape(a.responsablePrincipal || '—')}</div>
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:3px;">Responsable</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #1c1b1a);">${escape(a.responsablePrincipal || '—')}</div>
                 </div>
                 <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Categoría</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${escape(a.categoria || '—')}</div>
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:3px;">Categoría</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #1c1b1a);">${escape(a.categoria || '—')}</div>
                 </div>
                 <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Inicio</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${fmtDate(a.fechaInicio)}</div>
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:3px;">Inicio</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #1c1b1a);">${fmtDate(a.fechaInicio)}</div>
                 </div>
                 <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Compromiso</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${fmtDate(a.fechaCompromiso)}</div>
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:3px;">Compromiso</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #1c1b1a);">${fmtDate(a.fechaCompromiso)}</div>
                 </div>
                 <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Prioridad · Estatus</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${escape(a.prioridad)} · ${escape(a.estatus)}</div>
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:3px;">Prioridad · Estatus</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #1c1b1a);">${escape(a.prioridad)} · ${escape(a.estatus)}</div>
                 </div>
                 <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
-                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:3px;">Temas</div>
-                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #0f172a);">${numTemas} tema${numTemas !== 1 ? 's' : ''}</div>
+                    <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:3px;">Temas</div>
+                    <div style="font-weight:600;font-size:0.87rem;color:var(--g-tinta, #1c1b1a);">${numTemas} tema${numTemas !== 1 ? 's' : ''}</div>
                 </div>
             </div>
 
             <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
-                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:6px;">Avance</div>
+                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:6px;">Avance</div>
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="flex:1;height:8px;border-radius:99px;background:rgba(138,0,49,.1);overflow:hidden;">
-                        <div style="height:100%;width:${av}%;border-radius:99px;background:${sem==='rojo'?'#c0222a':sem==='amarillo'?'#d97706':'#027a48'};transition:width .4s;"></div>
+                    <div style="flex:1;height:8px;border-radius:99px;background:rgba(155, 34, 71,.1);overflow:hidden;">
+                        <div style="height:100%;width:${av}%;border-radius:99px;background:${sem==='rojo'?'#9B2247':sem==='amarillo'?'#d97706':'#0E7C5A'};transition:width .4s;"></div>
                     </div>
-                    <span style="font-weight:700;font-size:0.9rem;color:var(--g-tinta, #0f172a);">${av}%</span>
+                    <span style="font-weight:700;font-size:0.9rem;color:var(--g-tinta, #1c1b1a);">${av}%</span>
                 </div>
             </div>
 
             <div style="background:var(--g-campo, #f8fafc);border-radius:8px;padding:10px 14px;">
-                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #8a0031);margin-bottom:6px;">Corresponsables</div>
+                <div style="font-size:0.68rem;text-transform:uppercase;font-weight:700;color:var(--g-acento, #9B2247);margin-bottom:6px;">Corresponsables</div>
                 <div style="display:flex;flex-wrap:wrap;gap:5px;">${corrList}</div>
             </div>
 
@@ -673,7 +673,7 @@ export async function openActividadModal(actividad) {
         childTemas.sort((x, y) => (x.fechaInicio || '').localeCompare(y.fechaInicio || ''));
         
         etapasHtml = `
-            <div class="form-field full" style="margin-top: 15px; border-top: 1px solid rgba(138,0,49,.1); padding-top: 15px;">
+            <div class="form-field full" style="margin-top: 15px; border-top: 1px solid rgba(155, 34, 71,.1); padding-top: 15px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <label style="font-weight: 700; color: var(--texto); margin: 0;">Secuencia de Temas de la Actividad</label>
                     <span style="font-size:0.75rem; color:var(--texto-suave);">Administrable desde la pestaña de Temas</span>
@@ -681,17 +681,17 @@ export async function openActividadModal(actividad) {
                 <div style="display:flex; flex-direction:column; gap:8px;">
                     ${childTemas.map(t => {
                         const tSem = t.estatus === 'Concluida' ? 'verde' : t.estatus === 'Vencida' ? 'rojo' : t.estatus === 'En proceso' ? 'amarillo' : 'gris';
-                        const dotColor = tSem === 'verde' ? '#027a48' : tSem === 'amarillo' ? '#d97706' : tSem === 'rojo' ? '#c0222a' : '#667085';
+                        const dotColor = tSem === 'verde' ? '#0E7C5A' : tSem === 'amarillo' ? '#d97706' : tSem === 'rojo' ? '#9B2247' : '#6F6B66';
                         return `
                             <div style="display:flex; justify-content:space-between; align-items:center; background:var(--g-campo, #f8fafc); border:1px solid var(--borde); border-radius:8px; padding:8px 12px; font-size:0.8rem;">
                                 <div>
-                                    <strong style="color:var(--g-tinta, #0f172a);">${escape(t.tema)}</strong>
+                                    <strong style="color:var(--g-tinta, #1c1b1a);">${escape(t.tema)}</strong>
                                     <span style="font-size:0.72rem; color:var(--texto-suave); margin-left:8px;">(${escape(t.responsable || 'Sin responsable')} - <strong>${t.avance || 0}%</strong>)</span>
                                 </div>
                                 <span style="font-size:0.7rem; font-weight:700; color:${dotColor}; padding:1px 6px; border-radius:4px; background:${
-                                    t.estatus === 'Concluida' ? 'rgba(2, 122, 72, 0.08)' :
+                                    t.estatus === 'Concluida' ? 'rgba(14, 124, 90, 0.08)' :
                                     t.estatus === 'En proceso' ? 'rgba(217, 119, 6, 0.08)' :
-                                    t.estatus === 'Vencida' ? 'rgba(192, 34, 42, 0.08)' : 'rgba(102, 112, 133, 0.08)'
+                                    t.estatus === 'Vencida' ? 'rgba(155, 34, 71, 0.08)' : 'rgba(111, 107, 102, 0.08)'
                                 };">${escape(t.estatus)}</span>
                             </div>
                         `;
@@ -718,7 +718,7 @@ export async function openActividadModal(actividad) {
                 
                 <div class="form-field full" style="margin-top: 10px;">
                     <label style="font-weight: 700; color: var(--texto); margin-bottom: 6px; display: block;">Corresponsables</label>
-                    <div class="usuarios-check-list" style="max-height: 140px; overflow-y: auto; border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                    <div class="usuarios-check-list" style="max-height: 140px; overflow-y: auto; border: 1px solid rgba(155, 34, 71, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
                         ${filteredUsers.map(u => `
                             <label class="corresponsable-label" data-id="${u.idUsuario}" style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.85rem; color: var(--texto); cursor: pointer; margin: 0;">
                                 <input type="checkbox" name="corresponsablesIds" value="${u.idUsuario}" ${a.corresponsablesIds.includes(u.idUsuario) ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: var(--guinda); cursor: pointer;">
@@ -732,7 +732,7 @@ export async function openActividadModal(actividad) {
                 ${etapasHtml}
             </div>
             <!-- Error Alert Area -->
-            <div id="actividad-error-alert" style="display:none; color:var(--riesgo); background:rgba(192,34,42,0.06); border:1px solid rgba(192,34,42,0.15); border-radius:8px; padding:10px 14px; font-size:0.82rem; font-weight:600; margin-top:15px; margin-bottom:5px; align-items:center; gap:8px;">
+            <div id="actividad-error-alert" style="display:none; color:var(--riesgo); background:rgba(155, 34, 71,0.06); border:1px solid rgba(155, 34, 71,0.15); border-radius:8px; padding:10px 14px; font-size:0.82rem; font-weight:600; margin-top:15px; margin-bottom:5px; align-items:center; gap:8px;">
                 <i class="fa-solid fa-triangle-exclamation" style="color:var(--riesgo);"></i>
                 <span class="error-msg"></span>
             </div>

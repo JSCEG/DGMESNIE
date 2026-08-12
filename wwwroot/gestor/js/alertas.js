@@ -120,7 +120,7 @@ export function renderAlertas(actividades, temas) {
             const avatarsHtml = `
                 <div class="alerta-avatars" style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
                     <div style="display: flex; align-items: center;" title="Responsable del tema: ${escape(mainResp)}${stageParticipants.resumen ? ' · ' + escape(stageParticipants.resumen) : ''}">
-                        <span class="avatar-circle main" title="Responsable: ${escape(mainResp)}" style="background: var(--guinda); color: #fff; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(138,0,49,0.25); position: relative; z-index: 10; cursor: default;">
+                        <span class="avatar-circle main" title="Responsable: ${escape(mainResp)}" style="background: var(--guinda); color: #fff; width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(155, 34, 71,0.25); position: relative; z-index: 10; cursor: default;">
                             ${mainInitials}
                         </span>
                         ${participantesList.map((p, idx) => {
@@ -142,7 +142,7 @@ export function renderAlertas(actividades, temas) {
             `;
 
             const stagesCount = al.act.etapas && al.act.etapas.length > 0
-                ? `<span class="badge-etapas" style="font-size:0.68rem;font-weight:700;color:var(--guinda);background:rgba(138,0,49,0.06);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;" title="Este tema tiene ${al.act.etapas.length} etapas"><i class="fa-solid fa-route" style="font-size:0.62rem;"></i> ${al.act.etapas.length} etapas</span>`
+                ? `<span class="badge-etapas" style="font-size:0.68rem;font-weight:700;color:var(--guinda);background:rgba(155, 34, 71,0.06);padding:1px 5px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;" title="Este tema tiene ${al.act.etapas.length} etapas"><i class="fa-solid fa-route" style="font-size:0.62rem;"></i> ${al.act.etapas.length} etapas</span>`
                 : '';
 
             return `
@@ -207,7 +207,7 @@ export async function confirmarYEnviarRecordatorio(tema, actividades) {
                 Seleccione uno o más usuarios para enviar el recordatorio del tema por correo electrónico:
             </p>
             
-            <div class="usuarios-check-list" style="max-height: 180px; overflow-y: auto; border: 1px solid rgba(138, 0, 49, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); margin-bottom: 15px;">
+            <div class="usuarios-check-list" style="max-height: 180px; overflow-y: auto; border: 1px solid rgba(155, 34, 71, 0.15); border-radius: 10px; padding: 10px; background: #fff; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); margin-bottom: 15px;">
                 ${filteredUsers.map(u => `
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.85rem; color: var(--texto); cursor: pointer; margin: 0;">
                         <input type="checkbox" name="notificarUsuariosIds" value="${u.idUsuario}" ${u.idUsuario === selectedUserId ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: var(--guinda); cursor: pointer;">
@@ -216,7 +216,7 @@ export async function confirmarYEnviarRecordatorio(tema, actividades) {
                 `).join('')}
             </div>
 
-            <div style="background: rgba(138, 0, 49, 0.04); border-left: 4px solid var(--guinda); padding: 12px; margin-bottom: 1.5rem; border-radius: 4px;">
+            <div style="background: rgba(155, 34, 71, 0.04); border-left: 4px solid var(--guinda); padding: 12px; margin-bottom: 1.5rem; border-radius: 4px;">
                 <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--guinda); font-weight: 700; margin-bottom: 4px;">Tema</div>
                 <div style="font-weight: 700; color: var(--texto); font-size: 0.95rem;">${escape(tema.tema)}</div>
                 <div style="font-size: 0.85rem; color: var(--texto-suave); margin-top: 4px;">

@@ -18,14 +18,14 @@ let presentationSlides = [];
 const PRESENTATION_ZOOM_FACTOR = 1.0;
 
 const COLORS = {
-    guinda: '#8a0031',
+    guinda: '#9B2247',
     dorado: '#b48934',
     texto: '#1f2937',
-    suave: '#667085',
-    ok: '#027a48',
+    suave: '#6F6B66',
+    ok: '#0E7C5A',
     aviso: '#d97706',
-    riesgo: '#c0222a',
-    gris: '#667085'
+    riesgo: '#9B2247',
+    gris: '#6F6B66'
 };
 
 const ASSETS = [
@@ -433,9 +433,9 @@ function kpi(label, value, tone = '') {
 }
 
 function statusPill(t) {
-    if (isVencido(t)) return '<span style="color:#c0222a;font-weight:700;">Vencido</span>';
+    if (isVencido(t)) return '<span style="color:#9B2247;font-weight:700;">Vencido</span>';
     if (isPorVencer(t)) return '<span style="color:#d97706;font-weight:700;">Por vencer</span>';
-    if (t.estatus === 'Concluida') return '<span style="color:#027a48;font-weight:700;">Concluido</span>';
+    if (t.estatus === 'Concluida') return '<span style="color:#0E7C5A;font-weight:700;">Concluido</span>';
     return `<span>${escape(t.estatus || 'Pendiente')}</span>`;
 }
 
@@ -459,7 +459,7 @@ function buildReading(summary) {
 }
 
 function emptyRow(cols) {
-    return `<tr><td colspan="${cols}" style="text-align:center;color:#667085;">Sin registros para mostrar</td></tr>`;
+    return `<tr><td colspan="${cols}" style="text-align:center;color:#6F6B66;">Sin registros para mostrar</td></tr>`;
 }
 
 function setButtons(disabled) {
