@@ -465,6 +465,11 @@
                 <sc-if value="{{ ly.loading }}" hint-placeholder-val="{{ false }}"><span style="width:14px;height:14px;border:2px solid var(--dash-linea-suave);border-top-color:var(--dash-guinda);border-radius:50%;display:inline-block;animation:dgSpin .8s linear infinite;flex:none"></span></sc-if>
                 <sc-if value="{{ ly.showCount }}" hint-placeholder-val="{{ true }}"><span style="font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--dash-gris);background:var(--dash-linea-suave);padding:2px 7px;border-radius:20px;min-width:30px;text-align:center;flex:none">{{ ly.countLabel }}</span></sc-if>
               </label>
+              <sc-if value="{{ ly.buscable }}" hint-placeholder-val="{{ false }}">
+                <button class="dg-capa-filtro{{ ly.buscaClase }}" onClick="{{ ly.onBuscaBtn }}" title="Buscar en esta capa">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                </button>
+              </sc-if>
               <sc-if value="{{ ly.filtrable }}" hint-placeholder-val="{{ false }}">
                 <button class="dg-capa-filtro{{ ly.filtroClase }}" onClick="{{ ly.onFiltroBtn }}" title="Filtrar esta capa">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
@@ -472,6 +477,20 @@
                 </button>
               </sc-if>
               </div>
+              <sc-if value="{{ ly.buscaAbierta }}" hint-placeholder-val="{{ false }}">
+              <div class="dg-capa-filtros dg-capa-buscar">
+                <input class="dg-capa-buscar__input" value="{{ ly.buscaTexto }}" onInput="{{ ly.onBuscaInput }}" placeholder="Buscar sólo en {{ ly.label }}…">
+                <sc-for list="{{ ly.resultados }}" as="rs" hint-placeholder-count="3">
+                  <button class="dg-capa-buscar__res" onClick="{{ rs.onClick }}">
+                    <span class="dg-capa-buscar__nom">{{ rs.label }}</span>
+                    <span class="dg-capa-buscar__sub">{{ rs.sub }}</span>
+                  </button>
+                </sc-for>
+                <sc-if value="{{ ly.sinResultados }}" hint-placeholder-val="{{ false }}">
+                  <div class="dg-capa-buscar__vacio">Nada con ese nombre en esta capa.</div>
+                </sc-if>
+              </div>
+              </sc-if>
               <sc-if value="{{ ly.filtrosAbiertos }}" hint-placeholder-val="{{ false }}">
               <div class="dg-capa-filtros">
                 <sc-for list="{{ ly.grupos }}" as="fg" hint-placeholder-count="2">
@@ -1701,6 +1720,9 @@ class Component extends DCLogic {
     // qué capa afecta.
     filtros: {},
     filtrosCapaAbierta: null,
+    // Lupita por capa: cuál fila tiene la búsqueda abierta y qué se tecleó.
+    buscaCapa: null,
+    buscaTexto: '',
     // La lista de capas del análisis empieza plegada: son 29 casillas que ocupan
     // más de un tercio del panel y empujan el botón de ejecutar fuera de la vista.
     // El escenario ya las elige; quien quiera afinarlas la abre.
@@ -8337,6 +8359,46 @@ class Component extends DCLogic {
   }
   onFiltroCapaAbrir = (key) => this.setState({ filtrosCapaAbierta: this.state.filtrosCapaAbierta===key?null:key });
 
+  // ── Búsqueda por capa ────────────────────────────────────────────────────
+  // La lupita de cada fila busca sólo en esa capa. PAM va por su catálogo y
+  // _focusPamItem, que ya sabe enfocar precisos y regionales; las demás capas
+  // buscan por nombre en sus features en memoria y centran el punto.
+  onBuscaCapaAbrir = (key) => this.setState({
+    buscaCapa: this.state.buscaCapa===key?null:key, buscaTexto:'' });
+  onBuscaTextoInput = (e) => this.setState({ buscaTexto: e.target.value });
+  _busquedaEnCapa(key){
+    const q=this._norm(this.state.buscaTexto||'');
+    if(q.length<2) return [];
+    const cierra=()=>this.setState({ menuOpen:null, mobilePanel:null, buscaCapa:null, buscaTexto:'' });
+    if(key==='pam'){
+      return (this.state.pamCatalog||[])
+        .filter(it=>this._norm([it.claveProyecto,it.nombreProyecto,it.gcr].join(' ')).includes(q))
+        .slice(0,10)
+        .map(it=>({ label:(it.claveProyecto?it.claveProyecto+' · ':'')+it.nombreProyecto,
+                    sub:it.etapaProyecto||'', onClick:()=>{ cierra(); this._focusPamItem(it); } }));
+    }
+    const base=this._rawGeo&&this._rawGeo[key];
+    const cfg=this.LAYERS.find(c=>c.key===key)||{};
+    if(!base) return [];
+    const out=[];
+    for(const ft of (base.features||[])){
+      if(out.length>=10) break;
+      const p=ft.properties||{};
+      const nom=this._featName(p)||'';
+      if(!nom) continue;
+      const extra=String(p.entidad||p['Ubicación']||p.municipio||'');
+      if(!this._norm(nom+' '+extra).includes(q)) continue;
+      const g=ft.geometry||{};
+      if(g.type!=='Point'||!Array.isArray(g.coordinates)) continue;
+      const [lng,lat]=g.coordinates;
+      out.push({ label:nom, sub:extra,
+        onClick:()=>{ cierra();
+          this.map.setView([lat,lng],Math.max(this.map.getZoom(),10),{animate:true});
+          this._setHighlight(lat,lng,cfg.color||'#9B2247'); } });
+    }
+    return out;
+  }
+
   toggleLayersMenu = () => {
     const opening=this.state.menuOpen!=='capas';
     // En móvil el panel sólo se abre con la clase .dgp-open, que sale de
@@ -14844,7 +14906,17 @@ class Component extends DCLogic {
             grupos: abierto?this._filtroGruposDe(cfg.key):[],
             limpiarVisible: activos>0,
             onFiltroBtn: ()=>this.onFiltroCapaAbrir(cfg.key),
-            onLimpiar: ()=>this.onFiltroLimpiar(cfg.key)
+            onLimpiar: ()=>this.onFiltroLimpiar(cfg.key),
+            buscable: filtrable || (cfg.key==='pam'&&v.on),
+            buscaClase: S.buscaCapa===cfg.key?' is-on':'',
+            buscaAbierta: S.buscaCapa===cfg.key,
+            onBuscaBtn: ()=>this.onBuscaCapaAbrir(cfg.key),
+            buscaTexto: S.buscaCapa===cfg.key?S.buscaTexto:'',
+            onBuscaInput: this.onBuscaTextoInput,
+            resultados: S.buscaCapa===cfg.key?this._busquedaEnCapa(cfg.key):[],
+            sinResultados: S.buscaCapa===cfg.key
+              && (S.buscaTexto||'').trim().length>=2
+              && this._busquedaEnCapa(cfg.key).length===0
           });
         });
         return Object.entries(byCat)
