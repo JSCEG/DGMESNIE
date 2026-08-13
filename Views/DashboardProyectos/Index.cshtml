@@ -6195,9 +6195,11 @@ class Component extends DCLogic {
         lyr.bindPopup(this._energyPermitPopup(cfg,p,nom,location),{maxWidth:370,minWidth:270});
       }else if(cfg.type==='pam'){
         lyr.bindPopup(this._pamPopup(cfg,p,nom),{maxWidth:390,minWidth:285});
+      }else if(key==='centrales'){
+        lyr.bindPopup(this._centralPopup(cfg,p,nom),{maxWidth:380,minWidth:280});
       }
       lyr.on('click', event => {
-        if(this.ENERGY_PERMIT_KEYS.includes(key)||cfg.type==='pam'){
+        if(this.ENERGY_PERMIT_KEYS.includes(key)||cfg.type==='pam'||key==='centrales'){
           try { lyr.openPopup(); } catch(error){}
           try { if(event&&event.originalEvent) L.DomEvent.stopPropagation(event.originalEvent); } catch(error){}
         }
@@ -6515,6 +6517,51 @@ class Component extends DCLogic {
       return Number(capacity).toLocaleString('es-MX',{maximumFractionDigits:2})+(unit?' '+unit:'');
     }
     return capacityText||'—';
+  }
+  // Las centrales sólo tenían tooltip con el nombre: se veía el punto y no
+  // había manera de saber qué era. Su expediente es el más rico del tablero
+  // —capacidad autorizada y de operación, tecnología, combustible, entrada en
+  // operación— y nada de eso se asomaba.
+  _centralPopup(cfg,p,nom){
+    const esc=v=>this._escapeMapHtml(v);
+    const val=(...claves)=>{
+      for(const k of claves){
+        const v=p[k];
+        if(v!=null&&String(v).trim()&&String(v).trim().toUpperCase()!=='NULL') return String(v).trim();
+      }
+      return '';
+    };
+    const mw=n=>{ const x=Number(n); return Number.isFinite(x)&&x>0?x.toLocaleString('es-MX',{maximumFractionDigits:2})+' MW':''; };
+    const nombre=val('Razón_social')||nom||'Central eléctrica';
+    const permiso=val('NumeroPermiso');
+    const autorizada=mw(p.Capacidad_autorizada_MW);
+    const operacion=mw(p.Capacidad_operacion_MW);
+    const filas=[
+      ['Permiso',permiso],
+      ['Modalidad',val('Modalidad')],
+      ['Tecnología',val('Tecnología')],
+      ['Energético',val('Energetico_primario','Combustible_autorizado')],
+      ['Capacidad',autorizada],
+      // Sólo cuando difiere de la autorizada: repetir el mismo número dos veces
+      // no informa, y cuando difieren es justo el dato que importa.
+      ['En operación',operacion&&operacion!==autorizada?operacion:''],
+      ['Estatus',val('Estatus_instalacion')],
+      ['Entrada',val('Fecha_de_Entrada_en_Operación')],
+      ['Ubicación',val('Ubicación')],
+    ].filter(f=>f[1]);
+    const cuerpo=filas.map(f=>
+      '<span style="color:var(--dash-gris)">'+esc(f[0])+'</span><span>'+esc(f[1])+'</span>').join('');
+    // El mismo permiso vive en la capa de permisos CRE; su ficha ya existe.
+    const ficha=permiso
+      ?'<a href="/DashboardProyectos/PermisosEnergeticos/Ficha?'
+        +esc(new URLSearchParams({tipo:'electricidad',numeroPermiso:permiso}).toString())
+        +'" target="_blank" rel="noopener" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border-radius:8px;background:'+esc(cfg.color)+';color:#fff;font-size:11.5px;font-weight:700;text-decoration:none">Abrir ficha del permiso<span>&#8599;</span></a>'
+      :'';
+    return '<div style="font-family:Noto Sans,sans-serif;min-width:250px">'
+      +'<div style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:'+esc(cfg.color)+';margin-bottom:3px">Central eléctrica</div>'
+      +'<div style="font-family:Newsreader,serif;font-size:16px;font-weight:800;line-height:1.15;color:var(--dash-tinta);margin-bottom:8px">'+esc(nombre)+'</div>'
+      +'<div style="display:grid;grid-template-columns:88px 1fr;gap:4px 8px;font-size:11px;line-height:1.35">'+cuerpo+'</div>'
+      +ficha+'</div>';
   }
   _energyPermitPopup(cfg,p,nom,location){
     const esc=value=>this._escapeMapHtml(value);
