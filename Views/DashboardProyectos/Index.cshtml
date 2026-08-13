@@ -112,25 +112,27 @@
 
     <sc-if value="{{ filtrosBtnVisible }}" hint-placeholder-val="{{ false }}">
     <div style="position:relative;display:flex">
-      <button onClick="{{ onFiltrosToggle }}" title="Filtros de la capa PAM" style="{{ filtrosBtnStyle }};width:32px;height:32px">
+      <button onClick="{{ onFiltrosToggle }}" title="Filtros de las capas encendidas" style="{{ filtrosBtnStyle }};width:32px;height:32px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
         <sc-if value="{{ filtrosBadge }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-4px;right:-4px;min-width:13px;height:13px;border-radius:8px;background:var(--dash-dorado-oscuro);color:#fff;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 2px;font-family:'IBM Plex Mono',monospace">{{ filtrosActivos }}</span></sc-if>
       </button>
       <sc-if value="{{ filtrosOpen }}" hint-placeholder-val="{{ false }}">
       <div class="dg-filtros-menu">
-        <div class="dg-filtros-menu__cab">
-          <span>Filtros · Proyectos PAM</span>
-          <sc-if value="{{ filtrosBadge }}" hint-placeholder-val="{{ false }}">
-            <button class="dg-filtros-menu__limpiar" onClick="{{ onFiltrosLimpiar }}">Limpiar</button>
-          </sc-if>
-        </div>
-        <sc-for list="{{ filtrosPam }}" as="fg" hint-placeholder-count="3">
-          <div class="dg-filtros-menu__grupo">{{ fg.titulo }}</div>
-          <div class="dg-filtros-menu__chips">
-            <sc-for list="{{ fg.chips }}" as="ch" hint-placeholder-count="4">
-              <button class="dg-filtro-chip{{ ch.clase }}" onClick="{{ ch.onClick }}">{{ ch.valor }}<b>{{ ch.n }}</b></button>
-            </sc-for>
+        <sc-for list="{{ filtrosCapas }}" as="fc" hint-placeholder-count="2">
+          <div class="dg-filtros-menu__cab">
+            <span>{{ fc.capa }}</span>
+            <sc-if value="{{ fc.limpiarVisible }}" hint-placeholder-val="{{ false }}">
+              <button class="dg-filtros-menu__limpiar" onClick="{{ fc.onLimpiar }}">Limpiar</button>
+            </sc-if>
           </div>
+          <sc-for list="{{ fc.grupos }}" as="fg" hint-placeholder-count="3">
+            <div class="dg-filtros-menu__grupo">{{ fg.titulo }}</div>
+            <div class="dg-filtros-menu__chips">
+              <sc-for list="{{ fg.chips }}" as="ch" hint-placeholder-count="4">
+                <button class="dg-filtro-chip{{ ch.clase }}" onClick="{{ ch.onClick }}">{{ ch.valor }}<b>{{ ch.n }}</b></button>
+              </sc-for>
+            </div>
+          </sc-for>
         </sc-for>
       </div>
       </sc-if>
@@ -1697,9 +1699,9 @@ class Component extends DCLogic {
     connectOpen: false, connectUrl: '', connectType: 'sheets', catalogLoading:false, catalogLoadingName:'', exportOpen: false, anaOpen: false,
     // Los cinco mapas base ocupaban unos 250 px en fila y se tocan poco.
     basemapOpen: false,
-    // Filtro de la capa PAM: listas de valores elegidos por campo; vacías =
+    // Filtros de capa: { capa: { campo: [valores elegidos] } }; listas vacías =
     // todos. Filtra en cliente sobre los features ya cargados.
-    pamFiltro: { etapa: [], estatus: [], gcr: [] },
+    filtros: {},
     filtrosOpen: false,
     // La lista de capas del análisis empieza plegada: son 29 casillas que ocupan
     // más de un tercio del panel y empujan el botón de ejecutar fuera de la vista.
@@ -3315,7 +3317,9 @@ class Component extends DCLogic {
         .then(geo=>this._applyLayerScope(cfg,geo))
         .then(geo=>key==='pam'?this._preparePamLayerGeoJson(geo):geo)
         .then(geo=>{
-          if(cfg.type==='graph'){
+          // El grafo la necesita para reproyectar; las filtrables, para
+          // refiltrar sin volver al servidor.
+          if(cfg.type==='graph'||this.FILTROS_CAPAS[key]){
             this._rawGeo=this._rawGeo||{};
             this._rawGeo[key]=geo;
           }
@@ -8213,45 +8217,96 @@ class Component extends DCLogic {
       collapsed:opening ? { ...this.state.collapsed, detalle:true } : this.state.collapsed
     });
   };
-  _pamFiltroActivo(){
-    const f=this.state.pamFiltro; return f.etapa.length+f.estatus.length+f.gcr.length;
+  // ── Filtros de capa ──────────────────────────────────────────────────────
+  // Qué campos filtra cada capa. Sólo campos verificados en los datos reales:
+  // un filtro por un campo vacío o de un solo valor es adorno (el estatus de
+  // los permisos eléctricos, por ejemplo, dice «Vigente» en los 1,087).
+  // «lee» tolera las dos grafías porque unas fuentes serializan camelCase y
+  // otras traen los nombres tal cual del shapefile.
+  FILTROS_CAPAS = {
+    pam: {
+      unicoPor: p => Number(p.proyectoId || p.ProyectoId || 0) || null,
+      campos: [
+        { campo:'etapa',   titulo:'Etapa',                 lee:p=>String(p.etapaProyecto||p.EtapaProyecto||'').trim() },
+        { campo:'estatus', titulo:'Estatus de licitación', lee:p=>String(p.estatusLicitacion||p.EstatusLicitacion||'').trim() },
+        { campo:'gcr',     titulo:'GCR',                   lee:p=>String(p.gcr||p.Gcr||'').trim() },
+      ],
+    },
+    centrales: {
+      campos: [
+        { campo:'tec', titulo:'Tecnología',          lee:p=>String(p['Tecnología']||p.tecnologia||'').trim() },
+        { campo:'ene', titulo:'Energético primario', lee:p=>String(p.Energetico_primario||p.energeticoPrimario||'').trim() },
+      ],
+    },
+    perm_elec: {
+      campos: [
+        { campo:'tec',  titulo:'Tecnología',      lee:p=>String(p.tecnologia||'').trim() },
+        { campo:'tipo', titulo:'Tipo de permiso', lee:p=>String(p.tipoPermiso||'').trim() },
+      ],
+    },
+    perm_gn:  { campos: [ { campo:'tipo', titulo:'Tipo de permiso', lee:p=>String(p.tipoPermiso||'').trim() } ] },
+    perm_glp: { campos: [ { campo:'tipo', titulo:'Tipo de permiso', lee:p=>String(p.tipoPermiso||'').trim() } ] },
+    perm_pet: { campos: [ { campo:'tipo', titulo:'Tipo de permiso', lee:p=>String(p.tipoPermiso||'').trim() } ] },
+  };
+
+  _filtroDe(key){
+    const f=this.state.filtros[key]||{};
+    const def=this.FILTROS_CAPAS[key];
+    const out={};
+    def.campos.forEach(c=>{ out[c.campo]=Array.isArray(f[c.campo])?f[c.campo]:[]; });
+    return out;
   }
-  _pamPasaFiltro(p,f){
-    const et=String(p.etapaProyecto||p.EtapaProyecto||'').trim();
-    const es=String(p.estatusLicitacion||p.EstatusLicitacion||'').trim();
-    const gc=String(p.gcr||p.Gcr||'').trim();
-    return (!f.etapa.length||f.etapa.includes(et))
-        && (!f.estatus.length||f.estatus.includes(es))
-        && (!f.gcr.length||f.gcr.includes(gc));
+  _filtrosActivosDe(key){
+    const f=this._filtroDe(key);
+    return Object.values(f).reduce((a,arr)=>a+arr.length,0);
   }
-  // Reconstruye la capa PAM desde la copia en memoria con el filtro puesto.
-  // _buildGeneric limpia el grupo y lo repuebla, así que la capa en el mapa
-  // queda con solo lo que pasa; el conteo de la leyenda dice cuántos proyectos
-  // quedan, no cuántos features (un proyecto puede tener varias ubicaciones).
-  _aplicarFiltroPam = () => {
-    const base=this._rawGeo&&this._rawGeo.pam;
-    const cfg=this.LAYERS.find(c=>c.key==='pam');
-    if(!base||!cfg||!this.state.layers.pam||!this.state.layers.pam.on) return;
-    const f=this.state.pamFiltro;
-    const feats=(base.features||[]).filter(ft=>this._pamPasaFiltro(ft.properties||{},f));
-    this._buildGeneric('pam',{type:'FeatureCollection',features:feats,meta:base.meta},cfg);
-    try{ this._forceVectorRedraw('pam'); }catch(e){}
-    const ids=new Set(feats
-      .map(ft=>Number(ft.properties&&(ft.properties.proyectoId||ft.properties.ProyectoId)||0))
-      .filter(x=>x>0));
+  _filtrosActivosTotal(){
+    return Object.keys(this.FILTROS_CAPAS).reduce((a,k)=>a+this._filtrosActivosDe(k),0);
+  }
+  _pasaFiltro(key,p){
+    const def=this.FILTROS_CAPAS[key];
+    const f=this._filtroDe(key);
+    return def.campos.every(c=>{
+      const elegidos=f[c.campo];
+      return !elegidos.length || elegidos.includes(c.lee(p));
+    });
+  }
+  // Reconstruye una capa desde su copia en memoria con el filtro puesto.
+  // _buildGeneric limpia el grupo y lo repuebla. El conteo de la leyenda pasa
+  // a decir cuántos elementos quedan; en PAM cuenta proyectos únicos, porque
+  // un proyecto puede tener varias ubicaciones.
+  _aplicarFiltroCapa = (key) => {
+    const base=this._rawGeo&&this._rawGeo[key];
+    const cfg=this.LAYERS.find(c=>c.key===key);
+    const v=this.state.layers[key];
+    if(!base||!cfg||!v||!v.on) return;
+    const feats=(base.features||[]).filter(ft=>this._pasaFiltro(key,ft.properties||{}));
+    this._buildGeneric(key,{type:'FeatureCollection',features:feats,meta:base.meta},cfg);
+    try{ this._forceVectorRedraw(key); }catch(e){}
+    const def=this.FILTROS_CAPAS[key];
+    let cnt=feats.length;
+    if(def.unicoPor){
+      const ids=new Set(feats.map(ft=>def.unicoPor(ft.properties||{})).filter(Boolean));
+      cnt=ids.size;
+    }
     const layers={...this.state.layers};
-    layers.pam={...layers.pam,count:ids.size};
+    layers[key]={...layers[key],count:cnt};
     this.setState({layers},()=>this._recompute());
   };
-  onPamFiltroToggle = (campo,valor) => {
-    const f={...this.state.pamFiltro};
-    const arr=[...f[campo]];
+  onFiltroToggle = (key,campo,valor) => {
+    const filtros={...this.state.filtros};
+    const f={...(filtros[key]||{})};
+    const arr=[...(f[campo]||[])];
     const i=arr.indexOf(valor);
     if(i>=0) arr.splice(i,1); else arr.push(valor);
-    f[campo]=arr;
-    this.setState({pamFiltro:f},this._aplicarFiltroPam);
+    f[campo]=arr; filtros[key]=f;
+    this.setState({filtros},()=>this._aplicarFiltroCapa(key));
   };
-  onPamFiltroLimpiar = () => this.setState({pamFiltro:{etapa:[],estatus:[],gcr:[]}},this._aplicarFiltroPam);
+  onFiltroLimpiar = (key) => {
+    const filtros={...this.state.filtros};
+    delete filtros[key];
+    this.setState({filtros},()=>this._aplicarFiltroCapa(key));
+  };
   toggleFiltrosMenu = () => this.setState({ filtrosOpen:!this.state.filtrosOpen, exportOpen:false, basemapOpen:false });
 
   toggleLayersMenu = () => {
@@ -14697,42 +14752,50 @@ class Component extends DCLogic {
       capasStyle: { position:'absolute', zIndex:44, top:'16px', left:'16px', width:'306px', background:'var(--dash-blanco)', border:'1.5px solid var(--dash-linea-fuerte)', borderRadius:'13px', boxShadow:'0 18px 44px rgba(0,0,0,.18)', display: S.menuOpen==='capas' ? 'block' : 'none', overflow:'hidden', animation:'dgFade .18s ease both' },
       capasOpen: true,
       onCapasMenuToggle: this.toggleLayersMenu,
-      // Filtros de capa: por ahora sólo PAM (etapa, estatus de licitación,
-      // GCR: los tres campos que su GeoJSON trae). El botón sólo existe con la
-      // capa encendida: un filtro de algo que no está en el mapa es ruido.
+      // Filtros de capa: una sección por capa filtrable encendida. El botón
+      // sólo existe si hay al menos una: un filtro de algo que no está en el
+      // mapa es ruido. Los campos por capa viven en FILTROS_CAPAS, verificados
+      // contra los datos reales.
       ...((() => {
-        const pamOn = !!(S.layers.pam && S.layers.pam.on);
-        const base = pamOn && this._rawGeo && this._rawGeo.pam;
-        if (!base) return { filtrosBtnVisible:false, filtrosOpen:false, filtrosPam:[], filtrosActivos:'', filtrosBadge:false };
-        const f = S.pamFiltro;
-        const campos = [
-          { campo:'etapa',   titulo:'Etapa',                 lee:p=>String(p.etapaProyecto||'').trim() },
-          { campo:'estatus', titulo:'Estatus de licitación', lee:p=>String(p.estatusLicitacion||'').trim() },
-          { campo:'gcr',     titulo:'GCR',                   lee:p=>String(p.gcr||'').trim() },
-        ];
-        const grupos = campos.map(c => {
-          const porValor = new Map();
-          (base.features||[]).forEach(ft => {
-            const p = ft.properties||{};
-            const v = c.lee(p);
-            if (!v) return;
-            const id = Number(p.proyectoId||0);
-            if (!porValor.has(v)) porValor.set(v, new Set());
-            if (id>0) porValor.get(v).add(id);
-          });
-          const chips = [...porValor.entries()]
-            .map(([valor, ids]) => ({ valor, n:ids.size,
-              activo: f[c.campo].includes(valor),
-              clase: f[c.campo].includes(valor) ? ' is-on' : '',
-              onClick: () => this.onPamFiltroToggle(c.campo, valor) }))
-            .sort((a,b) => b.n - a.n || a.valor.localeCompare(b.valor));
-          return { titulo:c.titulo, chips, tiene: chips.length>0 };
-        }).filter(g => g.tiene);
-        const activos = this._pamFiltroActivo();
-        return { filtrosBtnVisible:true, filtrosOpen:S.filtrosOpen, filtrosPam:grupos,
+        const secciones = [];
+        Object.keys(this.FILTROS_CAPAS).forEach(key => {
+          const v = S.layers[key];
+          const base = this._rawGeo && this._rawGeo[key];
+          if (!v || !v.on || !base) return;
+          const def = this.FILTROS_CAPAS[key];
+          const f = this._filtroDe(key);
+          const grupos = def.campos.map(c => {
+            const porValor = new Map();
+            (base.features||[]).forEach(ft => {
+              const p = ft.properties||{};
+              const val = c.lee(p);
+              if (!val) return;
+              const id = def.unicoPor ? def.unicoPor(p) : null;
+              if (!porValor.has(val)) porValor.set(val, def.unicoPor ? new Set() : 0);
+              if (def.unicoPor) { if (id) porValor.get(val).add(id); }
+              else porValor.set(val, porValor.get(val)+1);
+            });
+            const chips = [...porValor.entries()]
+              .map(([valor, acc]) => ({ valor,
+                n: def.unicoPor ? acc.size : acc,
+                clase: f[c.campo].includes(valor) ? ' is-on' : '',
+                onClick: () => this.onFiltroToggle(key, c.campo, valor) }))
+              .sort((a,b) => b.n - a.n || a.valor.localeCompare(b.valor));
+            return { titulo:c.titulo, chips, tiene: chips.length>1 };
+          }).filter(g => g.tiene);
+          if (!grupos.length) return;
+          const activos = this._filtrosActivosDe(key);
+          const cfg = this.LAYERS.find(c=>c.key===key) || {};
+          secciones.push({ capa: String(v.label||cfg.label||key),
+            grupos, limpiarVisible: activos>0,
+            onLimpiar: () => this.onFiltroLimpiar(key) });
+        });
+        const activos = this._filtrosActivosTotal();
+        return { filtrosBtnVisible: secciones.length>0,
+                 filtrosOpen: S.filtrosOpen && secciones.length>0,
+                 filtrosCapas: secciones,
                  filtrosBadge: activos>0, filtrosActivos: activos>0 ? String(activos) : '',
                  onFiltrosToggle: this.toggleFiltrosMenu,
-                 onFiltrosLimpiar: this.onPamFiltroLimpiar,
                  filtrosBtnStyle: 'position:relative;display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;cursor:pointer;'+(activos>0||S.filtrosOpen?'border:1px solid var(--dash-guinda);background:var(--dash-guinda);color:var(--dash-blanco)':'border:1px solid var(--dash-linea);background:var(--dash-blanco);color:var(--dash-gris)') };
       })()),
       basemapOpen: S.basemapOpen,
