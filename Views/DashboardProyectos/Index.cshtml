@@ -8384,14 +8384,23 @@ class Component extends DCLogic {
     for(const ft of (base.features||[])){
       if(out.length>=10) break;
       const p=ft.properties||{};
-      const nom=this._featName(p)||'';
+      // _featName da el nombre corriente, que en centrales es la empresa matriz:
+      // trece plantas distintas salían como «EOSOL Energy de México», sin manera
+      // de distinguirlas. La razón social nombra la planta; si falta, el nombre
+      // corriente sirve.
+      const nom=String(p['Razón_social']||p.nombre||this._featName(p)||'').trim();
       if(!nom) continue;
-      const extra=String(p.entidad||p['Ubicación']||p.municipio||'');
-      if(!this._norm(nom+' '+extra).includes(q)) continue;
+      const lugar=String(p.entidad||p['Ubicación']||p.municipio||'').trim();
+      if(!this._norm(nom+' '+lugar).includes(q)) continue;
       const g=ft.geometry||{};
       if(g.type!=='Point'||!Array.isArray(g.coordinates)) continue;
       const [lng,lat]=g.coordinates;
-      out.push({ label:nom, sub:extra,
+      // Lo que las separa cuando el nombre se repite: permiso y capacidad.
+      const permiso=String(p.NumeroPermiso||p.numeroPermiso||'').trim();
+      const mw=Number(p.Capacidad_autorizada_MW||p.capacidad||0);
+      const sub=[lugar,permiso,mw>0?mw.toLocaleString('es-MX')+' MW':'']
+        .filter(Boolean).join(' · ');
+      out.push({ label:nom, sub,
         onClick:()=>{ cierra();
           this.map.setView([lat,lng],Math.max(this.map.getZoom(),10),{animate:true});
           this._setHighlight(lat,lng,cfg.color||'#9B2247'); } });
