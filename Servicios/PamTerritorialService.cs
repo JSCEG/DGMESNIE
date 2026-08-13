@@ -24,19 +24,16 @@ public sealed class PamTerritorialService : IPamTerritorialService
 {
     private readonly string _connectionString;
     private readonly IPamRedAssociationService _redAssociationService;
-    private readonly IPamConvocatoriaEvidenceService _convocatoriaEvidenceService;
     private readonly ILogger<PamTerritorialService> _logger;
 
     public PamTerritorialService(
         IConfiguration configuration,
         IPamRedAssociationService redAssociationService,
-        IPamConvocatoriaEvidenceService convocatoriaEvidenceService,
         ILogger<PamTerritorialService> logger)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("DefaultConnection no está configurada.");
         _redAssociationService = redAssociationService;
-        _convocatoriaEvidenceService = convocatoriaEvidenceService;
         _logger = logger;
     }
 
@@ -76,9 +73,19 @@ public sealed class PamTerritorialService : IPamTerritorialService
             null,
             cancellationToken);
         var project = projects.FirstOrDefault();
-        if (project is null || project.TieneUbicacionValidada)
+        if (project is null)
         {
             return project;
+        }
+
+        var validatedLocations = project.Ubicaciones
+            .Where(location => location.Validada)
+            .ToList();
+        if (validatedLocations.Count > 0)
+        {
+            return validatedLocations.Count == project.Ubicaciones.Count
+                ? project
+                : WithLocations(project, validatedLocations);
         }
 
         var suggested = new List<PamTerritorialUbicacion>();
@@ -91,7 +98,7 @@ public sealed class PamTerritorialService : IPamTerritorialService
             {
                 suggested.AddRange(_redAssociationService.CrearUbicaciones(
                     association,
-                    soloConfianzaAlta: false));
+                    soloConfianzaAlta: true));
             }
         }
         catch (Exception ex) when (
@@ -105,34 +112,10 @@ public sealed class PamTerritorialService : IPamTerritorialService
                 project.ProyectoId);
         }
 
-        try
-        {
-            var evidence = (await _convocatoriaEvidenceService.ResolverPamAsync(
-                new[] { project },
-                cancellationToken)).FirstOrDefault();
-            if (evidence is not null)
-            {
-                suggested.AddRange(_convocatoriaEvidenceService.CrearUbicaciones(
-                    evidence,
-                    soloConfianzaAlta: false));
-            }
-        }
-        catch (Exception ex) when (
-            ex is HttpRequestException or
-            JsonException or
-            InvalidDataException or
-            TaskCanceledException)
-        {
-            _logger.LogWarning(
-                ex,
-                "No fue posible contrastar el proyecto PAM {ProyectoId} con Segunda Convocatoria.",
-                project.ProyectoId);
-        }
-
-        var merged = MergeSuggestedLocations(project.Ubicaciones, suggested);
-        return merged.Count == project.Ubicaciones.Count
-            ? project
-            : WithLocations(project, merged);
+        var operationalLocations = MergeSuggestedLocations(
+            Array.Empty<PamTerritorialUbicacion>(),
+            suggested);
+        return WithLocations(project, operationalLocations);
     }
 
     public async Task<PamTerritorialGeoJson> ObtenerGeoJsonAsync(

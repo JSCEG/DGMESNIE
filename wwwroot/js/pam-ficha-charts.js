@@ -148,7 +148,10 @@
             tooltip: {
                 trigger: "item",
                 valueFormatter: function (valor) {
-                    return Number(valor).toLocaleString("es-MX", { minimumFractionDigits: 3 }) + " MDP";
+                    return "$" + Number(valor).toLocaleString("es-MX", {
+                        minimumFractionDigits: 3,
+                        maximumFractionDigits: 3
+                    }) + " MDP";
                 }
             },
             series: [{

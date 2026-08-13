@@ -389,6 +389,7 @@ namespace NSIE.Models
         public PamrntFichaProyecto Ficha { get; set; }
         public PamProyectoDetalleViewModel Detalle { get; set; }
         public PamImpactoRegional ImpactoRegional { get; set; }
+        public PamTerritorialProyecto Territorial { get; set; }
         public PamExpedientePormenorizadoOrigen ExpedientePormenorizadoOrigen { get; set; }
         public List<PamrntProyectoIdentificado> ContextoCartera { get; set; } = new();
         public List<PamrntProyectoIdentificado> ProyectosRegion { get; set; } = new();
@@ -617,6 +618,8 @@ namespace NSIE.Models
         public string CampoEtiqueta => PamCambioFormato.EtiquetaCampo(Campo);
         public string AntesLimpio => PamCambioFormato.LimpiarValor(ValorAnterior);
         public string DespuesLimpio => PamCambioFormato.LimpiarValor(ValorNuevo);
+        public string AntesFormateado => PamCambioFormato.FormatearValor(Campo, ValorAnterior);
+        public string DespuesFormateado => PamCambioFormato.FormatearValor(Campo, ValorNuevo);
         public bool EsAlta => string.Equals(TipoCambio, "Alta", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -638,6 +641,50 @@ namespace NSIE.Models
                 catch { /* no era JSON válido: se muestra crudo */ }
             }
             return v;
+        }
+
+        /// <summary>
+        /// Presenta magnitudes del historial con la misma convención que la ficha:
+        /// separador de miles, precisión de origen y unidad explícita.
+        /// </summary>
+        public static string FormatearValor(string campo, string valor)
+        {
+            var limpio = LimpiarValor(valor);
+            if (limpio == "∅" || string.IsNullOrWhiteSpace(limpio)) return limpio;
+
+            var estilos = System.Globalization.NumberStyles.Number
+                | System.Globalization.NumberStyles.AllowExponent;
+            if (!decimal.TryParse(limpio, estilos, System.Globalization.CultureInfo.InvariantCulture, out var numero))
+                return limpio;
+
+            var cultura = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+            var nombreCampo = campo ?? string.Empty;
+
+            if (nombreCampo.Contains("Usd", StringComparison.OrdinalIgnoreCase)
+                || nombreCampo.Contains("Dolar", StringComparison.OrdinalIgnoreCase))
+                return $"USD {numero.ToString("N3", cultura)}";
+
+            if (nombreCampo.Contains("Mdp", StringComparison.OrdinalIgnoreCase)
+                || nombreCampo.Contains("Monto", StringComparison.OrdinalIgnoreCase)
+                || nombreCampo.Contains("Inversion", StringComparison.OrdinalIgnoreCase))
+                return $"${numero.ToString("N3", cultura)} MDP";
+
+            if (string.Equals(nombreCampo, "Mva", StringComparison.OrdinalIgnoreCase))
+                return $"{numero.ToString("N3", cultura)} MVA";
+            if (string.Equals(nombreCampo, "Mvar", StringComparison.OrdinalIgnoreCase))
+                return $"{numero.ToString("N3", cultura)} MVAr";
+            if (string.Equals(nombreCampo, "KmC", StringComparison.OrdinalIgnoreCase))
+                return $"{numero.ToString("N3", cultura)} km-C";
+            if (nombreCampo.Contains("Porcentaje", StringComparison.OrdinalIgnoreCase)
+                || nombreCampo.Contains("Avance", StringComparison.OrdinalIgnoreCase))
+                return $"{numero.ToString("N2", cultura)}%";
+
+            // Los años y claves ordinales no son magnitudes y no deben mostrarse como 2,026.
+            if (nombreCampo.Contains("Anio", StringComparison.OrdinalIgnoreCase)
+                || nombreCampo.Contains("Prioridad", StringComparison.OrdinalIgnoreCase))
+                return limpio;
+
+            return numero.ToString(numero == decimal.Truncate(numero) ? "N0" : "N3", cultura);
         }
 
         public static string EtiquetaCampo(string campo) => campo switch

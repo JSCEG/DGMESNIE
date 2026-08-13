@@ -7,6 +7,9 @@
     const PDF_HEIGHT_MM = 190.5;
 
     function init() {
+        if (window.actualizarPreloaderFicha) {
+            window.actualizarPreloaderFicha(88, "Organizando las láminas y los recursos visuales.", "Presentación ejecutiva");
+        }
         const page = document.querySelector(".pam-ficha-page");
         const shell = document.getElementById("pam-deck-shell");
         const deck = document.getElementById("pam-deck");
@@ -70,8 +73,8 @@
 
                 const icon = button.querySelector("i");
                 if (icon) {
-                    icon.classList.toggle("fa-expand", !fullscreen);
-                    icon.classList.toggle("fa-compress", fullscreen);
+                    icon.classList.toggle("bi-arrows-fullscreen", !fullscreen);
+                    icon.classList.toggle("bi-fullscreen-exit", fullscreen);
                 }
 
                 const label = button.querySelector("span");
@@ -184,26 +187,69 @@
             }
         }
 
+        // Leaflet puede conservar canvases auxiliares vacíos (0 × 0) para capas
+        // que no dibujaron geometría. html2canvas intenta convertirlos en un
+        // patrón y el navegador lanza InvalidStateError, aunque no sean visibles.
+        // Se excluyen sólo durante la captura; los mapas y gráficas válidos se
+        // conservan completos en el PDF/PPT.
+        function omitirCanvasVacios() {
+            const marcados = [];
+            // html2canvas clona el documento completo antes de aislar la lámina;
+            // por eso también deben marcarse los canvases vacíos de otras láminas.
+            document.querySelectorAll("canvas").forEach(canvas => {
+                if (canvas.width > 0 && canvas.height > 0) return;
+                if (!canvas.hasAttribute("data-html2canvas-ignore")) {
+                    canvas.setAttribute("data-html2canvas-ignore", "true");
+                    marcados.push(canvas);
+                }
+            });
+            return () => marcados.forEach(canvas => canvas.removeAttribute("data-html2canvas-ignore"));
+        }
+
         async function renderSlide(slide, slideNumber) {
             if (exportMessage) exportMessage.textContent = `Capturando lámina ${slideNumber} de ${slides.length}`;
             // Garantiza que los mapas Leaflet de la lámina existan antes de capturarla.
             if (window.pamFichaMapas && slide.querySelector(".pam-mapa-gcr, .pam-mapa-red")) await window.pamFichaMapas();
+            if (window.pamFichaTerritorial && slide.querySelector("[data-pam-territorial-analysis], [data-pam-territorial-comparison], [data-pam-territorial-element], [data-pam-territorial-matrix], [data-pam-territorial-executive]")) await window.pamFichaTerritorial();
             await asegurarImagenesPrecargadas(slide);
             await nextPaint();
-            return window.html2canvas(slide, {
-                backgroundColor: "#ffffff",
-                scale: 2,
-                useCORS: true,
-                allowTaint: false,
-                logging: false,
-                imageTimeout: 15000,
-                width: WIDTH,
-                height: HEIGHT,
-                windowWidth: WIDTH,
-                windowHeight: HEIGHT,
-                scrollX: 0,
-                scrollY: 0
-            });
+            const restaurarCanvas = omitirCanvasVacios();
+            try {
+                return await window.html2canvas(slide, {
+                    backgroundColor: "#ffffff",
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: false,
+                    logging: false,
+                    imageTimeout: 15000,
+                    width: WIDTH,
+                    height: HEIGHT,
+                    windowWidth: WIDTH,
+                    windowHeight: HEIGHT,
+                    scrollX: 0,
+                    scrollY: 0,
+                    onclone: clonedDocument => {
+                        // Compatibilidad con fichas que aún tengan en memoria la
+                        // versión anterior de elementos decorativos por gradiente.
+                        // La vista nueva usa trazos sólidos/SVG; en la copia se
+                        // neutraliza cualquier patrón legado para que html2canvas no
+                        // intente crear un patrón con dimensiones subpíxel.
+                        clonedDocument.querySelectorAll(".pam-back__barcode").forEach(barcode => {
+                            barcode.style.backgroundImage = "none";
+                        });
+                        clonedDocument.querySelectorAll(".pam-back__divider span, .pam-back__goldline").forEach(line => {
+                            line.style.backgroundImage = "none";
+                            line.style.backgroundColor = "#c9a24b";
+                        });
+                    }
+                });
+            } catch (error) {
+                const etiqueta = slide.dataset.label || slide.dataset.screenLabel || String(slideNumber);
+                const detalle = error instanceof Error ? error.message : String(error);
+                throw new Error(`Lámina ${slideNumber} (${etiqueta}): ${detalle}`, { cause: error });
+            } finally {
+                restaurarCanvas();
+            }
         }
 
         // Coloca links internos sobre los botones del índice para que el PDF sea navegable.
@@ -437,6 +483,13 @@
         show(hashMatch ? Number(hashMatch[1]) - 1 : 0, false);
         syncFullscreenControls();
         resizeDeck();
+
+        if (window.actualizarPreloaderFicha) {
+            window.actualizarPreloaderFicha(96, "Validando navegación, mapas y opciones de descarga.", "Preparación final");
+        }
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (window.completarPreloaderFicha) window.completarPreloaderFicha();
+        }));
     }
 
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

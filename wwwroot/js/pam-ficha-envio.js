@@ -36,8 +36,8 @@
         function setFeedback(msg, tipo) {
             feedback.hidden = false;
             feedback.className = "pam-envio-feedback is-" + (tipo || "info");
-            const icono = tipo === "ok" ? '<i class="fas fa-circle-check"></i>'
-                : tipo === "error" ? '<i class="fas fa-triangle-exclamation"></i>'
+            const icono = tipo === "ok" ? '<i class="bi bi-check-circle"></i>'
+                : tipo === "error" ? '<i class="bi bi-exclamation-triangle"></i>'
                 : '<span class="pam-envio-spin" aria-hidden="true"></span>';
             feedback.innerHTML = `${icono}<span>${msg}</span>`;
         }
@@ -46,7 +46,7 @@
             btnEnviar.disabled = activo;
             btnEnviar.innerHTML = activo
                 ? '<span class="pam-envio-spin pam-envio-spin--btn" aria-hidden="true"></span> ' + (texto || "Enviando…")
-                : '<i class="fas fa-paper-plane" aria-hidden="true"></i> Enviar ficha';
+                : '<i class="bi bi-send" aria-hidden="true"></i> Enviar ficha';
         }
 
         form.addEventListener("submit", async event => {
@@ -64,8 +64,10 @@
             setEnviando(true, "Generando ficha…");
             setFeedback("Generando la ficha en " + formato.toUpperCase() + "… esto toma unos segundos.", "info");
 
+            let etapa = "generacion";
             try {
                 const archivo = await window.pamFichaGenerar(formato);
+                etapa = "envio";
                 setEnviando(true, "Enviando…");
                 setFeedback(`Enviando la ficha a ${seleccion.length} destinatario(s)…`, "info");
                 const payload = {
@@ -97,7 +99,11 @@
                 }
             } catch (error) {
                 console.error("Error al enviar la ficha:", error);
-                setFeedback("Ocurrió un error al enviar. Verifica tu conexión e inténtalo de nuevo.", "error");
+                setFeedback(
+                    etapa === "generacion"
+                        ? "No se pudo generar el archivo adjunto. Recarga la ficha e inténtalo nuevamente."
+                        : "El archivo se generó, pero no fue posible enviarlo. Verifica el servicio de correo e inténtalo nuevamente.",
+                    "error");
             } finally {
                 setEnviando(false);
             }

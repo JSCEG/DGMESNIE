@@ -15,6 +15,7 @@ namespace NSIE.Controllers
         private readonly IPamActualizacionService _actualizacionService;
         private readonly IPamSeguimientoTransmisionService _seguimientoService;
         private readonly IPamAnalisisService _analisisService;
+        private readonly IPamTerritorialService _territorialService;
         private readonly IServicioEmailSMTP _emailService;
         private readonly ILogger<PamrntProyectosController> _logger;
 
@@ -23,6 +24,7 @@ namespace NSIE.Controllers
             IPamActualizacionService actualizacionService,
             IPamSeguimientoTransmisionService seguimientoService,
             IPamAnalisisService analisisService,
+            IPamTerritorialService territorialService,
             IServicioEmailSMTP emailService,
             ILogger<PamrntProyectosController> logger)
         {
@@ -30,6 +32,7 @@ namespace NSIE.Controllers
             _actualizacionService = actualizacionService;
             _seguimientoService = seguimientoService;
             _analisisService = analisisService;
+            _territorialService = territorialService;
             _emailService = emailService;
             _logger = logger;
         }
@@ -705,7 +708,7 @@ namespace NSIE.Controllers
         }
 
         [HttpGet("Ficha/{clavePem}")]
-        public async Task<IActionResult> Ficha(string clavePem)
+        public async Task<IActionResult> Ficha(string clavePem, CancellationToken cancellationToken)
         {
             var model = await _service.ObtenerFichaAsync(clavePem);
             if (model == null)
@@ -714,6 +717,9 @@ namespace NSIE.Controllers
             }
 
             model.Header = BuildHeader();
+            model.Territorial = await _territorialService.ObtenerAsync(
+                model.Proyecto.ProyectoId,
+                cancellationToken);
             model.Destinatarios = await _service.ObtenerDestinatariosAsync();
             return View(model);
         }
