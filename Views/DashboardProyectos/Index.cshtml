@@ -9610,6 +9610,9 @@ class Component extends DCLogic {
         }
         charts.push({
           key:'generation-profile',
+          // Es un reparto del total instalado, no un ranking: la dona dice
+          // cuanto pesa cada tecnologia sobre el conjunto.
+          type:'donut',
           title:hasCapacity?'Capacidad por tecnología':'Centrales por tecnología',
           subtitle:centralItems.length+' '+(centralItems.length===1?'central identificada':'centrales identificadas')+' dentro de la cobertura analizada.',
           unit:hasCapacity?'MW':'centrales',
@@ -10374,9 +10377,72 @@ class Component extends DCLogic {
 
     return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.node().outerHTML);
   }
+  // Dona: reparto de un total entre categorias.
+  //
+  // La capacidad por tecnologia es una composicion -las partes suman el total
+  // instalado-, y eso una barra no lo dice: se ve quien es mayor, no cuanto
+  // pesa cada quien sobre el conjunto. El hueco central lleva el total, que es
+  // el dato que da sentido a los porcentajes.
+  _reportDonutChartSvg(chart){
+    const D=window.d3;
+    if(!D||typeof D.create!=='function'||typeof D.pie!=='function') return '';
+    const datos=(chart&&Array.isArray(chart.data)?chart.data:[])
+      .filter(item=>Number.isFinite(Number(item.value))&&Number(item.value)>0);
+    if(!datos.length) return '';
+    const total=datos.reduce((suma,item)=>suma+Number(item.value),0);
+    if(total<=0) return '';
+
+    const width=720,height=330,radio=Math.min(height-70,300)/2;
+    const cx=radio+34, cy=height/2;
+    const decimales=Number.isFinite(chart.decimals)?chart.decimals:0;
+    const fmt=v=>Number(v).toLocaleString('es-MX',{minimumFractionDigits:decimales,maximumFractionDigits:decimales});
+
+    const svg=D.create('svg')
+      .attr('xmlns','http://www.w3.org/2000/svg')
+      .attr('viewBox','0 0 '+width+' '+height)
+      .attr('width',width).attr('height',height)
+      .attr('role','img')
+      .attr('aria-label','Gráfica de '+(chart.title||'composición'));
+    svg.append('rect').attr('width',width).attr('height',height).attr('fill','#fff');
+
+    const arcos=D.pie().sort(null).value(item=>Number(item.value))(datos);
+    const arco=D.arc().innerRadius(radio*0.58).outerRadius(radio);
+    const grupo=svg.append('g').attr('transform','translate('+cx+','+cy+')');
+    arcos.forEach((tramo,indice)=>{
+      grupo.append('path')
+        .attr('d',arco(tramo))
+        .attr('fill',datos[indice].color||'#9B2247')
+        .attr('stroke','#fff').attr('stroke-width',1.6);
+    });
+
+    grupo.append('text').attr('text-anchor','middle').attr('y',-4)
+      .attr('font-family','Arial, Helvetica, sans-serif').attr('font-size',22).attr('font-weight',700)
+      .attr('fill','#1C1B1A').text(fmt(total));
+    grupo.append('text').attr('text-anchor','middle').attr('y',15)
+      .attr('font-family','Arial, Helvetica, sans-serif').attr('font-size',10).attr('font-weight',700)
+      .attr('fill','#9A958E').text(String(chart.unit||'total').toUpperCase());
+
+    // Leyenda con el peso de cada parte: el color solo no dice cuanto es.
+    const leyenda=svg.append('g').attr('transform','translate('+(cx+radio+46)+','+(cy-datos.length*11)+')');
+    datos.forEach((item,indice)=>{
+      const fila=leyenda.append('g').attr('transform','translate(0,'+(indice*23)+')');
+      fila.append('rect').attr('width',10).attr('height',10).attr('rx',2).attr('fill',item.color||'#9B2247');
+      fila.append('text').attr('x',16).attr('y',9)
+        .attr('font-family','Arial, Helvetica, sans-serif').attr('font-size',11).attr('font-weight',700)
+        .attr('fill','#3A3A3A').text(String(item.label||'').slice(0,26));
+      fila.append('text').attr('x',16).attr('y',9)
+        .attr('text-anchor','end').attr('transform','translate('+(width-cx-radio-70)+',0)')
+        .attr('font-family','Arial, Helvetica, sans-serif').attr('font-size',10.5)
+        .attr('fill','#6F6B66')
+        .text(fmt(item.value)+' · '+Math.round(Number(item.value)/total*100)+'%');
+    });
+
+    return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.node().outerHTML);
+  }
   _reportChartSvg(chart){
     if(chart&&chart.type==='timeseries') return this._reportTimeSeriesChartSvg(chart);
     if(chart&&chart.type==='grouped') return this._reportGroupedChartSvg(chart);
+    if(chart&&chart.type==='donut') return this._reportDonutChartSvg(chart);
     const D=window.d3;
     if(!D||typeof D.create!=='function') return '';
     const data=(chart&&Array.isArray(chart.data)?chart.data:[]).filter(item=>Number.isFinite(Number(item.value))&&Number(item.value)>=0);
@@ -13533,6 +13599,60 @@ class Component extends DCLogic {
         return;
       }
 
+      // Dona en el PDF. jsPDF no tiene arcos, asi que cada tramo se arma con
+      // triangulos entre el radio interior y el exterior: con paso de dos
+      // grados el borde ya no se ve poligonal a tamano de impresion.
+      if(chart.type==='donut'){
+        const datos=(chart.data||[]).filter(item=>Number(item.value)>0);
+        const total=datos.reduce((suma,item)=>suma+Number(item.value),0);
+        if(total>0){
+          const decimales=Number.isFinite(chart.decimals)?chart.decimals:0;
+          const fmt=v=>Number(v).toLocaleString('es-MX',{minimumFractionDigits:decimales,maximumFractionDigits:decimales});
+          const disponible=Math.max(60,top+cardH-30-cy);
+          const radio=Math.min(disponible/2-4,(cfg.landscape?92:78));
+          const ccx=x+18+radio, ccy=cy+disponible/2-4;
+          const interior=radio*0.58;
+          let angulo=-Math.PI/2;
+          datos.forEach(item=>{
+            const barrido=(Number(item.value)/total)*Math.PI*2;
+            const c=rgb(item.color);
+            doc.setFillColor(c[0],c[1],c[2]);
+            const pasos=Math.max(2,Math.ceil(barrido/(Math.PI/90)));
+            for(let i=0;i<pasos;i++){
+              const a1=angulo+barrido*(i/pasos), a2=angulo+barrido*((i+1)/pasos);
+              const xe1=ccx+Math.cos(a1)*radio, ye1=ccy+Math.sin(a1)*radio;
+              const xe2=ccx+Math.cos(a2)*radio, ye2=ccy+Math.sin(a2)*radio;
+              const xi1=ccx+Math.cos(a1)*interior, yi1=ccy+Math.sin(a1)*interior;
+              const xi2=ccx+Math.cos(a2)*interior, yi2=ccy+Math.sin(a2)*interior;
+              doc.triangle(xi1,yi1,xe1,ye1,xe2,ye2,'F');
+              doc.triangle(xi1,yi1,xe2,ye2,xi2,yi2,'F');
+            }
+            angulo+=barrido;
+          });
+          // El total va en el hueco: es lo que da sentido a los porcentajes.
+          doc.setTextColor(28,27,26); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?15:13);
+          doc.text(fmt(total),ccx,ccy+1,{align:'center'});
+          doc.setTextColor(154,149,142); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7:6.4);
+          doc.text(String(chart.unit||'').toUpperCase(),ccx,ccy+12,{align:'center'});
+
+          const lx=ccx+radio+20;
+          const anchoLeyenda=Math.max(90,x+cardW-15-lx);
+          let ly=ccy-((datos.length-1)*(cfg.landscape?15:13))/2;
+          datos.forEach(item=>{
+            const c=rgb(item.color);
+            doc.setFillColor(c[0],c[1],c[2]); doc.rect(lx,ly-5,6,6,'F');
+            doc.setTextColor(58,58,58); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7.6:7);
+            doc.text(this._clipText(doc,String(item.label||''),anchoLeyenda-70),lx+10,ly);
+            doc.setTextColor(111,107,102); this._setReportFont(doc,'mono','normal'); doc.setFontSize(cfg.landscape?7:6.4);
+            doc.text(fmt(item.value)+' · '+Math.round(Number(item.value)/total*100)+'%',lx+anchoLeyenda,ly,{align:'right'});
+            ly+=cfg.landscape?15:13;
+          });
+        }
+        doc.setTextColor(154,149,142); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7:6.6);
+        doc.text(this._clipText(doc,String(chart.source||''),cardW-30).toUpperCase(),x+15,top+cardH-11);
+        return;
+      }
+
       // Barras agrupadas: una barra por serie dentro de cada categoria. No se
       // apilan porque son precios y sumarlos no significa nada.
       if(chart.type==='grouped'){
@@ -16389,9 +16509,20 @@ class Component extends DCLogic {
         this.setState({ libroOn:encender }, () => {
           if(!window.dgLibro) { this._toast('El compositor de hojas aún no carga'); return; }
           if(encender){
-            this._toast('Componiendo hojas carta…');
-            Promise.resolve(window.dgLibro.activar()).then(hojas=>{
+            // Componer mide hoja por hoja y con un informe largo tarda varios
+            // segundos: sin aviso la pantalla parece congelada, que es lo mismo
+            // que pasaba al exportar el PDF.
+            this.setState({ blocking:{ label:'Componiendo hojas carta…' } });
+            // Se cede un cuadro para que el aviso alcance a pintarse: con las
+            // imagenes ya en cache la composicion termina en el mismo ciclo y
+            // React agrupaba el encendido y el apagado sin pintar nada.
+            new Promise(listo=>setTimeout(listo,140))
+              .then(()=>window.dgLibro.activar()).then(hojas=>{
+              this.setState({ blocking:null });
               this._toast(hojas ? ('Informe compuesto en '+hojas+' hojas carta') : 'No hay contenido que componer');
+            }).catch(error=>{
+              this.setState({ blocking:null, libroOn:false });
+              this._toast('No se pudo componer el libro: '+(error.message||error));
             });
           } else {
             window.dgLibro.desactivar();

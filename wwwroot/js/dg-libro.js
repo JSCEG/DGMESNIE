@@ -183,16 +183,39 @@
     }
 
     // Un encabezado al pie de la hoja viaja con lo que lo sigue.
+    //
+    // Reconocerlo por clase no basta: en este informe los antetitulos y los
+    // titulos de subseccion son divs con estilo en linea, sin clase que los
+    // delate. Se reconocen por como se ven -sin hijos, texto corto y con peso,
+    // versalitas o espaciado de titulo-, que es lo que los hace titulo.
+    function pareceEncabezado(nodo) {
+      if (!nodo || nodo.nodeType !== 1) return false;
+      if (nodo.children.length) return false;
+      if (nodo.classList.contains('dg-report-section__head')
+        || nodo.classList.contains('dg-report-section__title')) return true;
+      if (/^H[1-6]$/.test(nodo.tagName)) return true;
+      var texto = (nodo.textContent || '').trim();
+      if (!texto || texto.length > 120) return false;
+      var estilo = window.getComputedStyle(nodo);
+      var pesado = parseInt(estilo.fontWeight, 10) >= 600;
+      var versalitas = estilo.textTransform === 'uppercase';
+      var espaciado = parseFloat(estilo.letterSpacing) >= 0.5;
+      return pesado && (versalitas || espaciado || parseFloat(estilo.fontSize) >= 15);
+    }
+
+    // Se rescatan todos los encabezados encadenados al pie, no solo el ultimo:
+    // un antetitulo, su titulo y su entrada suelen ir juntos y dejar dos de
+    // ellos arriba es el mismo huerfano con otro nombre.
     function rescatarEncabezado() {
       if (!actual) return null;
-      var ultimo = actual.caja.lastElementChild;
-      if (!ultimo) return null;
-      var esEncabezado = ultimo.classList.contains('dg-report-section__head')
-        || ultimo.classList.contains('dg-report-section__title')
-        || /^H[1-4]$/.test(ultimo.tagName);
-      if (!esEncabezado) return null;
-      actual.caja.removeChild(ultimo);
-      return ultimo;
+      var rescatados = [];
+      while (actual.caja.children.length > 1 && pareceEncabezado(actual.caja.lastElementChild)) {
+        var ultimo = actual.caja.lastElementChild;
+        actual.caja.removeChild(ultimo);
+        rescatados.unshift(ultimo);
+        if (rescatados.length >= 3) break;
+      }
+      return rescatados.length ? rescatados : null;
     }
 
     function colocar(nodo) {
@@ -214,9 +237,9 @@
         return;
       }
       actual.caja.removeChild(nodo);
-      var huerfano = rescatarEncabezado();
+      var huerfanos = rescatarEncabezado();
       abrirHoja();
-      if (huerfano) actual.caja.appendChild(huerfano);
+      if (huerfanos) huerfanos.forEach(function (h) { actual.caja.appendChild(h); });
       colocar(nodo);
     }
 
@@ -402,17 +425,47 @@
     if (estado.siguiente) estado.siguiente.disabled = visibles[visibles.length - 1] >= estado.lista.length - 1;
   }
 
-  function irA(indice) {
+  function reduceMovimiento() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  // El giro se anima sobre la hoja que se abandona: es la que el lector ve
+  // levantarse. Si no hay hoja de la que salir, o el usuario pidio menos
+  // movimiento, se cambia sin animar.
+  function irA(indice, direccion) {
     if (!estado) return;
-    estado.indice = Math.max(0, Math.min(estado.lista.length - 1, indice));
-    pintarLectura();
-    estado.contenedor.scrollTop = 0;
+    var destino = Math.max(0, Math.min(estado.lista.length - 1, indice));
+    if (destino === estado.indice) return;
+    var salientes = hojasVisibles(estado.indice)
+      .map(function (i) { return estado.lista[i]; })
+      .filter(Boolean);
+    var hoja = direccion > 0 ? salientes[salientes.length - 1] : salientes[0];
+
+    var aplicar = function () {
+      estado.indice = destino;
+      pintarLectura();
+      estado.contenedor.scrollTop = 0;
+    };
+
+    if (!hoja || reduceMovimiento() || !estado.lectura) { aplicar(); return; }
+
+    var clase = direccion > 0 ? 'esta-girando' : 'esta-girando-atras';
+    hoja.classList.add(clase);
+    var limpiar = function () {
+      hoja.classList.remove(clase);
+      hoja.removeEventListener('animationend', limpiar);
+      aplicar();
+    };
+    hoja.addEventListener('animationend', limpiar);
+    // Red de seguridad: si la animacion no dispara su fin, la hoja no debe
+    // quedarse a medio girar y el lector bloqueado.
+    setTimeout(function () { if (hoja.classList.contains(clase)) limpiar(); }, 600);
   }
 
   function pasar(direccion) {
     var visibles = hojasVisibles(estado.indice);
     var salto = visibles.length === 2 ? 2 : 1;
-    irA(direccion > 0 ? visibles[visibles.length - 1] + 1 : visibles[0] - salto);
+    irA(direccion > 0 ? visibles[visibles.length - 1] + 1 : visibles[0] - salto, direccion);
   }
 
   function alTeclado(evento) {
