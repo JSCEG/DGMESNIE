@@ -1249,6 +1249,33 @@
           </div>
         </div>
       </div>
+      <!-- Índice: el informe crece con las capas que se hayan analizado, así que
+           sin una entrada por sección hay que recorrerlo entero para saber qué
+           trae. Cada renglón lleva su icono y su cifra, y salta a su sección. -->
+      <div class="dg-report-content dg-report-indice" style="margin:0 auto;padding:22px 16px 0">
+        <div class="dg-report-indice__caja">
+          <div class="dg-report-indice__cab">
+            <span class="dg-report-indice__titulo">Contenido del informe</span>
+            <span class="dg-report-indice__cuenta">{{ reportIndexCount }}</span>
+          </div>
+          <div class="dg-report-indice__lista">
+            <sc-for list="{{ reportIndex }}" as="ix" hint-placeholder-count="5">
+              <button type="button" class="dg-report-indice__item" onClick="{{ ix.onClick }}">
+                <span class="dg-report-indice__num">{{ ix.num }}</span>
+                <span class="dg-report-indice__icono" style="color:{{ ix.color }}">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ ix.icon }}"/></svg>
+                </span>
+                <span class="dg-report-indice__texto">
+                  <span class="dg-report-indice__nombre">{{ ix.title }}</span>
+                  <span class="dg-report-indice__kicker">{{ ix.kicker }}</span>
+                </span>
+                <span class="dg-report-indice__cifra">{{ ix.detalle }}</span>
+                <svg class="dg-report-indice__flecha" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
       <div class="dg-report-content" style="margin:0 auto;padding:24px 16px 70px;display:flex;flex-direction:column;gap:22px">
         <!-- KPIs: patrón de fichas PAM, borde superior dorado y cifra Patria -->
         <div class="dg-report-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
@@ -1264,9 +1291,12 @@
           </sc-for>
         </div>
         <sc-if value="{{ reportHasCharts }}" hint-placeholder-val="{{ false }}">
-          <section class="dg-report-section" data-screen-label="Perfil eléctrico">
+          <section class="dg-report-section" id="rep-perfil" data-screen-label="Perfil eléctrico">
             <div class="dg-report-section__head" style="display:flex;align-items:center;gap:10px">
-              <span class="dg-report-section__marker" style="background:var(--dash-guinda);display:block;flex:none"></span>
+              <span class="dg-report-section__num">01</span>
+              <span class="dg-report-section__icono" style="color:var(--dash-guinda)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8z"/></svg>
+              </span>
               <span class="dg-report-section__kicker" style="font-weight:800;text-transform:uppercase">Infraestructura eléctrica</span>
             </div>
             <div class="dg-report-section__title" style="letter-spacing:-.01em">Perfil eléctrico de la zona</div>
@@ -1285,9 +1315,12 @@
         </sc-if>
         <!-- Secciones de contenido -->
         <sc-for list="{{ reportSections }}" as="sec" hint-placeholder-count="4">
-          <section class="dg-report-section" data-screen-label="{{ sec.title }}" data-report-key="{{ sec.key }}">
+          <section class="dg-report-section" id="{{ sec.anchorId }}" data-screen-label="{{ sec.title }}" data-report-key="{{ sec.key }}">
             <div class="dg-report-section__head" style="display:flex;align-items:center;gap:10px">
-              <span class="dg-report-section__marker" style="background:{{ sec.color }};display:block;flex:none"></span>
+              <span class="dg-report-section__num">{{ sec.num }}</span>
+              <span class="dg-report-section__icono" style="color:{{ sec.color }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ sec.icon }}"/></svg>
+              </span>
               <span class="dg-report-section__kicker" style="font-weight:800;text-transform:uppercase">{{ sec.kicker }}</span>
             </div>
             <div class="dg-report-section__title" style="letter-spacing:-.01em">{{ sec.title }}</div>
@@ -1393,6 +1426,10 @@
                 </sc-for>
               </div>
             </sc-if>
+            <button type="button" class="dg-report-volver" onClick="{{ onReportIndice }}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+              Volver al contenido
+            </button>
           </section>
         </sc-for>
         <div style="text-align:center;font-size:11px;color:var(--dash-gris-claro);padding-top:6px">Dirección General de Metodología y Estadísticas del SNIE (DGMESNIE) · SENER · CENACE · CFE · Cifras sujetas a verificación en campo</div>
@@ -4605,6 +4642,29 @@ class Component extends DCLogic {
     const hit=centrales.find(r=>this._clavePermiso((r.props||{}).NumeroPermiso)===clave);
     return hit?(hit.props||null):null;
   }
+  // El reporte vive en un contenedor propio con su scroll, no en el documento:
+  // una liga #ancla no lo mueve. Se desplaza el elemento a la vista.
+  _irASeccionReporte(id){
+    const destino=document.getElementById(id);
+    const caja=document.querySelector('.dg-report');
+    if(!destino||!caja) return;
+    // scrollIntoView deja la posicion a merced del navegador y aqui volvia al
+    // inicio: el desplazamiento se calcula contra el propio contenedor, que es
+    // el que tiene el scroll, descontando la barra de acciones fija.
+    const barra=caja.querySelector('.dg-report-toolbar');
+    const alto=barra?barra.getBoundingClientRect().height:0;
+    const y=destino.getBoundingClientRect().top-caja.getBoundingClientRect().top+caja.scrollTop-alto-14;
+    const destinoY=Math.max(0,Math.round(y));
+    try{ caja.scrollTo({top:destinoY,behavior:'smooth'}); }
+    catch(error){ caja.scrollTop=destinoY; }
+  }
+  // Mismo criterio que reportHasCharts: si se filtrara distinto, el indice
+  // numeraria una seccion que no se pinta.
+  _reportGraficasPerfil(){
+    return (((this._report||{}).charts)||[]).filter(chart=>chart&&chart.group!=='inegi'
+      &&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.group!=='consumption'&&chart.svgDataUrl);
+  }
+  _reportTieneGraficas(){ return this._reportGraficasPerfil().length>0; }
   _onMapClick(e){
     // Mientras se dibuja/mide, los clics son vértices del trazo — NO seleccionan ni mueven nada
     if (this._handler || this.state.measure) return;
@@ -15877,14 +15937,48 @@ class Component extends DCLogic {
       reportMetrics: ((this._report||{}).metrics || []).map(m => ({ ...m, op: m.dim ? '.62' : '1', vcolor: m.dim ? '#9A958E' : '#1c1b1a', sub: m.sub||'' })),
       reportHasCharts: !!(((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.group!=='consumption'&&chart.svgDataUrl).length),
       reportCharts: ((this._report||{}).charts||[]).filter(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'&&chart.group!=='demand'&&chart.group!=='consumption'&&chart.svgDataUrl),
-      reportSections: ((this._report||{}).sections||[]).map(sec => ({
+      // Numeración corrida: el perfil eléctrico ocupa el 01 cuando hay gráficas,
+      // así que las demás secciones arrancan donde él termina.
+      reportSections: ((this._report||{}).sections||[]).map((sec, i) => ({
         ...sec,
+        anchorId: 'rep-'+String(sec.key||i),
+        num: String(i + 1 + (this._reportTieneGraficas() ? 1 : 0)).padStart(2,'0'),
         rowItems: (sec.rows||[]).map(r => ({ label:r[0], value:r[1], color: r[1]==='no analizada' ? '#9A958E' : '#1c1b1a' })),
         subSections: (sec.subSections||[]).map(sub => ({
           ...sub,
           rowItems: (sub.rows||[]).map(r => ({ label:r[0], value:r[1] })),
         })),
       })),
+      // Índice: una entrada por sección publicada, con la cifra que la resume.
+      // Se arma de lo mismo que se pinta, para que no puedan desfasarse.
+      ...((() => {
+        const R = this._report || {};
+        const conGraficas = this._reportTieneGraficas();
+        const entradas = [];
+        if (conGraficas) entradas.push({
+          num:'01', title:'Perfil eléctrico de la zona', kicker:'Infraestructura eléctrica',
+          color:'#9B2247', icon:'M13 2 3 14h8l-1 8 10-12h-8z',
+          detalle:this._reportGraficasPerfil().length+' gráficas',
+          onClick:()=>this._irASeccionReporte('rep-perfil')
+        });
+        (R.sections||[]).forEach((sec,i)=>{
+          const id='rep-'+String(sec.key||i);
+          const filas=(sec.rows||[]).length;
+          const tabla=sec.table&&Array.isArray(sec.table.rows)?sec.table.rows.length:0;
+          const detalle=filas?(filas+' indicadores'):(tabla?(tabla+' registros'):'');
+          entradas.push({
+            num:String(i+1+(conGraficas?1:0)).padStart(2,'0'),
+            title:sec.title||'', kicker:sec.kicker||'', color:sec.color||'#9B2247',
+            icon:sec.icon||'M4 6h16M4 12h16M4 18h10',
+            detalle, onClick:()=>this._irASeccionReporte(id)
+          });
+        });
+        return {
+          reportIndex: entradas,
+          reportIndexCount: entradas.length ? entradas.length+' secciones' : '',
+          onReportIndice: ()=>this._irASeccionReporte('rep-indice')
+        };
+      })()),
       reportSendOpen: !!S.reportSendOpen,
       reportSendFmtPdf: S.reportSendFmt!=='pdf16x9',
       reportSendFmtPpt: S.reportSendFmt==='pdf16x9',
