@@ -2175,6 +2175,9 @@ class Component extends DCLogic {
     map.createPane('hl'); map.getPane('hl').style.zIndex = '640'; map.getPane('hl').style.pointerEvents = 'none';
     // Selección de municipio por clic en el mapa (point-in-polygon) — robusto ante el hit-test de canvas
     map.on('click', (e) => this._onMapClick(e));
+    // Impresion del navegador (Ctrl+P) sobre el reporte abierto.
+    window.addEventListener('beforeprint',this._prepararImpresion);
+    window.addEventListener('afterprint',this._restaurarImpresion);
     window.__dgMap = map; window.__dg = this; // referencia de depuración
     // Blindaje: bug conocido de Leaflet — un L.Marker arrastrable + animación de zoom puede lanzar
     // una excepción interna (async, sin stack útil) en _animateZoom. No rompe nada visible, pero
@@ -12877,33 +12880,27 @@ class Component extends DCLogic {
   // dibujo aparte por coordenadas: lo que se lee es lo que se imprime y el
   // texto sigue siendo texto en el PDF. La hoja de impresion vive en
   // dashboard-proyectos.css.
-  imprimirInforme = () => {
-    if(!this.state.reportOpen){ this._toast('Abre primero el reporte territorial'); return; }
+  // Ctrl+P sobre el reporte tambien debe dar una hoja decente. El informe vive
+  // dentro del lienzo del mapa, que esta posicionado y recortado, asi que al
+  // imprimir se cuelga del body y se devuelve al terminar; la hoja de
+  // impresion (dashboard-proyectos.css) solo tiene que ocultar a sus hermanos.
+  // El boton PDF NO pasa por aqui: entrega el reporte armado con portada,
+  // indice navegable y portadillas de seccion.
+  _prepararImpresion = () => {
     const caja=document.querySelector('.dg-report');
-    if(!caja){ this._toast('El reporte aún no está listo'); return; }
-    // El indice y las secciones se miden al imprimir: con un desplazamiento
-    // pendiente, la primera hoja sale a media seccion.
+    if(!caja||caja.parentElement===document.body) return;
+    this._impresionOrigen={padre:caja.parentElement,hermano:caja.nextSibling};
     caja.scrollTop=0;
-    // El informe vive dentro del lienzo del mapa, que esta posicionado y
-    // recortado. Para imprimir se cuelga del body y se devuelve al terminar:
-    // asi la hoja de impresion solo tiene que ocultar a sus hermanos y no
-    // depende de donde este el nodo dentro del tablero.
-    const padre=caja.parentElement, hermano=caja.nextSibling;
-    const devolver=()=>{
-      try{ if(padre) padre.insertBefore(caja,hermano||null); }catch(error){}
-      window.removeEventListener('afterprint',devolver);
-    };
-    window.addEventListener('afterprint',devolver);
     document.body.appendChild(caja);
-    this._toast('Preparando la impresión · elige «Guardar como PDF»');
-    setTimeout(()=>{
-      try{ window.print(); }
-      catch(error){ this._toast('El navegador bloqueó la impresión'); }
-      // Safari y algunos navegadores no disparan afterprint: red de seguridad.
-      setTimeout(devolver,1500);
-    },240);
   };
-  onReportPdfClick = this.imprimirInforme;
+  _restaurarImpresion = () => {
+    const origen=this._impresionOrigen;
+    const caja=document.querySelector('.dg-report');
+    if(!origen||!caja) return;
+    try{ origen.padre.insertBefore(caja,origen.hermano||null); }catch(error){}
+    this._impresionOrigen=null;
+  };
+  onReportPdfClick = this._safeReportAction(this.exportReportPDF);
   onReportPdfPptClick = this._safeReportAction(this.exportReportPDFPresent);
   _reportMetaValue(R, label){
     const row = ((R&&R.meta)||[]).find(r => String(r[0]).toLowerCase()===String(label).toLowerCase());
@@ -12939,6 +12936,78 @@ class Component extends DCLogic {
     const y=top+(landscape?39:35)+lines.length*(landscape?25:20);
     doc.setDrawColor(224,161,46); doc.setLineWidth(1.4); doc.line(M,y-8,M+(landscape?180:145),y-8);
     return y+5;
+  }
+  // Portadilla de sección: una hoja que sólo anuncia lo que sigue. En un
+  // informe de veinte hojas donde las secciones se encadenan sin respiro, es
+  // lo que deja ver dónde termina un tema y empieza el otro; el índice apunta
+  // aquí y no al primer párrafo, para que la liga caiga en la apertura.
+  _pdfReportSectionCover(doc, W, H, landscape, sec, folio){
+    const M = landscape ? 52 : 46;
+    doc.addPage(landscape ? [960,540] : 'letter', landscape ? 'landscape' : 'portrait');
+    const color = this._pdfRgb((sec && sec.color) || '#9B2247');
+
+    doc.setFillColor(255,255,255); doc.rect(0,0,W,H,'F');
+    // Cinta superior: guinda de la casa y el color de la sección a la derecha.
+    doc.setFillColor(155,34,71); doc.rect(0,0,W,5,'F');
+    doc.setFillColor(color[0],color[1],color[2]); doc.rect(W*0.66,0,W*0.34,5,'F');
+
+    const top = landscape ? 150 : 250;
+
+    // Folio grande: es el número de la sección, no un adorno.
+    doc.setTextColor(224,161,46);
+    this._setReportFont(doc,'mono','bold');
+    doc.setFontSize(landscape ? 46 : 58);
+    doc.text(String(folio||''), M, top);
+
+    // Filete del color de la sección, del ancho del folio.
+    const anchoFolio = doc.getTextWidth(String(folio||''));
+    doc.setDrawColor(color[0],color[1],color[2]);
+    doc.setLineWidth(2.4);
+    doc.line(M, top+16, M+Math.max(46,anchoFolio), top+16);
+
+    // Antetítulo en versalitas.
+    doc.setTextColor(color[0],color[1],color[2]);
+    this._setReportFont(doc,'kicker','bold');
+    doc.setFontSize(landscape ? 10 : 9.5);
+    doc.setCharSpace(1.1);
+    doc.text(String((sec && sec.kicker) || 'Análisis territorial').toUpperCase(), M, top+50);
+    doc.setCharSpace(0);
+
+    // Título de la sección, en la serif institucional.
+    doc.setTextColor(28,27,26);
+    this._setReportFont(doc,'title','bold');
+    doc.setFontSize(landscape ? 34 : 32);
+    const titulo = doc.splitTextToSize(String((sec && sec.title) || 'Sección'), W-M*2-(landscape?120:60));
+    let y = top+84;
+    titulo.forEach(linea => { doc.text(linea, M, y); y += landscape ? 38 : 36; });
+
+    // Entrada de la sección, si la trae.
+    const intro = String((sec && sec.intro) || '').trim();
+    if(intro){
+      doc.setTextColor(111,107,102);
+      this._setReportFont(doc,'body','normal');
+      doc.setFontSize(landscape ? 11 : 10.5);
+      const lineas = doc.splitTextToSize(intro, W-M*2-(landscape?200:120));
+      y += 8;
+      lineas.slice(0,4).forEach(linea => { doc.text(linea, M, y); y += landscape ? 16 : 15; });
+    }
+
+    // Rombo dorado al pie del bloque: el mismo recurso que separa bloques en
+    // los informes impresos y en los correos.
+    doc.setTextColor(224,161,46);
+    this._setReportFont(doc,'body','normal');
+    doc.setFillColor(224,161,46);
+    // Rombo dibujado, no tipografiado: el caracter no vive en el subconjunto
+    // embebido de la tipografia y saldria como un glifo cualquiera.
+    const rx=M+5, ry=y+16, r=4.5;
+    doc.triangle(rx,ry-r,rx-r,ry,rx+r,ry,'F');
+    doc.triangle(rx,ry+r,rx-r,ry,rx+r,ry,'F');
+
+    return doc.getNumberOfPages();
+  }
+  _pdfRgb(hex){
+    const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex||''));
+    return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[155,34,71];
   }
   _pdfReportIndex(doc, W, H, landscape, entries, indexPage){
     const M=landscape?52:46;
@@ -13464,8 +13533,11 @@ class Component extends DCLogic {
         const info=addReportPage(sec.kicker||'Análisis territorial',continuation?String(sec.title||'Sección')+' · continuación':sec.title||'Sección',folio,folio);
         return info;
       };
+      // La portadilla abre la sección y es a donde apunta el índice.
+      const coverPage=this._pdfReportSectionCover(doc,W,H,false,sec,folio);
+      folios[coverPage]=folio;
       let sectionPage=addSectionPage(false);
-      indexEntries.push({group:'Secciones de análisis',folio,title:String(sec.title||'Sección'),page:sectionPage.page});
+      indexEntries.push({group:'Secciones de análisis',folio,title:String(sec.title||'Sección'),page:coverPage});
       y=sectionPage.y;
       const nextSectionPage=()=>{ sectionPage=addSectionPage(true); y=sectionPage.y; return y; };
 
