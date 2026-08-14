@@ -13240,51 +13240,94 @@ class Component extends DCLogic {
     const m=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex||''));
     return m?[parseInt(m[1],16),parseInt(m[2],16),parseInt(m[3],16)]:[155,34,71];
   }
-  _pdfReportIndex(doc, W, H, landscape, entries, indexPage){
+  // El indice reparte sus entradas entre las hojas que se le reservaron. Antes
+  // escribia todo en una sola y con una corrida intensiva -veintidos secciones-
+  // las ultimas entradas se encimaban con el pie.
+  _pdfReportIndex(doc, W, H, landscape, entries, paginas){
+    const hojas=Array.isArray(paginas)?paginas:[paginas||2];
     const M=landscape?52:46;
-    doc.setPage(indexPage||2); doc.setFillColor(255,255,255); doc.rect(0,0,W,H,'F');
-    let top=this._pdfReportPageHead(doc,W,landscape,'Contenido','Índice','Índice navegable')+(landscape?10:12);
     const cols=landscape?2:1, gap=landscape?56:0, cw=(W-M*2-gap*(cols-1))/cols;
-    const chunks=[]; if(cols===1) chunks.push(entries); else { const cut=Math.ceil(entries.length/2); chunks.push(entries.slice(0,cut),entries.slice(cut)); }
-    const links=[];
-    chunks.forEach((chunk,ci)=>{
-      const x=M+ci*(cw+gap); let y=top, lastGroup='';
-      chunk.forEach(e=>{
-        if(e.group!==lastGroup){
-          if(lastGroup) y+=landscape?8:10;
-          doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(landscape?9:8);
-          doc.setCharSpace(.8); doc.text(String(e.group).toUpperCase(),x,y); doc.setCharSpace(0); y+=landscape?22:23; lastGroup=e.group;
-        }
-        doc.setTextColor(155,34,71); this._setReportFont(doc,'mono','bold'); doc.setFontSize(landscape?11:10); doc.text(e.folio,x,y);
-        doc.setTextColor(28,27,26); this._setReportFont(doc,'body','normal'); doc.setFontSize(landscape?11:10.5);
-        const tx=x+(landscape?38:34), pageX=x+cw;
-        const title=this._clipText(doc,e.title,cw-(landscape?80:76)); doc.text(title,tx,y);
-        const start=tx+doc.getTextWidth(title)+8, end=pageX-26;
-        if(end>start){ doc.setDrawColor(190,184,176); doc.setLineWidth(.6); if(doc.setLineDashPattern) doc.setLineDashPattern([1.2,2.2],0); doc.line(start,y-2,end,y-2); if(doc.setLineDashPattern) doc.setLineDashPattern([],0); }
-        doc.setTextColor(111,107,102); this._setReportFont(doc,'mono','bold'); doc.text(String(e.page),pageX,y,{align:'right'});
-        links.push({x,y:y-(landscape?13:12),w:cw,h:landscape?18:17,page:e.page});
-        y+=landscape?28:27;
-      });
+    const saltoFila=landscape?28:27;
+    const enlaces=[];
+
+    let indiceHoja=-1, x=M, y=0, ultimoGrupo='', tope=0;
+
+    const abrirHoja=(continua)=>{
+      indiceHoja+=1;
+      const pagina=hojas[Math.min(indiceHoja,hojas.length-1)];
+      doc.setPage(pagina);
+      doc.setFillColor(255,255,255); doc.rect(0,0,W,H,'F');
+      y=this._pdfReportPageHead(doc,W,landscape,'Contenido',
+        continua?'Índice · continuación':'Índice','Índice navegable')+(landscape?10:12);
+      tope=H-(landscape?54:62);
+      x=M;
+      // La continuacion repite el grupo, o el lector no sabe donde esta parado.
+      if(continua&&ultimoGrupo){
+        doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(landscape?9:8);
+        doc.setCharSpace(.8); doc.text(String(ultimoGrupo).toUpperCase()+' · CONTINUACIÓN',x,y); doc.setCharSpace(0);
+        y+=landscape?22:23;
+      }
+      return pagina;
+    };
+
+    let pagina=abrirHoja(false);
+
+    entries.forEach(entrada=>{
+      const cambiaGrupo=entrada.group!==ultimoGrupo;
+      const altoNecesario=saltoFila+(cambiaGrupo?(landscape?30:33):0);
+      if(y+altoNecesario>tope && indiceHoja<hojas.length-1){
+        pagina=abrirHoja(true);
+      }
+      if(cambiaGrupo){
+        if(ultimoGrupo) y+=landscape?8:10;
+        doc.setTextColor(155,34,71); this._setReportFont(doc,'kicker','bold'); doc.setFontSize(landscape?9:8);
+        doc.setCharSpace(.8); doc.text(String(entrada.group).toUpperCase(),x,y); doc.setCharSpace(0);
+        y+=landscape?22:23; ultimoGrupo=entrada.group;
+      }
+      doc.setTextColor(155,34,71); this._setReportFont(doc,'mono','bold'); doc.setFontSize(landscape?11:10);
+      doc.text(entrada.folio,x,y);
+      doc.setTextColor(28,27,26); this._setReportFont(doc,'body','normal'); doc.setFontSize(landscape?11:10.5);
+      const tx=x+(landscape?38:34), pageX=x+cw;
+      const titulo=this._clipText(doc,entrada.title,cw-(landscape?80:76));
+      doc.text(titulo,tx,y);
+      const inicio=tx+doc.getTextWidth(titulo)+8, fin=pageX-26;
+      if(fin>inicio){
+        doc.setDrawColor(190,184,176); doc.setLineWidth(.6);
+        if(doc.setLineDashPattern) doc.setLineDashPattern([1.2,2.2],0);
+        doc.line(inicio,y-2,fin,y-2);
+        if(doc.setLineDashPattern) doc.setLineDashPattern([],0);
+      }
+      doc.setTextColor(111,107,102); this._setReportFont(doc,'mono','bold');
+      doc.text(String(entrada.page),pageX,y,{align:'right'});
+      enlaces.push({pagina,x,y:y-(landscape?13:12),w:cw,h:landscape?18:17,destino:entrada.page});
+      y+=saltoFila;
     });
-    links.forEach(l=>doc.link(l.x,l.y,l.w,l.h,{pageNumber:l.page}));
-    doc.setTextColor(154,149,142); this._setReportFont(doc,'body','normal'); doc.setFontSize(landscape?8:7.5);
-    doc.text('Seleccione cualquier entrada para ir a la sección correspondiente.',M,H-(landscape?34:42));
+
+    enlaces.forEach(l=>{ doc.setPage(l.pagina); doc.link(l.x,l.y,l.w,l.h,{pageNumber:l.destino}); });
+    hojas.forEach(pag=>{
+      doc.setPage(pag);
+      doc.setTextColor(154,149,142); this._setReportFont(doc,'body','normal'); doc.setFontSize(landscape?8:7.5);
+      doc.text('Seleccione cualquier entrada para ir a la sección correspondiente.',M,H-(landscape?34:42));
+    });
   }
   _pdfApplyReportFooters(doc,W,H,landscape,indexPage,backPage,folios){
+    // indexPage puede venir como lista si el indice ocupo varias hojas.
+    const primeraIndice=Array.isArray(indexPage)?indexPage[0]:indexPage;
+    const hojasIndice=Array.isArray(indexPage)?indexPage:[indexPage];
     const total=doc.getNumberOfPages(), M=landscape?40:46, fy=H-(landscape?18:19);
     for(let p=2;p<=total;p++){
       if(p===backPage) continue;
       doc.setPage(p); doc.setDrawColor(236,232,226); doc.setLineWidth(.8); doc.line(M,fy-11,W-M,fy-11);
       doc.setTextColor(154,149,142); this._setReportFont(doc,'body','normal'); doc.setFontSize(landscape?7.4:7.1);
       doc.text('Fuente: DGMESNIE · SENER · CENACE · CFE · Cifras sujetas a verificación',M,fy);
-      const folio=(folios&&folios[p])||(p===indexPage?'ÍNDICE':'ANÁLISIS');
+      const folio=(folios&&folios[p])||(hojasIndice.indexOf(p)>=0?'ÍNDICE':'ANÁLISIS');
       this._setReportFont(doc,'mono','bold'); doc.setTextColor(111,107,102); doc.text(folio+'  ·  '+p+'/'+total,W-M,fy,{align:'right'});
-      if(p!==indexPage){
+      if(hojasIndice.indexOf(p)<0){
         const hx=W-M-(landscape?126:118); doc.setTextColor(155,34,71); this._setReportFont(doc,'bodyBold','bold');
-        doc.text('IR AL ÍNDICE',hx,fy); doc.link(hx-4,fy-11,landscape?70:66,15,{pageNumber:indexPage});
+        doc.text('IR AL ÍNDICE',hx,fy); doc.link(hx-4,fy-11,landscape?70:66,15,{pageNumber:primeraIndice});
       }
     }
-    doc.setPage(backPage); doc.link(M,H-(landscape?62:76),landscape?115:100,28,{pageNumber:indexPage});
+    doc.setPage(backPage); doc.link(M,H-(landscape?62:76),landscape?115:100,28,{pageNumber:primeraIndice});
   }
   // Reparto de columnas por medicion, no por proporciones fijas.
   //
@@ -13781,8 +13824,44 @@ class Component extends DCLogic {
 
     // 1 · Portada institucional y 2 · reserva del índice navegable.
     this._pdfReportCover(doc,R,W,H,false);
-    doc.addPage('letter','portrait');
-    folios[indexPage]='ÍNDICE';
+
+    // El indice se escribe al final, cuando ya se conocen los folios, pero sus
+    // hojas se reservan aqui: insertarlas despues correria la numeracion y
+    // dejaria cada entrada apuntando a la pagina equivocada. Cuantas hacen
+    // falta se sabe de antemano, porque las entradas dependen del modelo y no
+    // de como se dibuje.
+    const cuentaEntradas=(()=>{
+      const conContenido=sec=>{
+        const t1=(sec.table&&sec.table.rows&&sec.table.rows.length>0);
+        const t2=(sec.table2&&sec.table2.rows&&sec.table2.rows.length>0);
+        const filas=(sec.rows||[]).map(r=>String(r[1]||''));
+        const filaUtil=filas.some(v=>v&&!/^(no analizada|ninguno)/.test(v));
+        return t1||t2||(sec.hasRows&&filaUtil)||(sec.hasChips&&sec.chips&&sec.chips.length>0)
+          ||(sec.subSections&&sec.subSections.length>0)||!!sec.hasMap
+          ||!!(sec.mapGallery&&sec.mapGallery.length);
+      };
+      const conGrupo=grupo=>charts.some(chart=>chart&&chart.group===grupo);
+      const hayElectricas=charts.some(chart=>chart&&chart.group!=='inegi'&&chart.group!=='tariffs'
+        &&chart.group!=='demand'&&chart.group!=='consumption');
+      const metricasVacias=!metrics.length||metrics.every(m=>!m||m.dim);
+      return 2                                   // leyenda y zona
+        + (metricasVacias?0:1)                   // metricas
+        + (hayElectricas?1:0)
+        + (conGrupo('demand')?1:0)
+        + (conGrupo('tariffs')?1:0)
+        + (conGrupo('inegi')?1:0)
+        + sections.filter(conContenido).length;
+    })();
+    // Caben veinte por hoja: veintiuna ya pisaban el pie, que es justo lo que
+    // pasaba con las corridas intensivas.
+    const porHojaIndice=20;
+    const hojasIndice=Math.max(1,Math.ceil(cuentaEntradas/porHojaIndice));
+    const paginasIndice=[];
+    for(let i=0;i<hojasIndice;i++){
+      doc.addPage('letter','portrait');
+      paginasIndice.push(indexPage+i);
+      folios[indexPage+i]='ÍNDICE';
+    }
 
     // El documento numera secciones de principio a fin, así que todas abren
     // igual: antes sólo las de análisis llevaban portadilla y la leyenda, el
@@ -14078,8 +14157,8 @@ class Component extends DCLogic {
     doc.addPage('letter','portrait');
     const backPage=doc.getNumberOfPages();
     this._pdfReportBack(doc,W,H,false,R);
-    this._pdfReportIndex(doc,W,H,false,indexEntries,indexPage);
-    this._pdfApplyReportFooters(doc,W,H,false,indexPage,backPage,folios);
+    this._pdfReportIndex(doc,W,H,false,indexEntries,paginasIndice);
+    this._pdfApplyReportFooters(doc,W,H,false,paginasIndice,backPage,folios);
 
     if(O.returnData) return {base64:doc.output('datauristring'),sizeBytes:doc.output('arraybuffer').byteLength};
     doc.save(this._reportFileName('pdf',R));
@@ -14846,7 +14925,7 @@ class Component extends DCLogic {
       // En carta la cinta guinda del 'Gracias' ocupa de 126 a 226 y la figura
       // arrancaba en 186: la tapaba a medias y se veia el corte. Sube para
       // cubrirla desde arriba; se dibuja despues de la cinta, asi que la pisa.
-      doc.addImage(woman.url,'PNG',landscape?52:18,landscape?64:120,imgW,imgH);
+      doc.addImage(woman.url,'PNG',landscape?52:18,landscape?64:104,imgW,imgH);
     }
 
     const center=landscape

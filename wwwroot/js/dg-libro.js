@@ -436,34 +436,35 @@
     if (!estado) return;
     var destino = Math.max(0, Math.min(estado.lista.length - 1, indice));
     if (destino === estado.indice) return;
-    var salientes = hojasVisibles(estado.indice)
+    // Se cambia de pagina PRIMERO y se despliega la hoja que llega. Animar la
+    // saliente obligaba a cambiar al terminar, y ese cambio de golpe era el
+    // parpadeo: aqui el contenido ya es el correcto cuando arranca el
+    // movimiento, asi que no hay corte.
+    estado.indice = destino;
+    pintarLectura();
+    estado.contenedor.scrollTop = 0;
+
+    if (reduceMovimiento() || !estado.lectura) return;
+
+    var entrantes = hojasVisibles(destino)
       .map(function (i) { return estado.lista[i]; })
       .filter(Boolean);
-    var hoja = direccion > 0 ? salientes[salientes.length - 1] : salientes[0];
-
-    var aplicar = function () {
-      estado.indice = destino;
-      pintarLectura();
-      estado.contenedor.scrollTop = 0;
-    };
-
-    if (!hoja || reduceMovimiento() || !estado.lectura) { aplicar(); return; }
+    var hoja = direccion > 0 ? entrantes[entrantes.length - 1] : entrantes[0];
+    if (!hoja) return;
 
     var clase = direccion > 0 ? 'esta-girando' : 'esta-girando-atras';
     // El contenedor recorta para que la tira no se desborde; mientras la hoja
-    // gira tiene que dejarla salir, o se ve cortada a media vuelta.
+    // se despliega tiene que dejarla salir, o se ve cortada a media vuelta.
     estado.contenedor.classList.add('esta-pasando');
     hoja.classList.add(clase);
     var limpiar = function () {
       hoja.classList.remove(clase);
       estado.contenedor.classList.remove('esta-pasando');
       hoja.removeEventListener('animationend', limpiar);
-      aplicar();
     };
     hoja.addEventListener('animationend', limpiar);
-    // Red de seguridad: si la animacion no dispara su fin, la hoja no debe
-    // quedarse a medio girar y el lector bloqueado.
-    setTimeout(function () { if (hoja.classList.contains(clase)) limpiar(); }, 600);
+    // Red de seguridad: sin el fin de la animacion la hoja se quedaria plegada.
+    setTimeout(function () { if (hoja.classList.contains(clase)) limpiar(); }, 620);
   }
 
   function pasar(direccion) {
