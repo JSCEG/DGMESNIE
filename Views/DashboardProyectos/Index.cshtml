@@ -13370,7 +13370,20 @@ class Component extends DCLogic {
     doc.addPage('letter','portrait');
     folios[indexPage]='ÍNDICE';
 
+    // El documento numera secciones de principio a fin, así que todas abren
+    // igual: antes sólo las de análisis llevaban portadilla y la leyenda, el
+    // mapa y las métricas entraban sin apertura, con lo que la serie de folios
+    // arrancaba a media numeración y parecía saltada.
+    const abrirSeccion=(folio,kicker,titulo,entrada,color)=>{
+      const pagina=this._pdfReportSectionCover(doc,W,H,false,
+        {kicker,title:titulo,intro:entrada,color:color||'#9B2247'},folio);
+      folios[pagina]=folio;
+      return pagina;
+    };
+
     // 3 · Leyenda idéntica a la visible en el dashboard.
+    const legendCover=abrirSeccion('01','Leyenda del mapa','Capas y simbología',
+      'Estado de cada capa al momento de exportar el reporte, con la simbología que se usó en el mapa.');
     let pageInfo=addReportPage('Leyenda del mapa','Capas y simbología','Estado de las capas al exportar','01');
     const legendPage=pageInfo.page;
     this._pdfReportLegend(doc,R&&R.legendGroups,{
@@ -13379,6 +13392,8 @@ class Component extends DCLogic {
     });
 
     // 4 · Zona evaluada y mapa del análisis.
+    const zoneCover=abrirSeccion('02','Zona evaluada','Mapa del análisis',
+      'Encuadre del análisis con su cobertura, el centroide de referencia y la ficha de la zona.','#2E6FB0');
     pageInfo=addReportPage('Zona evaluada','Mapa del análisis','Encuadre activo al exportar','02');
     const zonePage=pageInfo.page;
     let y=pageInfo.y;
@@ -13422,8 +13437,10 @@ class Component extends DCLogic {
     const allDim = metrics.length > 0 && metrics.every(m => m && m.dim);
 
     // 5 · Indicadores. Se omite si todas las métricas están en cero.
-    let metricsPage=null;
+    let metricsPage=null, metricsCover=null;
     if(!allDim){
+      metricsCover=abrirSeccion('03','Indicadores territoriales','Métricas del análisis',
+        'Cifras de la cobertura analizada: elementos encontrados por capa dentro del radio evaluado.','#0E8A6E');
       const addMetricsPage=(continuation)=>addReportPage('Indicadores territoriales',continuation?'Métricas del análisis · continuación':'Métricas del análisis',R.date||'Reporte territorial','03');
       pageInfo=addMetricsPage(false);
       metricsPage=pageInfo.page;
@@ -13470,27 +13487,36 @@ class Component extends DCLogic {
     const tariffCharts=charts.filter(chart=>chart&&chart.group==='tariffs');
     const inegiCharts=charts.filter(chart=>chart&&chart.group==='inegi');
     let electricChartPage=null,demandChartPage=null,tariffChartPage=null,inegiChartPage=null,chartPageCount=0;
+    let electricChartCover=null,demandChartCover=null,tariffChartCover=null,inegiChartCover=null;
     let electricChartFolio=null,demandChartFolio=null,tariffChartFolio=null,inegiChartFolio=null;
     if(electricCharts.length){
       electricChartFolio=String(4+chartPageCount).padStart(2,'0');
+      electricChartCover=abrirSeccion(electricChartFolio,'Perfil eléctrico','Capacidad y tensión en la zona',
+        'Capacidad instalada por tecnología y subestaciones por nivel de tensión dentro de la cobertura.','#C0552E');
       pageInfo=addReportPage('Perfil eléctrico','Capacidad y tensión en la zona','Activos dentro de la cobertura',electricChartFolio);
       electricChartPage=pageInfo.page; chartPageCount++;
       this._pdfReportCharts(doc,electricCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
     }
     if(demandCharts.length){
       demandChartFolio=String(4+chartPageCount).padStart(2,'0');
+      demandChartCover=abrirSeccion(demandChartFolio,'Operación del sistema','Demanda y pronóstico por hora',
+        'Demanda medida y pronosticada por región de control del CENACE en la cobertura analizada.','#1E9CB8');
       pageInfo=addReportPage('Operación del sistema','Demanda y pronóstico por hora','Regiones de control en la cobertura',demandChartFolio);
       demandChartPage=pageInfo.page; chartPageCount++;
       this._pdfReportCharts(doc,demandCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
     }
     if(tariffCharts.length){
       tariffChartFolio=String(4+chartPageCount).padStart(2,'0');
+      tariffChartCover=abrirSeccion(tariffChartFolio,'Precios energéticos','Tarifas eléctricas por división',
+        'Tarifas de la división CFE que cubre la zona, con el último histórico disponible.','#A57F2C');
       pageInfo=addReportPage('Precios energéticos','Tarifas eléctricas por división','Último histórico disponible',tariffChartFolio);
       tariffChartPage=pageInfo.page; chartPageCount++;
       this._pdfReportCharts(doc,tariffCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
     }
     if(inegiCharts.length){
       inegiChartFolio=String(4+chartPageCount).padStart(2,'0');
+      inegiChartCover=abrirSeccion(inegiChartFolio,'Contexto territorial · INEGI','Perfil sociodemográfico y económico',
+        'Población, vivienda y unidades económicas de los municipios que toca la cobertura.','#6F6B66');
       pageInfo=addReportPage('Contexto territorial · INEGI','Perfil sociodemográfico y económico','Indicadores oficiales',inegiChartFolio);
       inegiChartPage=pageInfo.page; chartPageCount++;
       this._pdfReportCharts(doc,inegiCharts,{x:M,y:pageInfo.y,width:W-M*2,maxY:MAX_Y,landscape:false});
@@ -13510,14 +13536,14 @@ class Component extends DCLogic {
     };
     const nonEmptySections=sections.filter(hasContent);
     const indexEntries=[
-      {group:'Panorama general',folio:'01',title:'Leyenda del mapa y estado de capas',page:legendPage},
-      {group:'Panorama general',folio:'02',title:'Zona evaluada y mapa del análisis',page:zonePage},
+      {group:'Panorama general',folio:'01',title:'Leyenda del mapa y estado de capas',page:legendCover||legendPage},
+      {group:'Panorama general',folio:'02',title:'Zona evaluada y mapa del análisis',page:zoneCover||zonePage},
     ];
-    if(!allDim) indexEntries.push({group:'Panorama general',folio:'03',title:'Indicadores de la cobertura analizada',page:metricsPage});
-    if(electricChartPage) indexEntries.push({group:'Panorama general',folio:electricChartFolio,title:'Perfil eléctrico de la zona',page:electricChartPage});
-    if(demandChartPage) indexEntries.push({group:'Panorama general',folio:demandChartFolio,title:'Demanda y pronóstico por región',page:demandChartPage});
-    if(tariffChartPage) indexEntries.push({group:'Panorama general',folio:tariffChartFolio,title:'Tarifas eléctricas por división',page:tariffChartPage});
-    if(inegiChartPage) indexEntries.push({group:'Panorama general',folio:inegiChartFolio,title:'Perfil sociodemográfico y económico',page:inegiChartPage});
+    if(!allDim) indexEntries.push({group:'Panorama general',folio:'03',title:'Indicadores de la cobertura analizada',page:metricsCover||metricsPage});
+    if(electricChartPage) indexEntries.push({group:'Panorama general',folio:electricChartFolio,title:'Perfil eléctrico de la zona',page:electricChartCover||electricChartPage});
+    if(demandChartPage) indexEntries.push({group:'Panorama general',folio:demandChartFolio,title:'Demanda y pronóstico por región',page:demandChartCover||demandChartPage});
+    if(tariffChartPage) indexEntries.push({group:'Panorama general',folio:tariffChartFolio,title:'Tarifas eléctricas por división',page:tariffChartCover||tariffChartPage});
+    if(inegiChartPage) indexEntries.push({group:'Panorama general',folio:inegiChartFolio,title:'Perfil sociodemográfico y económico',page:inegiChartCover||inegiChartPage});
     nonEmptySections.forEach((sec)=>{
       const folio=String(sections.indexOf(sec)+4+chartPageCount).padStart(2,'0');
       const addSectionPage=(continuation)=>{
