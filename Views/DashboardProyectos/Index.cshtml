@@ -9656,6 +9656,9 @@ class Component extends DCLogic {
         });
         charts.push({
           key:'substation-voltage',
+          // Igual que la capacidad por tecnologia: es como se reparte el total
+          // de subestaciones, no un ranking entre niveles.
+          type:'donut',
           title:'Subestaciones por nivel de tensión',
           subtitle:subItems.length+' '+(subItems.length===1?'subestación identificada':'subestaciones identificadas')+' dentro de la cobertura analizada.',
           unit:'subestaciones',
@@ -9899,7 +9902,7 @@ class Component extends DCLogic {
         detail:'Demanda, generación y pronóstico horario'
       }));
       const series=[
-        {key:'demand',label:'Demanda',color:'#1E6FD9',values:points.map(point=>point.demandMW)},
+        {key:'demand',label:'Demanda',color:'#1E6FD9',area:true,values:points.map(point=>point.demandMW)},
         {key:'generation',label:'Generación',color:'#0E8A6E',values:points.map(point=>point.generationMW)},
         {key:'forecast',label:'Pronóstico',color:'#7A8FA8',dash:'6 5',values:points.map(point=>point.forecastMW)}
       ];
@@ -10565,6 +10568,22 @@ class Component extends DCLogic {
       .defined(value=>Number.isFinite(value))
       .x((value,index)=>x(index))
       .y(value=>y(value));
+    // Area bajo la serie principal: la linea dice el nivel hora a hora, el
+    // area deja ver el volumen del dia de un vistazo. Solo la lleva la serie
+    // marcada, porque rellenar las tres taparia unas con otras.
+    const area=D.area()
+      .defined(value=>Number.isFinite(value))
+      .x((value,index)=>x(index))
+      .y0(y.range()[0])
+      .y1(value=>y(value));
+    series.filter(item=>item.area).forEach(item=>{
+      svg.append('path')
+        .datum(item.values)
+        .attr('fill',item.color||'#1E6FD9')
+        .attr('fill-opacity',.12)
+        .attr('stroke','none')
+        .attr('d',area);
+    });
     series.forEach(item=>{
       svg.append('path')
         .datum(item.values)

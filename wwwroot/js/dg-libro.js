@@ -450,9 +450,13 @@
     if (!hoja || reduceMovimiento() || !estado.lectura) { aplicar(); return; }
 
     var clase = direccion > 0 ? 'esta-girando' : 'esta-girando-atras';
+    // El contenedor recorta para que la tira no se desborde; mientras la hoja
+    // gira tiene que dejarla salir, o se ve cortada a media vuelta.
+    estado.contenedor.classList.add('esta-pasando');
     hoja.classList.add(clase);
     var limpiar = function () {
       hoja.classList.remove(clase);
+      estado.contenedor.classList.remove('esta-pasando');
       hoja.removeEventListener('animationend', limpiar);
       aplicar();
     };
