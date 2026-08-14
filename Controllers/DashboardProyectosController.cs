@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Newtonsoft.Json;
+using System.Globalization;
 using NSIE.Models;
 using NSIE.Servicios;
 
@@ -492,7 +493,7 @@ namespace NSIE.Controllers
             {
                 try
                 {
-                    var cuerpo = ConstruirCorreoReporte(destino.Nombre, descripcionFormato, remitente, remitenteCargo, input.MensajeAdicional);
+                    var cuerpo = ConstruirCorreoReporte(destino.Nombre, descripcionFormato, remitente, remitenteCargo, input.MensajeAdicional, nombreArchivo);
                     await _emailService.EnviarCorreo(
                         destino.Correo,
                         "Reporte territorial DGMESNIE",
@@ -554,43 +555,41 @@ namespace NSIE.Controllers
             string remitente,
             string mensajeAdicional)
         {
-            static string Encode(string? value) =>
-                System.Net.WebUtility.HtmlEncode(value ?? string.Empty);
-            var saludo = string.IsNullOrWhiteSpace(nombreDestino)
-                ? "Estimada(o)"
-                : $"Estimada(o) {Encode(nombreDestino)}";
-            var extra = string.IsNullOrWhiteSpace(mensajeAdicional)
-                ? string.Empty
-                : $"<p style=\"margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6\">{Encode(mensajeAdicional)}</p>";
+            static string Cod(string valor) => System.Net.WebUtility.HtmlEncode(valor ?? string.Empty);
             var formatoLabel = formato == "pptx" ? "PowerPoint" : "PDF";
 
-            return $@"
-<div style=""font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #ece8e2;border-radius:12px;overflow:hidden"">
-  <div style=""background:#9B2247;padding:22px 28px"">
-    <div style=""color:#fff;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase"">Secretaría de Energía · DGMESNIE</div>
-    <div style=""color:#F5D9E2;font-size:12px;margin-top:4px"">Ficha territorial de permiso energético</div>
-  </div>
-  <div style=""padding:26px 28px"">
-    <p style=""margin:0 0 16px;color:#1c1b1a;font-size:15px"">{saludo}:</p>
-    <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
-      {Encode(remitente)} le comparte la ficha territorial del permiso
-      <strong>{Encode(detalle.NumeroPermiso)}</strong>, correspondiente a
-      <strong>{Encode(detalle.Nombre)}</strong>.
-    </p>
-    {extra}
-    <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
-      El archivo adjunto en formato <strong>{formatoLabel}</strong> incluye portada institucional,
-      índice navegable, datos autorizados por el perfil, localización, fuente y fecha de corte.
-    </p>
-    <div style=""margin:20px 0;padding:14px 18px;border-left:4px solid #E0A12E;background:#faf8f5;color:#5f5954;font-size:13px"">
-      Documento informativo de trabajo. La información corresponde al inventario institucional vigente a su fecha de corte.
-    </div>
-    <p style=""margin:16px 0 0;color:#6F6B66;font-size:13px"">Atentamente,<br><strong>{Encode(remitente)}</strong><br>Secretaría de Energía · DGMESNIE</p>
-  </div>
-  <div style=""background:#faf8f5;padding:14px 28px;border-top:1px solid #ece8e2;color:#9A958E;font-size:11px"">
-    Correo generado automáticamente por la plataforma DGMESNIE. Por favor no responda a este mensaje.
-  </div>
-</div>";
+            var parrafos = new List<string>
+            {
+                $"{Cod(remitente)} le comparte la ficha territorial del permiso <strong>{Cod(detalle?.NumeroPermiso)}</strong>, correspondiente a <strong>{Cod(detalle?.Nombre)}</strong>."
+            };
+            if (!string.IsNullOrWhiteSpace(mensajeAdicional))
+                parrafos.Add(Cod(mensajeAdicional));
+
+            var metadatos = new List<CampoCorreo>
+            {
+                new CampoCorreo("Número de permiso", detalle?.NumeroPermiso ?? "—"),
+                new CampoCorreo("Formato", formatoLabel)
+            };
+
+            return PlantillaCorreoInstitucional.Construir(new ContenidoCorreo
+            {
+                Antetitulo = "Ficha territorial · Permiso energético",
+                Titulo = string.IsNullOrWhiteSpace(detalle?.Nombre) ? "Ficha territorial de permiso" : detalle.Nombre,
+                Metadatos = metadatos,
+                Saludo = string.IsNullOrWhiteSpace(nombreDestino) ? "Estimada(o)" : $"Estimada(o) {nombreDestino}",
+                Parrafos = parrafos,
+                SeccionTitulo = "Contenido de la ficha",
+                Puntos = new[]
+                {
+                    new CampoCorreo("Identificación", "Titular, tipo de permiso, clasificación y estatus vigente."),
+                    new CampoCorreo("Localización", "Entidad, municipio y coordenadas registradas."),
+                    new CampoCorreo("Trazabilidad", "Fuente institucional y fecha de corte del inventario.")
+                },
+                AdjuntoFormato = formatoLabel,
+                Nota = "Documento informativo de trabajo. La información corresponde al inventario institucional vigente a su fecha de corte.",
+                Firmante = remitente,
+                FirmanteCargo = "Secretaría de Energía · DGMESNIE"
+            });
         }
 
         private static string DescribirFalloEnvio(Exception ex)
@@ -614,40 +613,41 @@ namespace NSIE.Controllers
             return string.Join(" ", motivos);
         }
 
-        private static string ConstruirCorreoReporte(string nombreDestino, string descripcionFormato, string remitente, string remitenteCargo, string mensajeAdicional)
+        private static string ConstruirCorreoReporte(string nombreDestino, string descripcionFormato, string remitente, string remitenteCargo, string mensajeAdicional, string nombreArchivo)
         {
-            var cargo = string.IsNullOrWhiteSpace(remitenteCargo) ? "Secretaría de Energía · DGMESNIE" : System.Net.WebUtility.HtmlEncode(remitenteCargo);
-            var saludo = string.IsNullOrWhiteSpace(nombreDestino) ? "Estimada(o)" : $"Estimada(o) {System.Net.WebUtility.HtmlEncode(nombreDestino)}";
-            var extra = string.IsNullOrWhiteSpace(mensajeAdicional)
-                ? string.Empty
-                : $"<p style=\"margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6\">{System.Net.WebUtility.HtmlEncode(mensajeAdicional)}</p>";
+            static string Cod(string valor) => System.Net.WebUtility.HtmlEncode(valor ?? string.Empty);
 
-            return $@"
-<div style=""font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #ece8e2;border-radius:12px;overflow:hidden"">
-  <div style=""background:#9B2247;padding:22px 28px"">
-    <div style=""color:#fff;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase"">Secretaría de Energía · DGMESNIE</div>
-    <div style=""color:#F5D9E2;font-size:12px;margin-top:4px"">Dashboard de análisis territorial</div>
-  </div>
-  <div style=""padding:26px 28px"">
-    <p style=""margin:0 0 16px;color:#1c1b1a;font-size:15px"">{saludo}:</p>
-    <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
-      {System.Net.WebUtility.HtmlEncode(remitente)} le comparte el <strong>reporte de análisis territorial</strong>
-      generado desde el Dashboard de Proyectos Energéticos de la DGMESNIE.
-    </p>
-    {extra}
-    <p style=""margin:0 0 16px;color:#3a3a3a;font-size:14px;line-height:1.6"">
-      Encontrará el reporte adjunto en formato <strong>{System.Net.WebUtility.HtmlEncode(descripcionFormato)}</strong>, con índice navegable,
-      métricas territoriales y trazabilidad de las capas analizadas.
-    </p>
-    <div style=""margin:20px 0;padding:14px 18px;border-left:4px solid #E0A12E;background:#faf8f5;color:#5f5954;font-size:13px"">
-      Documento informativo de trabajo. Los resultados dependen de la fecha de corte y las fuentes vigentes.
-    </div>
-    <p style=""margin:16px 0 0;color:#6F6B66;font-size:13px"">Atentamente,<br><strong>{System.Net.WebUtility.HtmlEncode(remitente)}</strong><br>{cargo}</p>
-  </div>
-  <div style=""background:#faf8f5;padding:14px 28px;border-top:1px solid #ece8e2;color:#9A958E;font-size:11px"">
-    Correo generado automáticamente por la plataforma DGMESNIE. Por favor no responda a este mensaje.
-  </div>
-</div>";
+            var parrafos = new List<string>
+            {
+                $"{Cod(remitente)} le comparte el <strong>reporte de análisis territorial</strong> generado desde el Dashboard de Proyectos Energéticos de la DGMESNIE."
+            };
+            if (!string.IsNullOrWhiteSpace(mensajeAdicional))
+                parrafos.Add(Cod(mensajeAdicional));
+
+            return PlantillaCorreoInstitucional.Construir(new ContenidoCorreo
+            {
+                Antetitulo = "Análisis territorial · DGMESNIE",
+                Titulo = "Reporte de análisis territorial",
+                Metadatos = new[]
+                {
+                    new CampoCorreo("Fecha de corte", DateTime.Now.ToString("dd 'de' MMMM 'de' yyyy", new CultureInfo("es-MX"))),
+                    new CampoCorreo("Formato", descripcionFormato ?? "PDF")
+                },
+                Saludo = string.IsNullOrWhiteSpace(nombreDestino) ? "Estimada(o)" : $"Estimada(o) {nombreDestino}",
+                Parrafos = parrafos,
+                SeccionTitulo = "Contenido del reporte",
+                Puntos = new[]
+                {
+                    new CampoCorreo("Cobertura", "Zona analizada, radio y superficie, con el centroide de referencia."),
+                    new CampoCorreo("Capas", "Elementos hallados por capa, con la trazabilidad de cada fuente."),
+                    new CampoCorreo("Índice", "Secciones numeradas y navegables dentro del documento.")
+                },
+                AdjuntoNombre = nombreArchivo,
+                AdjuntoFormato = (descripcionFormato ?? string.Empty).Contains("16:9") ? "PDF" : "PDF",
+                Nota = "Documento informativo de trabajo. Los resultados dependen de la fecha de corte y de las fuentes vigentes al momento de la corrida.",
+                Firmante = remitente,
+                FirmanteCargo = remitenteCargo
+            });
         }
     }
 }
