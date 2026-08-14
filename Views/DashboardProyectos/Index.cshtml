@@ -10270,8 +10270,109 @@ class Component extends DCLogic {
       .map(item=>item.section);
   }
 
+  // Barras agrupadas: varias series por categoria.
+  //
+  // La grafica de tarifas comparaba divisiones con una sola tarifa (GDBT) y
+  // dejaba fuera las otras cuatro, que si estan en la tabla. Comparar las cinco
+  // por division es lo que responde la pregunta de verdad: no cual division es
+  // mas cara, sino donde se abre la brecha entre comercio e industria.
+  //
+  // No es area apilada porque el dato trae un solo periodo: sin eje de tiempo,
+  // apilar seria un adorno que sugiere una evolucion inexistente. Tampoco se
+  // apilan las series entre si, porque son precios y sumarlos no significa nada.
+  _reportGroupedChartSvg(chart){
+    const D=window.d3;
+    if(!D||typeof D.create!=='function') return '';
+    const series=(chart&&Array.isArray(chart.series)?chart.series:[]).filter(item=>item&&item.key);
+    const grupos=(chart&&Array.isArray(chart.groups)?chart.groups:[]).filter(item=>item&&item.label);
+    if(!series.length||!grupos.length) return '';
+
+    const width=720, alturaGrupo=Math.max(46,Math.min(74,320/grupos.length));
+    const margin={top:30,right:74,bottom:44,left:150};
+    const height=margin.top+margin.bottom+alturaGrupo*grupos.length;
+    const valores=[];
+    grupos.forEach(g=>series.forEach(sr=>{
+      const v=Number((g.values||{})[sr.key]);
+      if(Number.isFinite(v)&&v>0) valores.push(v);
+    }));
+    if(!valores.length) return '';
+    const maximo=Math.max(...valores);
+    const decimales=Number.isFinite(chart.decimals)?chart.decimals:0;
+    const fmt=v=>Number(v).toLocaleString('es-MX',{minimumFractionDigits:decimales,maximumFractionDigits:decimales});
+
+    const x=D.scaleLinear().domain([0,maximo]).nice().range([margin.left,width-margin.right]);
+    const y=D.scaleBand().domain(grupos.map(g=>g.label)).range([margin.top,height-margin.bottom]).padding(.22);
+    const ySerie=D.scaleBand().domain(series.map(sr=>sr.key)).range([0,y.bandwidth()]).padding(.18);
+
+    const svg=D.create('svg')
+      .attr('xmlns','http://www.w3.org/2000/svg')
+      .attr('viewBox','0 0 '+width+' '+height)
+      .attr('width',width).attr('height',height)
+      .attr('role','img')
+      .attr('aria-label','Gráfica de '+(chart.title||'comparación'));
+    svg.append('rect').attr('width',width).attr('height',height).attr('fill','#fff');
+
+    const eje=svg.append('g')
+      .attr('transform','translate(0,'+margin.top+')')
+      .call(D.axisTop(x).ticks(4).tickSize(-(height-margin.top-margin.bottom)).tickFormat(v=>fmt(v)));
+    eje.select('.domain').remove();
+    eje.selectAll('.tick line').attr('stroke','#ECE8E2').attr('stroke-width',1);
+    eje.selectAll('.tick text').attr('fill','#9A958E').attr('font-size',11).attr('font-family','Arial, Helvetica, sans-serif');
+
+    grupos.forEach(g=>{
+      const base=y(g.label);
+      const grupo=svg.append('g').attr('transform','translate(0,'+base+')');
+      series.forEach(sr=>{
+        const valor=Number((g.values||{})[sr.key]);
+        if(!Number.isFinite(valor)||valor<=0) return;
+        const ancho=Math.max(2,x(valor)-margin.left);
+        grupo.append('rect')
+          .attr('x',margin.left).attr('y',ySerie(sr.key))
+          .attr('width',ancho).attr('height',ySerie.bandwidth())
+          .attr('rx',2).attr('fill',sr.color||'#9B2247');
+        grupo.append('text')
+          .attr('x',margin.left+ancho+7)
+          .attr('y',ySerie(sr.key)+ySerie.bandwidth()/2+3.4)
+          .attr('fill','#3A3A3A').attr('font-size',9.2).attr('font-weight',700)
+          .attr('font-family','Arial, Helvetica, sans-serif')
+          .text(fmt(valor));
+      });
+      // Nombre de la division, partido en dos renglones si hace falta.
+      const palabras=String(g.label).split(/\s+/).filter(Boolean);
+      const renglones=[];
+      let actual='';
+      palabras.forEach(palabra=>{
+        const siguiente=actual?actual+' '+palabra:palabra;
+        if(siguiente.length<=20||!actual) actual=siguiente; else { renglones.push(actual); actual=palabra; }
+      });
+      if(actual) renglones.push(actual);
+      const texto=svg.append('text')
+        .attr('x',margin.left-12)
+        .attr('y',base+y.bandwidth()/2-((renglones.length-1)*6)+4)
+        .attr('text-anchor','end').attr('fill','#3A3A3A')
+        .attr('font-size',10.5).attr('font-weight',700)
+        .attr('font-family','Arial, Helvetica, sans-serif');
+      renglones.slice(0,2).forEach((renglon,i)=>{
+        texto.append('tspan').attr('x',margin.left-12).attr('dy',i?12:0).text(renglon);
+      });
+    });
+
+    // Leyenda al pie: sin ella, cinco barras del mismo grupo no se distinguen.
+    const leyenda=svg.append('g').attr('transform','translate('+margin.left+','+(height-16)+')');
+    let cursor=0;
+    series.forEach(sr=>{
+      const g=leyenda.append('g').attr('transform','translate('+cursor+',0)');
+      g.append('rect').attr('width',9).attr('height',9).attr('y',-8).attr('rx',1.5).attr('fill',sr.color||'#9B2247');
+      g.append('text').attr('x',13).attr('fill','#6F6B66').attr('font-size',9.5)
+        .attr('font-family','Arial, Helvetica, sans-serif').text(sr.label||sr.key);
+      cursor+=18+String(sr.label||sr.key).length*5.3;
+    });
+
+    return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.node().outerHTML);
+  }
   _reportChartSvg(chart){
     if(chart&&chart.type==='timeseries') return this._reportTimeSeriesChartSvg(chart);
+    if(chart&&chart.type==='grouped') return this._reportGroupedChartSvg(chart);
     const D=window.d3;
     if(!D||typeof D.create!=='function') return '';
     const data=(chart&&Array.isArray(chart.data)?chart.data:[]).filter(item=>Number.isFinite(Number(item.value))&&Number(item.value)>=0);
@@ -11006,24 +11107,39 @@ class Component extends DCLogic {
         ''
       ]);
     }
-    const chartRows=normalizedRecords
-      .filter(record=>record.tarifa==='GDBT'&&Number.isFinite(Number(record.valor))&&Number(record.valor)>0)
-      .sort((a,b)=>a.division.localeCompare(b.division,'es-MX'))
+    // Antes se graficaba una sola tarifa (GDBT) y las otras cuatro se quedaban
+    // en la tabla. Comparar las cinco por división responde la pregunta real:
+    // no qué división es más cara, sino dónde se abre la brecha entre comercio
+    // e industria.
+    const coloresTarifa=['#9B2247','#C0552E','#E0A12E','#2E6FB0','#0E8A6E'];
+    const gruposTarifa=divisions
+      .map(division=>{
+        const valores=byDivision.get(division)||byDivisionNormalized.get(this._norm(division))||new Map();
+        const values={};
+        let tiene=false;
+        referenceTariffs.forEach(item=>{
+          const bruto=Number((valores.get(item.key)||{}).valor);
+          if(Number.isFinite(bruto)&&bruto>0){ values[item.key]=bruto; tiene=true; }
+        });
+        return tiene?{label:division,values}:null;
+      })
+      .filter(Boolean)
       .slice(0,6);
-    const chart=chartRows.length?{
-      key:'tariff-gdbt',
+    const chart=gruposTarifa.length?{
+      key:'tariff-divisiones',
       group:'tariffs',
-      title:'Tarifa media GDBT por división',
-      subtitle:'Comparación homogénea de comercio en baja tensión · '+period+
-        (divisions.length>chartRows.length?' · se grafican 6 de '+divisions.length+' divisiones; la tabla conserva todas':''),
+      type:'grouped',
+      title:'Tarifas eléctricas por división',
+      subtitle:'Comercio en baja tensión frente a industria en media y alta · '+period+
+        (divisions.length>gruposTarifa.length?' · se grafican '+gruposTarifa.length+' de '+divisions.length+' divisiones; la tabla conserva todas':''),
       unit:'$/kWh',
       decimals:3,
-      data:chartRows.map((record,index)=>({
-        label:record.division,
-        value:Number(record.valor),
-        color:this.ESTADO_PALETTE[index%this.ESTADO_PALETTE.length],
-        detail:'GDBT · '+period
+      series:referenceTariffs.map((item,index)=>({
+        key:item.key,
+        label:item.label,
+        color:coloresTarifa[index%coloresTarifa.length]
       })),
+      groups:gruposTarifa,
       source:'Fuente: '+(context.fuente||'CRE / CFE · Histórico DGMESNIE')
     }:null;
     const reportChart=chart?{
@@ -13299,7 +13415,10 @@ class Component extends DCLogic {
     return y;
   }
   _pdfReportCharts(doc,charts,cfg){
-    const data=(Array.isArray(charts)?charts:[]).filter(chart=>chart&&Array.isArray(chart.data)&&chart.data.length).slice(0,2);
+    const data=(Array.isArray(charts)?charts:[]).filter(chart=>chart&&(
+      (Array.isArray(chart.data)&&chart.data.length) ||
+      (chart.type==='grouped'&&Array.isArray(chart.groups)&&chart.groups.length)
+    )).slice(0,2);
     if(!data.length) return cfg.y;
     const rgb=hex=>{
       const match=/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(String(hex||''));
@@ -13405,6 +13524,55 @@ class Component extends DCLogic {
         }
         doc.setTextColor(154,149,142); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7:6.6);
         doc.text(this._clipText(doc,String(chart.source||'Fuente: CENACE'),cardW-30).toUpperCase(),x+15,top+cardH-11);
+        return;
+      }
+
+      // Barras agrupadas: una barra por serie dentro de cada categoria. No se
+      // apilan porque son precios y sumarlos no significa nada.
+      if(chart.type==='grouped'){
+        const series=(chart.series||[]).filter(item=>item&&item.key);
+        const grupos=(chart.groups||[]).slice(0,5);
+        const valores=[];
+        grupos.forEach(g=>series.forEach(sr=>{
+          const v=Number((g.values||{})[sr.key]);
+          if(Number.isFinite(v)&&v>0) valores.push(v);
+        }));
+        const maximo=Math.max(1,...valores);
+        const decimales=Number.isFinite(chart.decimals)?chart.decimals:0;
+        const fmt=v=>Number(v).toLocaleString('es-MX',{minimumFractionDigits:decimales,maximumFractionDigits:decimales});
+        const labelW=cfg.landscape?118:126, valueW=cfg.landscape?54:52;
+        const barX=x+15+labelW, barW=Math.max(50,cardW-30-labelW-valueW);
+        const disponible=Math.max(60,top+cardH-36-cy);
+        const altoGrupo=Math.min(cfg.landscape?52:46,disponible/Math.max(grupos.length,1));
+        const altoBarra=Math.max(3,(altoGrupo-6)/Math.max(series.length,1));
+        grupos.forEach((g,gi)=>{
+          const gy=cy+gi*altoGrupo;
+          doc.setTextColor(58,58,58); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7.6:6.9);
+          const lineas=doc.splitTextToSize(String(g.label||''),labelW-9).slice(0,2);
+          doc.text(lineas,x+15,gy+altoGrupo/2-((lineas.length-1)*3.6)+1,{lineHeightFactor:1.05});
+          series.forEach((sr,si)=>{
+            const v=Number((g.values||{})[sr.key]);
+            if(!Number.isFinite(v)||v<=0) return;
+            const by=gy+2+si*altoBarra;
+            const ancho=Math.max(1.5,barW*(v/maximo));
+            const c=rgb(sr.color);
+            doc.setFillColor(c[0],c[1],c[2]); doc.rect(barX,by,ancho,Math.max(2,altoBarra-1.2),'F');
+            doc.setTextColor(58,58,58); this._setReportFont(doc,'mono','bold'); doc.setFontSize(cfg.landscape?6.4:5.9);
+            doc.text(fmt(v),barX+ancho+4,by+altoBarra-1.4);
+          });
+        });
+        // Sin leyenda, cinco barras del mismo grupo no se distinguen.
+        let lx=x+15; const ly=top+cardH-22;
+        series.forEach(sr=>{
+          const c=rgb(sr.color);
+          doc.setFillColor(c[0],c[1],c[2]); doc.rect(lx,ly-4.5,5,5,'F');
+          doc.setTextColor(111,107,102); this._setReportFont(doc,'body','normal'); doc.setFontSize(cfg.landscape?6.4:5.9);
+          const etiqueta=String(sr.label||sr.key);
+          doc.text(etiqueta,lx+7.5,ly);
+          lx+=10+doc.getTextWidth(etiqueta)+9;
+        });
+        doc.setTextColor(154,149,142); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(cfg.landscape?7:6.6);
+        doc.text(this._clipText(doc,String(chart.source||''),cardW-30).toUpperCase(),x+15,top+cardH-11);
         return;
       }
 
