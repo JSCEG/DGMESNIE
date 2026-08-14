@@ -1196,6 +1196,20 @@
     <!-- REPORTE TERRITORIAL: vista completa alineada al sistema de fichas PAM -->
     <sc-if value="{{ reportOpen }}" hint-placeholder-val="{{ false }}">
     <div class="dg-report" data-screen-label="Reporte territorial" role="dialog" aria-modal="true" aria-label="Reporte de análisis territorial" style="position:fixed;top:65px;left:0;right:0;bottom:0;z-index:2100;overflow-y:auto">
+      <sc-if value="{{ reportBusy }}" hint-placeholder-val="{{ false }}">
+      <!-- El preloader del tablero vive dentro de .dg-boot con z-index 120 y el
+           reporte es fijo con z-index 2100: al exportar desde aquí el aviso
+           quedaba detrás y la pantalla parecía congelada hasta que el archivo
+           aparecía de golpe. Este aviso vive dentro del propio reporte. -->
+      <div class="dg-report-espera" role="status" aria-live="polite">
+        <div class="dg-report-espera__caja">
+          <div class="dg-report-espera__cinta"></div>
+          <div class="dg-report-espera__titulo">{{ reportBusyLabel }}</div>
+          <div class="dg-report-espera__sub">Componer el documento toma unos segundos: se arman las hojas, los mapas y las gráficas.</div>
+          <div class="dg-report-espera__barra"><i></i></div>
+        </div>
+      </div>
+      </sc-if>
       <div class="dg-report-toolbar" aria-label="Acciones del reporte territorial">
         <button type="button" class="dg-report-back" onClick="{{ onCloseReport }}" title="Cerrar reporte y regresar al mapa">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
@@ -12788,10 +12802,31 @@ class Component extends DCLogic {
       },8000);
     }
   }
-  _reportFileName(fmt){
-    const f = fmt==='pdf16x9' ? 'pdf16x9' : 'pdf';
-    const base = f==='pdf16x9' ? 'DGMESNIE_reporte_territorial_16x9_' : 'DGMESNIE_reporte_territorial_';
-    return base + new Date().toISOString().slice(0,10) + '.pdf';
+  // Un archivo llamado sólo "reporte_territorial_2026-08-14" no dice de qué
+  // zona es, y quien recibe tres por correo no puede distinguirlos. El nombre
+  // lleva el objetivo evaluado: la dirección, el municipio o el elemento que
+  // se analizó.
+  _sanearNombre(texto){
+    return String(texto||'')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/[^A-Za-z0-9]+/g,'-')
+      .replace(/^-+|-+$/g,'')
+      .slice(0,52);
+  }
+  _objetivoDelReporte(R){
+    const informe = R || this._report;
+    const porTarget = informe && informe.target && informe.target.label;
+    const porMeta = informe ? this._reportMetaValue(informe,'Objetivo evaluado') : '';
+    const A = this.state.analysis || {};
+    const crudo = porTarget || (porMeta && porMeta!=='—' ? porMeta : '') || A.targetLabel || A.estado || '';
+    return this._sanearNombre(crudo);
+  }
+  _reportFileName(fmt, R){
+    const ancho = fmt==='pdf16x9';
+    const objetivo = this._objetivoDelReporte(R);
+    const fecha = new Date().toISOString().slice(0,10);
+    return ['analisis-territorial', ancho?'16x9':null, objetivo||null, fecha]
+      .filter(Boolean).join('_') + '.pdf';
   }
   async _generateTerritorialPDF(fmt, opts){
     const O=opts||{};
@@ -13668,7 +13703,7 @@ class Component extends DCLogic {
     this._pdfApplyReportFooters(doc,W,H,false,indexPage,backPage,folios);
 
     if(O.returnData) return {base64:doc.output('datauristring'),sizeBytes:doc.output('arraybuffer').byteLength};
-    doc.save('DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.pdf');
+    doc.save(this._reportFileName('pdf',R));
     this._toast('Reporte PDF exportado');
   }
   async _writeReportPDFPresent(R, opts){
@@ -14028,7 +14063,7 @@ class Component extends DCLogic {
     this._pdfApplyReportFooters(doc,W,H,true,indexPage,backPage,folios);
 
     if(O.returnData) return {base64:doc.output('datauristring'),sizeBytes:doc.output('arraybuffer').byteLength};
-    doc.save('DGMESNIE_reporte_territorial_16x9_'+new Date().toISOString().slice(0,10)+'.pdf');
+    doc.save(this._reportFileName('pdf16x9',R));
     this._toast('Reporte PDF 16:9 exportado');
   }
   // Filas del análisis de zona (si se ejecutó) — alimentan Excel, PDF y PNG
@@ -15198,7 +15233,7 @@ class Component extends DCLogic {
     if(fuelPriceSheet) X.utils.book_append_sheet(wb,fuelPriceSheet.ws,fuelPriceSheet.name);
     X.utils.book_append_sheet(wb,sources,N.sources);
 
-    X.writeFile(wb,'DGMESNIE_reporte_territorial_'+new Date().toISOString().slice(0,10)+'.xlsx',{cellStyles:true,bookSST:true});
+    X.writeFile(wb,this._reportFileName('pdf').replace(/\.pdf$/,'.xlsx'),{cellStyles:true,bookSST:true});
     this._toast('Excel territorial exportado · '+wb.SheetNames.length+' hojas');
   };
 
@@ -16098,6 +16133,10 @@ class Component extends DCLogic {
           onReportIndice: ()=>this._irASeccionReporte('rep-indice')
         };
       })()),
+      // Trabajo en curso con el reporte abierto: el preloader del tablero queda
+      // debajo, así que el aviso se pinta dentro del propio reporte.
+      reportBusy: !!S.blocking && !!S.reportOpen,
+      reportBusyLabel: S.blocking ? S.blocking.label : '',
       reportSendOpen: !!S.reportSendOpen,
       reportSendFmtPdf: S.reportSendFmt!=='pdf16x9',
       reportSendFmtPpt: S.reportSendFmt==='pdf16x9',
