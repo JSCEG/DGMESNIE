@@ -13149,6 +13149,20 @@ class Component extends DCLogic {
     const widths=this._pdfAnchosColumnas(doc,head,rows,width,fs,pad);
     const xs=[x]; for(let i=1;i<n;i++) xs.push(xs[i-1]+widths[i-1]);
     const numeric=v=>/^[\d\s.,%+\-]+(?:\s?(?:MW|MVA|kV|km|m2|ha|USD|MXN))?$/i.test(String(v==null?'':v).trim());
+    // La alineacion se decide por COLUMNA y no por celda: antes cada valor
+    // elegia la suya, asi que una columna de cifras con un guion en medio
+    // quedaba en zigzag, y el encabezado se quedaba siempre a la izquierda
+    // mientras sus cifras se iban a la derecha. Eso era lo desalineado.
+    const derecha=head.map((_,i)=>{
+      if(i===0) return false;
+      let cifras=0, llenas=0;
+      rows.slice(0,60).forEach(fila=>{
+        const valor=String((fila||[])[i]==null?'':fila[i]).trim();
+        if(!valor||valor==='—'||valor==='-') return;
+        llenas++; if(numeric(valor)) cifras++;
+      });
+      return llenas>0 && cifras/llenas>=0.6;
+    });
     let y=cfg.y;
     const headCells=head.map((h,i)=>doc.splitTextToSize(String(h).toUpperCase(),Math.max(14,widths[i]-pad*2)));
     const headHeight=Math.max(cfg.landscape?22:21,...headCells.map(c=>c.length*lh+9));
@@ -13160,7 +13174,10 @@ class Component extends DCLogic {
       this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(fs);
       doc.setFillColor(255,255,255); doc.rect(x,y,width,headHeight,'F');
       doc.setTextColor(accent[0],accent[1],accent[2]); this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(fs); doc.setCharSpace(.35);
-      headCells.forEach((c,i)=>doc.text(c,xs[i]+pad,y+12)); doc.setCharSpace(0); y+=headHeight;
+      headCells.forEach((c,i)=>{
+        if(derecha[i]) doc.text(c,xs[i]+widths[i]-pad,y+12,{align:'right'});
+        else doc.text(c,xs[i]+pad,y+12);
+      }); doc.setCharSpace(0); y+=headHeight;
       doc.setDrawColor(accent[0],accent[1],accent[2]); doc.setLineWidth(2.5); doc.line(x,y-1.2,x+width,y-1.2);
     };
     if(rows.length&&y+headHeight+rowHeight(rows[0])>cfg.maxY) y=cfg.newPage();
@@ -13172,11 +13189,12 @@ class Component extends DCLogic {
       if(ri%2===1){ doc.setFillColor(252,250,249); doc.rect(x,y,width,rh,'F'); }
       doc.setDrawColor(240,236,230); doc.setLineWidth(.55); doc.line(x,y+rh,x+width,y+rh);
       cells.forEach((c,i)=>{
-        const isNum=i>0&&numeric((row||[])[i]);
+        const esCifra=derecha[i]&&numeric((row||[])[i]);
         doc.setTextColor(28,27,26);
-        this._setReportFont(doc,i===0?'body':'mono',isNum?'bold':'normal');
+        this._setReportFont(doc,i===0?'body':'mono',esCifra?'bold':'normal');
         doc.setFontSize(fs);
-        if(isNum&&c.length===1) doc.text(c[0],xs[i]+widths[i]-pad,y+12,{align:'right'}); else doc.text(c,xs[i]+pad,y+12);
+        if(derecha[i]) doc.text(c,xs[i]+widths[i]-pad,y+12,{align:'right'});
+        else doc.text(c,xs[i]+pad,y+12);
       });
       y+=rh;
     });
@@ -14515,7 +14533,7 @@ class Component extends DCLogic {
       // En carta la cinta guinda del 'Gracias' ocupa de 126 a 226 y la figura
       // arrancaba en 186: la tapaba a medias y se veia el corte. Sube para
       // cubrirla desde arriba; se dibuja despues de la cinta, asi que la pisa.
-      doc.addImage(woman.url,'PNG',landscape?52:18,landscape?64:138,imgW,imgH);
+      doc.addImage(woman.url,'PNG',landscape?52:18,landscape?64:120,imgW,imgH);
     }
 
     const center=landscape
