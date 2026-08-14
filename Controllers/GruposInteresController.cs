@@ -303,169 +303,82 @@ namespace NSIE.Controllers
 
         private static string ConstruirCorreoReporteDashboard(GruposInteresDashboardVM data, string portalUrl)
         {
-            var topRows = string.Empty;
-            foreach (var g in data.TopGruposProyectos.Take(5))
+            var filas = data.TopGruposProyectos
+                .Take(5)
+                .Select(g => (IReadOnlyList<string>)new[]
+                {
+                    g.Nombre ?? string.Empty,
+                    g.Origen ?? "N/E",
+                    g.TotalProyectos.ToString("N0")
+                })
+                .ToList();
+
+            return PlantillaCorreoInstitucional.Construir(new ContenidoCorreo
             {
-                topRows += $@"
-                    <tr>
-                        <td style='padding:8px 10px; border:1px solid #ddd; font-weight:700;'>{g.Nombre}</td>
-                        <td style='padding:8px 10px; border:1px solid #ddd; text-align:center;'>{g.Origen ?? "N/E"}</td>
-                        <td style='padding:8px 10px; border:1px solid #ddd; text-align:right; font-weight:700; color:#8a0031;'>{g.TotalProyectos}</td>
-                    </tr>";
-            }
-
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Reporte de Grupos de Interés</title>
-                </head>
-                <body style='margin:0; padding:20px; background:#f5f5f5; font-family:Arial, sans-serif; color:#333;'>
-                    <div style='max-width:700px; margin:0 auto; background:#ffffff; border:1px solid #ddd; border-radius:8px; overflow:hidden;'>
-                        <div style='padding:15px 20px; border-bottom:1px solid #eee;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td><img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='GobMX' style='max-height:36px;'></td>
-                                    <td style='text-align:right;'><img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='SENER' style='max-height:38px;'></td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style='background:#9B2247; color:#ffffff; padding:15px 20px; font-size:18px; font-weight:bold;'>
-                            Reporte Ejecutivo: Grupos de Interés y Desarrolladores
-                        </div>
-                        <div style='padding:20px;'>
-                            <p style='margin:0 0 15px; font-size:15px;'>Se adjunta el resumen del estado actual de los Grupos Económicos de Interés registrados en el sistema:</p>
-                            
-                            <!-- Indicadores principales -->
-                            <table role='presentation' style='width:100%; margin-bottom:20px;'>
-                                <tr>
-                                    <td style='width:33%; padding:10px; background:#fcf8f9; border:1px solid #e5c7d4; border-radius:5px; text-align:center;'>
-                                        <div style='font-size:12px; color:#6b1034; text-transform:uppercase; font-weight:bold;'>Grupos Económicos</div>
-                                        <div style='font-size:24px; font-weight:bold; color:#9B2247; margin-top:5px;'>{data.TotalGrupos}</div>
-                                    </td>
-                                    <td style='width:33%; padding:10px; background:#f4f7f6; border:1px solid #c9d7d4; border-radius:5px; text-align:center;'>
-                                        <div style='font-size:12px; color:#143e36; text-transform:uppercase; font-weight:bold;'>Proyectos / Empresas</div>
-                                        <div style='font-size:24px; font-weight:bold; color:#1E5B4F; margin-top:5px;'>{data.TotalProyectos}</div>
-                                    </td>
-                                    <td style='width:33%; padding:10px; background:#faf9f5; border:1px solid #f2edd5; border-radius:5px; text-align:center;'>
-                                        <div style='font-size:12px; color:#70561e; text-transform:uppercase; font-weight:bold;'>Países Origen</div>
-                                        <div style='font-size:24px; font-weight:bold; color:#A57F2C; margin-top:5px;'>{data.TotalPaises}</div>
-                                    </td>
-                                </tr>
-                            </table>
-
-                            <h4 style='color:#9B2247; border-bottom:1px solid #eee; padding-bottom:5px; margin:20px 0 10px;'>Top 5 Grupos con Mayor Cantidad de Proyectos</h4>
-                            <table role='presentation' style='width:100%; border-collapse:collapse; font-size:13px;'>
-                                <thead style='background:#f5f5f5;'>
-                                    <tr>
-                                        <th style='padding:8px; border:1px solid #ddd; text-align:left;'>Grupo de Interés</th>
-                                        <th style='padding:8px; border:1px solid #ddd; text-align:center; width:25%;'>Origen</th>
-                                        <th style='padding:8px; border:1px solid #ddd; text-align:right; width:20%;'>Proyectos</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {topRows}
-                                </tbody>
-                            </table>
-
-                            <div style='margin-top:25px; text-align:center;'>
-                                <a href='{portalUrl}' style='display:inline-block; padding:10px 18px; border-radius:4px; background:#9B2247; color:#ffffff; text-decoration:none; font-weight:bold; font-size:14px;'>
-                                    Ver en el Portal SNIER
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+                Antetitulo = "Grupos de interés y desarrolladores",
+                Titulo = "Reporte ejecutivo de grupos de interés",
+                Metadatos = new[]
+                {
+                    new CampoCorreo("Grupos económicos", data.TotalGrupos.ToString("N0")),
+                    new CampoCorreo("Proyectos / empresas", data.TotalProyectos.ToString("N0")),
+                    new CampoCorreo("Países de origen", data.TotalPaises.ToString("N0"))
+                },
+                Parrafos = new[]
+                {
+                    "Corte del padrón de grupos de interés y desarrolladores registrados en la plataforma de la DGMESNIE."
+                },
+                Tabla = new TablaCorreo
+                {
+                    Titulo = "Grupos con más proyectos",
+                    Encabezados = new[] { "Grupo", "Origen", "Proyectos" },
+                    Filas = filas,
+                    TextoVacio = "Sin grupos con proyectos registrados."
+                },
+                BotonTexto = string.IsNullOrWhiteSpace(portalUrl) ? null : "Abrir el padrón completo",
+                BotonUrl = portalUrl,
+                Nota = "Las cifras corresponden al momento de generación del reporte.",
+                PieAviso = "Este correo se genera automáticamente y no requiere respuesta."
+            });
         }
 
         private static string ConstruirCorreoRegistroGrupo(GrupoInteres gei, string portalUrl)
         {
             var proyectos = gei.Proyectos ?? [];
-            var rows = proyectos.Any()
-                ? string.Concat(proyectos.Select(p => $@"
-                    <tr>
-                        <td style='padding:8px 10px; border:1px solid #ddd;'>{H(p.RazonSocial)}</td>
-                        <td style='padding:8px 10px; border:1px solid #ddd;'>{H(p.NombreProyecto)}</td>
-                        <td style='padding:8px 10px; border:1px solid #ddd;'>{H(p.Contacto)}</td>
-                        <td style='padding:8px 10px; border:1px solid #ddd;'>{H(p.Correo)}</td>
-                        <td style='padding:8px 10px; border:1px solid #ddd;'>{H(p.Telefono)}</td>
-                    </tr>"))
-                : @"
-                    <tr>
-                        <td colspan='5' style='padding:12px; border:1px solid #ddd; color:#666; text-align:center;'>Sin proyectos o razones sociales asociadas.</td>
-                    </tr>";
+            var filas = proyectos
+                .Select(p => (IReadOnlyList<string>)new[]
+                {
+                    p.RazonSocial ?? string.Empty,
+                    p.NombreProyecto ?? string.Empty,
+                    p.Contacto ?? string.Empty,
+                    p.Correo ?? string.Empty,
+                    p.Telefono ?? string.Empty
+                })
+                .ToList();
 
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Registro de Grupo de Interés</title>
-                </head>
-                <body style='margin:0; padding:20px; background:#f5f5f5; font-family:Arial, sans-serif; color:#333;'>
-                    <div style='max-width:820px; margin:0 auto; background:#ffffff; border:1px solid #ddd; border-radius:8px; overflow:hidden;'>
-                        <div style='padding:15px 20px; border-bottom:1px solid #eee;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td><img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='GobMX' style='max-height:36px;'></td>
-                                    <td style='text-align:right;'><img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='SENER' style='max-height:38px;'></td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style='background:#9B2247; color:#ffffff; padding:15px 20px; font-size:18px; font-weight:bold;'>
-                            Registro de Grupo de Interés
-                        </div>
-                        <div style='padding:20px;'>
-                            <table role='presentation' style='width:100%; border-collapse:collapse; font-size:13px; margin-bottom:20px;'>
-                                <tbody>
-                                    <tr>
-                                        <th style='padding:8px 10px; border:1px solid #ddd; text-align:left; width:28%; background:#f5f5f5;'>Grupo / Desarrollador</th>
-                                        <td style='padding:8px 10px; border:1px solid #ddd; font-weight:700;'>{H(gei.Nombre)}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style='padding:8px 10px; border:1px solid #ddd; text-align:left; background:#f5f5f5;'>País de origen</th>
-                                        <td style='padding:8px 10px; border:1px solid #ddd;'>{H(gei.Origen)}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style='padding:8px 10px; border:1px solid #ddd; text-align:left; background:#f5f5f5;'>Contacto principal</th>
-                                        <td style='padding:8px 10px; border:1px solid #ddd;'>{H(gei.Contacto)}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style='padding:8px 10px; border:1px solid #ddd; text-align:left; background:#f5f5f5;'>Correo</th>
-                                        <td style='padding:8px 10px; border:1px solid #ddd;'>{H(gei.Correo)}</td>
-                                    </tr>
-                                    <tr>
-                                        <th style='padding:8px 10px; border:1px solid #ddd; text-align:left; background:#f5f5f5;'>Teléfono</th>
-                                        <td style='padding:8px 10px; border:1px solid #ddd;'>{H(gei.Telefono)}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-
-                            <h4 style='color:#9B2247; border-bottom:1px solid #eee; padding-bottom:5px; margin:20px 0 10px;'>Proyectos y empresas asociadas</h4>
-                            <table role='presentation' style='width:100%; border-collapse:collapse; font-size:13px;'>
-                                <thead style='background:#9B2247; color:#ffffff;'>
-                                    <tr>
-                                        <th style='padding:8px; border:1px solid #8a1e3f; text-align:left;'>Razón social</th>
-                                        <th style='padding:8px; border:1px solid #8a1e3f; text-align:left;'>Proyecto</th>
-                                        <th style='padding:8px; border:1px solid #8a1e3f; text-align:left;'>Contacto</th>
-                                        <th style='padding:8px; border:1px solid #8a1e3f; text-align:left;'>Correo</th>
-                                        <th style='padding:8px; border:1px solid #8a1e3f; text-align:left;'>Teléfono</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {rows}
-                                </tbody>
-                            </table>
-
-                            <div style='margin-top:25px; text-align:center;'>
-                                <a href='{H(portalUrl)}' style='display:inline-block; padding:10px 18px; border-radius:4px; background:#9B2247; color:#ffffff; text-decoration:none; font-weight:bold; font-size:14px;'>
-                                    Ver módulo en el Portal SNIER
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+            return PlantillaCorreoInstitucional.Construir(new ContenidoCorreo
+            {
+                Antetitulo = "Grupos de interés y desarrolladores",
+                Titulo = string.IsNullOrWhiteSpace(gei.Nombre) ? "Registro de grupo de interés" : gei.Nombre,
+                Parrafos = new[] { "Se registró el siguiente grupo de interés en la plataforma de la DGMESNIE." },
+                Datos = new[]
+                {
+                    new CampoCorreo("Grupo / desarrollador", gei.Nombre),
+                    new CampoCorreo("País de origen", gei.Origen),
+                    new CampoCorreo("Contacto principal", gei.Contacto),
+                    new CampoCorreo("Correo", gei.Correo),
+                    new CampoCorreo("Teléfono", gei.Telefono)
+                },
+                Tabla = new TablaCorreo
+                {
+                    Titulo = "Proyectos y empresas asociadas",
+                    Encabezados = new[] { "Razón social", "Proyecto", "Contacto", "Correo", "Teléfono" },
+                    Filas = filas,
+                    TextoVacio = "Sin proyectos o razones sociales asociadas."
+                },
+                BotonTexto = string.IsNullOrWhiteSpace(portalUrl) ? null : "Abrir el padrón",
+                BotonUrl = portalUrl,
+                PieAviso = "Este correo se genera automáticamente y no requiere respuesta."
+            });
         }
 
         private HeaderViewModel BuildHeader() => new()

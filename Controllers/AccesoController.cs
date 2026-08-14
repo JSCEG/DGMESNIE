@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Collections.Generic;
+using System.Linq;
 using NSIE.Models;
 using NSIE.Servicios;
 using System.Security.Cryptography;
@@ -855,133 +857,87 @@ namespace NSIE.Controllers
 
         private string EmailReinstatement(string nombre, string url)
         {
-            var contenido = @"
-                <p style='margin:0 0 14px;'>Hemos recibido una solicitud para restablecer tu contraseña en la plataforma NSIE.</p>
-                <p style='margin:0 0 18px;'>Por seguridad, este enlace tendrá vigencia de 30 minutos.</p>";
-
-            return BuildInstitutionalEmail(
+            return CorreoAcceso(
+                antetitulo: "Seguridad de la cuenta",
                 titulo: "Restablecimiento de contraseña",
                 nombre: nombre,
-                contenidoHtml: contenido,
+                parrafos: new[]
+                {
+                    "Recibimos una solicitud para restablecer la contraseña de su cuenta en la plataforma institucional.",
+                    "Por seguridad, el enlace tiene una vigencia de 30 minutos."
+                },
                 botonTexto: "Restablecer contraseña",
-                botonUrl: url);
+                botonUrl: url,
+                nota: "Si usted no solicitó este cambio, ignore este mensaje: la contraseña actual sigue vigente.");
         }
 
         private string EmailExpiration(string nombre, string token, string url)
         {
-            var detalle = $@"
-                <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:16px 0 6px;'>
-                    <tr>
-                        <td style='background:#f7ecf1; color:#6b1034; font-weight:700; padding:10px 12px; border:1px solid #e5c7d4; width:35%;'>Token nuevo</td>
-                        <td style='padding:10px 12px; border:1px solid #eadde4; color:#2b2b2b;'>{token}</td>
-                    </tr>
-                </table>";
-
-            var contenido = @"
-                <p style='margin:0 0 14px;'>Tu token anterior expiró. Ya generamos uno nuevo para continuar con el proceso.</p>
-                <p style='margin:0 0 18px;'>Utiliza el siguiente botón y completa el cambio de contraseña dentro de los próximos 30 minutos.</p>";
-
-            return BuildInstitutionalEmail(
+            return CorreoAcceso(
+                antetitulo: "Seguridad de la cuenta",
                 titulo: "Nuevo enlace de restablecimiento",
                 nombre: nombre,
-                contenidoHtml: contenido,
-                tablaHtml: detalle,
+                parrafos: new[]
+                {
+                    "El enlace anterior expiró. Se generó uno nuevo para continuar con el cambio de contraseña.",
+                    "Complete el proceso dentro de los próximos 30 minutos."
+                },
+                datos: new[] { new CampoCorreo("Token nuevo", token) },
                 botonTexto: "Restablecer contraseña",
-                botonUrl: url);
+                botonUrl: url,
+                nota: "Si usted no solicitó este cambio, ignore este mensaje: la contraseña actual sigue vigente.");
         }
 
         private string EmailConfirmed(string nombre)
         {
-            var contenido = @"
-                <p style='margin:0 0 14px;'>La contraseña de tu cuenta fue restablecida correctamente.</p>
-                <p style='margin:0 0 18px;'>Si no reconoces esta acción, repórtala de inmediato al equipo administrador del sistema.</p>";
-
             var loginUrl = Url.Action("Login", "Acceso", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
-            return BuildInstitutionalEmail(
+            return CorreoAcceso(
+                antetitulo: "Seguridad de la cuenta",
                 titulo: "Contraseña actualizada",
                 nombre: nombre,
-                contenidoHtml: contenido,
+                parrafos: new[] { "La contraseña de su cuenta se restableció correctamente." },
                 botonTexto: "Ir al inicio de sesión",
-                botonUrl: loginUrl);
+                botonUrl: loginUrl,
+                nota: "Si usted no reconoce esta acción, repórtela de inmediato al administrador del sistema.");
         }
 
         private string EmailPasswordChangedFromAccount(string nombre)
         {
-            var contenido = @"
-                <p style='margin:0 0 14px;'>La contraseña de tu cuenta fue actualizada desde el panel institucional.</p>
-                <p style='margin:0 0 18px;'>Si no realizaste este cambio, notifica inmediatamente al administrador del sistema.</p>";
-
             var loginUrl = Url.Action("Login", "Acceso", null, protocol: HttpContext.Request.Scheme) ?? string.Empty;
-            return BuildInstitutionalEmail(
-                titulo: "Cambio de contraseña exitoso",
+            return CorreoAcceso(
+                antetitulo: "Seguridad de la cuenta",
+                titulo: "Cambio de contraseña",
                 nombre: nombre,
-                contenidoHtml: contenido,
+                parrafos: new[] { "La contraseña de su cuenta se actualizó desde el panel institucional." },
                 botonTexto: "Ir al inicio de sesión",
-                botonUrl: loginUrl);
+                botonUrl: loginUrl,
+                nota: "Si usted no realizó este cambio, notifique de inmediato al administrador del sistema.");
         }
 
-        private string BuildInstitutionalEmail(
+        // Los correos de acceso no llevan firma: no los manda una persona, los
+        // manda el sistema. La plantilla omite el bloque cuando no hay firmante.
+        private static string CorreoAcceso(
+            string antetitulo,
             string titulo,
             string nombre,
-            string contenidoHtml,
-            string? tablaHtml = null,
-            string? botonTexto = null,
-            string? botonUrl = null)
+            IReadOnlyList<string> parrafos,
+            string botonTexto,
+            string botonUrl,
+            string nota,
+            IReadOnlyList<CampoCorreo>? datos = null)
         {
-            var botonHtml = string.Empty;
-            if (!string.IsNullOrWhiteSpace(botonTexto) && !string.IsNullOrWhiteSpace(botonUrl))
+            return PlantillaCorreoInstitucional.Construir(new ContenidoCorreo
             {
-                botonHtml = $@"
-                    <div style='margin:18px 0 16px; text-align:center;'>
-                        <a href='{botonUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
-                            {botonTexto}
-                        </a>
-                    </div>";
-            }
-
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <meta http-equiv='X-UA-Compatible' content='IE=edge' />
-                    <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
-                    <title>{titulo}</title>
-                </head>
-                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
-                    <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
-                        <tr>
-                            <td style='padding:16px 20px; border-bottom:1px solid #eee;'>
-                                <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                    <tr>
-                                        <td style='width:50%;'>
-                                            <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
-                                        </td>
-                                        <td style='width:50%; text-align:right;'>
-                                            <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
-                                        </td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>
-                                {titulo}
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style='padding:22px 20px;'>
-                                <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Hola, {nombre}.</p>
-                                {contenidoHtml}
-                                {tablaHtml}
-                                {botonHtml}
-                                <p style='margin:18px 0 0; font-size:13px; color:#555;'>
-                                    Este correo se genera automáticamente y no requiere respuesta.
-                                </p>
-                            </td>
-                        </tr>
-                    </table>
-                </body>
-                </html>";
+                Antetitulo = antetitulo,
+                Titulo = titulo,
+                Saludo = string.IsNullOrWhiteSpace(nombre) ? "Estimada(o)" : $"Estimada(o) {nombre}",
+                Parrafos = parrafos.Select(System.Net.WebUtility.HtmlEncode).ToArray(),
+                Datos = datos ?? Array.Empty<CampoCorreo>(),
+                BotonTexto = botonTexto,
+                BotonUrl = botonUrl,
+                Nota = nota,
+                PieAviso = "Este correo se genera automáticamente y no requiere respuesta."
+            });
         }
 
         private string GenerateToken()

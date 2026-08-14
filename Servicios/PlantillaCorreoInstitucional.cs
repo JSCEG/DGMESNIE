@@ -62,7 +62,12 @@ namespace NSIE.Servicios
 <tr><td style=""height:1px;line-height:1px;font-size:0;background:{Dorado}"">&nbsp;</td></tr>");
 
             EscribirCuerpo(html, contenido);
+            EscribirDatos(html, contenido.Datos);
+            EscribirBoton(html, contenido.BotonTexto, contenido.BotonUrl);
             EscribirPuntos(html, contenido.SeccionTitulo, contenido.Puntos);
+            EscribirTabla(html, contenido.Tabla);
+            foreach (var tabla in contenido.Tablas ?? Array.Empty<TablaCorreo>()) EscribirTabla(html, tabla);
+            EscribirImagenes(html, contenido.ImagenesTitulo, contenido.Imagenes);
             EscribirAdjunto(html, contenido.AdjuntoNombre, contenido.AdjuntoFormato);
             EscribirNota(html, contenido.Nota);
             EscribirFirma(html, contenido.Firmante, contenido.FirmanteCargo);
@@ -211,6 +216,152 @@ namespace NSIE.Servicios
 </td></tr>");
         }
 
+        /// <summary>Pares etiqueta/valor. Los correos operativos -una actividad
+        /// asignada, un grupo registrado- se leen mejor asi que en prosa.</summary>
+        private static void EscribirDatos(StringBuilder html, IReadOnlyList<CampoCorreo> datos)
+        {
+            if (datos is null || datos.Count == 0) return;
+
+            html.Append($@"
+<tr><td style=""padding:6px 34px 0"">
+  <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" border=""0"">");
+
+            foreach (var dato in datos)
+            {
+                html.Append($@"
+    <tr>
+      <td valign=""top"" width=""168"" style=""padding:11px 14px 11px 0;border-bottom:1px solid {Linea};font-family:{Sans};font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:{Gris};line-height:1.5"">{Cod(dato.Etiqueta)}</td>
+      <td valign=""top"" style=""padding:11px 0;border-bottom:1px solid {Linea};font-family:{Sans};font-size:13px;line-height:1.55;color:{Tinta}"">{Cod(dato.Valor)}</td>
+    </tr>");
+            }
+
+            html.Append(@"
+  </table>
+</td></tr>");
+        }
+
+        /// <summary>Boton de accion. En correo se arma con una tabla y bgcolor:
+        /// un &lt;a&gt; con padding y fondo se queda sin fondo en Outlook.</summary>
+        private static void EscribirBoton(StringBuilder html, string texto, string url)
+        {
+            if (string.IsNullOrWhiteSpace(texto) || string.IsNullOrWhiteSpace(url)) return;
+
+            html.Append($@"
+<tr><td style=""padding:24px 34px 0"">
+  <table role=""presentation"" cellpadding=""0"" cellspacing=""0"" border=""0"">
+    <tr><td align=""center"" bgcolor=""{Guinda}"" style=""background:{Guinda}"">
+      <a href=""{Cod(url)}"" style=""display:inline-block;padding:13px 26px;font-family:{Sans};font-size:12.5px;font-weight:700;letter-spacing:.04em;color:#ffffff;text-decoration:none"">{Cod(texto)}</a>
+    </td></tr>
+  </table>
+  <div style=""margin-top:11px;font-family:{Mono};font-size:10px;line-height:1.5;color:{GrisTenue};word-break:break-all"">
+    Si el botón no funciona, copie esta dirección: {Cod(url)}
+  </div>
+</td></tr>");
+        }
+
+        /// <summary>Tabla de varias columnas. Se dibuja sin rejilla completa: filete
+        /// guinda bajo el encabezado y renglon separado por hairline, que es como se
+        /// leen las tablas en los informes.</summary>
+        private static void EscribirTabla(StringBuilder html, TablaCorreo tabla)
+        {
+            if (tabla is null || tabla.Encabezados is null || tabla.Encabezados.Count == 0) return;
+
+            html.Append($@"
+<tr><td style=""padding:26px 34px 0"">");
+
+            if (!string.IsNullOrWhiteSpace(tabla.Titulo))
+            {
+                html.Append($@"
+  <div style=""font-family:{Sans};font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:{Guinda};margin-bottom:12px"">{Cod(tabla.Titulo)}</div>");
+            }
+
+            html.Append($@"
+  <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" border=""0"">
+    <tr>");
+
+            foreach (var encabezado in tabla.Encabezados)
+            {
+                html.Append($@"
+      <td style=""padding:0 10px 8px 0;border-bottom:1px solid {Guinda};font-family:{Sans};font-size:8.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:{Guinda}"">{Cod(encabezado)}</td>");
+            }
+
+            html.Append(@"
+    </tr>");
+
+            if (tabla.Filas is null || tabla.Filas.Count == 0)
+            {
+                html.Append($@"
+    <tr><td colspan=""{tabla.Encabezados.Count}"" style=""padding:14px 0;font-family:{Sans};font-size:12px;color:{GrisTenue}"">{Cod(tabla.TextoVacio)}</td></tr>");
+            }
+            else
+            {
+                foreach (var fila in tabla.Filas)
+                {
+                    html.Append(@"
+    <tr>");
+                    foreach (var celda in fila)
+                    {
+                        html.Append($@"
+      <td valign=""top"" style=""padding:11px 10px 11px 0;border-bottom:1px solid {Linea};font-family:{Sans};font-size:12px;line-height:1.5;color:{Cuerpo}"">{Cod(celda)}</td>");
+                    }
+                    html.Append(@"
+    </tr>");
+                }
+            }
+
+            html.Append(@"
+  </table>
+</td></tr>");
+        }
+
+        /// <summary>Rejilla de dos imagenes por renglon. Las graficas llegan como
+        /// data URI ya generado, no se rearman aqui.</summary>
+        private static void EscribirImagenes(StringBuilder html, string titulo, IReadOnlyList<ImagenCorreo> imagenes)
+        {
+            if (imagenes is null || imagenes.Count == 0) return;
+
+            html.Append($@"
+<tr><td style=""padding:26px 34px 0"">");
+
+            if (!string.IsNullOrWhiteSpace(titulo))
+            {
+                html.Append($@"
+  <div style=""font-family:{Sans};font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:{Guinda};padding-bottom:9px;border-bottom:1px solid {Guinda};margin-bottom:16px"">{Cod(titulo)}</div>");
+            }
+
+            html.Append(@"
+  <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" border=""0"">");
+
+            for (var i = 0; i < imagenes.Count; i += 2)
+            {
+                html.Append(@"
+    <tr>");
+                for (var j = i; j < i + 2; j++)
+                {
+                    if (j >= imagenes.Count)
+                    {
+                        html.Append(@"
+      <td width=""50%"">&nbsp;</td>");
+                        continue;
+                    }
+                    var imagen = imagenes[j];
+                    html.Append($@"
+      <td width=""50%"" valign=""top"" style=""padding:0 8px 20px 0"">
+        <div style=""font-family:{Sans};font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:{Gris};margin-bottom:7px"">{Cod(imagen.Titulo)}</div>
+        <div style=""border:1px solid {Linea};background:{Papel};padding:10px;text-align:center"">
+          <img src=""{imagen.Fuente}"" alt=""{Cod(imagen.Titulo)}"" style=""max-width:100%;height:auto;border:0;display:inline-block"">
+        </div>
+      </td>");
+                }
+                html.Append(@"
+    </tr>");
+            }
+
+            html.Append(@"
+  </table>
+</td></tr>");
+        }
+
         private static void EscribirAdjunto(StringBuilder html, string nombre, string formato)
         {
             if (string.IsNullOrWhiteSpace(nombre)) return;
@@ -294,14 +445,47 @@ namespace NSIE.Servicios
         /// venga del usuario debe codificarse antes de ponerlo aquí.</summary>
         public IReadOnlyList<string> Parrafos { get; set; } = Array.Empty<string>();
 
+        /// <summary>Pares etiqueta/valor del asunto del correo.</summary>
+        public IReadOnlyList<CampoCorreo> Datos { get; set; } = Array.Empty<CampoCorreo>();
+
+        public string BotonTexto { get; set; } = string.Empty;
+        public string BotonUrl { get; set; } = string.Empty;
+
         public string SeccionTitulo { get; set; } = string.Empty;
         public IReadOnlyList<CampoCorreo> Puntos { get; set; } = Array.Empty<CampoCorreo>();
+        public TablaCorreo Tabla { get; set; }
+        public IReadOnlyList<TablaCorreo> Tablas { get; set; } = Array.Empty<TablaCorreo>();
+        public string ImagenesTitulo { get; set; } = string.Empty;
+        public IReadOnlyList<ImagenCorreo> Imagenes { get; set; } = Array.Empty<ImagenCorreo>();
+
         public string AdjuntoNombre { get; set; } = string.Empty;
         public string AdjuntoFormato { get; set; } = string.Empty;
         public string Nota { get; set; } = string.Empty;
         public string Firmante { get; set; } = string.Empty;
         public string FirmanteCargo { get; set; } = string.Empty;
         public string PieAviso { get; set; } = string.Empty;
+    }
+
+    public sealed class TablaCorreo
+    {
+        public string Titulo { get; set; } = string.Empty;
+        public IReadOnlyList<string> Encabezados { get; set; } = Array.Empty<string>();
+        public IReadOnlyList<IReadOnlyList<string>> Filas { get; set; } = Array.Empty<IReadOnlyList<string>>();
+        public string TextoVacio { get; set; } = "Sin registros asociados.";
+    }
+
+    public sealed class ImagenCorreo
+    {
+        public ImagenCorreo(string titulo, string fuente)
+        {
+            Titulo = titulo ?? string.Empty;
+            Fuente = fuente ?? string.Empty;
+        }
+
+        public string Titulo { get; }
+
+        /// <summary>data URI o URL publica. No se codifica: es un atributo src.</summary>
+        public string Fuente { get; }
     }
 
     public sealed class CampoCorreo

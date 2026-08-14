@@ -678,201 +678,85 @@ namespace NSIE.Controllers
 
         private static string ConstruirCorreoReporteSemanal(string nombreUsuario, GestorReporteSemanalRequest request)
         {
-            var today = DateTime.Today;
-            int daysToMonday = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
-            var lunes = today.AddDays(-daysToMonday);
+            var hoy = DateTime.Today;
+            var diasALunes = ((int)hoy.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+            var lunes = hoy.AddDays(-diasALunes);
             var domingo = lunes.AddDays(6);
-            var culture = new System.Globalization.CultureInfo("es-MX");
-            var rangoSemana = $"{lunes.ToString("dd 'de' MMMM", culture)} al {domingo.ToString("dd 'de' MMMM 'de' yyyy", culture)}";
+            var cultura = new System.Globalization.CultureInfo("es-MX");
+            var rangoSemana = $"{lunes.ToString("dd 'de' MMMM", cultura)} al {domingo.ToString("dd 'de' MMMM 'de' yyyy", cultura)}";
 
             var kpis = request.Kpis;
-            var total = kpis.GetValueOrDefault("temasRegistrados", "0");
-            var concluidas = kpis.GetValueOrDefault("temasConcluidos", "0");
-            var porVencer = kpis.GetValueOrDefault("temasPorVencer", "0");
-            var vencidas = kpis.GetValueOrDefault("temasVencidos", "0");
-            var avance = kpis.GetValueOrDefault("avanceGlobal", "0%");
-            var activas = kpis.GetValueOrDefault("actividadesActivas", "0");
+            string Kpi(string clave, string porOmision) => kpis.GetValueOrDefault(clave, porOmision);
 
-            string SanitizarSvg(string base64OrSvg) {
-                if (string.IsNullOrWhiteSpace(base64OrSvg)) return "<div style='color:#667085;text-align:center;padding:10px;border:1px dashed #ddd;'>Gráfico no disponible</div>";
-                if (base64OrSvg.StartsWith("data:image/")) {
-                    return $"<img src='{base64OrSvg}' style='max-width:100%; height:auto; border:none; display:inline-block;' alt='Gráfico' />";
-                }
-                return base64OrSvg.Replace("<svg", "<svg style='max-width:100%; height:auto;'");
+            // Las gráficas llegan como SVG o como data URI ya armado. Un SVG suelto
+            // no se ve en la mayoría de los clientes de correo, así que sólo se
+            // publica lo que ya viene como imagen.
+            static string ComoImagen(string valor) =>
+                !string.IsNullOrWhiteSpace(valor) && valor.StartsWith("data:image/") ? valor : null;
+
+            var imagenes = new List<ImagenCorreo>();
+            void Agregar(string titulo, string fuente)
+            {
+                var imagen = ComoImagen(fuente);
+                if (imagen != null) imagenes.Add(new ImagenCorreo(titulo, imagen));
             }
+            Agregar("Estatus general", request.EstatusSvg);
+            Agregar("Distribución de prioridad", request.PrioridadSvg);
+            Agregar("Avance global", request.AvanceSvg);
+            Agregar("Carga por responsable", request.ResponsablesSvg);
 
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Reporte Semanal Gestor</title>
-                </head>
-                <body style='margin:0; padding:20px; background-color:#f9fafb; font-family:Arial, Helvetica, sans-serif; color:#1f2937;'>
-                    <div style='max-width:800px; margin:0 auto; background-color:#ffffff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.05);'>
-                        
-                        <div style='padding:16px 24px; border-bottom:1px solid #f3f4f6;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td style='width:50%;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:36px; width:auto;'>
-                                    </td>
-                                    <td style='width:50%; text-align:right;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:38px; width:auto;'>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
+            var tablaActividades = new TablaCorreo
+            {
+                Titulo = "Avance por actividad",
+                Encabezados = new[] { "Actividad", "Responsable", "Total", "Concluidos", "Por vencer", "Vencidos", "Avance" },
+                Filas = request.Actividades.Select(a => (IReadOnlyList<string>)new[]
+                {
+                    a.Actividad, a.Responsable, a.Total.ToString("N0"), a.Concluidos.ToString("N0"),
+                    a.PorVencer.ToString("N0"), a.Vencidos.ToString("N0"), a.Avance + " %"
+                }).ToList(),
+                TextoVacio = "No hay actividades registradas en este periodo."
+            };
 
-                        <div style='background-color:#8a0031; background:linear-gradient(135deg, #8a0031 0%, #6b0024 100%); color:#ffffff; padding:24px; text-align:center;'>
-                            <h1 style='margin:0; font-size:22px; font-weight:700; letter-spacing:0.02em;'>Reporte de Avance Semanal</h1>
-                            <p style='margin:6px 0 0; font-size:14px; font-weight:bold; color:rgba(255,255,255,0.95);'>Semana del {rangoSemana}</p>
-                            <p style='margin:4px 0 0; font-size:12px; color:rgba(255,255,255,0.8);'>Gestor de Actividades y Temas Críticos — DGMESNIE</p>
-                        </div>
+            var tablaResponsables = new TablaCorreo
+            {
+                Titulo = "Avance por responsable",
+                Encabezados = new[] { "Responsable", "Total temas", "Concluidos", "Por vencer", "Vencidos", "Avance" },
+                Filas = request.Responsables.Select(r => (IReadOnlyList<string>)new[]
+                {
+                    r.Responsable, r.Total.ToString("N0"), r.Concluidos.ToString("N0"),
+                    r.PorVencer.ToString("N0"), r.Vencidos.ToString("N0"), r.Avance + " %"
+                }).ToList(),
+                TextoVacio = "No hay temas registrados en este periodo."
+            };
 
-                        <div style='padding:24px;'>
-                            <p style='margin:0 0 16px; font-size:16px; font-weight:700;'>Estimado Equipo,</p>
-
-                            <div style='margin-bottom:28px;'>
-                                <table role='presentation' cellpadding='0' cellspacing='10' border='0' style='width:100%; margin:-10px;'>
-                                    <tr>
-                                        <td style='width:33%; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; text-align:center;'>
-                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;'>Actividades Activas</span>
-                                            <strong style='display:block; font-size:24px; color:#0f172a; margin-top:4px;'>{activas}</strong>
-                                        </td>
-                                        <td style='width:33%; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; text-align:center;'>
-                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;'>Temas Registrados</span>
-                                            <strong style='display:block; font-size:24px; color:#0f172a; margin-top:4px;'>{total}</strong>
-                                        </td>
-                                        <td style='width:33%; background:#ecfdf5; border:1px solid #d1fae5; border-radius:8px; padding:12px; text-align:center;'>
-                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#065f46; font-weight:700;'>Temas Concluidos</span>
-                                            <strong style='display:block; font-size:24px; color:#047857; margin-top:4px;'>{concluidas}</strong>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td style='background:#fffbeb; border:1px solid #fef3c7; border-radius:8px; padding:12px; text-align:center;'>
-                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#92400e; font-weight:700;'>Por Vencer</span>
-                                            <strong style='display:block; font-size:24px; color:#d97706; margin-top:4px;'>{porVencer}</strong>
-                                        </td>
-                                        <td style='background:#fef2f2; border:1px solid #fee2e2; border-radius:8px; padding:12px; text-align:center;'>
-                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#991b1b; font-weight:700;'>Vencidos</span>
-                                            <strong style='display:block; font-size:24px; color:#b91c1c; margin-top:4px;'>{vencidas}</strong>
-                                        </td>
-                                        <td style='background:#f5f3ff; border:1px solid #ede9fe; border-radius:8px; padding:12px; text-align:center;'>
-                                            <span style='display:block; font-size:11px; text-transform:uppercase; color:#5b21b6; font-weight:700;'>Avance Promedio</span>
-                                            <strong style='display:block; font-size:24px; color:#6d28d9; margin-top:4px;'>{avance}</strong>
-                                        </td>
-                                    </tr>
-                                </table>
-                            </div>
-
-                            <h2 style='font-size:16px; font-weight:700; border-bottom:2px solid #8a0031; padding-bottom:6px; margin:24px 0 12px 0; color:#8a0031;'>
-                                Avance por Actividad
-                            </h2>
-                            <div style='margin-bottom:24px; overflow-x:auto;'>
-                                <table cellpadding='6' cellspacing='0' style='width:100%; border-collapse:collapse; font-size:12px; text-align:left; border:1px solid #e5e7eb;'>
-                                    <thead>
-                                        <tr style='background-color:#8a0031; color:#ffffff;'>
-                                            <th style='padding:8px; border:1px solid #e5e7eb;'>Actividad</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb;'>Responsable</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Total</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Concluidos</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Por Vencer</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Vencidos</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center; width:80px;'>Avance</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {string.Join("", request.Actividades.Select(a => $@"
-                                            <tr style='border-bottom:1px solid #e5e7eb;'>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; font-weight:bold; color:#1f2937;'>{System.Net.WebUtility.HtmlEncode(a.Actividad)}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; color:#4b5563;'>{System.Net.WebUtility.HtmlEncode(a.Responsable)}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; font-weight:bold;'>{a.Total}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#047857; font-weight:bold;'>{a.Concluidos}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#d97706; font-weight:bold;'>{a.PorVencer}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#b91c1c; font-weight:bold;'>{a.Vencidos}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; font-weight:bold; color:#8a0031;'>{a.Avance}%</td>
-                                            </tr>
-                                        "))}
-                                        {(!request.Actividades.Any() ? "<tr><td colspan='7' style='text-align:center; padding:12px; color:#6b7280;'>No hay actividades registradas en este periodo.</td></tr>" : "")}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <h2 style='font-size:16px; font-weight:700; border-bottom:2px solid #8a0031; padding-bottom:6px; margin:24px 0 12px 0; color:#8a0031;'>
-                                Avance por Responsable
-                            </h2>
-                            <div style='margin-bottom:24px; overflow-x:auto;'>
-                                <table cellpadding='6' cellspacing='0' style='width:100%; border-collapse:collapse; font-size:12px; text-align:left; border:1px solid #e5e7eb;'>
-                                    <thead>
-                                        <tr style='background-color:#1e5b4f; color:#ffffff;'>
-                                            <th style='padding:8px; border:1px solid #e5e7eb;'>Responsable</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Total Temas</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Concluidos</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Por Vencer</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center;'>Vencidos</th>
-                                            <th style='padding:8px; border:1px solid #e5e7eb; text-align:center; width:80px;'>Avance</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {string.Join("", request.Responsables.Select(r => $@"
-                                            <tr style='border-bottom:1px solid #e5e7eb;'>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; font-weight:bold; color:#1f2937;'>{System.Net.WebUtility.HtmlEncode(r.Responsable)}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; font-weight:bold;'>{r.Total}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#047857; font-weight:bold;'>{r.Concluidos}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#d97706; font-weight:bold;'>{r.PorVencer}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; color:#b91c1c; font-weight:bold;'>{r.Vencidos}</td>
-                                                <td style='padding:8px; border:1px solid #e5e7eb; text-align:center; font-weight:bold; color:#1e5b4f;'>{r.Avance}%</td>
-                                            </tr>
-                                        "))}
-                                        {(!request.Responsables.Any() ? "<tr><td colspan='6' style='text-align:center; padding:12px; color:#6b7280;'>No hay responsables registrados en este periodo.</td></tr>" : "")}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <h2 style='font-size:16px; font-weight:700; border-bottom:2px solid #8a0031; padding-bottom:6px; margin:24px 0 16px 0; color:#8a0031;'>
-                                Gráficos Analíticos
-                            </h2>
-
-                            <table role='presentation' cellpadding='0' cellspacing='12' border='0' style='width:100%;'>
-                                <tr>
-                                    <td style='width:50%; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; text-align:center;'>
-                                        <h3 style='margin:0 0 10px 0; font-size:13px; font-weight:700; color:#4b5563;'>Estatus General</h3>
-                                        <div style='display:inline-block; text-align:center;'>
-                                            {SanitizarSvg(request.EstatusSvg)}
-                                        </div>
-                                    </td>
-                                    <td style='width:50%; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; text-align:center;'>
-                                        <h3 style='margin:0 0 10px 0; font-size:13px; font-weight:700; color:#4b5563;'>Distribución de Prioridad</h3>
-                                        <div style='display:inline-block; text-align:center;'>
-                                            {SanitizarSvg(request.PrioridadSvg)}
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style='width:50%; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; text-align:center;'>
-                                        <h3 style='margin:0 0 10px 0; font-size:13px; font-weight:700; color:#4b5563;'>Avance Global</h3>
-                                        <div style='display:inline-block; text-align:center;'>
-                                            {SanitizarSvg(request.AvanceSvg)}
-                                        </div>
-                                    </td>
-                                    <td style='width:50%; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; text-align:center;'>
-                                        <h3 style='margin:0 0 10px 0; font-size:13px; font-weight:700; color:#4b5563;'>Carga por Responsable</h3>
-                                        <div style='display:inline-block; text-align:center;'>
-                                            {SanitizarSvg(request.ResponsablesSvg)}
-                                        </div>
-                                    </td>
-                                </tr>
-                            </table>
-
-                        </div>
-
-                        <div style='background-color:#f9fafb; border-top:1px solid #e5e7eb; padding:16px; text-align:center; font-size:11px; color:#6b7280;'>
-                            Este correo ha sido generado y enviado de manera automatizada a solicitud del administrador del sistema.<br>
-                            <strong>DGMESNIE — Secretaría de Energía — Gobierno de México</strong>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+            return PlantillaCorreoInstitucional.Construir(new ContenidoCorreo
+            {
+                Antetitulo = "Gestor de actividades · DGMESNIE",
+                Titulo = "Reporte de avance semanal",
+                Metadatos = new[]
+                {
+                    new CampoCorreo("Semana", rangoSemana),
+                    new CampoCorreo("Avance global", Kpi("avanceGlobal", "0%"))
+                },
+                Saludo = string.IsNullOrWhiteSpace(nombreUsuario) ? "Estimada(o)" : $"Estimada(o) {nombreUsuario}",
+                Parrafos = new[]
+                {
+                    "Corte semanal de las actividades y temas críticos registrados en el Gestor de la DGMESNIE."
+                },
+                Datos = new[]
+                {
+                    new CampoCorreo("Actividades activas", Kpi("actividadesActivas", "0")),
+                    new CampoCorreo("Temas registrados", Kpi("temasRegistrados", "0")),
+                    new CampoCorreo("Temas concluidos", Kpi("temasConcluidos", "0")),
+                    new CampoCorreo("Temas por vencer", Kpi("temasPorVencer", "0")),
+                    new CampoCorreo("Temas vencidos", Kpi("temasVencidos", "0"))
+                },
+                Tablas = new[] { tablaActividades, tablaResponsables },
+                ImagenesTitulo = imagenes.Count > 0 ? "Gráficas del periodo" : null,
+                Imagenes = imagenes,
+                Nota = "Corte automático de la semana en curso. El detalle vive en el Gestor de Actividades.",
+                PieAviso = "Este correo se genera automáticamente y no requiere respuesta."
+            });
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
@@ -1064,334 +948,163 @@ namespace NSIE.Controllers
         }
 
         // ── Email template builders ───────────────────────────────────────────
+
+        // ── Correos del gestor ────────────────────────────────────────────────
+        // Los siete avisos del gestor decían lo mismo con distinto HTML: cabecera,
+        // barra de título, saludo, tabla de datos y botón. Ahora comparten la
+        // plantilla institucional y sólo aportan su texto y sus campos.
+        private static string CorreoGestor(
+            string antetitulo,
+            string titulo,
+            string nombre,
+            string parrafo,
+            IReadOnlyList<CampoCorreo> datos,
+            string portalUrl,
+            string nota)
+        {
+            return PlantillaCorreoInstitucional.Construir(new ContenidoCorreo
+            {
+                Antetitulo = antetitulo,
+                Titulo = titulo,
+                Saludo = string.IsNullOrWhiteSpace(nombre) ? "Estimada(o)" : $"Estimada(o) {nombre}",
+                Parrafos = new[] { System.Net.WebUtility.HtmlEncode(parrafo) },
+                Datos = datos,
+                BotonTexto = string.IsNullOrWhiteSpace(portalUrl) ? null : "Abrir el Gestor de Actividades",
+                BotonUrl = portalUrl,
+                Nota = nota,
+                PieAviso = "Este correo se genera automáticamente y no requiere respuesta."
+            });
+        }
+
+        private static string Corresponsables(IEnumerable<GestorUsuarioDto> lista)
+        {
+            var nombres = lista?.Select(c => c.Nombre).Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+            return nombres != null && nombres.Count > 0 ? string.Join(", ", nombres) : "Ninguno";
+        }
+
+        private static string Fecha(DateTime? valor) =>
+            valor?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
+
+        private static IReadOnlyList<CampoCorreo> DatosActividad(
+            GestorActividad actividad, bool incluirCategoria, bool incluirEstatus, bool incluirResponsable)
+        {
+            var datos = new List<CampoCorreo>
+            {
+                new CampoCorreo("Clave", actividad.Clave),
+                new CampoCorreo("Actividad", actividad.Actividad)
+            };
+            if (incluirResponsable)
+                datos.Add(new CampoCorreo("Responsable", actividad.ResponsableNombre ?? "Sin responsable asignado"));
+            datos.Add(new CampoCorreo("Descripción",
+                string.IsNullOrWhiteSpace(actividad.Descripcion) ? "Sin descripción registrada." : actividad.Descripcion));
+            if (incluirCategoria)
+                datos.Add(new CampoCorreo("Categoría", actividad.Categoria ?? "Sin categoría"));
+            datos.Add(new CampoCorreo("Fecha de inicio", Fecha(actividad.FechaInicio)));
+            datos.Add(new CampoCorreo("Fecha compromiso", Fecha(actividad.FechaCompromiso)));
+            datos.Add(new CampoCorreo("Prioridad", actividad.Prioridad));
+            if (incluirEstatus)
+                datos.Add(new CampoCorreo("Estatus", actividad.Estatus));
+            datos.Add(new CampoCorreo("Corresponsables", Corresponsables(actividad.Corresponsables)));
+            return datos;
+        }
+
+        private static IReadOnlyList<CampoCorreo> DatosTema(
+            GestorTema tema, bool incluirInicio, bool incluirEstatus, bool incluirPrioridad, bool incluirAvance,
+            string responsableEtiqueta)
+        {
+            var datos = new List<CampoCorreo>
+            {
+                new CampoCorreo("Clave", tema.Clave),
+                new CampoCorreo("Actividad", tema.ActividadNombre ?? "Sin actividad"),
+                new CampoCorreo("Tema", tema.Tema)
+            };
+            if (!string.IsNullOrWhiteSpace(responsableEtiqueta))
+                datos.Add(new CampoCorreo(responsableEtiqueta, tema.ResponsableNombre ?? "Sin responsable asignado"));
+            datos.Add(new CampoCorreo("Descripción",
+                string.IsNullOrWhiteSpace(tema.Descripcion) ? "Sin descripción registrada." : tema.Descripcion));
+            if (incluirInicio)
+                datos.Add(new CampoCorreo("Fecha de inicio", Fecha(tema.FechaInicio)));
+            datos.Add(new CampoCorreo("Fecha compromiso", Fecha(tema.FechaCompromiso)));
+            if (incluirPrioridad)
+                datos.Add(new CampoCorreo("Prioridad", tema.Prioridad));
+            if (incluirEstatus)
+                datos.Add(new CampoCorreo("Estatus", tema.Estatus));
+            if (incluirAvance)
+                datos.Add(new CampoCorreo("Avance", $"{tema.Avance}"));
+            datos.Add(new CampoCorreo("Corresponsables", Corresponsables(tema.Corresponsables)));
+            return datos;
+        }
+
         private static string ConstruirCorreoAsignacionActividad(string nombreResponsable, GestorActividad actividad, string portalUrl)
         {
-            var fechaCompromiso = actividad.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var fechaInicio = actividad.FechaInicio?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var descripcion = string.IsNullOrWhiteSpace(actividad.Descripcion) ? "Sin descripcion registrada." : actividad.Descripcion;
-            var coResps = actividad.Corresponsables != null && actividad.Corresponsables.Any() 
-                ? string.Join(", ", actividad.Corresponsables.Select(c => c.Nombre)) 
-                : "Ninguno";
-
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Asignación de actividad</title>
-                </head>
-                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
-                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
-                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td style='width:50%;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
-                                    </td>
-                                    <td style='width:50%; text-align:right;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Nueva actividad asignada</div>
-                        <div style='padding:22px 20px;'>
-                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Hola, {nombreResponsable}.</p>
-                            <p>Se te ha asignado una actividad dentro del Gestor de Actividades DGMESNIE.</p>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Clave}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Actividad}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Categoría</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Categoria ?? "Sin categoria"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha de inicio</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaInicio}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaCompromiso}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Prioridad}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Estatus}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Corresponsables</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{coResps}</td></tr>
-                            </table>
-                            <div style='margin:18px 0 16px; text-align:center;'>
-                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
-                                    Abrir Gestor de Actividades
-                                </a>
-                            </div>
-                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía automáticamente cuando una actividad se asigna o cambia de responsable principal.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+            return CorreoGestor(
+                antetitulo: "Gestor de actividades · DGMESNIE",
+                titulo: "Nueva actividad asignada",
+                nombre: nombreResponsable,
+                parrafo: "Se le asignó una actividad dentro del Gestor de Actividades de la DGMESNIE.",
+                datos: DatosActividad(actividad, incluirCategoria: true, incluirEstatus: true, incluirResponsable: false),
+                portalUrl: portalUrl,
+                nota: "Este aviso se envía automáticamente cuando una actividad se asigna o cambia de responsable principal.");
         }
 
         private static string ConstruirCorreoAsignacionTema(string nombreResponsable, GestorTema tema, string portalUrl)
         {
-            var fechaCompromiso = tema.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var fechaInicio = tema.FechaInicio?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var descripcion = string.IsNullOrWhiteSpace(tema.Descripcion) ? "Sin descripcion registrada." : tema.Descripcion;
-            var coResps = tema.Corresponsables != null && tema.Corresponsables.Any() 
-                ? string.Join(", ", tema.Corresponsables.Select(c => c.Nombre)) 
-                : "Ninguno";
-
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Asignación de tema</title>
-                </head>
-                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
-                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
-                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td style='width:50%;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
-                                    </td>
-                                    <td style='width:50%; text-align:right;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Nuevo tema asignado</div>
-                        <div style='padding:22px 20px;'>
-                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Hola, {nombreResponsable}.</p>
-                            <p>Se te ha asignado un tema dentro del Gestor de Actividades DGMESNIE.</p>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Clave}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.ActividadNombre ?? "Sin actividad"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Tema</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Tema}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha de inicio</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaInicio}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaCompromiso}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Prioridad}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Estatus}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Corresponsables</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{coResps}</td></tr>
-                            </table>
-                            {RenderEtapasHtml(tema.Etapas)}
-                            <div style='margin:18px 0 16px; text-align:center;'>
-                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
-                                    Abrir Gestor de Actividades
-                                </a>
-                            </div>
-                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía automáticamente cuando un tema se asigna o cambia de responsable.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+            return CorreoGestor(
+                antetitulo: "Gestor de actividades · DGMESNIE",
+                titulo: "Nuevo tema asignado",
+                nombre: nombreResponsable,
+                parrafo: "Se le asignó un tema dentro del Gestor de Actividades de la DGMESNIE.",
+                datos: DatosTema(tema, incluirInicio: true, incluirEstatus: true, incluirPrioridad: true, incluirAvance: false, responsableEtiqueta: null),
+                portalUrl: portalUrl,
+                nota: "Este aviso se envía automáticamente cuando un tema se asigna o cambia de responsable principal.");
         }
 
         private static string ConstruirCorreoRecordatorioTema(string nombreResponsable, GestorTema tema, string portalUrl)
         {
-            var fechaCompromiso = tema.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var descripcion = string.IsNullOrWhiteSpace(tema.Descripcion) ? "Sin descripción registrada." : tema.Descripcion;
-            var coResps = tema.Corresponsables != null && tema.Corresponsables.Any() 
-                ? string.Join(", ", tema.Corresponsables.Select(c => c.Nombre)) 
-                : "Ninguno";
-
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Recordatorio de tema</title>
-                </head>
-                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
-                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
-                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td style='width:50%;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
-                                    </td>
-                                    <td style='width:50%; text-align:right;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Recordatorio de Tema Pendiente / Por Vencer</div>
-                        <div style='padding:22px 20px;'>
-                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Estimado(a) {nombreResponsable},</p>
-                            <p>Le enviamos este recordatorio sobre un tema asignado a su cargo en el Gestor de Actividades DGMESNIE que requiere de su atención:</p>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Clave}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.ActividadNombre ?? "Sin actividad"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Tema</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Tema}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #e5c7d4; font-weight: 700; color: #8a0031;'>{fechaCompromiso}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Estatus}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Avance</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Avance}%</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Corresponsables</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{coResps}</td></tr>
-                            </table>
-                            {RenderEtapasHtml(tema.Etapas)}
-                            <p style='margin-bottom: 20px;'>Agradecemos de antemano su valiosa colaboración para mantener al día el seguimiento de estos compromisos institucionales.</p>
-                            <div style='margin:18px 0 16px; text-align:center;'>
-                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
-                                    Abrir Gestor de Actividades
-                                </a>
-                            </div>
-                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía a solicitud del administrador o coordinador del seguimiento en la plataforma.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+            return CorreoGestor(
+                antetitulo: "Gestor de actividades · DGMESNIE",
+                titulo: "Tema pendiente o por vencer",
+                nombre: nombreResponsable,
+                parrafo: "El siguiente tema sigue abierto y su fecha compromiso está próxima o vencida.",
+                datos: DatosTema(tema, incluirInicio: false, incluirEstatus: true, incluirPrioridad: false, incluirAvance: true, responsableEtiqueta: null),
+                portalUrl: portalUrl,
+                nota: "Recordatorio automático del Gestor de Actividades.");
         }
 
         private static string ConstruirCorreoCompartirTema(string nombreDestinatario, GestorTema tema, string portalUrl)
         {
-            var fechaCompromiso = tema.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var fechaInicio = tema.FechaInicio?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var descripcion = string.IsNullOrWhiteSpace(tema.Descripcion) ? "Sin descripción registrada." : tema.Descripcion;
-            var coResps = tema.Corresponsables != null && tema.Corresponsables.Any() 
-                ? string.Join(", ", tema.Corresponsables.Select(c => c.Nombre)) 
-                : "Ninguno";
-
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Copia de conocimiento</title>
-                </head>
-                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
-                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
-                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td style='width:50%;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
-                                    </td>
-                                    <td style='width:50%; text-align:right;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Copia de conocimiento</div>
-                        <div style='padding:22px 20px;'>
-                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Estimado(a) {nombreDestinatario},</p>
-                            <p>Se le comparte este tema para su conocimiento. No requiere una acción directa, salvo que se le indique por otro medio.</p>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Clave}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.ActividadNombre ?? "Sin actividad"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Tema</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Tema}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Responsable</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.ResponsableNombre ?? "Sin responsable asignado"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha de inicio</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaInicio}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaCompromiso}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Estatus}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Avance</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Avance}%</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Prioridad}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Corresponsables</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{coResps}</td></tr>
-                            </table>
-                            {RenderEtapasHtml(tema.Etapas)}
-                            <div style='margin:18px 0 16px; text-align:center;'>
-                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
-                                    Abrir Gestor de Actividades
-                                </a>
-                            </div>
-                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía solo para conocimiento. No lo agrega como responsable ni corresponsable del tema.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+            return CorreoGestor(
+                antetitulo: "Gestor de actividades · DGMESNIE",
+                titulo: "Tema compartido",
+                nombre: nombreDestinatario,
+                parrafo: "Se le comparte el siguiente tema como copia de conocimiento.",
+                datos: DatosTema(tema, incluirInicio: true, incluirEstatus: true, incluirPrioridad: true, incluirAvance: true, responsableEtiqueta: "Responsable"),
+                portalUrl: portalUrl,
+                nota: "Copia de conocimiento: no implica responsabilidad sobre el tema.");
         }
 
         private static string ConstruirCorreoCorresponsableActividad(string nombreUsuario, GestorActividad actividad, string portalUrl)
         {
-            var fechaCompromiso = actividad.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var fechaInicio = actividad.FechaInicio?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var descripcion = string.IsNullOrWhiteSpace(actividad.Descripcion) ? "Sin descripcion registrada." : actividad.Descripcion;
-
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Asignación como corresponsable de actividad</title>
-                </head>
-                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
-                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
-                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td style='width:50%;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
-                                    </td>
-                                    <td style='width:50%; text-align:right;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Asignación como Corresponsable de Actividad</div>
-                        <div style='padding:22px 20px;'>
-                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Hola, {nombreUsuario}.</p>
-                            <p>Se te ha asignado como <strong>corresponsable</strong> (trabajo en conjunto) en la siguiente actividad dentro del Gestor de Actividades DGMESNIE:</p>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Clave}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Actividad}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Responsable Principal</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.ResponsableNombre ?? "Sin responsable asignado"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Categoría</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Categoria ?? "Sin categoria"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaCompromiso}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Prioridad}</td></tr>
-                            </table>
-                            <div style='margin:18px 0 16px; text-align:center;'>
-                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
-                                    Abrir Gestor de Actividades
-                                </a>
-                            </div>
-                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía automáticamente cuando eres asignado como corresponsable de una actividad.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+            return CorreoGestor(
+                antetitulo: "Gestor de actividades · DGMESNIE",
+                titulo: "Asignación como corresponsable",
+                nombre: nombreUsuario,
+                parrafo: "Se le registró como corresponsable de la siguiente actividad.",
+                datos: DatosActividad(actividad, incluirCategoria: true, incluirEstatus: false, incluirResponsable: true),
+                portalUrl: portalUrl,
+                nota: "Como corresponsable puede consultar y actualizar el avance de la actividad.");
         }
 
         private static string ConstruirCorreoCorresponsableTema(string nombreUsuario, GestorTema tema, string portalUrl)
         {
-            var fechaCompromiso = tema.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var descripcion = string.IsNullOrWhiteSpace(tema.Descripcion) ? "Sin descripcion registrada." : tema.Descripcion;
-
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Asignación como corresponsable de tema</title>
-                </head>
-                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
-                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
-                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td style='width:50%;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'>
-                                    </td>
-                                    <td style='width:50%; text-align:right;'>
-                                        <img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'>
-                                    </td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>Asignación como Corresponsable de Tema</div>
-                        <div style='padding:22px 20px;'>
-                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Hola, {nombreUsuario}.</p>
-                            <p>Se te ha asignado como <strong>corresponsable</strong> (trabajo en conjunto) en el siguiente tema dentro del Gestor de Actividades DGMESNIE:</p>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Clave}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.ActividadNombre ?? "Sin actividad"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Tema</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Tema}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Responsable Principal</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.ResponsableNombre ?? "Sin responsable asignado"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaCompromiso}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{tema.Prioridad}</td></tr>
-                            </table>
-                            {RenderEtapasHtml(tema.Etapas)}
-                            <div style='margin:18px 0 16px; text-align:center;'>
-                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
-                                    Abrir Gestor de Actividades
-                                </a>
-                            </div>
-                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este aviso se envía automáticamente cuando eres asignado como corresponsable de un tema.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+            return CorreoGestor(
+                antetitulo: "Gestor de actividades · DGMESNIE",
+                titulo: "Asignación como corresponsable",
+                nombre: nombreUsuario,
+                parrafo: "Se le registró como corresponsable del siguiente tema.",
+                datos: DatosTema(tema, incluirInicio: false, incluirEstatus: false, incluirPrioridad: true, incluirAvance: false, responsableEtiqueta: "Responsable principal"),
+                portalUrl: portalUrl,
+                nota: "Como corresponsable puede consultar y actualizar el avance del tema.");
         }
 
         private static string RenderEtapasHtml(List<GestorEtapa> etapas)
@@ -1443,54 +1156,14 @@ namespace NSIE.Controllers
 
         private static string ConstruirCorreoCompartirActividad(string nombreDestinatario, GestorActividad actividad, string portalUrl)
         {
-            var fechaCompromiso = actividad.FechaCompromiso?.ToString("dd/MM/yyyy") ?? "Sin fecha definida";
-            var fechaInicio     = actividad.FechaInicio?.ToString("dd/MM/yyyy")     ?? "Sin fecha definida";
-            var descripcion     = string.IsNullOrWhiteSpace(actividad.Descripcion) ? "Sin descripción registrada." : actividad.Descripcion;
-            var coResps         = actividad.Corresponsables != null && actividad.Corresponsables.Any()
-                ? string.Join(", ", actividad.Corresponsables.Select(c => c.Nombre))
-                : "Ninguno";
-
-            return $@"
-                <html lang='es'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <title>Actividad compartida</title>
-                </head>
-                <body style='margin:0; padding:22px; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif; color:#222;'>
-                    <div style='max-width:760px; margin:0 auto; background:#ffffff; border:1px solid #dfdfdf; border-radius:10px; overflow:hidden;'>
-                        <div style='padding:16px 20px; border-bottom:1px solid #eee;'>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;'>
-                                <tr>
-                                    <td style='width:50%;'><img src='https://cdn.sassoapps.com/dgmesnie/logo_gob.png' alt='Gobierno de México' style='max-height:40px; width:auto;'></td>
-                                    <td style='width:50%; text-align:right;'><img src='https://cdn.sassoapps.com/dgmesnie/logo_sener.png' alt='Secretaría de Energía' style='max-height:42px; width:auto;'></td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div style='background:#8a0031; color:#ffffff; padding:16px 20px; font-size:20px; font-weight:700;'>📋 Actividad Compartida — Gestor DGMESNIE</div>
-                        <div style='padding:22px 20px;'>
-                            <p style='margin:0 0 12px; font-size:18px; font-weight:700; color:#1f2937;'>Estimado(a) {nombreDestinatario},</p>
-                            <p>Le compartimos los detalles de la siguiente actividad registrada en el Gestor de Actividades DGMESNIE:</p>
-                            <table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%; border-collapse:collapse; margin:20px 0;'>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700; width:32%;'>Clave</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Clave}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Actividad</td><td style='padding:10px 12px; border:1px solid #eadde4; font-weight:700;'>{actividad.Actividad}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Responsable</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.ResponsableNombre ?? "Sin responsable"}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Corresponsables</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{coResps}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Descripción</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{descripcion}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha de inicio</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{fechaInicio}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Fecha compromiso</td><td style='padding:10px 12px; border:1px solid #e5c7d4; font-weight:700; color:#8a0031;'>{fechaCompromiso}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Estatus</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Estatus}</td></tr>
-                                <tr><td style='padding:10px 12px; border:1px solid #e5c7d4; background:#f7ecf1; color:#6b1034; font-weight:700;'>Prioridad</td><td style='padding:10px 12px; border:1px solid #eadde4;'>{actividad.Prioridad}</td></tr>
-                            </table>
-                            <div style='margin:18px 0 16px; text-align:center;'>
-                                <a href='{portalUrl}' style='display:inline-block; padding:12px 20px; border-radius:8px; background:#8a0031; color:#ffffff; text-decoration:none; font-weight:700;'>
-                                    Abrir Gestor de Actividades
-                                </a>
-                            </div>
-                            <p style='margin:10px 0 0; font-size:13px; color:#555;'>Este correo se envió automáticamente a través del Gestor de Actividades DGMESNIE.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>";
+            return CorreoGestor(
+                antetitulo: "Gestor de actividades · DGMESNIE",
+                titulo: "Actividad compartida",
+                nombre: nombreDestinatario,
+                parrafo: "Se le comparte la siguiente actividad como copia de conocimiento.",
+                datos: DatosActividad(actividad, incluirCategoria: false, incluirEstatus: true, incluirResponsable: true),
+                portalUrl: portalUrl,
+                nota: "Copia de conocimiento: no implica responsabilidad sobre la actividad.");
         }
 
         private HeaderViewModel BuildHeader() => new()
