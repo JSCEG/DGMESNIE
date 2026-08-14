@@ -3189,6 +3189,12 @@ class Component extends DCLogic {
     if(willOn&&cfg&&cfg.analysis&&capasCorridas.length&&capasCorridas.indexOf(key)<0){
       this._toast(cfg.label+' se pinta encima del análisis · vuelve a correrlo para incluirla');
     }
+    // Con las dos capas del mismo universo encendidas, el usuario esta viendo
+    // el mismo permiso dos veces sin que nada se lo diga.
+    if(willOn&&(key==='centrales'||key==='perm_elec')){
+      const otra=key==='centrales'?'perm_elec':'centrales';
+      if(layers[otra]&&layers[otra].on) this._avisarTraslape();
+    }
     this._invalidateSearch();
     this._syncMarketLayerToggle(key,willOn,layers);
 
@@ -4421,6 +4427,16 @@ class Component extends DCLogic {
         return [cfg.label||k,(ct>0?ct.toLocaleString('es-MX'):(nr?'0 · a '+Math.round(nr)+' km el más cercano':'0'))+suffix];
       });
       failedKeys.forEach(k => { const cfg = this.LAYERS.find(c=>c.key===k) || {}; sumRows.push([cfg.label||k, 'fuente no disponible']); });
+      // El total suma capa por capa, asi que con centrales y permisos CRE en la
+      // misma corrida el mismo permiso entra dos veces. No se resta en
+      // silencio -cada capa sigue diciendo lo suyo- pero el resumen dice
+      // cuantos elementos estan contados dos veces, para que el numero grande
+      // se pueda auditar.
+      if(okKeys.includes('centrales')&&okKeys.includes('perm_elec')){
+        const traslape=this._traslapeCentralesPermisos();
+        if(traslape) sumRows.push(['Contados dos veces',
+          traslape.comunes.toLocaleString('es-MX')+' · centrales que ya son permiso CRE']);
+      }
       // Datasets externos activos: registros dentro de la cobertura (también van a métricas y reporte)
       const dsParts = this.state.datasets.filter(d=>d.active).map(d => {
         let inR=0; d.rows.forEach(r => { const ll=this._placeRow(r,d); if (ll && this._analysisContainsPoint(A,ll[0],ll[1],prepared)) inR++; });
@@ -4531,6 +4547,63 @@ class Component extends DCLogic {
       try{ this._setHighlight(mejor.lat,mejor.lng,mejorCfg.color); }catch(error){}
     }
     return true;
+  }
+  // Centrales electricas y Permisos CRE son el MISMO universo visto en dos
+  // momentos y a dos profundidades. Medido sobre las fuentes vivas: de 908
+  // centrales, 891 comparten numero de permiso con la capa de permisos, con
+  // coordenadas identicas -distancia maxima 0 km-, o sea el mismo punto
+  // dibujado dos veces. Las 17 restantes son permisos que el registro vigente
+  // ya no lista; del otro lado hay 196 permisos mas nuevos que el corte del
+  // GeoJSON. Con las dos capas encendidas el mapa miente por duplicado y el
+  // total del analisis suma el mismo permiso dos veces: hay que decirlo.
+  _clavePermiso(valor){
+    return String(valor==null?'':valor).trim().toUpperCase().replace(/[\s\-_/]+/g,'');
+  }
+  _traslapeCentralesPermisos(){
+    const feats=this._genericFeats||{};
+    const centrales=feats.centrales, permisos=feats.perm_elec;
+    if(!centrales||!centrales.length||!permisos||!permisos.length) return null;
+    // _legendGroups corre en cada render: recorrer dos mil registros cada vez
+    // seria caro y el resultado solo cambia si cambian las capas.
+    const memo=this._traslapeMemo;
+    if(memo&&memo.a===centrales.length&&memo.b===permisos.length) return memo.valor;
+    const clavesPermiso=new Set();
+    permisos.forEach(r=>{
+      const k=this._clavePermiso((r.props||{}).numeroPermiso||(r.props||{}).NumeroPermiso);
+      if(k) clavesPermiso.add(k);
+    });
+    let comunes=0;
+    centrales.forEach(r=>{
+      const k=this._clavePermiso((r.props||{}).NumeroPermiso);
+      if(k&&clavesPermiso.has(k)) comunes++;
+    });
+    const valor=comunes?{ comunes, centrales:centrales.length, permisos:permisos.length }:null;
+    this._traslapeMemo={ a:centrales.length, b:permisos.length, valor };
+    return valor;
+  }
+  // La capa que se acaba de encender puede tardar segundos en llegar (los
+  // permisos salen de SQL). Se reintenta hasta que las dos esten cargadas, en
+  // vez de mirar una sola vez y no encontrar nada.
+  _avisarTraslape(intento){
+    const n=Number(intento)||0;
+    if(n>14) return;
+    const t=this._traslapeCentralesPermisos();
+    if(!t){ setTimeout(()=>this._avisarTraslape(n+1),900); return; }
+    if(!this.state.layers.centrales.on||!this.state.layers.perm_elec.on) return;
+    this._toast(t.comunes.toLocaleString('es-MX')+' de '+t.centrales.toLocaleString('es-MX')
+      +' centrales son el mismo permiso que ya pinta Permisos CRE · los puntos coinciden');
+  }
+  // Devuelve el expediente ampliado del CDN para un numero de permiso, si la
+  // capa de centrales esta cargada. Sirve para que la ficha del permiso pueda
+  // decir que hay mas datos del mismo elemento sin obligar a encender la otra
+  // capa y volver a pintar el punto.
+  _expedienteDeCentral(numeroPermiso){
+    const clave=this._clavePermiso(numeroPermiso);
+    if(!clave) return null;
+    const centrales=(this._genericFeats||{}).centrales;
+    if(!centrales||!centrales.length) return null;
+    const hit=centrales.find(r=>this._clavePermiso((r.props||{}).NumeroPermiso)===clave);
+    return hit?(hit.props||null):null;
   }
   _onMapClick(e){
     // Mientras se dibuja/mide, los clics son vértices del trazo — NO seleccionan ni mueven nada
@@ -6888,7 +6961,34 @@ class Component extends DCLogic {
       +'<span style="color:var(--dash-gris)">Estatus</span><span>'+esc(status)+'</span>'
       +'<span style="color:var(--dash-gris)">Capacidad</span><span>'+esc(this._energyPermitCapacity(p))+'</span>'
       +(Number.isFinite(distance)?'<span style="color:var(--dash-gris)">Al centroide</span><strong>'+esc(distance.toLocaleString('es-MX',{minimumFractionDigits:1,maximumFractionDigits:1}))+' km</strong>':'')
-      +'</div><a href="'+esc(fichaUrl)+'" target="_blank" rel="noopener" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:9px 11px;border-radius:6px;background:var(--dash-guinda);color:var(--dash-blanco);text-decoration:none;font-size:10px;font-weight:800;letter-spacing:.04em">Abrir ficha institucional completa <span aria-hidden="true">↗</span></a></div>';
+      +'</div>'
+      // El mismo permiso vive en la capa de centrales con muchas mas columnas.
+      // Se asoma lo esencial aqui para que no haga falta encender esa capa y
+      // pintar el punto por segunda vez.
+      +(() => {
+        const exp=cfg.key==='perm_elec'?this._expedienteDeCentral(permit):null;
+        if(!exp) return '';
+        const dato=(...claves)=>{
+          for(const k of claves){
+            const v=exp[k];
+            if(v!=null&&String(v).trim()&&String(v).trim().toUpperCase()!=='NULL') return String(v).trim();
+          }
+          return '';
+        };
+        const filas=[
+          ['Tecnología',dato('Tecnología')],
+          ['Energético',dato('Energetico_primario','Combustible_autorizado')],
+          ['Entrada en operación',dato('Fecha_de_Entrada_en_Operación')],
+          ['Empresa líder',dato('EmpresaLíder')],
+        ].filter(f=>f[1]);
+        if(!filas.length) return '';
+        return '<div style="margin-top:9px;padding-top:8px;border-top:1px dashed var(--dash-linea)">'
+          +'<div style="font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--dash-gris);margin-bottom:5px">Expediente ampliado · centrales eléctricas</div>'
+          +'<div style="display:grid;grid-template-columns:92px 1fr;gap:4px 8px;font-size:11px;line-height:1.35">'
+          +filas.map(f=>'<span style="color:var(--dash-gris)">'+esc(f[0])+'</span><span>'+esc(f[1])+'</span>').join('')
+          +'</div></div>';
+      })()
+      +'<a href="'+esc(fichaUrl)+'" target="_blank" rel="noopener" style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:9px 11px;border-radius:6px;background:var(--dash-guinda);color:var(--dash-blanco);text-decoration:none;font-size:10px;font-weight:800;letter-spacing:.04em">Abrir ficha institucional completa <span aria-hidden="true">↗</span></a></div>';
   }
   _energyPermitRows(cfg,p,nom,location,detail){
     const value=(camel,pascal)=>this._permitValue(p,camel,pascal);
@@ -9281,6 +9381,22 @@ class Component extends DCLogic {
        ese era el ruido. Se sigue pudiendo prender y apagar lo que sea —el
        análisis va por lo que se escogió, no por lo que está a la vista—, sólo
        que ahora se ve la frontera. */
+    /* Con centrales y permisos CRE encendidas a la vez, el mapa pinta el mismo
+       permiso dos veces en la misma coordenada. El aviso vive en la leyenda y
+       no en un mensaje que se va, porque el problema dura lo que duren las dos
+       capas encendidas. */
+    const notaTraslape=(()=>{
+      if(!interactive) return null;
+      if(!S.layers.centrales||!S.layers.centrales.on) return null;
+      if(!S.layers.perm_elec||!S.layers.perm_elec.on) return null;
+      const t=this._traslapeCentralesPermisos();
+      if(!t) return null;
+      return {
+        color:'#E0A12E', label:t.comunes.toLocaleString('es-MX')+' puntos duplicados · mismo permiso',
+        w:'10px',h:'10px',r:'50%',border:'none',
+        hasCount:false, count:'', active:true, cursor:'default', op:1, onClick:null
+      };
+    })();
     const hayCorrida=interactive&&analyzedKeys.size>0;
     if(hayCorrida){
       const dentro=caps.filter(c=>analyzedKeys.has(c.key));
@@ -9293,6 +9409,7 @@ class Component extends DCLogic {
         items:caps.map(filaDeCapa)
       });
     }
+    if(notaTraslape) groups[groups.length-1].items.push(notaTraslape);
     if (S.datasets.length) {
       groups.push({
         title:'Datasets externos · zona actual',
