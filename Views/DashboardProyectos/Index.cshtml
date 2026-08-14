@@ -3182,6 +3182,13 @@ class Component extends DCLogic {
     const willOn = !layers[key].on;
     layers[key] = { ...layers[key], on: willOn };
     const cfg = this.LAYERS.find(l => l.key===key);
+    // Prender una capa candidata después de una corrida no la mete al
+    // análisis: hay que volver a correrlo para que cuente. Se avisa, porque de
+    // otro modo la capa recién pintada parece parte del resultado.
+    const capasCorridas=(this.state.analysis&&this.state.analysis.ranKeys)||[];
+    if(willOn&&cfg&&cfg.analysis&&capasCorridas.length&&capasCorridas.indexOf(key)<0){
+      this._toast(cfg.label+' se pinta encima del análisis · vuelve a correrlo para incluirla');
+    }
     this._invalidateSearch();
     this._syncMarketLayerToggle(key,willOn,layers);
 
@@ -9255,21 +9262,37 @@ class Component extends DCLogic {
       (S.layers[c.key].on || analyzedKeys.has(c.key)) &&
       (c.type!=='graph'||interactive||S.layers[c.key].on)
     );
-    groups.push({
-      title:interactive?'Capas en el mapa':'Capas visibles en el mapa base',
-      items:caps.map(c=>{
-        const v=S.layers[c.key];
-        const analyzed=analyzedKeys.has(c.key);
-        const visible=interactive?!!v.on:(!!v.on||analyzed);
-        const shape=c.graphPart==='edges'?bar:dot;
-        return {
-          color:visible?c.color:'#C7C2BA', label:v.label+(v.summarized&&interactive?' · resumen':''), ...shape,
-          hasCount:v.count>0, count:(v.count||0).toLocaleString('es-MX'),
-          active:visible, cursor:interactive?'pointer':'default', op:visible?1:.55,
-          onClick:interactive?()=>this.toggleLayer(c.key):null
-        };
-      })
-    });
+    const filaDeCapa=c=>{
+      const v=S.layers[c.key];
+      const analyzed=analyzedKeys.has(c.key);
+      const visible=interactive?!!v.on:(!!v.on||analyzed);
+      const shape=c.graphPart==='edges'?bar:dot;
+      return {
+        color:visible?c.color:'#C7C2BA', label:v.label+(v.summarized&&interactive?' · resumen':''), ...shape,
+        hasCount:v.count>0, count:(v.count||0).toLocaleString('es-MX'),
+        active:visible, cursor:interactive?'pointer':'default', op:visible?1:.55,
+        onClick:interactive?()=>this.toggleLayer(c.key):null
+      };
+    };
+    /* Con un análisis corrido, la leyenda además dice de dónde salen los
+       números. Encender una capa después NO rehace el análisis: el radio, los
+       conteos y el reporte siguen siendo los de la corrida. Mezclarlas en una
+       sola lista hacía pasar por resultado lo que sólo está pintado encima, y
+       ese era el ruido. Se sigue pudiendo prender y apagar lo que sea —el
+       análisis va por lo que se escogió, no por lo que está a la vista—, sólo
+       que ahora se ve la frontera. */
+    const hayCorrida=interactive&&analyzedKeys.size>0;
+    if(hayCorrida){
+      const dentro=caps.filter(c=>analyzedKeys.has(c.key));
+      const fuera=caps.filter(c=>!analyzedKeys.has(c.key));
+      if(dentro.length) groups.push({title:'En el análisis',items:dentro.map(filaDeCapa)});
+      if(fuera.length)  groups.push({title:'Fuera del análisis',items:fuera.map(filaDeCapa)});
+    }else{
+      groups.push({
+        title:interactive?'Capas en el mapa':'Capas visibles en el mapa base',
+        items:caps.map(filaDeCapa)
+      });
+    }
     if (S.datasets.length) {
       groups.push({
         title:'Datasets externos · zona actual',
