@@ -253,6 +253,117 @@
     return hojas.length;
   }
 
+
+  /* ── Lectura por hojas ─────────────────────────────────────────────────── */
+  //
+  // Pasar hojas, no desplazar. En pantalla ancha se muestran dos como un
+  // pliego abierto -la portada va sola, como en un libro impreso- y en
+  // pantalla angosta una a la vez. El zoom se calcula para que la hoja quepa
+  // entera: media hoja obliga a desplazar dentro de la hoja, que es justo lo
+  // que este modo viene a evitar.
+
+  var ANCHO_HOJA = 816;   // 8.5 in a 96 dpi
+  var ALTO_HOJA = 1056;   // 11 in
+
+  function esPliego() {
+    return window.matchMedia('(min-width: 1180px)').matches;
+  }
+
+  function hojasVisibles(indice) {
+    var total = estado.lista.length;
+    var actual = Math.max(0, Math.min(total - 1, indice));
+    if (!esPliego()) return [actual];
+    // La portada abre sola: en un libro, la primera hoja no tiene pareja.
+    if (actual <= 0) return [0];
+    var inicio = actual % 2 === 1 ? actual : actual - 1;
+    return [inicio, inicio + 1].filter(function (i) { return i < total; });
+  }
+
+  function zoom(cuantas) {
+    var caja = estado.contenedor.getBoundingClientRect();
+    var anchoUtil = Math.max(360, caja.width - (cuantas === 2 ? 92 : 76));
+    var altoUtil = Math.max(420, caja.height - 128);
+    return Math.min(1, Math.max(.42, Math.min(anchoUtil / (ANCHO_HOJA * cuantas + (cuantas === 2 ? 24 : 0)), altoUtil / ALTO_HOJA)));
+  }
+
+  function pintarLectura() {
+    if (!estado || !estado.lista) return;
+    var visibles = hojasVisibles(estado.indice);
+    estado.lista.forEach(function (hoja, i) {
+      var visible = !estado.lectura || visibles.indexOf(i) >= 0;
+      hoja.hidden = !visible;
+      hoja.classList.toggle('is-izquierda', estado.lectura && visibles.length === 2 && i === visibles[0]);
+      hoja.classList.toggle('is-derecha', estado.lectura && visibles.length === 2 && i === visibles[1]);
+    });
+    estado.pliego.style.setProperty('--dg-zoom', estado.lectura ? zoom(visibles.length) : 1);
+    if (estado.indicador) {
+      estado.indicador.textContent = visibles.length < 2
+        ? ('Hoja ' + (visibles[0] + 1) + ' de ' + estado.lista.length)
+        : ('Hojas ' + (visibles[0] + 1) + '–' + (visibles[1] + 1) + ' de ' + estado.lista.length);
+    }
+    if (estado.anterior) estado.anterior.disabled = visibles[0] <= 0;
+    if (estado.siguiente) estado.siguiente.disabled = visibles[visibles.length - 1] >= estado.lista.length - 1;
+  }
+
+  function irA(indice) {
+    if (!estado) return;
+    estado.indice = Math.max(0, Math.min(estado.lista.length - 1, indice));
+    pintarLectura();
+    estado.contenedor.scrollTop = 0;
+  }
+
+  function pasar(direccion) {
+    var visibles = hojasVisibles(estado.indice);
+    var salto = visibles.length === 2 ? 2 : 1;
+    irA(direccion > 0 ? visibles[visibles.length - 1] + 1 : visibles[0] - salto);
+  }
+
+  function alTeclado(evento) {
+    if (!estado || !estado.lectura) return;
+    if (evento.key === 'ArrowRight' || evento.key === 'PageDown') { evento.preventDefault(); pasar(1); }
+    else if (evento.key === 'ArrowLeft' || evento.key === 'PageUp') { evento.preventDefault(); pasar(-1); }
+  }
+
+  function montarLectura() {
+    var barra = crear('div', 'dg-libro-barra');
+    estado.anterior = crear('button', 'dg-libro-barra__paso');
+    estado.anterior.type = 'button';
+    estado.anterior.setAttribute('aria-label', 'Hoja anterior');
+    estado.anterior.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
+    estado.anterior.addEventListener('click', function () { pasar(-1); });
+
+    estado.indicador = crear('span', 'dg-libro-barra__indicador');
+
+    estado.siguiente = crear('button', 'dg-libro-barra__paso');
+    estado.siguiente.type = 'button';
+    estado.siguiente.setAttribute('aria-label', 'Hoja siguiente');
+    estado.siguiente.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
+    estado.siguiente.addEventListener('click', function () { pasar(1); });
+
+    var modo = crear('button', 'dg-libro-barra__modo');
+    modo.type = 'button';
+    modo.textContent = 'Desplazar';
+    modo.title = 'Ver todas las hojas en una tira continua';
+    modo.addEventListener('click', function () {
+      estado.lectura = !estado.lectura;
+      modo.textContent = estado.lectura ? 'Desplazar' : 'Pasar hojas';
+      estado.contenedor.classList.toggle('is-lectura', estado.lectura);
+      pintarLectura();
+    });
+
+    barra.appendChild(estado.anterior);
+    barra.appendChild(estado.indicador);
+    barra.appendChild(estado.siguiente);
+    barra.appendChild(modo);
+    estado.contenedor.appendChild(barra);
+    estado.contenedor.classList.add('is-lectura');
+
+    estado.alRedimensionar = function () { pintarLectura(); };
+    window.addEventListener('resize', estado.alRedimensionar);
+    document.addEventListener('keydown', alTeclado);
+    pintarLectura();
+  }
+
   /* ── API ───────────────────────────────────────────────────────────────── */
 
   // Los mapas y las graficas son <img> con data URI: al momento de componer
@@ -292,9 +403,11 @@
       origen.appendChild(hijo.cloneNode(true));
     });
 
+    var pliego = crear('div', 'dg-libro-pliego');
+    contenedor.appendChild(pliego);
     informe.appendChild(contenedor);
     document.documentElement.classList.add(CLASE_ACTIVO);
-    estado = { contenedor: contenedor, hojas: 0 };
+    estado = { contenedor: contenedor, pliego: pliego, hojas: 0, indice: 0, lectura: true };
     // El origen vive fuera del documento visible: se cuelga oculto para que sus
     // imagenes carguen y midan antes de componer.
     origen.style.cssText = 'position:absolute;left:-99999px;top:0;width:8.5in';
@@ -303,15 +416,19 @@
       if (origen.parentNode) origen.parentNode.removeChild(origen);
       origen.removeAttribute('style');
       if (!estado) return 0;
-      var hojas = componer(origen, contenedor, informe.dataset.pie);
+      var hojas = componer(origen, pliego, informe.dataset.pie);
       informe.scrollTop = 0;
       estado.hojas = hojas;
+      estado.lista = Array.prototype.slice.call(pliego.querySelectorAll('.dg-libro-hoja'));
+      montarLectura();
       return hojas;
     });
   }
 
   function desactivar() {
     if (!estado) return;
+    document.removeEventListener('keydown', alTeclado);
+    if (estado.alRedimensionar) window.removeEventListener('resize', estado.alRedimensionar);
     if (estado.contenedor && estado.contenedor.parentNode) {
       estado.contenedor.parentNode.removeChild(estado.contenedor);
     }
