@@ -13079,27 +13079,75 @@ class Component extends DCLogic {
     }
     doc.setPage(backPage); doc.link(M,H-(landscape?62:76),landscape?115:100,28,{pageNumber:indexPage});
   }
+  // Reparto de columnas por medicion, no por proporciones fijas.
+  //
+  // Antes habia una regla generica -30 % para la primera columna y el resto en
+  // partes iguales- y tres excepciones escritas a mano para las tablas que peor
+  // salian. El resultado: una clave corta como CVEGEO se quedaba con un tercio
+  // del ancho mientras "Otorgamiento" se cortaba, y cada tabla se veia
+  // distinta segun tuviera o no su excepcion.
+  //
+  // Ahora se mide lo que cada columna necesita de verdad y se reparte en esa
+  // proporcion. Con un tope por columna, para que un titular largo no se coma
+  // la tabla, y un minimo, para que ninguna quede ilegible.
+  _pdfAnchosColumnas(doc, head, rows, width, fs, pad){
+    const n = head.length;
+    if(!n) return [];
+    const muestra = (rows||[]).slice(0, 60);
+
+    const natural = head.map((h, i) => {
+      // Medir con la MISMA tipografia con la que se dibuja cada parte.
+      this._setReportFont(doc,'bodyBold','bold'); doc.setFontSize(fs);
+      // El encabezado puede partirse en dos renglones sin costo, asi que lo
+      // que necesita es su palabra mas larga, no la frase entera.
+      const palabras = String(h||'').toUpperCase().split(/\s+/).filter(Boolean);
+      const anchoCabecera = palabras.reduce((max,palabra)=>Math.max(max,doc.getTextWidth(palabra)), 0);
+
+      this._setReportFont(doc,'body','normal'); doc.setFontSize(fs);
+      let anchoDato = 0;
+      muestra.forEach(fila => {
+        const valor = String((fila||[])[i]==null ? '' : fila[i]);
+        if(!valor) return;
+        // Un valor largo si se parte en varios renglones: pedirle el ancho de
+        // la frase completa reservaria espacio que no hace falta. Se le mide un
+        // tramo razonable y su palabra mas larga, que es lo que no se puede
+        // partir sin quedar feo.
+        const tramo = doc.getTextWidth(valor.slice(0,24));
+        const palabraLarga = valor.split(/\s+/).reduce((max,palabra)=>Math.max(max,doc.getTextWidth(palabra)),0);
+        anchoDato = Math.max(anchoDato, Math.min(tramo, Math.max(palabraLarga, tramo*0.72)));
+      });
+      return Math.max(anchoCabecera, anchoDato) + pad*2;
+    });
+
+    const minimo = Math.max(30, width/(n*3));
+    const tope = width*0.30;
+    let anchos = natural.map(w => Math.min(Math.max(w, minimo), tope));
+
+    // Escalar a lo disponible conservando la proporcion medida.
+    const suma = anchos.reduce((a,b)=>a+b, 0) || 1;
+    anchos = anchos.map(w => w*width/suma);
+
+    // El escalado puede dejar alguna por debajo del minimo legible: se le
+    // completa tomando de la mas ancha, que es la que puede ceder.
+    for(let vuelta=0; vuelta<n; vuelta++){
+      const flaca = anchos.findIndex(w => w < minimo);
+      if(flaca < 0) break;
+      let gorda = 0;
+      anchos.forEach((w,i)=>{ if(w > anchos[gorda]) gorda = i; });
+      if(gorda === flaca) break;
+      const falta = minimo - anchos[flaca];
+      if(anchos[gorda] - falta < minimo) break;
+      anchos[gorda] -= falta;
+      anchos[flaca] = minimo;
+    }
+    return anchos;
+  }
   _pdfReportTable(doc,tb,cfg){
     const head=(tb&&tb.head)||[], rows=(tb&&tb.rows)||[]; if(!head.length) return cfg.y;
     const n=head.length, x=cfg.x, width=cfg.width;
-    const normalizedHead=head.map(h=>String(h||'').trim().toLowerCase());
-    let ratios=null;
-    // La tabla resumen de PODECOBI abre con un consecutivo corto; reservarle
-    // 30 % (la regla genérica) comprime el nombre del polo y la entidad.
-    if(n===6 && /^n[úu]m/.test(normalizedHead[0]) && normalizedHead[1].includes('polo')){
-      ratios=[.07,.27,.14,.15,.13,.24];
-    }
-    if(n===8 && normalizedHead[0]==='cvegeo' && normalizedHead[1].includes('localidad')){
-      ratios=[.12,.19,.13,.12,.08,.13,.08,.15];
-    }
-    if(n===7 && normalizedHead[1].includes('permiso') && normalizedHead.some(value=>value.includes('centroide'))){
-      ratios=[.10,.15,.23,.15,.11,.12,.14];
-    }
-    const first=n>=5?.30:(n===2?.56:.42);
-    const widths=ratios?ratios.map(r=>width*r):[width*first];
-    if(!ratios) for(let i=1;i<n;i++) widths.push(width*(1-first)/(n-1));
-    const xs=[x]; for(let i=1;i<n;i++) xs.push(xs[i-1]+widths[i-1]);
     const pad=5, fs=cfg.landscape?8.2:7.7, lh=cfg.landscape?10:9.5, accent=cfg.gold?[160,108,0]:[155,34,71];
+    const widths=this._pdfAnchosColumnas(doc,head,rows,width,fs,pad);
+    const xs=[x]; for(let i=1;i<n;i++) xs.push(xs[i-1]+widths[i-1]);
     const numeric=v=>/^[\d\s.,%+\-]+(?:\s?(?:MW|MVA|kV|km|m2|ha|USD|MXN))?$/i.test(String(v==null?'':v).trim());
     let y=cfg.y;
     const headCells=head.map((h,i)=>doc.splitTextToSize(String(h).toUpperCase(),Math.max(14,widths[i]-pad*2)));
@@ -14464,7 +14512,10 @@ class Component extends DCLogic {
     if(woman&&woman.url){
       const imgH=landscape?307:390;
       const imgW=imgH*(woman.w/woman.h);
-      doc.addImage(woman.url,'PNG',landscape?52:18,landscape?64:186,imgW,imgH);
+      // En carta la cinta guinda del 'Gracias' ocupa de 126 a 226 y la figura
+      // arrancaba en 186: la tapaba a medias y se veia el corte. Sube para
+      // cubrirla desde arriba; se dibuja despues de la cinta, asi que la pisa.
+      doc.addImage(woman.url,'PNG',landscape?52:18,landscape?64:138,imgW,imgH);
     }
 
     const center=landscape
