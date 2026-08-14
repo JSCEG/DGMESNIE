@@ -4474,6 +4474,57 @@ class Component extends DCLogic {
     }
     return false;
   }
+  // Las capas de puntos dibujadas en canvas viven en el pane 'data' (z 430),
+  // debajo del canvas de las lineas del grafo (z 450). Ese canvas ocupa TODO
+  // el mapa y se queda con el clic aunque no haya ninguna linea bajo el
+  // cursor: el navegador solo entrega el evento al lienzo de encima y Leaflet
+  // no lo reparte hacia abajo. Resultado: las subestaciones -y cualquier capa
+  // de puntos en canvas- no se podian seleccionar con el raton.
+  // Se resuelve como ya se hacia con los municipios: el hit-test lo hace el
+  // mapa sobre las coordenadas registradas, no el canvas.
+  _pickPointAt(latlng, tolPx){
+    if(!this.map||!latlng||!this._genericFeats) return false;
+    const tol=tolPx||11;
+    const centro=this.map.latLngToContainerPoint(latlng);
+    // Recorte previo en grados: proyectar decenas de miles de puntos por clic
+    // (Lenguas indigenas trae ~42 mil) seria trabajo tirado.
+    const esquinaA=this.map.containerPointToLatLng([centro.x-tol,centro.y-tol]);
+    const esquinaB=this.map.containerPointToLatLng([centro.x+tol,centro.y+tol]);
+    const latMin=Math.min(esquinaA.lat,esquinaB.lat), latMax=Math.max(esquinaA.lat,esquinaB.lat);
+    const lngMin=Math.min(esquinaA.lng,esquinaB.lng), lngMax=Math.max(esquinaA.lng,esquinaB.lng);
+    let mejor=null, mejorCfg=null, mejorD=Infinity;
+    this.LAYERS.forEach(cfg=>{
+      const estado=this.state.layers[cfg.key];
+      if(!estado||!estado.on) return;
+      // Las aristas del grafo tienen su propio clic y su propio canvas encima.
+      if(cfg.type==='graph'&&cfg.graphPart==='edges') return;
+      const registros=this._genericFeats[cfg.key];
+      if(!registros||!registros.length) return;
+      for(let i=0;i<registros.length;i++){
+        const r=registros[i];
+        if(!isFinite(r.lat)||!isFinite(r.lng)) continue;
+        if(r.lat<latMin||r.lat>latMax||r.lng<lngMin||r.lng>lngMax) continue;
+        const tipo=r.geometry&&r.geometry.type;
+        if(tipo&&tipo!=='Point'&&tipo!=='MultiPoint') continue;
+        const q=this.map.latLngToContainerPoint([r.lat,r.lng]);
+        const dx=q.x-centro.x, dy=q.y-centro.y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<=tol&&d<mejorD){ mejorD=d; mejor=r; mejorCfg=cfg; }
+      }
+    });
+    if(!mejor||!mejorCfg) return false;
+    this._selAt=performance.now();
+    const props=mejor.props||{};
+    if(mejorCfg.type==='graph'&&mejor.marker){
+      if(String(props.node_id||'')) this._selectGraphNode(props,mejor.marker);
+      else this._selectInventorySubstation(props,mejor.marker);
+      try{ mejor.marker.openPopup(); }catch(error){}
+    }else{
+      this._selectGeneric(mejorCfg,props,mejor.nom,[mejor.lat,mejor.lng]);
+      try{ this._setHighlight(mejor.lat,mejor.lng,mejorCfg.color); }catch(error){}
+    }
+    return true;
+  }
   _onMapClick(e){
     // Mientras se dibuja/mide, los clics son vértices del trazo — NO seleccionan ni mueven nada
     if (this._handler || this.state.measure) return;
@@ -4482,6 +4533,9 @@ class Component extends DCLogic {
     // Si este mismo clic ya seleccionó un elemento puntual (subestación, línea, permiso…),
     // no se sobreescribe con el polígono territorial que queda debajo
     if (this._selAt && (performance.now() - this._selAt) < 350) return;
+    // Un punto en canvas gana al poligono que tiene debajo: el clic sobre una
+    // subestacion no debe terminar seleccionando su gerencia.
+    if(this._pickPointAt(e.latlng)) return;
     this._clearHighlight();
     this._pickPolygonAt(e.latlng);
   }
@@ -4738,8 +4792,12 @@ class Component extends DCLogic {
         );
         line.bindPopup(this._graphEdgePopup(p,kv,line._rec.km),{maxWidth:330,minWidth:240});
         line.on('click',event=>{
-          this._selAt=performance.now();
           try{if(event&&event.originalEvent)L.DomEvent.stopPropagation(event.originalEvent);}catch(error){}
+          // Las subestaciones son extremos de linea: casi siempre hay una
+          // arista bajo ellas y su canvas esta encima. Si hay nodo bajo el
+          // cursor, gana el nodo; si no, nunca se podria elegir uno.
+          if(event&&event.latlng&&this._pickPointAt(event.latlng)) return;
+          this._selAt=performance.now();
           this._selectGraphEdge(p,line);
         });
         group.addLayer(line);
