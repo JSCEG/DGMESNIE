@@ -397,10 +397,84 @@
           transition:color .16s ease, border-color .16s ease;
         }
         .dg-report-volver:hover { color:var(--report-guinda); border-color:var(--report-guinda); }
+        /* ───────────────────────────────────────────────────────────────────
+           Impresión del informe territorial.
+
+           El PDF sale del mismo HTML que se ve en pantalla, no de un dibujo
+           aparte: lo que se lee es lo que se imprime, y el texto sigue siendo
+           texto —seleccionable y buscable en el PDF—.
+
+           El informe vive en un contenedor fijo con su propio scroll, así que
+           para imprimir hay que soltarlo: pasa a flujo normal, se le quita el
+           alto de pantalla y se ocultan los mandos, que en papel no sirven.
+           ─────────────────────────────────────────────────────────────────── */
+        @page {
+          size: letter portrait;
+          margin: 14mm 13mm 15mm;
+        }
         @media print {
-          .dg-report-volver { display:none !important; }
+          html.dg-report-shell,
+          html.dg-report-shell body {
+            height:auto !important; overflow:visible !important;
+            background:#fff !important;
+          }
+          /* Al imprimir, el informe se cuelga directamente del body (lo mueve
+             imprimirInforme y lo devuelve al terminar). Asi basta con ocultar
+             a sus hermanos, sin depender de donde viva dentro del tablero: la
+             primera version escondia .dg-map-stage, que es su propio padre, y
+             el resultado eran hojas en blanco. */
+          html.dg-report-shell body > *:not(.dg-report),
+          .dg-report-toolbar,
+          .dg-report-fab,
+          .dg-report-volver,
           .dg-report-indice__flecha { display:none !important; }
-          .dg-report-indice__item { break-inside:avoid; }
+
+          html.dg-report-shell .main-content { padding:0 !important; margin:0 !important; }
+
+          .dg-report {
+            position:static !important; inset:auto !important;
+            overflow:visible !important; height:auto !important;
+            z-index:auto !important; background:#fff !important;
+          }
+          .dg-report-content { padding-left:0 !important; padding-right:0 !important; max-width:none !important; }
+
+          /* Los fondos y el color son parte del documento, no decoración:
+             sin esto el navegador imprime en blanco los filetes y las cintas. */
+          .dg-report, .dg-report * {
+            -webkit-print-color-adjust:exact !important;
+            print-color-adjust:exact !important;
+          }
+
+          /* La portada ocupa su hoja; el índice abre la siguiente. */
+          .dg-report-hero { break-after:page; page-break-after:always; }
+          .dg-report-indice { break-after:page; page-break-after:always; }
+
+          /* Nada se parte a media idea: una sección arranca donde quepa, y un
+             título nunca se queda solo al pie de la hoja. */
+          .dg-report-section { break-inside:avoid-page; page-break-inside:avoid; margin-bottom:16px !important; }
+          .dg-report-section__head, .dg-report-section__title { break-after:avoid; page-break-after:avoid; }
+          .dg-report-indice__item,
+          .dg-report-chart-card,
+          .dg-report-map,
+          .dg-report-kpi { break-inside:avoid; page-break-inside:avoid; }
+          /* Las tablas largas sí se parten, pero repitiendo su encabezado. */
+          .dg-report-table { break-inside:auto; }
+          .dg-report-table thead { display:table-header-group; }
+          .dg-report-table tr { break-inside:avoid; page-break-inside:avoid; }
+          .dg-report-table-wrap { overflow:visible !important; }
+
+          /* En papel no hay hover ni sombra: la caja se sostiene con el filete. */
+          .dg-report-section { box-shadow:none !important; }
+          .dg-report-map img { max-height:none !important; }
+
+          /* En hoja carta la reticula fluida deja columnas muy angostas y la
+             cifra se parte a media palabra ("545,88 / 4"). Se fija el numero de
+             columnas y la cifra no se rompe. */
+          .dg-report-metrics { grid-template-columns:repeat(4,minmax(0,1fr)) !important; }
+          .dg-report-kpi__value { white-space:nowrap !important; }
+          .dg-report-chart-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+
+          a[href^="http"]::after { content:""; }
         }
         .dg-report-section__kicker { color:var(--report-guinda) !important;font-size:11px !important;letter-spacing:.14em !important; }
         .dg-report-section__title { margin-top:15px;font-size:29px !important;font-weight:700 !important;line-height:1.08 !important; }

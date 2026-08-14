@@ -12873,7 +12873,37 @@ class Component extends DCLogic {
   exportReportPDFPresent = () => this._exportTerritorialPDF('pdf16x9');
   onExportPDFCarta = this._safeReportAction(this.exportReportPDF);
   onExportPDFPpt = this._safeReportAction(this.exportReportPDFPresent);
-  onReportPdfClick = this._safeReportAction(this.exportReportPDF);
+  // El PDF del informe sale del mismo HTML que se ve en pantalla, no de un
+  // dibujo aparte por coordenadas: lo que se lee es lo que se imprime y el
+  // texto sigue siendo texto en el PDF. La hoja de impresion vive en
+  // dashboard-proyectos.css.
+  imprimirInforme = () => {
+    if(!this.state.reportOpen){ this._toast('Abre primero el reporte territorial'); return; }
+    const caja=document.querySelector('.dg-report');
+    if(!caja){ this._toast('El reporte aún no está listo'); return; }
+    // El indice y las secciones se miden al imprimir: con un desplazamiento
+    // pendiente, la primera hoja sale a media seccion.
+    caja.scrollTop=0;
+    // El informe vive dentro del lienzo del mapa, que esta posicionado y
+    // recortado. Para imprimir se cuelga del body y se devuelve al terminar:
+    // asi la hoja de impresion solo tiene que ocultar a sus hermanos y no
+    // depende de donde este el nodo dentro del tablero.
+    const padre=caja.parentElement, hermano=caja.nextSibling;
+    const devolver=()=>{
+      try{ if(padre) padre.insertBefore(caja,hermano||null); }catch(error){}
+      window.removeEventListener('afterprint',devolver);
+    };
+    window.addEventListener('afterprint',devolver);
+    document.body.appendChild(caja);
+    this._toast('Preparando la impresión · elige «Guardar como PDF»');
+    setTimeout(()=>{
+      try{ window.print(); }
+      catch(error){ this._toast('El navegador bloqueó la impresión'); }
+      // Safari y algunos navegadores no disparan afterprint: red de seguridad.
+      setTimeout(devolver,1500);
+    },240);
+  };
+  onReportPdfClick = this.imprimirInforme;
   onReportPdfPptClick = this._safeReportAction(this.exportReportPDFPresent);
   _reportMetaValue(R, label){
     const row = ((R&&R.meta)||[]).find(r => String(r[0]).toLowerCase()===String(label).toLowerCase());
