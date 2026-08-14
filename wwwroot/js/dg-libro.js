@@ -155,7 +155,7 @@
 
   /* ── Composición ───────────────────────────────────────────────────────── */
 
-  function componer(origen, destino, pie) {
+  function componer(origen, destino, pie, fecha) {
     var hojas = [];
     var actual = null;
     var seccionActual = null;
@@ -222,7 +222,10 @@
 
     Array.prototype.slice.call(origen.children).forEach(function (bloque) {
       var clon = bloque.cloneNode(true);
-      if (clon.classList.contains('dg-report-hero')) { hojaEntera(clon, 'dg-libro-hoja--portada'); return; }
+      if (clon.classList.contains('dg-report-hero')) {
+        hojaEntera(construirPortada(clon, fecha), 'dg-libro-hoja--portada');
+        return;
+      }
       if (clon.classList.contains('dg-report-indice')) { hojaEntera(clon, 'dg-libro-hoja--indice'); return; }
 
       if (clon.classList.contains('dg-report-section')) {
@@ -237,6 +240,9 @@
       }
       colocar(clon);
     });
+
+    // La contraportada cierra el documento, como en el PDF.
+    hojaEntera(construirContraportada(), 'dg-libro-hoja--contra');
 
     // Pie con folio en cada hoja.
     hojas.forEach(function (item, indice) {
@@ -253,6 +259,97 @@
     return hojas.length;
   }
 
+
+
+  /* ── Portada y contraportada ───────────────────────────────────────────── */
+  //
+  // Se arman con la misma anatomia de la portada del PDF -logos, antetitulo,
+  // titulo serif, cobertura con filete dorado, imagen, unidad responsable y
+  // banda de corte- para que el libro en pantalla y el documento impreso sean
+  // el mismo objeto. Los datos salen de la portada del informe, no de un
+  // segundo origen que pudiera desfasarse.
+
+  var TEXTO_GRACIAS = 'A todas y todos los que hacen posible, con energía y compromiso, '
+    + 'construir un México más justo, soberano y sostenible.';
+
+  function leerPortada(hero) {
+    var datos = { antetitulo: '', titulo: 'Reporte de análisis territorial', meta: [] };
+    if (!hero) return datos;
+    var titulo = hero.querySelector('.dg-report__title');
+    if (titulo) datos.titulo = titulo.textContent.trim();
+    // El antetitulo es el bloque que precede al titulo. Buscarlo por texto en
+    // mayusculas no sirve: van en minusculas y las sube el CSS.
+    var previo = titulo && titulo.previousElementSibling;
+    if (previo && !previo.children.length) datos.antetitulo = (previo.textContent || '').trim();
+
+    // Cada chip es un <span> con dos <span> hijos. Hay que mirar los hijos
+    // directos: querySelectorAll tambien devuelve los nietos y el conteo daba
+    // cuatro, con lo que ningun chip se reconocia.
+    Array.prototype.slice.call(hero.querySelectorAll('span')).forEach(function (chip) {
+      var partes = Array.prototype.slice.call(chip.children).filter(function (n) { return n.tagName === 'SPAN'; });
+      if (partes.length !== 2) return;
+      var etiqueta = (partes[0].textContent || '').trim();
+      var valor = (partes[1].textContent || '').trim();
+      if (etiqueta && valor) datos.meta.push({ etiqueta: etiqueta, valor: valor });
+    });
+    return datos;
+  }
+
+  function busca(meta, patron) {
+    var hit = meta.filter(function (m) { return patron.test(m.etiqueta); })[0];
+    return hit ? hit.valor : '';
+  }
+
+  function construirPortada(hero, fecha) {
+    var d = leerPortada(hero);
+    var cobertura = busca(d.meta, /cobertura/i);
+    var objetivo = busca(d.meta, /objetivo evaluado/i) || busca(d.meta, /tipo de objetivo/i);
+    var ambito = busca(d.meta, /^tipo de objetivo/i) || busca(d.meta, /estado/i) || '—';
+
+    var portada = crear('div', 'dg-libro-portada');
+    portada.innerHTML =
+      '<div class="dg-libro-portada__logos">'
+      + '<img src="/img/pamrnt/logo_gob.png" alt="Gobierno de México">'
+      + '<i></i>'
+      + '<img src="/img/pamrnt/logo_sener.png" alt="Secretaría de Energía">'
+      + '</div>'
+      + '<div class="dg-libro-portada__antetitulo">' + (d.antetitulo || 'Subsecretaría de Planeación y Transición Energética') + '</div>'
+      + '<h1 class="dg-libro-portada__titulo">' + d.titulo + '</h1>'
+      + '<div class="dg-libro-portada__cobertura">'
+      + (cobertura ? '<span class="dg-libro-portada__radio">' + cobertura + '</span><i></i>' : '')
+      + '<span class="dg-libro-portada__objetivo">' + (objetivo || '') + '</span>'
+      + '</div>'
+      + '<figure class="dg-libro-portada__imagen"><img src="/tablero/assets/portada_energia.png" alt="Infraestructura energética"></figure>'
+      + '<div class="dg-libro-portada__unidad">'
+      + '<span>Unidad responsable</span>'
+      + '<strong>DGMESNIE · Dirección General de Metodología y Estadísticas del Sistema Nacional de Información Energética</strong>'
+      + '</div>'
+      + '<div class="dg-libro-portada__banda">'
+      + '<div><span>Corte</span><strong>' + (fecha || '') + '</strong></div>'
+      + '<div><span>Ámbito</span><strong>' + ambito + '</strong></div>'
+      + '<div><span>Fuente</span><strong>SENER</strong></div>'
+      + '</div>';
+    return portada;
+  }
+
+  function construirContraportada() {
+    var contra = crear('div', 'dg-libro-contra');
+    contra.innerHTML =
+      '<div class="dg-libro-portada__logos">'
+      + '<img src="/img/pamrnt/logo_gob.png" alt="Gobierno de México">'
+      + '<i></i>'
+      + '<img src="/img/pamrnt/logo_sener.png" alt="Secretaría de Energía">'
+      + '</div>'
+      + '<div class="dg-libro-contra__escena">'
+      + '<div class="dg-libro-contra__banda"><span>Gracias</span></div>'
+      + '<img class="dg-libro-contra__figura" src="/img/pamrnt/mujer.png" alt="">'
+      + '</div>'
+      + '<div class="dg-libro-contra__cierre">'
+      + '<div class="dg-libro-contra__filete"><i></i><b></b><i></i></div>'
+      + '<p>' + TEXTO_GRACIAS + '</p>'
+      + '</div>';
+    return contra;
+  }
 
   /* ── Lectura por hojas ─────────────────────────────────────────────────── */
   //
@@ -416,7 +513,8 @@
       if (origen.parentNode) origen.parentNode.removeChild(origen);
       origen.removeAttribute('style');
       if (!estado) return 0;
-      var hojas = componer(origen, pliego, informe.dataset.pie);
+      var fecha = (informe.querySelector('.dg-report-toolbar__identity span') || {}).textContent || '';
+      var hojas = componer(origen, pliego, informe.dataset.pie, fecha.trim());
       informe.scrollTop = 0;
       estado.hojas = hojas;
       estado.lista = Array.prototype.slice.call(pliego.querySelectorAll('.dg-libro-hoja'));
