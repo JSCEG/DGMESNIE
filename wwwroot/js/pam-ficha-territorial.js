@@ -375,29 +375,64 @@
         return valor == null || valor === "" ? (respaldo == null ? "" : respaldo) : valor;
     }
 
+    // Progreso del análisis. Son dieciocho capas y varias vienen del CDN: el
+    // conjunto tarda decenas de segundos, y hasta ahora la lámina sólo decía
+    // "Analizando…", sin manera de saber si avanzaba o se habia colgado.
+    var avanceSuscriptores = [];
+    var avance = { hechas: 0, total: 0, ultima: "" };
+
+    function alAvanzar(fn) {
+        avanceSuscriptores.push(fn);
+        fn(avance);
+    }
+
+    function anunciarAvance() {
+        avanceSuscriptores.forEach(function (fn) {
+            try { fn(avance); } catch (e) { }
+        });
+    }
+
+    // Envuelve cada fuente para contar cuando termina, sin cambiar su valor.
+    function contando(promesa, nombre) {
+        avance.total += 1;
+        anunciarAvance();
+        return promesa.then(function (valor) {
+            avance.hechas += 1;
+            avance.ultima = nombre;
+            anunciarAvance();
+            return valor;
+        }, function (error) {
+            // Una capa caida tambien es progreso: el analisis sigue sin ella.
+            avance.hechas += 1;
+            avance.ultima = nombre;
+            anunciarAvance();
+            throw error;
+        });
+    }
+
     function analizar(url, radioPredeterminado, gcrRespaldo) {
         if (analisisPorUrl[url]) return analisisPorUrl[url];
         analisisPorUrl[url] = fetchJson(url).then(function (proyecto) {
             var bbox = bboxProyecto(proyecto, radioPredeterminado);
             return Promise.all([
                 Promise.resolve(proyecto),
-                fuenteConEstado(fetchJson(URLS.gerencias), "Gerencias CENACE"),
-                fuenteConEstado(fetchJson(URLS.subestacionesTransmision), "Subestaciones de transmisión"),
-                fuenteConEstado(fetchJson(URLS.subestacionesDistribucion), "Subestaciones de distribución"),
-                fuenteConEstado(fetchJson(URLS.lineas), "Líneas RNT"),
-                fuenteConEstado(fetchJson(URLS.municipios), "Municipios INEGI"),
-                fuenteConEstado(fetchJson(URLS.anp), "ANP federales"),
-                fuenteConEstado(fetchJson(URLS.anpEstatal), "ANP estatales"),
-                fuenteConEstado(fetchJson(URLS.ramsar), "Humedales RAMSAR"),
-                fuenteConEstado(fetchJson(URLS.regionesIndigenas), "Regiones indígenas"),
-                fuenteConEstado(fetchJson(URLS.ductosImportacion), "Ductos de importación"),
-                fuenteConEstado(fetchJson(URLS.ductosSistrangas), "Ductos SISTRANGAS"),
-                fuenteConEstado(fetchJson(URLS.demanda), "Demanda CENACE"),
-                fuenteConEstado(fetchJson(URLS.tarifas), "Divisiones CFE"),
-                fuentePermisos("electricidad", bbox, "Permisos eléctricos"),
-                fuentePermisos("gas-natural", bbox, "Permisos de gas natural"),
-                fuentePermisos("gas-lp", bbox, "Permisos de gas LP"),
-                fuentePermisos("petroliferos", bbox, "Permisos de petrolíferos")
+                contando(fuenteConEstado(fetchJson(URLS.gerencias), "Gerencias CENACE"), "Gerencias CENACE"),
+                contando(fuenteConEstado(fetchJson(URLS.subestacionesTransmision), "Subestaciones de transmisión"), "Subestaciones de transmisión"),
+                contando(fuenteConEstado(fetchJson(URLS.subestacionesDistribucion), "Subestaciones de distribución"), "Subestaciones de distribución"),
+                contando(fuenteConEstado(fetchJson(URLS.lineas), "Líneas RNT"), "Líneas RNT"),
+                contando(fuenteConEstado(fetchJson(URLS.municipios), "Municipios INEGI"), "Municipios INEGI"),
+                contando(fuenteConEstado(fetchJson(URLS.anp), "ANP federales"), "ANP federales"),
+                contando(fuenteConEstado(fetchJson(URLS.anpEstatal), "ANP estatales"), "ANP estatales"),
+                contando(fuenteConEstado(fetchJson(URLS.ramsar), "Humedales RAMSAR"), "Humedales RAMSAR"),
+                contando(fuenteConEstado(fetchJson(URLS.regionesIndigenas), "Regiones indígenas"), "Regiones indígenas"),
+                contando(fuenteConEstado(fetchJson(URLS.ductosImportacion), "Ductos de importación"), "Ductos de importación"),
+                contando(fuenteConEstado(fetchJson(URLS.ductosSistrangas), "Ductos SISTRANGAS"), "Ductos SISTRANGAS"),
+                contando(fuenteConEstado(fetchJson(URLS.demanda), "Demanda CENACE"), "Demanda CENACE"),
+                contando(fuenteConEstado(fetchJson(URLS.tarifas), "Divisiones CFE"), "Divisiones CFE"),
+                contando(fuentePermisos("electricidad", bbox, "Permisos eléctricos"), "Permisos eléctricos"),
+                contando(fuentePermisos("gas-natural", bbox, "Permisos de gas natural"), "Permisos de gas natural"),
+                contando(fuentePermisos("gas-lp", bbox, "Permisos de gas LP"), "Permisos de gas LP"),
+                contando(fuentePermisos("petroliferos", bbox, "Permisos de petrolíferos"), "Permisos de petrolíferos")
             ]);
         }).then(function (datos) {
             var proyecto = datos[0];
@@ -922,7 +957,7 @@
                     '<div class="pam-elemento__layout">' +
                         '<div class="pam-elemento__map" data-territorial-element-map="' + indice + '" aria-label="Mapa de ' + textoSeguro(u.etiqueta || "elemento territorial") + '"></div>' +
                         '<aside class="pam-elemento__panel">' +
-                            '<div class="pam-elemento__identity"><span>Elemento ' + numero(indice + 1) + ' de ' + numero(resultado.elementos.length) + '</span><strong>' + textoSeguro(u.etiqueta || u.claveElementoRed || "Elemento territorial") + '</strong><small>' + textoSeguro(municipio + " · GCR " + (elemento.gcr || "—") + " · cobertura " + numero(elemento.radioKm, elemento.radioKm % 1 ? 1 : 0) + " km") + '</small></div>' +
+                            '<div class="pam-elemento__identity"><span>Elemento ' + numero(indice + 1) + ' de ' + numero(resultado.elementos.length) + '</span><strong>' + textoSeguro(u.etiqueta || u.claveElementoRed || "Elemento territorial") + '</strong><small>' + textoSeguro(municipio + " · GCR " + (elemento.gcr || "—")) + '</small>' + '<em class="pam-elemento__radio">' + textoSeguro("Área de análisis · " + numero(elemento.radioKm, elemento.radioKm % 1 ? 1 : 0) + ' km alrededor') + '</em></div>' +
                             '<div class="pam-elemento__cards">' + tarjetas.join("") + '</div>' +
                             '<p class="pam-elemento__source">Fuentes: cartera PAM, red eléctrica DGMESNIE, CRE, CENACE, CFE e INEGI. Coincidencias calculadas sobre la cobertura del elemento.</p>' +
                         '</aside>' +
@@ -1121,6 +1156,31 @@
         setTimeout(function () { if (mapa) mapa.invalidateSize(false); }, 80);
     }
 
+    // Cada aviso de carga que siga en pantalla muestra el avance real.
+    alAvanzar(function (estado) {
+        if (!estado.total) return;
+        var porcentaje = Math.round(estado.hechas / estado.total * 100);
+        document.querySelectorAll(".pam-territorial__loading").forEach(function (aviso) {
+            var detalle = aviso.querySelector("span");
+            if (!detalle) return;
+            if (estado.hechas >= estado.total) {
+                detalle.textContent = "Cruzando la cobertura con cada capa…";
+                return;
+            }
+            detalle.textContent = estado.hechas + " de " + estado.total + " capas · " + porcentaje + "%"
+                + (estado.ultima ? " · " + estado.ultima : "");
+            var barra = aviso.querySelector(".pam-territorial__avance i");
+            if (!barra) {
+                var pista = document.createElement("div");
+                pista.className = "pam-territorial__avance";
+                pista.appendChild(document.createElement("i"));
+                aviso.appendChild(pista);
+                barra = pista.firstChild;
+            }
+            barra.style.width = porcentaje + "%";
+        });
+    });
+
     function crearMapaElemento(resultado, elemento, contenedor, indice) {
         var el = contenedor.querySelector("[data-territorial-element-map]");
         if (!el || typeof L === "undefined" || !window.turf || !el.clientWidth || !el.clientHeight) return;
@@ -1173,13 +1233,35 @@
         });
 
         var grupoPrincipal = L.featureGroup().addTo(mapaElemento);
+        // La cobertura es el area de busqueda, no el proyecto. Iba con el mismo
+        // peso que la ubicacion y ocupando todo el encuadre, asi que se leia
+        // como si el circulo fuera el elemento: ahora queda claramente detras
+        // -mas tenue, mas fina- y la ubicacion gana un halo que la destaca.
         if (elemento.cobertura) {
-            L.geoJSON(elemento.cobertura, { style: { color: DORADO, weight: 2, dashArray: "7 5", fillColor: DORADO, fillOpacity: .08 } }).addTo(grupoPrincipal);
+            L.geoJSON(elemento.cobertura, {
+                style: { color: DORADO, weight: 1.2, dashArray: "5 5", fillColor: DORADO, fillOpacity: .045, interactive: false }
+            }).addTo(grupoPrincipal);
         }
         L.geoJSON(elemento.feature, {
-            style: { color: GUINDA, weight: 4, fillColor: GUINDA, fillOpacity: .2 },
-            pointToLayer: function (feature, latlng) { return L.circleMarker(latlng, { radius: 7, color: "#fff", weight: 2, fillColor: GUINDA, fillOpacity: 1 }); }
+            style: { color: GUINDA, weight: 4.5, fillColor: GUINDA, fillOpacity: .22 },
+            pointToLayer: function (feature, latlng) {
+                var halo = L.circleMarker(latlng, { radius: 13, color: GUINDA, weight: 1, opacity: .35, fillColor: GUINDA, fillOpacity: .12, interactive: false });
+                halo.addTo(grupoPrincipal);
+                return L.circleMarker(latlng, { radius: 7.5, color: "#fff", weight: 2.4, fillColor: GUINDA, fillOpacity: 1 });
+            }
         }).addTo(grupoPrincipal);
+
+        // Sin leyenda las dos figuras se confunden: una dice donde esta el
+        // elemento y la otra hasta donde se busco a su alrededor.
+        var leyenda = L.control({ position: "bottomleft" });
+        leyenda.onAdd = function () {
+            var caja = L.DomUtil.create("div", "pam-elemento__leyenda");
+            caja.innerHTML =
+                '<span><i class="es-ubicacion"></i>Ubicación del elemento</span>' +
+                '<span><i class="es-cobertura"></i>Área de análisis · ' + numero(elemento.radioKm, elemento.radioKm % 1 ? 1 : 0) + ' km</span>';
+            return caja;
+        };
+        leyenda.addTo(mapaElemento);
         try {
             var bounds = grupoPrincipal.getBounds();
             if (bounds && bounds.isValid()) mapaElemento.fitBounds(bounds.pad(.08), { padding: [12, 12], maxZoom: 10 });
