@@ -187,6 +187,25 @@
             }
         }
 
+        async function esperarRecursosVisuales(slide) {
+            const imagenes = Array.from(slide.querySelectorAll("img"));
+            await Promise.all(imagenes.map(async img => {
+                if (!img.complete) {
+                    await new Promise(resolve => {
+                        const finalizar = () => resolve();
+                        img.addEventListener("load", finalizar, { once: true });
+                        img.addEventListener("error", finalizar, { once: true });
+                        setTimeout(finalizar, 5000);
+                    });
+                }
+                if (img.decode) {
+                    try { await img.decode(); } catch (e) { }
+                }
+            }));
+            if (document.fonts?.ready) await document.fonts.ready;
+            await nextPaint();
+        }
+
         // Leaflet puede conservar canvases auxiliares vacíos (0 × 0) para capas
         // que no dibujaron geometría. html2canvas intenta convertirlos en un
         // patrón y el navegador lanza InvalidStateError, aunque no sean visibles.
@@ -212,7 +231,7 @@
             if (window.pamFichaMapas && slide.querySelector(".pam-mapa-gcr, .pam-mapa-red")) await window.pamFichaMapas();
             if (window.pamFichaTerritorial && slide.querySelector("[data-pam-territorial-analysis], [data-pam-territorial-comparison], [data-pam-territorial-element], [data-pam-territorial-matrix], [data-pam-territorial-executive]")) await window.pamFichaTerritorial();
             await asegurarImagenesPrecargadas(slide);
-            await nextPaint();
+            await esperarRecursosVisuales(slide);
             const restaurarCanvas = omitirCanvasVacios();
             try {
                 return await window.html2canvas(slide, {

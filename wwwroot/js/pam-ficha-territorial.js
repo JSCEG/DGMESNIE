@@ -1008,6 +1008,12 @@
         L.geoJSON({ type: "FeatureCollection", features: features }, opciones).addTo(layer);
     }
 
+    function prepararCanvasAltaResolucion() {
+        // La exportación usa escala 2. Forzar el backing store retina evita que
+        // el mapa vectorial se amplíe desde una imagen de resolución de pantalla.
+        if (typeof L !== "undefined" && L.Browser) L.Browser.retina = true;
+    }
+
     function coordenadaPunto(feature) {
         if (!feature || !feature.geometry || feature.geometry.type !== "Point") return null;
         var coordenadas = feature.geometry.coordinates;
@@ -1028,10 +1034,12 @@
         var el = document.getElementById("pam-territorial-mapa");
         if (!el || mapaListo || typeof L === "undefined" || !window.turf) return;
         if (!el.clientWidth || !el.clientHeight) return;
+        prepararCanvasAltaResolucion();
         mapaListo = true;
         mapa = L.map(el, {
             zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false,
-            doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, preferCanvas: true
+            doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, preferCanvas: true,
+            zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false
         });
         mapa.setView([23.6, -102.5], 5);
 
@@ -1188,9 +1196,11 @@
             setTimeout(function () { mapasElemento[indice].invalidateSize(false); }, 40);
             return;
         }
+        prepararCanvasAltaResolucion();
         var mapaElemento = L.map(el, {
             zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false,
-            doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, preferCanvas: true
+            doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false, preferCanvas: true,
+            zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false
         });
         mapasElemento[indice] = mapaElemento;
         mapaElemento.setView([23.6, -102.5], 5);
@@ -1310,6 +1320,42 @@
         });
     }
 
+    function siguientePintado() {
+        return new Promise(function (resolve) {
+            requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+        });
+    }
+
+    function redibujarMapasTerritoriales() {
+        var activos = [];
+        if (mapa) activos.push(mapa);
+        Object.keys(mapasElemento).forEach(function (indice) {
+            if (mapasElemento[indice]) activos.push(mapasElemento[indice]);
+        });
+        activos.forEach(function (mapaActivo) {
+            try {
+                var contenedor = mapaActivo.getContainer();
+                if (!contenedor || !contenedor.clientWidth || !contenedor.clientHeight) return;
+                mapaActivo.invalidateSize({ animate: false, pan: false });
+                mapaActivo.eachLayer(function (layer) {
+                    if (typeof layer.redraw === "function") layer.redraw();
+                });
+            } catch (e) { }
+        });
+    }
+
+    function esperarMapasTerritorialesEstables() {
+        redibujarMapasTerritoriales();
+        return siguientePintado()
+            .then(function () {
+                return new Promise(function (resolve) { setTimeout(resolve, 120); });
+            })
+            .then(function () {
+                redibujarMapasTerritoriales();
+                return siguientePintado();
+            });
+    }
+
     document.addEventListener("pam:slide-shown", function () {
         var activa = document.querySelector(".pam-slide.is-active");
         if (activa && activa.querySelector("[data-pam-territorial-analysis], [data-pam-territorial-comparison], [data-pam-territorial-element], [data-pam-territorial-matrix], [data-pam-territorial-executive]")) {
@@ -1317,7 +1363,11 @@
         }
     });
 
-    window.pamFichaTerritorial = activar;
+    window.pamFichaTerritorial = function () {
+        return activar().then(function (resultado) {
+            return esperarMapasTerritorialesEstables().then(function () { return resultado; });
+        });
+    };
 
     function iniciarSiVisible() {
         var activa = document.querySelector(".pam-slide.is-active");

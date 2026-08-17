@@ -11,6 +11,7 @@
     var GRIS_RELLENO = "#EDE8E2";
     var GRIS_LINEA = "#C9C4BC";
     var creados = { gcr: false, red: false };
+    var mapas = [];
     var cargasRed = []; // promesas de capas CDN, para que el export espere antes de capturar
 
     // Capas oficiales DGMESNIE (mismas del sistema de diseño SENER).
@@ -203,11 +204,52 @@
     }
 
     function opcionesEstaticas() {
+        // Leaflet dimensiona el backing store del canvas al doble cuando retina
+        // está activo. Así html2canvas puede exportar a escala 2 sin ampliar un
+        // mapa dibujado únicamente a resolución de pantalla.
+        if (typeof L !== "undefined" && L.Browser) L.Browser.retina = true;
         return {
             zoomControl: false, attributionControl: false, dragging: false,
             scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false,
-            keyboard: false, touchZoom: false, preferCanvas: true
+            keyboard: false, touchZoom: false, preferCanvas: true,
+            zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false
         };
+    }
+
+    function registrarMapa(map) {
+        mapas.push(map);
+        return map;
+    }
+
+    function siguientePintado() {
+        return new Promise(function (resolve) {
+            requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+        });
+    }
+
+    function redibujarMapas() {
+        mapas.forEach(function (map) {
+            try {
+                var contenedor = map.getContainer();
+                if (!contenedor || !contenedor.clientWidth || !contenedor.clientHeight) return;
+                map.invalidateSize({ animate: false, pan: false });
+                map.eachLayer(function (layer) {
+                    if (typeof layer.redraw === "function") layer.redraw();
+                });
+            } catch (e) { }
+        });
+    }
+
+    function esperarMapasEstables() {
+        redibujarMapas();
+        return siguientePintado()
+            .then(function () {
+                return new Promise(function (resolve) { setTimeout(resolve, 120); });
+            })
+            .then(function () {
+                redibujarMapas();
+                return siguientePintado();
+            });
     }
 
     // Lámina de diagnóstico: usa la ubicación validada del dashboard cuando existe.
@@ -286,7 +328,7 @@
         if (typeof L === "undefined" || typeof json_GerenciadeControlRegional_23 === "undefined") return;
         var idProyecto = idGerencia(el.dataset.gcr);
         if (idProyecto === "mulege") idProyecto = "bcsur";
-        var map = L.map(el, opcionesEstaticas());
+        var map = registrarMapa(L.map(el, opcionesEstaticas()));
         var capa = L.geoJSON(json_GerenciadeControlRegional_23, {
             style: function (f) {
                 var esActiva = idGerencia(f.properties.region) === idProyecto && idProyecto !== "";
@@ -314,7 +356,7 @@
                 .join(" · ") + (ubicaciones.length > 3 ? " · +" + (ubicaciones.length - 3) : "");
         }
 
-        var map = L.map(el, opcionesEstaticas());
+        var map = registrarMapa(L.map(el, opcionesEstaticas()));
         map.setView([23.6, -102.5], 5);
 
         var pContexto = cargarGerencias()
@@ -410,7 +452,7 @@
         if (!el.clientWidth || !el.clientHeight) return; // lámina aún oculta
 
         creados.red = true;
-        var map = L.map(el, opcionesEstaticas());
+        var map = registrarMapa(L.map(el, opcionesEstaticas()));
         map.setView([23.6, -102.5], 5); // vista nacional por defecto; fitBounds la afina al llegar gerencias
         var capas = {
             gcr: L.layerGroup().addTo(map),
@@ -719,7 +761,9 @@
         var yaExistian = creados.gcr && creados.red;
         asegurarMapas();
         return Promise.allSettled(cargasRed).then(function () {
-            return new Promise(function (resolve) { setTimeout(resolve, yaExistian ? 60 : 350); });
+            return new Promise(function (resolve) { setTimeout(resolve, yaExistian ? 60 : 180); });
+        }).then(function () {
+            return esperarMapasEstables();
         });
     };
 
