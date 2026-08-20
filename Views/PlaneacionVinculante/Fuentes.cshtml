@@ -1,0 +1,167 @@
+@using System.Globalization
+@model NSIE.Models.PlaneacionVinculante.PlaneacionFuentesViewModel
+
+@{
+    ViewData["Title"] = "Fuentes y cargas de planeación";
+    var mx = CultureInfo.GetCultureInfo("es-MX");
+    var preview = Model.Preview;
+    var claseSeleccionada = Model.ClasesVersion.First(option => option.Value == Model.ClaseVersion);
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/planeacion-vinculante.css" asp-append-version="true" />
+}
+
+@await Html.PartialAsync("_ViewHeader", Model.Header)
+
+<main class="container-fluid shell-page-container py-3 pv-page">
+    <div class="pv-page-tools mb-3">
+        <a class="pv-back-link" asp-action="Index"><i class="bi bi-arrow-left"></i> Volver al tablero de Planeación Vinculante</a>
+        <span class="pv-pill pv-pill--safe"><i class="bi bi-database-lock"></i> Previsualización sin escritura en BD</span>
+    </div>
+
+    <section class="pv-command mb-3" aria-labelledby="pv-command-title">
+        <div class="pv-command__copy">
+            <div class="pv-eyebrow">Fuentes, calidad y versionado</div>
+            <h1 id="pv-command-title">Control de fotografías PVIRCE</h1>
+            <p>Esta vista concentra la entrada de archivos. Primero identifica estructura, totales e incidencias; el registro versionado en la base se habilitará después de la validación.</p>
+        </div>
+        <div class="pv-command__state" aria-label="Estado del módulo">
+            <span class="pv-pill pv-pill--review"><i class="bi bi-cone-striped"></i> Fundación</span>
+            <span class="pv-pill pv-pill--safe"><i class="bi bi-shield-check"></i> Acción reversible</span>
+        </div>
+    </section>
+
+    <section class="pv-flow mb-3" aria-label="Cadena de fuentes">
+        <article class="pv-flow__step pv-flow__step--official"><span class="pv-flow__number">01</span><div><strong>PVIRCE oficial</strong><small>Integrado al PLADESE publicado</small></div></article>
+        <i class="bi bi-arrow-right pv-flow__arrow" aria-hidden="true"></i>
+        <article class="pv-flow__step pv-flow__step--base"><span class="pv-flow__number">02</span><div><strong>Primer corte 2026</strong><small>Fotografía técnica de trabajo</small></div></article>
+        <i class="bi bi-arrow-right pv-flow__arrow" aria-hidden="true"></i>
+        <article class="pv-flow__step pv-flow__step--review"><span class="pv-flow__number">03</span><div><strong>Corte en revisión</strong><small>Altas, bajas y reprogramaciones</small></div></article>
+        <i class="bi bi-arrow-right pv-flow__arrow" aria-hidden="true"></i>
+        <article class="pv-flow__step pv-flow__step--future"><span class="pv-flow__number">04</span><div><strong>Registro versionado</strong><small>Fuente · hash · filas · cambios</small></div></article>
+    </section>
+
+    <div class="row g-3 align-items-start">
+        <div class="col-12 col-xxl-4">
+            <section class="pv-panel pv-upload" aria-labelledby="pv-upload-title">
+                <div class="pv-panel__heading">
+                    <div><div class="pv-eyebrow">Entrada controlada</div><h2 id="pv-upload-title">Previsualizar un corte</h2></div>
+                    <span class="pv-panel__icon"><i class="bi bi-file-earmark-spreadsheet"></i></span>
+                </div>
+
+                <form asp-action="Previsualizar" method="post" enctype="multipart/form-data" class="pv-upload__form">
+                    @Html.AntiForgeryToken()
+                    <div>
+                        <label class="form-label" for="claseVersion">Naturaleza de la fotografía</label>
+                        <select class="form-select" id="claseVersion" name="claseVersion">
+                            @foreach (var option in Model.ClasesVersion)
+                            {
+                                <option value="@option.Value" selected="@(option.Value == Model.ClaseVersion)">@option.Label</option>
+                            }
+                        </select>
+                        <div class="form-text">@claseSeleccionada.Description</div>
+                    </div>
+                    <div>
+                        <label class="form-label" for="archivo">Archivo PVIRCE</label>
+                        <input class="form-control" id="archivo" name="archivo" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+                        <div class="form-text">Formato XLSX · máximo 25 MB.</div>
+                    </div>
+                    <button class="btn pv-btn-primary w-100" type="submit"><i class="bi bi-search"></i> Analizar sin cargar</button>
+                </form>
+
+                <div class="pv-safety-note"><i class="bi bi-shield-check" aria-hidden="true"></i><div><strong>No crea ni sustituye versiones.</strong><span>El libro se procesa en memoria y no modifica tablas institucionales.</span></div></div>
+            </section>
+
+            <section class="pv-panel mt-3" aria-labelledby="pv-next-title">
+                <div class="pv-panel__heading pv-panel__heading--compact"><div><div class="pv-eyebrow">Ruta de implementación</div><h2 id="pv-next-title">Qué habilita este paso</h2></div></div>
+                <ol class="pv-checklist">
+                    <li class="is-active"><span>1</span><div><strong>Perfilar el archivo</strong><small>Estructura, totales y calidad</small></div></li>
+                    <li><span>2</span><div><strong>Registrar la fotografía</strong><small>Fuente, versión, hash y filas originales</small></div></li>
+                    <li><span>3</span><div><strong>Comparar cortes</strong><small>Altas, bajas, MW, año y estatus</small></div></li>
+                    <li><span>4</span><div><strong>Vincular ejecución</strong><small>Proyecto, VUPE, red PAM y costos</small></div></li>
+                </ol>
+            </section>
+        </div>
+
+        <div class="col-12 col-xxl-8">
+            @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+            {
+                <div class="pv-alert pv-alert--danger" role="alert"><i class="bi bi-exclamation-octagon"></i><div><strong>No se pudo completar la previsualización.</strong><span>@Model.ErrorMessage</span></div></div>
+            }
+
+            @if (preview == null)
+            {
+                <section class="pv-empty" aria-labelledby="pv-empty-title">
+                    <div class="pv-empty__mark"><i class="bi bi-layers-half"></i></div>
+                    <div><div class="pv-eyebrow">Aún sin archivo seleccionado</div><h2 id="pv-empty-title">Primero observamos; después registramos</h2><p>Selecciona un corte. La vista devolverá cifras de control, horizonte, fórmulas dañadas, nombres repetidos y una muestra de registros.</p></div>
+                    <div class="pv-empty__controls"><div><strong>75,564 MW</strong><span>Adiciones oficiales PLADESE 2025</span></div><div><strong>1,805 MW</strong><span>Sustituciones oficiales PLADESE 2025</span></div><div><strong>2025–2030</strong><span>Periodo principal de gestión</span></div></div>
+                </section>
+            }
+            else
+            {
+                <section class="pv-result" aria-live="polite">
+                    <div class="pv-result__header">
+                        <div><div class="pv-eyebrow">Resultado de previsualización</div><h2>@preview.Archivo</h2><p>@preview.Hoja · @preview.RangoUsado · encabezados en fila @preview.FilaEncabezados</p></div>
+                        <span class="pv-pill @(preview.PuedeMarcarseValidado ? "pv-pill--safe" : "pv-pill--review")"><i class="bi @(preview.PuedeMarcarseValidado ? "bi-check-circle" : "bi-exclamation-triangle")"></i> @(preview.PuedeMarcarseValidado ? "Sin bloqueos estructurales" : "Requiere revisión")</span>
+                    </div>
+
+                    <div class="pv-source-strip"><div><span>Clase propuesta</span><strong>@claseSeleccionada.Label</strong></div><div><span>SHA-256</span><code title="@preview.HashSha256">@preview.HashSha256[..16]…</code></div><div><span>Horizonte detectado</span><strong>@(preview.HorizonteInicio?.ToString() ?? "—")–@(preview.HorizonteFin?.ToString() ?? "—")</strong></div></div>
+
+                    <div class="pv-kpis">
+                        <article><span>Registros útiles</span><strong>@preview.TotalRegistros.ToString("N0", mx)</strong><small>@preview.NombresUnicos.ToString("N0", mx) nombres únicos</small></article>
+                        <article><span>Capacidad instalada</span><strong>@preview.CapacidadInstaladaMw.ToString("N2", mx)</strong><small>MW en el corte</small></article>
+                        <article><span>Adiciones</span><strong>@preview.AdicionesMw.ToString("N2", mx)</strong><small>MW clasificados</small></article>
+                        <article><span>Sustituciones</span><strong>@preview.SustitucionesMw.ToString("N2", mx)</strong><small>MW clasificados</small></article>
+                        <article class="@(preview.FormulasConReferenciaRota > 0 ? "has-risk" : string.Empty)"><span>Fórmulas rotas</span><strong>@preview.FormulasConReferenciaRota.ToString("N0", mx)</strong><small>de @preview.TotalFormulas.ToString("N0", mx) fórmulas</small></article>
+                        <article class="@(preview.FilasCapacidadDiferente > 0 ? "has-warning" : string.Empty)"><span>Diferencia de capacidad</span><strong>@preview.FilasCapacidadDiferente.ToString("N0", mx)</strong><small>filas instalada vs. interconexión</small></article>
+                    </div>
+
+                    @if (preview.MetadatosComentariosNormalizados)
+                    {
+                        <div class="pv-alert pv-alert--info"><i class="bi bi-wrench-adjustable-circle"></i><div><strong>Libro reparado sólo en memoria.</strong><span>Se normalizaron metadatos incompatibles de comentarios para leer el XLSX; el original no cambió.</span></div></div>
+                    }
+
+                    <div class="pv-result-grid">
+                        <section class="pv-panel" aria-labelledby="pv-year-title">
+                            <div class="pv-panel__heading pv-panel__heading--compact"><div><div class="pv-eyebrow">Distribución temporal</div><h3 id="pv-year-title">Capacidad por año</h3></div><span class="pv-caption">@preview.AnioMinimo–@preview.AnioMaximo</span></div>
+                            <div class="table-responsive pv-table-wrap"><table class="table pv-table align-middle mb-0"><thead><tr><th>Año</th><th class="text-end">Registros</th><th class="text-end">MW instalados</th><th class="text-end">Adiciones</th><th class="text-end">Sustituciones</th></tr></thead><tbody>
+                            @foreach (var item in preview.ResumenAnual)
+                            {
+                                <tr class="@(item.Anio >= 2026 && item.Anio <= 2030 ? "is-administration" : string.Empty)"><td><strong>@item.Anio</strong>@if (item.Anio >= 2026 && item.Anio <= 2030) { <span class="pv-year-tag">gestión</span> }</td><td class="text-end">@item.Registros.ToString("N0", mx)</td><td class="text-end">@item.CapacidadInstaladaMw.ToString("N2", mx)</td><td class="text-end">@item.AdicionesMw.ToString("N2", mx)</td><td class="text-end">@item.SustitucionesMw.ToString("N2", mx)</td></tr>
+                            }
+                            </tbody></table></div>
+                        </section>
+
+                        <section class="pv-panel" aria-labelledby="pv-issues-title">
+                            <div class="pv-panel__heading pv-panel__heading--compact"><div><div class="pv-eyebrow">Puerta de calidad</div><h3 id="pv-issues-title">Incidencias detectadas</h3></div><span class="pv-caption">@preview.Incidencias.Count reglas</span></div>
+                            @if (preview.Incidencias.Count == 0)
+                            {
+                                <div class="pv-no-issues"><i class="bi bi-check2-circle"></i><span>No se detectaron incidencias configuradas.</span></div>
+                            }
+                            else
+                            {
+                                <div class="pv-issues">
+                                @foreach (var issue in preview.Incidencias)
+                                {
+                                    <article class="pv-issue pv-issue--@issue.Severidad.ToLowerInvariant()"><span class="pv-issue__count">@issue.Cantidad.ToString("N0", mx)</span><div><strong>@issue.Mensaje</strong><small>@issue.Codigo@if (issue.FilasEjemplo.Count > 0) { <text> · filas @string.Join(", ", issue.FilasEjemplo)</text> }</small></div></article>
+                                }
+                                </div>
+                            }
+                        </section>
+                    </div>
+
+                    <section class="pv-panel mt-3" aria-labelledby="pv-sample-title">
+                        <div class="pv-panel__heading pv-panel__heading--compact"><div><div class="pv-eyebrow">Lectura sin transformar</div><h3 id="pv-sample-title">Muestra del archivo</h3></div><span class="pv-caption">Primeros @preview.Muestra.Count registros</span></div>
+                        <div class="table-responsive pv-table-wrap"><table class="table pv-table align-middle mb-0"><thead><tr><th>Fila</th><th>Nombre real</th><th>Año</th><th>Movimiento</th><th>Tipo</th><th>GCR</th><th>Estatus</th><th class="text-end">MW</th></tr></thead><tbody>
+                        @foreach (var item in preview.Muestra)
+                        {
+                            <tr><td><code>@item.Fila</code></td><td><strong>@item.Nombre</strong></td><td>@(item.Anio?.ToString() ?? "—")</td><td>@(string.IsNullOrWhiteSpace(item.Movimiento) ? "—" : item.Movimiento)</td><td>@(string.IsNullOrWhiteSpace(item.TipoVf) ? "—" : item.TipoVf)</td><td>@(string.IsNullOrWhiteSpace(item.Gcr) ? "—" : item.Gcr)</td><td>@(string.IsNullOrWhiteSpace(item.Estatus) ? "—" : item.Estatus)</td><td class="text-end">@(item.CapacidadInstaladaMw?.ToString("N2", mx) ?? "—")</td></tr>
+                        }
+                        </tbody></table></div>
+                    </section>
+                </section>
+            }
+        </div>
+    </div>
+</main>

@@ -5,6 +5,7 @@ using NSIE.Componentes;
 using NSIE.Models;
 using NSIE.Servicios;
 using NSIE.Servicios.Interfaces;  // Actualizar este using
+using NSIE.Servicios.PlaneacionVinculante;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using Microsoft.Extensions.Logging;
@@ -99,6 +100,8 @@ builder.Services.AddScoped<IPamAnalisisService, PamAnalisisService>();
 builder.Services.AddHostedService<PamAnalisisWorker>();
 builder.Services.AddTransient<IRepositorioInversionDesarrolloEnergetico, RepositorioInversionDesarrolloEnergetico>();
 builder.Services.AddTransient<PvirseImportService>();
+builder.Services.AddScoped<IPvircePreviewService, PvircePreviewService>();
+builder.Services.AddScoped<IPlaneacionVinculanteOverviewService, PlaneacionVinculanteOverviewService>();
 builder.Services.AddTransient<IngestionService>();
 builder.Services.AddTransient<IRepositorioReuniones, RepositorioReuniones>();
 builder.Services.AddTransient<IRepositorioSNIER, RepositorioSNIER>();

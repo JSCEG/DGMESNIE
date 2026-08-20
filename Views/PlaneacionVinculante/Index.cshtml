@@ -1,0 +1,164 @@
+@using System.Globalization
+@model NSIE.Models.PlaneacionVinculante.PlaneacionVinculanteViewModel
+
+@{
+    ViewData["Title"] = "Planeación Vinculante del SEN";
+    var mx = CultureInfo.GetCultureInfo("es-MX");
+    var overview = Model.Overview;
+    var firstCutCoverage = overview.PladeseAdicionesMw > 0 ? 100m * overview.PvirceBaseAdicionesMw / overview.PladeseAdicionesMw : 0m;
+    var reviewCoverage = overview.PladeseAdicionesMw > 0 ? 100m * overview.PvirceRevisionAdicionesMw / overview.PladeseAdicionesMw : 0m;
+    var adminShare = overview.PvirceRevisionMw > 0 ? 100m * overview.MwAdministracion / overview.PvirceRevisionMw : 0m;
+    var executedShare = overview.PvirceRevisionMw > 0 ? 100m * overview.MwBaseEjecutada / overview.PvirceRevisionMw : 0m;
+    var longTermShare = overview.PvirceRevisionMw > 0 ? 100m * overview.MwLargoPlazo / overview.PvirceRevisionMw : 0m;
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/planeacion-vinculante.css" asp-append-version="true" />
+}
+
+<main class="container-fluid shell-page-container py-3 pv-page">
+    <section class="pv-dashboard-shell">
+        <aside class="pv-section-nav" aria-label="Secciones del tablero">
+            <div class="pv-section-nav__brand">
+                <span>Tablero PLADESE</span>
+                <strong>Planeación vinculante</strong>
+            </div>
+            <div class="nav nav-pills" role="tablist" aria-orientation="vertical">
+                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pv-resumen" type="button" role="tab"><i class="bi bi-house-door"></i><span>Resumen<small>Ejecutivo</small></span></button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pv-prosener" type="button" role="tab"><i class="bi bi-bullseye"></i><span>Metas<small>PROSENER</small></span></button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pv-transicion" type="button" role="tab"><i class="bi bi-wind"></i><span>Transición<small>Energías limpias</small></span></button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pv-pladese" type="button" role="tab"><i class="bi bi-journal-text"></i><span>PLADESE<small>Escenarios y demanda</small></span></button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pv-generacion" type="button" role="tab"><i class="bi bi-lightning-charge"></i><span>Generación<small>PVIRCE</small></span></button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pv-proyectos" type="button" role="tab"><i class="bi bi-megaphone"></i><span>Proyectos<small>VUPE y convocatorias</small></span></button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pv-red" type="button" role="tab"><i class="bi bi-diagram-3"></i><span>Red<small>PAMRNT y PAMRGD</small></span></button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pv-seguimiento" type="button" role="tab"><i class="bi bi-graph-up-arrow"></i><span>Seguimiento<small>Físico-financiero</small></span></button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pv-riesgos" type="button" role="tab"><i class="bi bi-exclamation-triangle"></i><span>Riesgos<small>Decisiones</small></span></button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pv-mapa" type="button" role="tab"><i class="bi bi-geo-alt"></i><span>Mapa<small>Capas integradas</small></span></button>
+                <a class="nav-link pv-section-nav__external" asp-action="Fuentes"><i class="bi bi-database-gear"></i><span>Fuentes<small>Calidad y versiones</small></span><i class="bi bi-arrow-up-right"></i></a>
+            </div>
+            <div class="pv-section-nav__status"><i class="bi bi-shield-check"></i><span>Fundación activa<small>Relaciones en validación</small></span></div>
+        </aside>
+
+        <div class="pv-dashboard-main">
+            <header class="pv-dashboard-header">
+                <div class="pv-dashboard-header__copy">
+                    <div class="pv-eyebrow">Sistema Eléctrico Nacional</div>
+                    <h1>Planeación Vinculante del SEN</h1>
+                    <p>Metas, proyectos, red, inversión y riesgos de cumplimiento.</p>
+                </div>
+                <div class="pv-dashboard-controls" aria-label="Filtros globales">
+                    <label><span>Edición</span><select class="form-select form-select-sm" aria-label="Edición PLADESE"><option>PLADESE 2025–2039</option></select></label>
+                    <label><span>Corte</span><select class="form-select form-select-sm" aria-label="Fecha de corte"><option>Agosto 2026</option></select></label>
+                    <label title="Se habilitará al integrar la dimensión regional"><span>GCR</span><select class="form-select form-select-sm" aria-label="Gerencia de Control Regional" disabled><option>Todas</option></select></label>
+                    <a class="pv-toolbar-action" asp-action="Ficha"><i class="bi bi-easel2"></i> Ficha <span>PDF · PPT · correo</span></a>
+                </div>
+            </header>
+
+            <section class="pv-context-bar mb-3" aria-label="Contexto de consulta">
+                <div class="pv-context-bar__group"><span class="pv-context-label">Periodo</span><strong>Administración 2025–2030</strong></div>
+                <div class="pv-context-bar__group"><span class="pv-context-label">Referencia</span><strong>PLADESE 2025–2039</strong></div>
+                <div class="pv-context-bar__group"><span class="pv-context-label">Comparación</span><strong>PVIRCE oficial ↔ cortes de trabajo 2026</strong></div>
+                <span class="pv-pill @(overview.DatosOperativosDisponibles ? "pv-pill--safe" : "pv-pill--review")"><i class="bi @(overview.DatosOperativosDisponibles ? "bi-database-check" : "bi-database-exclamation")"></i> @(overview.DatosOperativosDisponibles ? "BD operativa conectada" : "Controles documentales")</span>
+            </section>
+
+            <div class="tab-content">
+        <section class="tab-pane fade show active" id="pv-resumen" role="tabpanel" tabindex="0">
+            <div class="pv-executive-hero mb-3">
+                <div><div class="pv-eyebrow">Pregunta rectora</div><h1>¿Qué parte de la meta está cubierta y qué falta instrumentar?</h1><p>Lectura integrada de requerimiento oficial, cartera de generación, folios y obras de red habilitantes.</p></div>
+                <div class="pv-executive-hero__legend"><span><i class="pv-dot pv-dot--official"></i> Oficial</span><span><i class="pv-dot pv-dot--base"></i> Primer corte 2026</span><span><i class="pv-dot pv-dot--review"></i> En revisión</span></div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(overview.AdvertenciaDatos))
+            {
+                <div class="pv-alert pv-alert--info"><i class="bi bi-info-circle"></i><div><strong>Consulta operativa parcial</strong><span>@overview.AdvertenciaDatos</span></div></div>
+            }
+
+            <div class="pv-executive-kpis mb-3">
+                <article class="pv-executive-kpi pv-executive-kpi--official"><div class="pv-executive-kpi__top"><span>Requerimiento oficial</span><i class="bi bi-journal-check"></i></div><strong>@overview.PladeseAdicionesMw.ToString("N0", mx) <small>MW</small></strong><p>Adiciones PLADESE 2025–2039</p><footer><span>+ @overview.PladeseSustitucionesMw.ToString("N0", mx) MW</span><em>sustituciones</em></footer></article>
+                <article class="pv-executive-kpi pv-executive-kpi--review"><div class="pv-executive-kpi__top"><span>PVIRCE en revisión</span><i class="bi bi-lightning"></i></div><strong>@overview.PvirceRevisionMw.ToString("N2", mx) <small>MW</small></strong><p>@overview.PvirceRevisionRegistros registros acumulados</p><footer class="is-positive"><span>+@overview.CambioPvirceMw.ToString("N2", mx) MW</span><em>vs. primer corte 2026</em></footer></article>
+                <article class="pv-executive-kpi"><div class="pv-executive-kpi__top"><span>Instrumentación VUPE</span><i class="bi bi-folder2-open"></i></div><strong>@(overview.ConvocatoriasActivas?.ToString("N0", mx) ?? "—") <small>folios</small></strong><p>@(overview.ConvocatoriasMw?.ToString("N2", mx) ?? "Sin dato") MW activos</p><footer class="@(overview.ConvocatoriasVinculadas > 0 ? "is-positive" : "is-pending")"><span>@(overview.ConvocatoriasVinculadas?.ToString("N0", mx) ?? "—") vinculados</span><em>a proyecto canónico</em></footer></article>
+                <article class="pv-executive-kpi pv-executive-kpi--network"><div class="pv-executive-kpi__top"><span>Red habilitante</span><i class="bi bi-bezier2"></i></div><strong>@(overview.PamProyectosVigentes?.ToString("N0", mx) ?? "—") <small>obras</small></strong><p>PAM/PAMRNT vigentes</p><footer><span>@(overview.PamInversionVigenteMdp?.ToString("N2", mx) ?? "—") MDP</span><em>inversión registrada</em></footer></article>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-xl-7">
+                    <section class="pv-panel h-100">
+                        <div class="pv-panel__heading pv-panel__heading--compact"><div><div class="pv-eyebrow">Cobertura documental</div><h2>Meta oficial frente a cortes PVIRCE</h2></div><span class="pv-caption">MW de adiciones · aún no equivale a cumplimiento</span></div>
+                        <div class="pv-coverage-list">
+                            <div class="pv-coverage-row"><div><strong>PVIRCE oficial en PLADESE</strong><span>Referencia publicada</span></div><div class="pv-coverage-track"><span class="is-official" style="width:100%"></span></div><strong>@overview.PladeseAdicionesMw.ToString("N0", mx)</strong></div>
+                            <div class="pv-coverage-row"><div><strong>Primer corte · 16-may-2026</strong><span>@firstCutCoverage.ToString("N1", mx)% del control agregado</span></div><div class="pv-coverage-track"><span class="is-base" style="width:@Math.Min(firstCutCoverage, 100m).ToString("0.##", CultureInfo.InvariantCulture)%"></span></div><strong>@overview.PvirceBaseAdicionesMw.ToString("N0", mx)</strong></div>
+                            <div class="pv-coverage-row"><div><strong>Corte en revisión · 04-ago-2026</strong><span>@reviewCoverage.ToString("N1", mx)% del control agregado</span></div><div class="pv-coverage-track"><span class="is-review" style="width:@Math.Min(reviewCoverage, 100m).ToString("0.##", CultureInfo.InvariantCulture)%"></span></div><strong>@overview.PvirceRevisionAdicionesMw.ToString("N0", mx)</strong></div>
+                        </div>
+                        <div class="pv-coverage-note"><i class="bi bi-exclamation-diamond"></i><span>Una diferencia de MW entre fotografías no es cumplimiento: primero deben conciliarse horizonte, tecnología, GCR y movimiento.</span></div>
+                    </section>
+                </div>
+                <div class="col-12 col-xl-5">
+                    <section class="pv-panel h-100">
+                        <div class="pv-panel__heading pv-panel__heading--compact"><div><div class="pv-eyebrow">Periodo de gestión</div><h2>Cartera por horizonte</h2></div><span class="pv-caption">Corte en revisión · @overview.PvirceRevisionMw.ToString("N0", mx) MW</span></div>
+                        <div class="pv-horizon-bar" aria-label="Distribución de capacidad por periodo"><span class="is-executed" style="width:@executedShare.ToString("0.##", CultureInfo.InvariantCulture)%"></span><span class="is-administration" style="width:@adminShare.ToString("0.##", CultureInfo.InvariantCulture)%"></span><span class="is-longterm" style="width:@longTermShare.ToString("0.##", CultureInfo.InvariantCulture)%"></span></div>
+                        <div class="pv-horizon-list"><div><i class="pv-dot is-executed"></i><span>Base ejecutada · 2025</span><strong>@overview.MwBaseEjecutada.ToString("N2", mx) MW</strong><small>@overview.RegistrosBaseEjecutada registros</small></div><div><i class="pv-dot is-administration"></i><span>Administración · 2026–2030</span><strong>@overview.MwAdministracion.ToString("N2", mx) MW</strong><small>@overview.RegistrosAdministracion registros</small></div><div><i class="pv-dot is-longterm"></i><span>Continuidad · 2031–2040</span><strong>@overview.MwLargoPlazo.ToString("N2", mx) MW</strong><small>@overview.RegistrosLargoPlazo registros</small></div></div>
+                    </section>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-12 col-lg-6"><section class="pv-policy-card pv-policy-card--state"><div class="pv-policy-card__icon"><i class="bi bi-building"></i></div><div class="pv-policy-card__body"><div class="pv-eyebrow">PROSENER 1.2</div><h2>Prevalencia del Estado</h2><p>Participación estatal en la generación neta total del SEN.</p><div class="pv-policy-values"><div><span>Base 2024</span><strong>@overview.PrevalenciaBase2024.ToString("N2", mx)%</strong></div><div><span>Meta anual</span><strong>≥ @overview.PrevalenciaPisoLegal.ToString("N0", mx)%</strong></div><div><span>Escenario 2030</span><strong>≈ @overview.PrevalenciaEscenario2030.ToString("N0", mx)%</strong></div></div></div><span class="pv-data-state">Observado pendiente</span></section></div>
+                <div class="col-12 col-lg-6"><section class="pv-policy-card pv-policy-card--clean"><div class="pv-policy-card__icon"><i class="bi bi-wind"></i></div><div class="pv-policy-card__body"><div class="pv-eyebrow">PROSENER 2.1</div><h2>Generación limpia</h2><p>Porcentaje de generación limpia en GWh/TWh; separado de capacidad en MW.</p><div class="pv-clean-target"><strong>@overview.MetaGeneracionLimpia2030.ToString("N0", mx)%</strong><span>meta PROSENER 2030</span></div></div><span class="pv-data-state">Serie observada pendiente</span></section></div>
+            </div>
+        </section>
+
+        <section class="tab-pane fade" id="pv-prosener" role="tabpanel" tabindex="0">
+            <div class="pv-tab-heading pv-tab-heading--split"><div><div class="pv-eyebrow">PROSENER 2025–2030 · 5 indicadores relevantes</div><h1>Metas sectoriales para el seguimiento eléctrico</h1><p>Separamos línea base, trayectoria programada y resultado observado: cuatro indicadores son de seguimiento directo y el indicador 2.2 permanece como contexto sistémico. Su aprobación institucional sigue pendiente.</p></div><span class="pv-source-badge is-official">DOF · 22-dic-2025</span></div>
+            <div class="pv-prosener-grid mb-3">
+                <article class="pv-prosener-card pv-prosener-card--state"><header><span>Indicador 1.2</span><i class="bi bi-building-check"></i></header><h2>Participación estatal en generación neta</h2><p>Prevalencia anual del Estado sobre la generación neta total del SEN.</p><div class="pv-prosener-card__values"><div><span>Base 2024</span><strong>@overview.PrevalenciaBase2024.ToString("N2", mx)%</strong></div><i class="bi bi-arrow-right"></i><div><span>Meta anual</span><strong>≥ @overview.PrevalenciaPisoLegal.ToString("N0", mx)%</strong></div></div><footer>Directo · resultado anual SENER pendiente de cargar</footer></article>
+                <article class="pv-prosener-card pv-prosener-card--clean"><header><span>Indicador 2.1</span><i class="bi bi-wind"></i></header><h2>Participación de energías limpias</h2><p>Porcentaje de generación limpia; no se calcula con capacidad instalada en MW.</p><div class="pv-prosener-card__values"><div><span>Serie 2024</span><strong>@overview.EnergiaLimpiaBase2024.ToString("N2", mx)%</strong></div><i class="bi bi-arrow-right"></i><div><span>Meta 2030</span><strong>@overview.MetaGeneracionLimpia2030.ToString("N0", mx)%</strong></div></div><footer>Base documental 2023: @overview.EnergiaLimpiaBase2023.ToString("N2", mx)% · discrepancia preservada</footer></article>
+                <article class="pv-prosener-card pv-prosener-card--access"><header><span>Indicador 3.1</span><i class="bi bi-house-check"></i></header><h2>Población con acceso al servicio eléctrico</h2><p>Cobertura nacional del servicio como resultado social vinculado a la planeación.</p><div class="pv-prosener-card__values"><div><span>Base 2024</span><strong>@overview.AccesoElectricoBase2024.ToString("N2", mx)%</strong></div><i class="bi bi-arrow-right"></i><div><span>Meta 2030</span><strong>@overview.AccesoElectricoMeta2030.ToString("N2", mx)%</strong></div></div><footer>Directo · observado anual pendiente de integrar</footer></article>
+                <article class="pv-prosener-card pv-prosener-card--justice"><header><span>Indicador 3.2</span><i class="bi bi-sun"></i></header><h2>Capacidad renovable contra pobreza energética</h2><p>Capacidad distribuida para justicia energética, separada del PVIRCE de gran escala.</p><div class="pv-prosener-card__values"><div><span>Base 2024</span><strong>@overview.CapacidadPobrezaEnergeticaBase2024Kw.ToString("N0", mx) kW</strong></div><i class="bi bi-arrow-right"></i><div><span>Meta 2030</span><strong>@overview.CapacidadPobrezaEnergeticaMeta2030Kw.ToString("N0", mx) kW</strong></div></div><footer>Trayectoria: 5,000 · 18,000 · 54,000 · 108,000 · 144,000 · 180,000 kW</footer></article>
+            </div>
+            <section class="pv-prosener-context"><div class="pv-prosener-context__icon"><i class="bi bi-speedometer2"></i></div><div><div class="pv-eyebrow">Indicador 2.2 · sólo contexto</div><h2>Variación de la intensidad energética</h2><p>Condición sistémica, sin atribuirla directamente a una central, folio VUPE u obra PAM.</p></div><div class="pv-prosener-context__values"><span>2024 <strong>@overview.IntensidadEnergeticaBase2024.ToString("N2", mx)%</strong></span><i class="bi bi-arrow-right"></i><span>2030 <strong>@overview.IntensidadEnergeticaMeta2030.ToString("N1", mx)%</strong></span></div></section>
+            <div class="pv-coverage-note mt-3"><i class="bi bi-clipboard-check"></i><span>Siguiente control: cargar fichas, fórmulas, metas anuales, responsables y resultados observados en tablas versionadas; hoy estas cifras son controles documentales.</span></div>
+        </section>
+
+        <section class="tab-pane fade" id="pv-generacion" role="tabpanel" tabindex="0">
+            <div class="pv-tab-heading"><div><div class="pv-eyebrow">Generación e instrumentación</div><h1>Cómo se está moviendo el PVIRCE</h1><p>Comparación del primer corte de trabajo 2026 frente al borrador que se prepara para la siguiente edición del PLADESE.</p></div></div>
+            <div class="pv-change-grid mb-3"><article><span>Altas netas</span><strong>+@(overview.PvirceRevisionRegistros - overview.PvirceBaseRegistros)</strong><small>registros</small></article><article><span>Cambio acumulado</span><strong>+@overview.CambioPvirceMw.ToString("N2", mx)</strong><small>MW</small></article><article><span>Reprogramaciones</span><strong>@overview.CambiosAnio</strong><small>cambios de año</small></article><article><span>Capacidad modificada</span><strong>@overview.CambiosCapacidad</strong><small>proyectos/carteras</small></article></div>
+            <section class="pv-panel mb-3">
+                <div class="pv-panel__heading"><div><div class="pv-eyebrow">Comparador de fotografías</div><h2>Controles principales</h2></div><span class="pv-pill pv-pill--review">Cortes no oficiales</span></div>
+                <div class="table-responsive"><table class="table pv-table mb-0"><thead><tr><th>Fotografía</th><th>Estado</th><th class="text-end">Registros</th><th class="text-end">Adiciones MW</th><th class="text-end">Sustituciones MW</th><th class="text-end">Suma bruta MW</th></tr></thead><tbody><tr><td><strong>PVIRCE oficial en PLADESE 2025–2039</strong></td><td><span class="pv-source-badge is-official">Oficial</span></td><td class="text-end">191 agregados</td><td class="text-end">@overview.PladeseAdicionesMw.ToString("N3", mx)</td><td class="text-end">@overview.PladeseSustitucionesMw.ToString("N3", mx)</td><td class="text-end">@((overview.PladeseAdicionesMw + overview.PladeseSustitucionesMw).ToString("N3", mx))</td></tr><tr><td><strong>Primer corte de trabajo · 16-may-2026</strong></td><td><span class="pv-source-badge is-base">Corte técnico</span></td><td class="text-end">@overview.PvirceBaseRegistros</td><td class="text-end">@overview.PvirceBaseAdicionesMw.ToString("N3", mx)</td><td class="text-end">1,805.028</td><td class="text-end">@overview.PvirceBaseMw.ToString("N3", mx)</td></tr><tr><td><strong>Corte PVIRCE · 04-ago-2026</strong></td><td><span class="pv-source-badge is-review">En revisión</span></td><td class="text-end">@overview.PvirceRevisionRegistros</td><td class="text-end">@overview.PvirceRevisionAdicionesMw.ToString("N3", mx)</td><td class="text-end">1,805.028</td><td class="text-end">@overview.PvirceRevisionMw.ToString("N3", mx)</td></tr></tbody></table></div>
+            </section>
+            <div class="pv-bridge"><div class="pv-bridge__node"><i class="bi bi-lightning"></i><strong>Requerimiento PVIRCE</strong><span>@overview.PvirceRevisionRegistros registros</span></div><i class="bi bi-arrow-right"></i><div class="pv-bridge__node"><i class="bi bi-folder2-open"></i><strong>Folio VUPE</strong><span>@(overview.ConvocatoriasActivas?.ToString("N0", mx) ?? "—") activos</span></div><i class="bi bi-arrow-right"></i><div class="pv-bridge__node is-pending"><i class="bi bi-link-45deg"></i><strong>Identidad canónica</strong><span>@(overview.ConvocatoriasVinculadas?.ToString("N0", mx) ?? "—") vinculados</span></div><i class="bi bi-arrow-right"></i><div class="pv-bridge__node"><i class="bi bi-diagram-3"></i><strong>Dependencia PAM</strong><span>pendiente de validar</span></div></div>
+        </section>
+
+        <section class="tab-pane fade" id="pv-red" role="tabpanel" tabindex="0">
+            <div class="pv-tab-heading"><div><div class="pv-eyebrow">Red habilitante</div><h1>Obras PAM, subestaciones y costo</h1><p>La relación con generación sólo contará cuando exista evidencia técnica; la proximidad geográfica no crea el vínculo.</p></div></div>
+            <div class="pv-network-stats mb-3"><article><i class="bi bi-kanban"></i><span>Proyectos PAM vigentes</span><strong>@(overview.PamProyectosVigentes?.ToString("N0", mx) ?? "—")</strong></article><article><i class="bi bi-bezier2"></i><span>Nodos de red activa</span><strong>@(overview.RedNodos?.ToString("N0", mx) ?? "—")</strong></article><article><i class="bi bi-signpost-split"></i><span>Aristas de red activa</span><strong>@(overview.RedAristas?.ToString("N0", mx) ?? "—")</strong></article><article><i class="bi bi-buildings"></i><span>Inventario de subestaciones</span><strong>@(overview.SubestacionesInventario?.ToString("N0", mx) ?? "—")</strong></article></div>
+            <section class="pv-panel"><div class="pv-panel__heading"><div><div class="pv-eyebrow">Trazabilidad requerida</div><h2>Cadena de habilitación de red</h2></div><span class="pv-pill pv-pill--review">Relaciones por validar</span></div><div class="pv-network-chain"><article><span>01</span><i class="bi bi-lightning-charge"></i><strong>Central o cartera</strong><small>MW, año y tecnología</small></article><i class="bi bi-chevron-right"></i><article><span>02</span><i class="bi bi-geo"></i><strong>Punto de interconexión</strong><small>Subestación y tensión</small></article><i class="bi bi-chevron-right"></i><article><span>03</span><i class="bi bi-tools"></i><strong>Refuerzo requerido</strong><small>Alcance y costo</small></article><i class="bi bi-chevron-right"></i><article><span>04</span><i class="bi bi-calendar-check"></i><strong>Obra PAM confirmada</strong><small>FEO y avance</small></article></div></section>
+        </section>
+
+        <section class="tab-pane fade" id="pv-transicion" role="tabpanel" tabindex="0">
+            <div class="pv-section-placeholder"><i class="bi bi-wind"></i><div><span>Siguiente bloque de datos</span><h2>Transición y energías limpias</h2><p>Trayectoria anual de generación limpia, prevalencia del Estado e intensidad energética, separando GWh, MW y resultados observados.</p></div><strong>En integración</strong></div>
+        </section>
+
+        <section class="tab-pane fade" id="pv-pladese" role="tabpanel" tabindex="0">
+            <div class="pv-section-placeholder"><i class="bi bi-journal-text"></i><div><span>Siguiente bloque de datos</span><h2>PLADESE: escenarios y demanda</h2><p>Escenarios de demanda CENACE, requerimientos por horizonte y metas anuales de la edición seleccionada.</p></div><strong>En integración</strong></div>
+        </section>
+
+        <section class="tab-pane fade" id="pv-proyectos" role="tabpanel" tabindex="0">
+            <div class="pv-section-placeholder"><i class="bi bi-megaphone"></i><div><span>Identidad canónica pendiente</span><h2>Proyectos, VUPE y convocatorias</h2><p>Folios, contratos, centrales y evidencia vinculados a la meta PVIRCE antes de medir cobertura comprometida.</p></div><strong>@(overview.ConvocatoriasActivas?.ToString("N0", mx) ?? "—") folios activos</strong></div>
+        </section>
+
+        <section class="tab-pane fade" id="pv-seguimiento" role="tabpanel" tabindex="0">
+            <div class="pv-section-placeholder"><i class="bi bi-graph-up-arrow"></i><div><span>Programado para la siguiente fase</span><h2>Seguimiento físico-financiero</h2><p>Avance, inversión, fechas comprometidas, puesta en operación y evidencia por proyecto y obra habilitante.</p></div><strong>Modelo por construir</strong></div>
+        </section>
+
+        <section class="tab-pane fade" id="pv-riesgos" role="tabpanel" tabindex="0">
+            <div class="pv-section-placeholder"><i class="bi bi-exclamation-triangle"></i><div><span>Programado para la siguiente fase</span><h2>Riesgos y decisiones</h2><p>Brechas por instrumentar, restricciones de red, permisos, prioridad e instancia responsable de la decisión.</p></div><strong>Reglas por validar</strong></div>
+        </section>
+
+        <section class="tab-pane fade" id="pv-mapa" role="tabpanel" tabindex="0">
+            <div class="pv-section-placeholder"><i class="bi bi-geo-alt"></i><div><span>Visualización por capas</span><h2>Mapa integral</h2><p>Centrales, folios, red, subestaciones, obras PAM, GCR, estados y municipios; sin inferir relaciones por proximidad.</p></div><strong>Capas por integrar</strong></div>
+        </section>
+            </div>
+        </div>
+    </section>
+</main>

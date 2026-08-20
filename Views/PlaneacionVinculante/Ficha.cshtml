@@ -1,0 +1,126 @@
+@using System.Globalization
+@model NSIE.Models.PlaneacionVinculante.PlaneacionVinculanteFichaViewModel
+
+@{
+    ViewData["Title"] = "Ficha ejecutiva — Planeación Vinculante del SEN";
+    var mx = CultureInfo.GetCultureInfo("es-MX");
+    var o = Model.Overview;
+    var archivoBase = $"Planeacion_Vinculante_SEN_{DateTime.Now:yyyy-MM-dd}";
+}
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="~/css/pam-ficha-presentacion.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/planeacion-vinculante-ficha.css" asp-append-version="true" />
+
+<main class="pam-ficha-page pvf-page" data-filename="@archivoBase" data-project-key="PlaneacionVinculante">
+    <div class="pam-ficha-toolbar" aria-label="Acciones de la ficha">
+        <a asp-action="Index" class="pam-ficha-toolbar__back"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Planeación Vinculante</span></a>
+        <div class="pam-ficha-toolbar__title"><strong>PLADESE 2025–2039</strong><span>Ficha ejecutiva navegable · corte documental agosto 2026</span></div>
+        <div class="pam-ficha-toolbar__actions">
+            <button type="button" data-export="pdf" title="Descargar ficha en PDF"><i class="bi bi-file-earmark-pdf"></i><span>PDF</span></button>
+            <button type="button" data-export="pptx" title="Descargar ficha en PowerPoint"><i class="bi bi-file-earmark-slides"></i><span>PPT</span></button>
+            <button type="button" id="pam-btn-enviar" title="Enviar la ficha por correo"><i class="bi bi-send"></i><span>Enviar</span></button>
+            <button type="button" data-fullscreen title="Presentar en pantalla completa"><i class="bi bi-arrows-fullscreen"></i><span>Presentar</span></button>
+        </div>
+    </div>
+
+    <div id="pam-envio-modal" class="pam-envio-modal" hidden>
+        <div class="pam-envio-backdrop" data-envio-cerrar></div>
+        <div class="pam-envio-dialog" role="dialog" aria-modal="true" aria-labelledby="pam-envio-titulo">
+            <div class="pam-envio-head"><div><h3 id="pam-envio-titulo">Enviar ficha por correo</h3><p>Planeación Vinculante del SEN · el archivo se genera con los datos visibles de esta ficha.</p></div><button type="button" class="pam-envio-x" data-envio-cerrar aria-label="Cerrar"><i class="bi bi-x-lg"></i></button></div>
+            <form id="pam-envio-form" data-clave="PlaneacionVinculante" data-endpoint="/PlaneacionVinculante/Ficha/Enviar" data-skip-page-preloader="true">
+                @Html.AntiForgeryToken()
+                <label class="pam-envio-label">Formato del archivo</label>
+                <div class="pam-envio-formato"><label><input type="radio" name="formato" value="pdf" checked /><span><i class="bi bi-file-earmark-pdf"></i> PDF</span></label><label><input type="radio" name="formato" value="pptx" /><span><i class="bi bi-file-earmark-slides"></i> PowerPoint</span></label></div>
+                <label class="pam-envio-label" for="pam-envio-buscar">Destinatarios <span>(uno o más)</span></label>
+                <input type="search" id="pam-envio-buscar" class="pam-envio-buscar" placeholder="Buscar por nombre o correo…" autocomplete="off" />
+                <div class="pam-envio-lista" id="pam-envio-lista" role="listbox" aria-multiselectable="true">
+                    @if (Model.Destinatarios.Count == 0)
+                    {
+                        <div class="pam-envio-vacio">No hay usuarios con correo registrado o el directorio no está disponible.</div>
+                    }
+                    else
+                    {
+                        @foreach (var usuario in Model.Destinatarios)
+                        {
+                            <label class="pam-envio-item" data-nombre="@usuario.Nombre.ToLowerInvariant()" data-correo="@usuario.Correo.ToLowerInvariant()"><input type="checkbox" name="usuario" value="@usuario.IdUsuario" /><span class="pam-envio-item__ini">@(string.IsNullOrWhiteSpace(usuario.Nombre) ? "?" : usuario.Nombre.Trim()[..1].ToUpperInvariant())</span><span class="pam-envio-item__info"><strong>@usuario.Nombre</strong><small>@usuario.Correo@(string.IsNullOrWhiteSpace(usuario.Cargo) ? "" : $" · {usuario.Cargo}")</small></span></label>
+                        }
+                    }
+                </div>
+                <label class="pam-envio-label" for="pam-envio-mensaje">Mensaje adicional <span>(opcional)</span></label>
+                <textarea id="pam-envio-mensaje" name="mensaje" rows="2" class="pam-envio-mensaje" placeholder="Ej. Se comparte para la reunión de seguimiento."></textarea>
+                <div class="pam-envio-feedback" id="pam-envio-feedback" hidden></div>
+                <div class="pam-envio-actions"><button type="button" class="pam-envio-btn pam-envio-btn--cancel" data-envio-cerrar>Cancelar</button><button type="submit" class="pam-envio-btn pam-envio-btn--send" id="pam-envio-enviar"><i class="bi bi-send" aria-hidden="true"></i> Enviar ficha</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="pam-deck-shell" class="pam-deck-shell">
+        <div id="pam-deck" class="pam-deck" aria-live="polite">
+            <section class="pam-slide pvf-slide pvf-cover is-active" data-slide data-label="Portada" data-screen-label="01">
+                <div class="pvf-cover__logos"><img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" /><i></i><img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" /></div>
+                <div class="pvf-cover__body"><div class="pvf-eyebrow">Subsecretaría de Planeación y Transición Energética</div><h1>Planeación Vinculante<br />del Sistema Eléctrico Nacional</h1><p>Metas, proyectos, red, inversión y riesgos de cumplimiento</p><div class="pvf-cover__meta"><div><span>Edición</span><strong>PLADESE 2025–2039</strong></div><div><span>Periodo de gestión</span><strong>2025–2030</strong></div><div><span>Estado</span><strong>Fundación · datos en integración</strong></div></div></div>
+                <div class="pvf-cover__chain"><span>PROSENER</span><i class="bi bi-arrow-right"></i><span>PLADESE</span><i class="bi bi-arrow-right"></i><span>PVIRCE / PAM</span><i class="bi bi-arrow-right"></i><span>Proyecto y evidencia</span></div>
+                <div class="pvf-cover__footer"><span></span><span></span><span></span></div>
+            </section>
+
+            <section class="pam-slide pvf-slide" data-slide data-label="Resultados PROSENER" data-screen-label="02">
+                <header class="pam-slide-header"><img src="~/gestor/img/logo_sener.png" alt="Secretaría de Energía" /><strong>Planeación Vinculante del SEN · Resultados PROSENER</strong><img src="~/gestor/img/logo_gob.png" alt="Gobierno de México" /></header>
+                <div class="pvf-content"><div class="pvf-slide-title"><div><span>01 · Resultados sectoriales</span><h2>Metas PROSENER 2025–2030</h2></div><small>Fuente: PROSENER · DOF 22-dic-2025</small></div>
+                    <div class="pvf-goals">
+                        <article><header><span>1.2</span><em>Directo</em></header><h3>Prevalencia del Estado</h3><div class="pvf-goal-values"><div><span>Línea base 2024</span><strong>@o.PrevalenciaBase2024.ToString("N2", mx)%</strong></div><div><span>Meta anual</span><strong>≥ @o.PrevalenciaPisoLegal.ToString("N0", mx)%</strong></div></div><footer>Observado anual: pendiente · escenario 2030: @o.PrevalenciaEscenario2030.ToString("N0", mx)%</footer></article>
+                        <article><header><span>2.1</span><em>Directo</em></header><h3>Participación de energías limpias</h3><div class="pvf-goal-values"><div><span>Serie 2024</span><strong>@o.EnergiaLimpiaBase2024.ToString("N2", mx)%</strong></div><div><span>Meta 2030</span><strong>@o.MetaGeneracionLimpia2030.ToString("N0", mx)%</strong></div></div><footer>GWh observados: pendiente · base documental 2023: @o.EnergiaLimpiaBase2023.ToString("N2", mx)%</footer></article>
+                        <article><header><span>3.1</span><em>Directo</em></header><h3>Acceso al servicio eléctrico</h3><div class="pvf-goal-values"><div><span>Línea base 2024</span><strong>@o.AccesoElectricoBase2024.ToString("N2", mx)%</strong></div><div><span>Meta 2030</span><strong>@o.AccesoElectricoMeta2030.ToString("N2", mx)%</strong></div></div><footer>Resultado social · observado anual pendiente</footer></article>
+                        <article><header><span>3.2</span><em>Directo</em></header><h3>Renovables contra pobreza energética</h3><div class="pvf-goal-values"><div><span>Línea base 2024</span><strong>0 kW</strong></div><div><span>Meta 2030</span><strong>@o.CapacidadPobrezaEnergeticaMeta2030Kw.ToString("N0", mx) kW</strong></div></div><footer>Trayectoria 2025–2030 · separada de MW PVIRCE</footer></article>
+                    </div>
+                    <div class="pvf-method-note"><strong>2.2 · Intensidad energética</strong><span>@o.IntensidadEnergeticaBase2024.ToString("N2", mx)% en 2024 → @o.IntensidadEnergeticaMeta2030.ToString("N1", mx)% en 2030</span><em>Contexto sectorial; no se atribuye a proyectos.</em></div>
+                </div>
+                <footer class="pam-slide-footer"><i></i><i></i></footer>
+            </section>
+
+            <section class="pam-slide pvf-slide" data-slide data-label="Ejecución PLADESE" data-screen-label="03">
+                <header class="pam-slide-header"><img src="~/gestor/img/logo_sener.png" alt="Secretaría de Energía" /><strong>Planeación Vinculante del SEN · Ejecución PLADESE</strong><img src="~/gestor/img/logo_gob.png" alt="Gobierno de México" /></header>
+                <div class="pvf-content"><div class="pvf-slide-title"><div><span>02 · Necesidad y cartera</span><h2>PVIRCE oficial y cortes de trabajo 2026</h2></div><small>MW de adiciones y sustituciones · no equivale aún a cumplimiento</small></div>
+                    <div class="pvf-kpis"><article><span>PVIRCE oficial · adiciones</span><strong>@o.PladeseAdicionesMw.ToString("N0", mx)</strong><small>MW · PLADESE 2025–2039</small></article><article><span>Primer corte de trabajo</span><strong>@o.PvirceBaseMw.ToString("N0", mx)</strong><small>MW brutos · @o.PvirceBaseRegistros registros</small></article><article><span>Corte en revisión</span><strong>@o.PvirceRevisionMw.ToString("N0", mx)</strong><small>MW brutos · @o.PvirceRevisionRegistros registros</small></article><article class="is-pending"><span>Brecha instrumentada</span><strong>—</strong><small>Pendiente de identidad proyecto–meta</small></article><article class="is-pending"><span>MW bloqueados por red</span><strong>—</strong><small>Pendiente de dependencia validada</small></article></div>
+                    <div class="pvf-two-cols">
+                        <section class="pvf-card"><h3>Comparador de fotografías</h3><table><thead><tr><th>Fotografía</th><th>Estado</th><th>Registros</th><th>Adiciones MW</th></tr></thead><tbody><tr><td>PVIRCE en PLADESE</td><td><span class="is-official">Oficial</span></td><td>191 agregados</td><td>@o.PladeseAdicionesMw.ToString("N0", mx)</td></tr><tr><td>Primer corte · 16-may</td><td><span>Corte técnico</span></td><td>@o.PvirceBaseRegistros</td><td>@o.PvirceBaseAdicionesMw.ToString("N0", mx)</td></tr><tr><td>Corte · 04-ago</td><td><span class="is-review">En revisión</span></td><td>@o.PvirceRevisionRegistros</td><td>@o.PvirceRevisionAdicionesMw.ToString("N0", mx)</td></tr></tbody></table></section>
+                        <section class="pvf-card"><h3>Horizonte de la cartera en revisión</h3><div class="pvf-horizon"><div><span>2025 · base ejecutada</span><strong>@o.MwBaseEjecutada.ToString("N0", mx) MW</strong><small>@o.RegistrosBaseEjecutada registros</small></div><div class="is-main"><span>2026–2030 · administración</span><strong>@o.MwAdministracion.ToString("N0", mx) MW</strong><small>@o.RegistrosAdministracion registros</small></div><div><span>2031–2040 · continuidad</span><strong>@o.MwLargoPlazo.ToString("N0", mx) MW</strong><small>@o.RegistrosLargoPlazo registros</small></div></div></section>
+                    </div>
+                </div>
+                <footer class="pam-slide-footer"><i></i><i></i></footer>
+            </section>
+
+            <section class="pam-slide pvf-slide" data-slide data-label="Instrumentación y red" data-screen-label="04">
+                <header class="pam-slide-header"><img src="~/gestor/img/logo_sener.png" alt="Secretaría de Energía" /><strong>Planeación Vinculante del SEN · Instrumentación y red</strong><img src="~/gestor/img/logo_gob.png" alt="Gobierno de México" /></header>
+                <div class="pvf-content"><div class="pvf-slide-title"><div><span>03 · De la necesidad a la evidencia</span><h2>Proyectos, VUPE, convocatorias y PAM</h2></div><small>Lectura operativa de BD · relaciones de negocio por validar</small></div>
+                    <div class="pvf-chain"><article><i class="bi bi-lightning-charge"></i><span>Necesidad PVIRCE</span><strong>@o.PvirceRevisionRegistros registros</strong></article><i class="bi bi-arrow-right"></i><article><i class="bi bi-folder2-open"></i><span>Folios activos</span><strong>@(o.ConvocatoriasActivas?.ToString("N0", mx) ?? "—")</strong><small>@(o.ConvocatoriasMw?.ToString("N0", mx) ?? "—") MW</small></article><i class="bi bi-arrow-right"></i><article class="is-pending"><i class="bi bi-link-45deg"></i><span>Vínculo canónico</span><strong>@(o.ConvocatoriasVinculadas?.ToString("N0", mx) ?? "—")</strong><small>proyectos validados</small></article><i class="bi bi-arrow-right"></i><article><i class="bi bi-diagram-3"></i><span>Obras PAM vigentes</span><strong>@(o.PamProyectosVigentes?.ToString("N0", mx) ?? "—")</strong><small>@(o.PamInversionVigenteMdp?.ToString("N0", mx) ?? "—") MDP</small></article></div>
+                    <div class="pvf-network-grid"><article><i class="bi bi-bezier2"></i><span>Nodos activos</span><strong>@(o.RedNodos?.ToString("N0", mx) ?? "—")</strong></article><article><i class="bi bi-signpost-split"></i><span>Aristas activas</span><strong>@(o.RedAristas?.ToString("N0", mx) ?? "—")</strong></article><article><i class="bi bi-buildings"></i><span>Subestaciones</span><strong>@(o.SubestacionesInventario?.ToString("N0", mx) ?? "—")</strong></article><article class="is-warning"><i class="bi bi-exclamation-diamond"></i><span>Identidad pendiente</span><strong>@((o.ConvocatoriasActivas ?? 0) - (o.ConvocatoriasVinculadas ?? 0))</strong></article></div>
+                    <section class="pvf-decision"><div><span>Decisión de implementación</span><h3>No calcular MW bloqueados ni cobertura comprometida hasta validar:</h3></div><ol><li>proyecto ↔ meta PVIRCE;</li><li>folio/contrato ↔ proyecto;</li><li>central ↔ punto de interconexión;</li><li>central ↔ obra PAM habilitante.</li></ol></section>
+                </div>
+                <footer class="pam-slide-footer"><i></i><i></i></footer>
+            </section>
+
+            <section class="pam-slide pvf-slide" data-slide data-label="Calidad y siguiente paso" data-screen-label="05">
+                <header class="pam-slide-header"><img src="~/gestor/img/logo_sener.png" alt="Secretaría de Energía" /><strong>Planeación Vinculante del SEN · Calidad y siguiente paso</strong><img src="~/gestor/img/logo_gob.png" alt="Gobierno de México" /></header>
+                <div class="pvf-content"><div class="pvf-slide-title"><div><span>04 · Gobernanza del dato</span><h2>Qué está disponible y qué falta integrar</h2></div><small>Cada cifra conserva fuente, corte y estado de validación</small></div>
+                    <div class="pvf-roadmap"><article class="is-done"><span>01</span><div><strong>Fundación y previsualización</strong><p>Lectura XLSX, hash, estructura, totales e incidencias sin escritura en BD.</p></div><em>Hecho</em></article><article class="is-active"><span>02</span><div><strong>PROSENER y fotografías oficiales</strong><p>Fichas, fórmulas, trayectorias y resultados observados versionados.</p></div><em>En curso</em></article><article><span>03</span><div><strong>Identidad proyecto–meta–folio</strong><p>Conciliación y validación humana antes de medir cobertura.</p></div><em>Pendiente</em></article><article><span>04</span><div><strong>Dependencias de red y costos</strong><p>Fechas necesarias, obras PAM, inversión y MW afectados.</p></div><em>Pendiente</em></article></div>
+                    <div class="pvf-quality"><article><span>Fórmulas CENACE rotas</span><strong>@o.FormulasCenaceRotas.ToString("N0", mx)</strong><small>No usar como estatus vigente</small></article><article><span>Cambios de año</span><strong>@o.CambiosAnio.ToString("N0", mx)</strong><small>Reprogramaciones detectadas</small></article><article><span>Cambios de capacidad</span><strong>@o.CambiosCapacidad.ToString("N0", mx)</strong><small>Filas por conciliar</small></article><article><span>Estatus macro pendientes</span><strong>@o.StatusMacroPendientes.ToString("N0", mx)</strong><small>No inferir prevalencia</small></article></div>
+                    <div class="pvf-final-note"><i class="bi bi-shield-check"></i><div><strong>Principio rector</strong><span>Meta, escenario, observado, estimación, requerimiento y avance permanecen separados para que el tablero sea defendible.</span></div></div>
+                </div>
+                <footer class="pam-slide-footer"><i></i><i></i></footer>
+            </section>
+
+            <nav id="pam-presentation-controls" class="pam-presentation-controls" aria-label="Controles de presentación"><button type="button" data-prev title="Lámina anterior"><i class="bi bi-chevron-left"></i></button><button type="button" data-goto="0" title="Ir a portada"><i class="bi bi-house"></i></button><span data-counter>01 / 05</span><button type="button" data-export="pdf" title="Descargar PDF"><i class="bi bi-file-earmark-pdf"></i></button><button type="button" data-export="pptx" title="Descargar PowerPoint"><i class="bi bi-file-earmark-slides"></i></button><button type="button" data-fullscreen title="Pantalla completa"><i class="bi bi-arrows-fullscreen"></i></button><button type="button" data-next title="Lámina siguiente"><i class="bi bi-chevron-right"></i></button></nav>
+        </div>
+    </div>
+
+    <div id="pam-export-status" class="pam-export-status" hidden role="status" aria-live="polite"><div class="pam-export-status__spinner"></div><strong>Preparando archivo</strong><span data-export-message></span></div>
+</main>
+
+<script src="~/vendor/pam-export/html2canvas.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/jspdf.umd.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/pptxgen.bundle.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-presentacion.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-envio.js" asp-append-version="true"></script>
