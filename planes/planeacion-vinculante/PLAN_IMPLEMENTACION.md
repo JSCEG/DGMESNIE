@@ -843,6 +843,7 @@ Estados permitidos: `PENDIENTE`, `EN_CURSO`, `BLOQUEADA`, `HECHA`, `DESCARTADA`.
 | PV-124 | Fase 1/3 | Separar fuentes y cargas del tablero ejecutivo | HECHA | `/PlaneacionVinculante/Fuentes`: acción, modelo y vista dedicados; el POST de previsualización regresa a esa vista y no escribe en BD |
 | PV-125 | Diseño | Incorporar especificación integral de 11 pestañas | HECHA | Navegación objetivo y prioridad tomadas del mockup/especificación del 19-ago-2026; PROSENER ocupa la primera franja y PLADESE la segunda |
 | PV-126 | Fase 3 | Construir armazón visual de 11 secciones | HECHA | Navegación lateral responsive con contraste accesible, filtros globales, acción de ficha y contenido a la derecha; diseño plano sin degradados y secciones sin datos marcadas sin cifras simuladas |
+| PV-127 | Fase 3 | Afinar Resumen ejecutivo con revisión metodológica | HECHA | Franja compacta PROSENER separada de la ejecución; adiciones y sustituciones explícitas; PVIRCE como cartera no cubierta; VUPE sin vínculo; PAM como catálogo; conciliación, madurez y horizonte visibles |
 | PV-200 | Fase 2 | Crear candidatos folio ↔ `core.Proyecto` | PENDIENTE | 65 activos; 0 vinculados hoy |
 | PV-201 | Fase 2 | Validar piloto de 10 proyectos | PENDIENTE | Una GCR y casos diversos |
 | PV-202 | Fase 2 | Completar matriz proyecto–meta | PENDIENTE | MW y certeza obligatorios |
@@ -972,6 +973,7 @@ Estas preguntas no bloquean el diseño de la migración de staging, pero sí blo
 | 2026-08-19 | Validación de la ficha: exportaciones PDF y PPT institucionales de 5 láminas verificadas; se validaron navegación, modal de envío y carga del directorio sin enviar correo real | Codex |
 | 2026-08-19 | Armazón del mockup implementado: 11 secciones en navegación lateral responsive, filtros globales y Resumen ejecutivo conservando los módulos PROSENER, PVIRCE y red ya funcionales | Codex |
 | 2026-08-19 | Ajuste visual validable: eliminados todos los degradados del CSS del tablero, reforzado el contraste blanco sobre guinda y aclarada la clasificación PROSENER de 4 indicadores directos + 1 contextual | Codex |
+| 2026-08-19 | Resumen ejecutivo revisado: resultados sectoriales PROSENER separados de la ejecución PLADESE/PVIRCE/PAM; tarjetas operativas corregidas, madurez de integración y cartera por horizonte conservadas; delta comparable de adiciones fijado en 4,429.25 MW | Codex |
 
 ## 18. Referencias del repositorio
 
