@@ -47,6 +47,8 @@ public sealed class CarteraConvocatoriaResumenViewModel
     public int ConSae { get; set; }
     public decimal SaeMw { get; set; }
     public decimal SaeMwh { get; set; }
+    // Declaraciones de SAE fuera de rango (potencia del SAE muy superior a la central): se excluyen de los totales.
+    public List<ResumenProyecto> SaeRevisar { get; set; } = new();
 
     // Costos
     public int ConFichaCfe { get; set; }

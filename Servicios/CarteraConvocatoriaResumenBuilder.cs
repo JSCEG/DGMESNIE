@@ -79,10 +79,14 @@ public static class CarteraConvocatoriaResumenBuilder
         model.ConEstudiosInterconexion = firm.Count(p => EsSi(D(p).Valor("Has Estudios Interconexión")));
 
         // ── Almacenamiento ──
+        // Una potencia de SAE mayor al doble de la central (o a 1,000 MW) es un error de captura: se aparta para revisión.
+        static bool SaeFueraDeRango(CarteraConvocatoriaProyecto p, (decimal Mw, decimal Hours) sae) => sae.Mw > Math.Max(p.Mw * 2m, 50m) || sae.Mw > 1000m;
+        var saeRevisar = new List<CarteraConvocatoriaProyecto>();
         foreach (var p in firm)
         {
             var sae = Sae(D(p));
             if (sae.Mw <= 0) continue;
+            if (SaeFueraDeRango(p, sae)) { saeRevisar.Add(p); continue; }
             model.ConSae++;
             model.SaeMw += sae.Mw;
             model.SaeMwh += sae.Mw * sae.Hours;
@@ -144,7 +148,7 @@ public static class CarteraConvocatoriaResumenBuilder
             foreach (var p in g)
             {
                 var sae = Sae(D(p));
-                if (sae.Mw > 0) { row.ConSae++; row.SaeMw += sae.Mw; }
+                if (sae.Mw > 0 && !SaeFueraDeRango(p, sae)) { row.ConSae++; row.SaeMw += sae.Mw; }
                 row.InversionDeclarada += NumeroValor(D(p).Valor("Monto de inversión total del proyecto")) ?? 0;
             }
             return row;
@@ -221,6 +225,7 @@ public static class CarteraConvocatoriaResumenBuilder
             return string.Join(" · ", notas);
         }
         model.TopProyectos = firm.OrderByDescending(p => p.Mw).Take(12).Select(Proyecto).ToList();
+        model.SaeRevisar = saeRevisar.OrderByDescending(p => p.Mw).Select(Proyecto).ToList();
         model.TopCostoRed = conCfe.OrderByDescending(p => p.NetworkCostUsd ?? 0).ThenByDescending(p => p.Mw).Take(8).Select(Proyecto).ToList();
         var conInversion = firm.Select(p => (Project: p, Inversion: NumeroValor(D(p).Valor("Monto de inversión total del proyecto")) ?? 0)).Where(x => x.Inversion > 0).ToList();
         model.TopInversion = conInversion.OrderByDescending(x => x.Inversion).Take(8).Select(x => Proyecto(x.Project)).ToList();
