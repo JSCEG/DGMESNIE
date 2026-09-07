@@ -42,7 +42,7 @@ public static class CarteraConvocatoriaResumenBuilder
         };
 
         // ── Universo ──
-        model.EstatusUniverso = Count(all, p => p.Consideration switch { "firme" => "Considerados", "revision" => "No incluidos (registro vigente)", _ => Text.ToTitleCase(Clean(p.UniverseStatus, "No considerados").ToLowerInvariant()) });
+        model.EstatusUniverso = Count(all, p => p.Consideration switch { "firme" => "Considerados", "revision" => "En seguimiento (registro vigente)", _ => Text.ToTitleCase(Clean(p.UniverseStatus, "No considerados").ToLowerInvariant()) });
         model.Origenes = Count(firm, p => { var o = Clean(D(p).Valor("Origen", 1, Cat), "Sin origen registrado"); return o == "0" ? "Sin origen registrado" : o; });
         model.Preseleccionados = firm.Count(p => { var v = D(p).Valor("Preseleccionado", 1, Cat); return Tiene(v) && !EsNo(v); });
         model.AntecedenteMixtosI = firm.Count(p => EsSi(D(p).Valor("¿Estaba Mixtos I?", 1, Cat)));
