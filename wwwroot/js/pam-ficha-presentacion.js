@@ -13,10 +13,12 @@
         const page = document.querySelector(".pam-ficha-page");
         const shell = document.getElementById("pam-deck-shell");
         const deck = document.getElementById("pam-deck");
+        if (page?.classList.contains('convocatoria-ficha-page')) window.convocatoriaFichaIndice?.actualizar(deck);
         const slides = Array.from(document.querySelectorAll("[data-slide]"));
         const counter = document.querySelector("[data-counter]");
         const exportStatus = document.getElementById("pam-export-status");
         const exportMessage = exportStatus?.querySelector("[data-export-message]");
+        const sectionNav = document.querySelector('[data-convocatoria-slide-nav]');
 
         if (!page || !shell || !deck || slides.length === 0) return;
 
@@ -28,6 +30,34 @@
 
         function setCounter() {
             if (counter) counter.textContent = `${pad(current + 1)} / ${pad(slides.length)}`;
+            if (sectionNav) {
+                if (sectionNav.options.length !== slides.length) {
+                    sectionNav.replaceChildren(...slides.map((slide,index) => new Option(`${pad(index + 1)} · ${slide.dataset.label}`, String(index))));
+                }
+                sectionNav.value = String(current);
+            }
+        }
+
+        // Mixtos II conoce el número de geometrías al resolver el KML.
+        // No exportar páginas de comparación vacías ni dejar numeración heredada del PAM.
+        if (page.classList.contains('convocatoria-ficha-page')) {
+            document.addEventListener('convocatoria:territorial-ready', event => {
+                const elementCount = event.detail.resultado.elementos.length;
+                const activeSlide = slides[current];
+                slides.splice(0, slides.length, ...document.querySelectorAll('[data-slide]'));
+                for (let index = slides.length - 1; index >= 0; index--) {
+                    const comparison = slides[index].querySelector('[data-pam-territorial-comparison]');
+                    if (comparison && Number(comparison.dataset.territorialPage) * 3 >= elementCount && (elementCount || Number(comparison.dataset.territorialPage) > 0)) {
+                        slides[index].remove();
+                        slides.splice(index, 1);
+                    }
+                }
+                window.convocatoriaFichaIndice?.actualizar(deck);
+                slides.splice(0, slides.length, ...deck.querySelectorAll('[data-slide]'));
+                current = Math.max(0, slides.indexOf(activeSlide));
+                setCounter();
+                if (!busy) show(current);
+            }, { once: true });
         }
 
         function show(index, updateHash) {
@@ -226,6 +256,7 @@
         }
 
         async function renderSlide(slide, slideNumber) {
+            if (window.convocatoriaFichaPreparar) await window.convocatoriaFichaPreparar(slide);
             if (exportMessage) exportMessage.textContent = `Capturando lámina ${slideNumber} de ${slides.length}`;
             // Garantiza que los mapas Leaflet de la lámina existan antes de capturarla.
             if (window.pamFichaMapas && slide.querySelector(".pam-mapa-gcr, .pam-mapa-red")) await window.pamFichaMapas();
@@ -273,16 +304,19 @@
 
         // Coloca links internos sobre los botones del índice para que el PDF sea navegable.
         function agregarLinksIndicePdf(pdf, slide) {
-            if (!slide || (slide.dataset.screenLabel !== "02" && slide.dataset.screenLabel !== "02B")) return;
+            if (!slide) return;
             const rectSlide = slide.getBoundingClientRect();
             if (!rectSlide.width || !rectSlide.height) return;
             const escalaX = PDF_WIDTH_MM / rectSlide.width;
             const escalaY = PDF_HEIGHT_MM / rectSlide.height;
-            slide.querySelectorAll("[data-goto-label]").forEach(btn => {
+            slide.querySelectorAll("[data-goto-label], [data-goto]").forEach(btn => {
                 const targetLabel = normalizarLabel(btn.dataset.gotoLabel);
-                const destino = slides.findIndex(s => normalizarLabel(s.dataset.screenLabel) === targetLabel);
-                if (destino < 0) return;
+                const destino = btn.dataset.gotoLabel != null
+                    ? slides.findIndex(s => normalizarLabel(s.dataset.screenLabel) === targetLabel)
+                    : Number(btn.dataset.goto);
+                if (!Number.isInteger(destino) || destino < 0 || destino >= slides.length) return;
                 const r = btn.getBoundingClientRect();
+                if (!r.width || !r.height) return;
                 pdf.link(
                     (r.left - rectSlide.left) * escalaX,
                     (r.top - rectSlide.top) * escalaY,
@@ -299,9 +333,17 @@
             if (!rectSlide.width || !rectSlide.height) return;
             const escalaX = PDF_WIDTH_MM / rectSlide.width;
             const escalaY = PDF_HEIGHT_MM / rectSlide.height;
-            slide.querySelectorAll(".pam-figura-media__link").forEach(link => {
-                const href = link.getAttribute("href");
-                if (!href) return;
+            const selector = page.classList.contains('convocatoria-ficha-page') ? 'a[href]' : '.pam-figura-media__link';
+            slide.querySelectorAll(selector).forEach(link => {
+                let href;
+                try {
+                    const rawHref = (link.getAttribute('href') || '').trim();
+                    // Los controles de Leaflet con href="#" no son documentos.
+                    if (!rawHref || rawHref.startsWith('#')) return;
+                    const url = new URL(rawHref, location.href);
+                    if (!['http:', 'https:'].includes(url.protocol)) return;
+                    href = url.href;
+                } catch { return; }
                 const r = link.getBoundingClientRect();
                 if (r.width > 0 && r.height > 0) {
                     pdf.link(
@@ -372,7 +414,7 @@
                 const pptSlide = pptx.addSlide();
                 pptSlide.background = { color: "FFFFFF" };
                 pptSlide.addImage({ data: imageData, x: 0, y: 0, w: 13.333, h: 7.5 });
-                pptSlide.addNotes(`Fuente: ficha ejecutiva PAM/PAMRNT. Lámina ${index + 1} de ${slides.length}.`);
+                pptSlide.addNotes(`Fuente: ${page.dataset.sourceLabel || "ficha ejecutiva PAM/PAMRNT"}. Lámina ${index + 1} de ${slides.length}.`);
                 canvas.width = 1;
                 canvas.height = 1;
             }
@@ -383,7 +425,7 @@
 
         async function exportDeck(format) {
             if (busy) return;
-            const previous = current;
+            const previous = slides[current];
             const previousTransform = deck.style.transform;
             setBusy(true, "Preparando las láminas");
             deck.style.transform = "none";
@@ -396,18 +438,20 @@
                 console.error("Error al exportar la ficha PAM:", error);
                 notify("La ficha no pudo generarse. Verifica la conexión y vuelve a intentarlo.", "error");
             } finally {
-                current = previous;
+                current = Math.max(0, slides.indexOf(previous));
                 slides.forEach((slide, slideIndex) => slide.classList.toggle("is-active", slideIndex === current));
                 deck.style.transform = previousTransform;
                 setCounter();
                 setBusy(false);
+                show(current, false);
                 resizeDeck();
             }
         }
 
         // Genera el archivo (sin descargar) y devuelve { base64, nombre } para el envío por correo.
         async function generarBase64(format) {
-            const previous = current;
+            if (busy) throw new Error('Espera a que termine la exportación en curso.');
+            const previous = slides[current];
             const previousTransform = deck.style.transform;
             setBusy(true, "Generando la ficha para enviar");
             deck.style.transform = "none";
@@ -432,22 +476,25 @@
                 }
                 const JsPdf = window.jspdf?.jsPDF || window.jsPDF;
                 const pdf = new JsPdf({ orientation: "landscape", unit: "mm", format: [PDF_WIDTH_MM, PDF_HEIGHT_MM], compress: true });
+                // Adjunto de correo: calidad JPEG 0.85 mantiene la legibilidad y deja fichas largas
+                // (60+ láminas) por debajo del límite de 20 MB del servicio de correo.
                 for (let index = 0; index < slides.length; index += 1) {
                     slides.forEach((slide, si) => slide.classList.toggle("is-active", si === index));
                     const canvas = await renderSlide(slides[index], index + 1);
                     if (index > 0) pdf.addPage([PDF_WIDTH_MM, PDF_HEIGHT_MM], "landscape");
-                    pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, PDF_WIDTH_MM, PDF_HEIGHT_MM, undefined, "FAST");
+                    pdf.addImage(canvas.toDataURL("image/jpeg", 0.85), "JPEG", 0, 0, PDF_WIDTH_MM, PDF_HEIGHT_MM, undefined, "FAST");
                     agregarLinksIndicePdf(pdf, slides[index]);
                     agregarLinksFiguraPdf(pdf, slides[index]);
                     canvas.width = 1; canvas.height = 1;
                 }
                 return { base64: pdf.output("datauristring"), nombre: `${filename}.pdf` };
             } finally {
-                current = previous;
+                current = Math.max(0, slides.indexOf(previous));
                 slides.forEach((slide, si) => slide.classList.toggle("is-active", si === current));
                 deck.style.transform = previousTransform;
                 setCounter();
                 setBusy(false);
+                show(current, false);
                 resizeDeck();
             }
         }
@@ -468,8 +515,12 @@
             : Number(button.dataset.goto);
 
         document.querySelectorAll("[data-prev]").forEach(button => button.addEventListener("click", () => show(current - 1)));
+        sectionNav?.addEventListener('change', () => show(Number(sectionNav.value)));
         document.querySelectorAll("[data-next]").forEach(button => button.addEventListener("click", () => show(current + 1)));
-        document.querySelectorAll("[data-goto], [data-goto-label]").forEach(button => button.addEventListener("click", () => show(destino(button))));
+        page.addEventListener('click', event => {
+            const button = event.target.closest?.('[data-goto], [data-goto-label]');
+            if (button && page.contains(button)) show(destino(button));
+        });
         document.querySelectorAll("[data-fullscreen]").forEach(button => button.addEventListener("click", toggleFullscreen));
         document.querySelectorAll("[data-export]").forEach(button => button.addEventListener("click", () => exportDeck(button.dataset.export)));
 
@@ -498,7 +549,7 @@
             resizeDeck();
         });
 
-        const hashMatch = window.location.hash.match(/lamina-(\d{1,2})/i);
+        const hashMatch = window.location.hash.match(/lamina-(\d+)/i);
         show(hashMatch ? Number(hashMatch[1]) - 1 : 0, false);
         syncFullscreenControls();
         resizeDeck();

@@ -1,0 +1,92 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@{
+    var p = Model.Project;
+    var rows = Model.Portfolio;
+    var mx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+    var costos = !string.Equals(Context.Request.Query["costos"].ToString(), "false", StringComparison.OrdinalIgnoreCase);
+    var regionName = p.Region?.Trim();
+    var hasRegion = !string.IsNullOrWhiteSpace(regionName) && !new[] { "Sin región", "Sin información", "No informado", "N/D" }.Contains(regionName, StringComparer.OrdinalIgnoreCase);
+    var region = hasRegion ? rows.FirstOrDefault(row => string.Equals(row.Region?.Trim(), regionName, StringComparison.OrdinalIgnoreCase)) : null;
+    var hasPortfolio = rows.Count > 0;
+    var totalMw = rows.Sum(row => row.Mw);
+    var totalProjects = rows.Sum(row => row.Projects);
+    var costMxnCount = rows.Sum(row => row.ProjectsWithCostMxn);
+    var costUsdCount = rows.Sum(row => row.ProjectsWithCostUsd);
+    var worksCount = rows.Sum(row => row.ProjectsWithWorks);
+    var showNationalCosts = costos && (costMxnCount > 0 || costUsdCount > 0);
+    var showRegionalCosts = costos && region != null && (region.ProjectsWithCostMxn > 0 || region.ProjectsWithCostUsd > 0);
+    var comparableRegion = region != null && region.Mw > 0 && p.Mw >= 0 && p.Mw <= region.Mw;
+    string Share(decimal value, decimal? total) => total.HasValue && total.Value > 0 ? (100m * value / total.Value).ToString("N2", mx) + "%" : "No calculable";
+    string Mw(decimal? value) => value.HasValue ? value.Value.ToString("N2", mx) + " MW" : "No informado";
+    string Cost(decimal total, int count, string unit) => count > 0 ? total.ToString("N2", mx) + " " + unit : "No informado";
+    string Width(decimal value, decimal total) => (total > 0 ? Math.Clamp(100m * value / total, 0m, 100m) : 0m).ToString("F3", inv);
+    var cut = Model.LatestImport?.CutoffDate?.ToString("dd/MM/yyyy", mx) ?? "no informado";
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="El proyecto" data-label="Proyecto y cartera nacional">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Participación nacional</span><span class="pam-lamina-head__aside">@p.Folio</span></header>
+    <h2 class="pam-lamina-title">Proyecto y cartera nacional</h2>
+    <div class="pam-lamina-body convocatoria-project-overview">
+        <div class="convocatoria-project-identity"><strong>@p.Name</strong><span>@(hasRegion ? regionName : "GCR no informada")</span></div>
+        <dl class="convocatoria-project-metrics">
+            <div><dt>Capacidad del proyecto</dt><dd>@Mw(p.Mw)</dd></div>
+            <div class="is-highlight"><dt>Participación nacional</dt><dd>@Share(p.Mw, hasPortfolio ? totalMw : null)</dd></div>
+            <div><dt>Cartera firme nacional</dt><dd>@Mw(hasPortfolio ? totalMw : null)</dd><small>@(hasPortfolio ? totalProjects.ToString("N0", mx) + " proyectos" : "Total no informado")</small></div>
+        </dl>
+        <figure class="convocatoria-project-gcr-chart" aria-label="Capacidad de la cartera firme por gerencia de control regional">
+            <figcaption>Distribución por GCR <span>Capacidad de la cartera firme</span></figcaption>
+            @if (hasPortfolio) {
+                @foreach (var row in rows) {
+                    <div class="convocatoria-project-gcr-row @(row == region ? "is-current" : "")">
+                        <strong>@(string.IsNullOrWhiteSpace(row.Region) ? "Sin GCR informada" : row.Region)</strong>
+                        <div class="convocatoria-project-gcr-track"><i style="width:@Width(row.Mw, totalMw)%"></i></div>
+                        <span>@row.Mw.ToString("N1", mx) MW · @row.Projects proy.</span>
+                    </div>
+                }
+            } else { <p class="convocatoria-project-empty">Cartera nacional no informada.</p> }
+        </figure>
+        <dl class="convocatoria-project-totals">
+            @if (showNationalCosts) {
+                <div><dt>Costo de red nacional</dt><dd>@Cost(rows.Sum(row => row.NetworkCostMxn), costMxnCount, "MDP")</dd><small>@costMxnCount de @totalProjects proyectos con ficha CFE</small></div>
+                <div><dt>Costo de red nacional</dt><dd>@Cost(rows.Sum(row => row.NetworkCostUsd), costUsdCount, "MDD")</dd><small>@costUsdCount de @totalProjects proyectos con ficha CFE</small></div>
+            }
+            <div><dt>Obras reportadas</dt><dd>@(worksCount > 0 ? rows.Sum(row => row.Works).ToString("N0", mx) : "No informado")</dd><small>@(hasPortfolio ? worksCount + " de " + totalProjects + " proyectos con ficha CFE" : "Cartera no informada")</small></div>
+        </dl>
+    </div>
+    <div class="pam-lamina-foot"><span>Fuente: cartera firme de la Convocatoria Mixtos II · corte @cut. Capacidad en MW netos.</span><span class="pam-lamina-foot__meta"></span></div>
+</section>
+<section class="pam-slide pam-slide--content" data-slide data-index-group="El proyecto" data-label="Proyecto y cartera regional">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Participación regional</span><span class="pam-lamina-head__aside">@(hasRegion ? regionName : "GCR no informada")</span></header>
+    <h2 class="pam-lamina-title">Proyecto y cartera regional</h2>
+    <div class="pam-lamina-body convocatoria-project-overview">
+        <div class="convocatoria-project-identity"><strong>@p.Name</strong><span>@p.Folio</span></div>
+        <dl class="convocatoria-project-metrics">
+            <div><dt>Capacidad del proyecto</dt><dd>@Mw(p.Mw)</dd></div>
+            <div class="is-highlight"><dt>Participación en su GCR</dt><dd>@Share(p.Mw, region?.Mw)</dd></div>
+            <div><dt>Cartera firme de la GCR</dt><dd>@Mw(region?.Mw)</dd><small>@(region != null ? region.Projects.ToString("N0", mx) + " proyectos" : "Número de proyectos no informado")</small></div>
+        </dl>
+        <figure class="convocatoria-project-region-chart" aria-label="Participación del proyecto y del resto de la cartera de su GCR">
+            <figcaption>Composición de la cartera regional</figcaption>
+            @if (comparableRegion && region != null) {
+                <div class="convocatoria-project-region-track"><i style="width:@Width(p.Mw, region.Mw)%"></i></div>
+                <div class="convocatoria-project-region-legend">
+                    <div><i></i><span>Proyecto <strong>@Mw(p.Mw) · @Share(p.Mw, region.Mw)</strong></span></div>
+                    <div><i></i><span>Resto de la GCR <strong>@Mw(region.Mw - p.Mw) · @Share(region.Mw - p.Mw, region.Mw)</strong></span></div>
+                </div>
+            } else { <p class="convocatoria-project-empty">Participación regional no calculable con la información disponible.</p> }
+        </figure>
+        <dl class="convocatoria-project-totals">
+            <div><dt>GCR en cartera nacional</dt><dd>@(region != null ? Share(region.Mw, hasPortfolio ? totalMw : null) : "No calculable")</dd><small>Participación en MW</small></div>
+            <div><dt>Obras del proyecto</dt><dd>@(p.WorksCount?.ToString("N0", mx) ?? "No informado")</dd></div>
+            <div><dt>Obras reportadas en la GCR</dt><dd>@(region != null && region.ProjectsWithWorks > 0 ? region.Works.ToString("N0", mx) : "No informado")</dd><small>@(region != null ? region.ProjectsWithWorks + " de " + region.Projects + " proyectos con ficha CFE" : "GCR no informada")</small></div>
+        </dl>
+        @if (showRegionalCosts && region != null) {
+            <dl class="convocatoria-project-totals">
+                <div><dt>Costo de red del proyecto</dt><dd>@(p.NetworkCostMxn.HasValue ? p.NetworkCostMxn.Value.ToString("N2", mx) + " MDP" : "No informado")</dd></div>
+                <div><dt>Costo de red de la GCR</dt><dd>@Cost(region.NetworkCostMxn, region.ProjectsWithCostMxn, "MDP")</dd><small>@region.ProjectsWithCostMxn de @region.Projects proyectos con ficha CFE</small></div>
+                <div><dt>Costo de red de la GCR</dt><dd>@Cost(region.NetworkCostUsd, region.ProjectsWithCostUsd, "MDD")</dd><small>@region.ProjectsWithCostUsd de @region.Projects proyectos con ficha CFE</small></div>
+            </dl>
+        }
+    </div>
+    <div class="pam-lamina-foot"><span>Fuente: cartera firme de la Convocatoria Mixtos II · corte @cut. Capacidad en MW netos; costos de red conforme a las fichas CFE disponibles.</span><span class="pam-lamina-foot__meta"></span></div>
+</section>

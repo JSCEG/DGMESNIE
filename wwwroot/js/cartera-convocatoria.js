@@ -9,11 +9,16 @@
   const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
   const trackingModal = document.getElementById('trackingModal');
   const projectDialog = document.getElementById('projectDialog');
+  const importDialog = document.getElementById('importDialog');
   const noteForm = document.getElementById('noteForm');
   const projectForm = document.getElementById('projectForm');
+  const importForm = document.getElementById('importForm');
   let selectedFolio = null;
   let lastTrigger = null;
   let state = { projects: [], notes: [], session: {} };
+  let portfolioMap = null;
+  let portfolioMarkers = null;
+  let portfolioGeometry = null;
 
   // El shell institucional usa isolation en .main-content. Elevar el modal al
   // body evita que su posición fija se calcule dentro de ese contenedor.
@@ -39,6 +44,9 @@
   const STATUS_LABELS = {
     continua: 'Continúa', revision: 'En revisión', 'no-continua': 'No continúa'
   };
+  const CONSIDERATION_LABELS = {
+    firme: 'Firme', revision: 'En revisión', 'no-va': 'No va'
+  };
 
   function esc(value) {
     return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -61,6 +69,10 @@
 
   function decisionLabel(value) {
     return STATUS_LABELS[value] || 'En revisión';
+  }
+
+  function considerationLabel(value) {
+    return CONSIDERATION_LABELS[value] || 'En revisión';
   }
 
   async function api(url, options = {}) {
@@ -90,7 +102,7 @@
     const type = $('#typeFilter').value;
     const region = $('#regionFilter').value;
     const entity = $('#stateFilter').value;
-    const decision = $('#decisionFilter').value;
+    const consideration = $('#considerationFilter').value;
     const analysis = $('#analysisFilter').value;
 
     return state.projects
@@ -100,7 +112,7 @@
         (!type || project.type === type) &&
         (!region || project.region === region) &&
         (!entity || project.state === entity) &&
-        (!decision || project.decision === decision) &&
+        (!consideration || project.consideration === consideration) &&
         (!analysis || project.analysisClassification === analysis))
       .sort((a, b) => a.rank - b.rank);
   }
@@ -116,21 +128,115 @@
     select.value = selected;
   }
 
+  function groupProjects(rows, valueSelector) {
+    const groups = new Map();
+    rows.forEach((project) => {
+      const label = String(valueSelector(project) || 'Sin dato').trim() || 'Sin dato';
+      const current = groups.get(label) || { label, count: 0, mw: 0 };
+      current.count += 1;
+      current.mw += Number(project.mw || 0);
+      groups.set(label, current);
+    });
+    return [...groups.values()];
+  }
+
+  function analysisColor(label) {
+    const value = String(label || '').toLowerCase();
+    if (value.includes('factible') && !value.includes('no')) return '#0e735c';
+    if (value.includes('condicion')) return '#a57f2c';
+    if (value.includes('revisi') || value.includes('pend')) return '#237f91';
+    if (value.includes('no factible') || value.includes('descart')) return '#9b2247';
+    return '#706b65';
+  }
+
+  function renderBars(container, items, options) {
+    if (!container) return;
+    const settings = options || {};
+    const valueKey = settings.valueKey || 'mw';
+    const values = [...items].sort((a, b) => Number(b[valueKey] || 0) - Number(a[valueKey] || 0));
+    const maximum = Math.max(1, ...values.map((item) => Number(item[valueKey] || 0)));
+    container.replaceChildren();
+    if (!values.length) {
+      const empty = document.createElement('p');
+      empty.className = 'cartera-bars__empty';
+      empty.textContent = 'Sin proyectos para los filtros seleccionados.';
+      container.appendChild(empty);
+      return;
+    }
+
+    values.slice(0, settings.limit || 10).forEach((item) => {
+      const value = Number(item[valueKey] || 0);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'cartera-bar';
+      button.title = settings.filterId ? 'Filtrar por ' + item.label : item.label;
+
+      const heading = document.createElement('span');
+      heading.className = 'cartera-bar__heading';
+      const label = document.createElement('strong');
+      label.textContent = item.label;
+      const amount = document.createElement('span');
+      amount.textContent = value.toLocaleString('es-MX', { maximumFractionDigits: 1 }) + (settings.unit ? ' ' + settings.unit : '');
+      heading.append(label, amount);
+
+      const track = document.createElement('span');
+      track.className = 'cartera-bar__track';
+      const fill = document.createElement('i');
+      fill.style.width = Math.max(2, (value / maximum) * 100) + '%';
+      fill.style.backgroundColor = settings.color ? settings.color(item.label) : '#9b2247';
+      track.appendChild(fill);
+
+      const detail = document.createElement('small');
+      detail.textContent = item.count.toLocaleString('es-MX') + (item.count === 1 ? ' proyecto' : ' proyectos');
+      button.append(heading, track, detail);
+      if (settings.filterId) {
+        button.addEventListener('click', () => {
+          const filter = $('#' + settings.filterId);
+          if (!filter) return;
+          filter.value = filter.value === item.label ? '' : item.label;
+          render();
+        });
+      }
+      container.appendChild(button);
+    });
+  }
+
+  function renderAnalytics(rows) {
+    const capacity = rows.reduce((sum, project) => sum + Number(project.mw || 0), 0);
+    const caption = $('#analyticsCaption');
+    if (caption) caption.textContent = rows.length.toLocaleString('es-MX') + ' proyectos · ' + capacity.toLocaleString('es-MX', { maximumFractionDigits: 1 }) + ' MW';
+    renderBars($('#regionChart'), groupProjects(rows, (project) => project.region), {
+      valueKey: 'mw', unit: 'MW', filterId: 'regionFilter',
+      color: (label) => GCR_COLORS[gcrId(label)] || '#9b2247'
+    });
+    renderBars($('#analysisChart'), groupProjects(rows, (project) => project.analysisClassification || 'Sin análisis'), {
+      valueKey: 'count', unit: '', filterId: 'analysisFilter', color: analysisColor
+    });
+    renderBars($('#technologyChart'), groupProjects(rows, (project) => project.technology || 'Sin tecnología'), {
+      valueKey: 'mw', unit: 'MW', limit: 8, color: () => '#a57f2c'
+    });
+  }
+
   function render() {
     fillSelect($('#regionFilter'), state.projects.map((project) => project.region));
     fillSelect($('#stateFilter'), state.projects.map((project) => project.state));
     fillSelect($('#analysisFilter'), state.projects.map((project) => project.analysisClassification));
 
     const rows = filtered();
-    const totalMw = state.projects.reduce((sum, project) => sum + Number(project.mw || 0), 0);
+    const firmProjects = state.projects.filter((project) => project.consideration === 'firme');
+    const totalMw = firmProjects.reduce((sum, project) => sum + Number(project.mw || 0), 0);
     $('#resultCount').textContent = `${rows.length} visibles`;
     $('#mapCount').textContent = `${rows.length} proyectos visibles`;
     $('#kpiTotal').textContent = state.projects.length.toLocaleString('es-MX');
     $('#kpiMw').textContent = totalMw.toLocaleString('es-MX', { maximumFractionDigits: 3 });
-    $('#kpiStrategic').textContent = state.projects.filter((project) => project.type === 'Estratégico').length;
-    $('#kpiPrivate').textContent = state.projects.filter((project) => project.type === 'Particular 2').length;
-    $('#kpiFeasible').textContent = state.projects.filter((project) => project.analysisClassification === 'Factible').length;
-    $('#kpiDecision').textContent = state.projects.filter((project) => project.decision !== 'revision').length;
+    $('#kpiFirm').textContent = firmProjects.length.toLocaleString('es-MX');
+    $('#kpiReview').textContent = state.projects.filter((project) => project.consideration === 'revision').length.toLocaleString('es-MX');
+    $('#kpiRejected').textContent = state.projects.filter((project) => project.consideration === 'no-va').length.toLocaleString('es-MX');
+    $('#kpiKml').textContent = firmProjects.filter((project) => project.hasProjectKml).length.toLocaleString('es-MX');
+    const latest = state.latestImport;
+    $('#sourceCaption').textContent = latest
+      ? `MIXTOS II · CORTE ${displayDate(latest.cutoffDate).toUpperCase()} · ${latest.fileName}`
+      : `CATÁLOGO INSTITUCIONAL · ${state.sourceVersion || 'SIN CARGA EXCEL'}`;
 
     $('#projectList').innerHTML = rows.map((project) => `
       <article class="project-card">
@@ -143,12 +249,14 @@
             <span class="chip ${project.type === 'Estratégico' ? 'chip--strategic' : 'chip--private'}">${esc(project.type)}</span>
             <span class="chip">${esc(project.region)}</span>
             <span class="chip ${analysisChipClass(project.analysisClassification)}">${esc(project.analysisClassification || 'Sin análisis')}</span>
-            <span class="chip ${project.decision === 'continua' ? 'chip--yes' : project.decision === 'no-continua' ? 'chip--no' : ''}">${decisionLabel(project.decision).toUpperCase()}</span>
+            <span class="chip ${project.consideration === 'firme' ? 'chip--yes' : project.consideration === 'no-va' ? 'chip--no' : 'chip--pending'}">${considerationLabel(project.consideration).toUpperCase()}</span>
           </div>
         </div>
         <div class="project-card__actions">
           <button class="icon-button" type="button" data-note="${esc(project.folio)}">Seguimiento</button>
-          <button class="icon-button" type="button" data-ficha="${esc(project.folio)}">Ficha</button>
+          <button class="icon-button" type="button" data-ficha="${esc(project.folio)}">Mapa / KML</button>
+          ${project.consideration === 'firme' ? `<a class="icon-button icon-button--link" href="/DashboardProyectos/Index?mixtosFolio=${encodeURIComponent(project.folio)}" target="_blank" rel="noopener">Analizar · elegir capas</a>` : ''}
+          ${project.consideration === 'firme' ? `<a class="icon-button icon-button--link" href="/DashboardProyectos/Convocatorias/Ficha?folio=${encodeURIComponent(project.folio)}" target="_blank" rel="noopener">Ver ficha</a>` : ''}
         </div>
       </article>`).join('') || '<p style="padding:30px;color:#6f6b66">No hay proyectos con los filtros seleccionados.</p>';
 
@@ -168,6 +276,7 @@
         <td><button class="icon-button" type="button" data-note="${esc(project.folio)}">Comentario</button></td>
       </tr>`).join('');
 
+    renderAnalytics(rows);
     renderGcrMap(rows);
     renderSessions();
     bindDynamic();
@@ -203,56 +312,97 @@
 
   function renderGcrMap(rows) {
     const element = $('#portfolioMap');
-    if (!window.GCR_PATHS) {
-      element.innerHTML = '<div class="gcr-map__fallback">No fue posible cargar la base de Gerencias de Control Regional.</div>';
+    if (!window.L) {
+      element.innerHTML = '<div class="gcr-map__fallback">No fue posible iniciar el mapa territorial.</div>';
+      return;
+    }
+    if (!portfolioMap) {
+      element.innerHTML = '';
+      portfolioMap = L.map(element, { preferCanvas: true, zoomControl: true }).setView([23.6, -102], 5);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(portfolioMap);
+      portfolioMarkers = L.layerGroup().addTo(portfolioMap);
+      portfolioGeometry = L.featureGroup().addTo(portfolioMap);
+    }
+
+    portfolioMarkers.clearLayers();
+    portfolioGeometry.clearLayers();
+    const bounds = [];
+    rows.forEach((project) => {
+      const latitude = Number(project.latitude);
+      const longitude = Number(project.longitude);
+      if (project.latitude == null || project.longitude == null || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+      const color = project.consideration === 'firme' ? '#0e735c'
+        : project.consideration === 'no-va' ? '#6f6b66' : '#237f91';
+      const marker = L.circleMarker([latitude, longitude], {
+        radius: 6,
+        color: '#fff',
+        weight: 2,
+        fillColor: color,
+        fillOpacity: .92
+      });
+      marker.bindTooltip(`<strong>${esc(project.name)}</strong><br>${esc(project.folio)} · ${Number(project.mw || 0).toLocaleString('es-MX')} MW`);
+      const popup = document.createElement('div');
+      popup.innerHTML = `<strong>${esc(project.name)}</strong><p>${esc(project.folio)} · ${Number(project.mw||0).toLocaleString('es-MX')} MW<br>${esc(project.region)} · ${esc(project.technicalViability||'Factibilidad no informada')}<br>Considerar: ${esc(considerationLabel(project.consideration))}<br>Costo red: ${project.networkCostMxn==null?'No informado':Number(project.networkCostMxn).toLocaleString('es-MX')+' MDP'}</p>`;
+      const dataButton=document.createElement('button'); dataButton.type='button'; dataButton.textContent='Ver datos';
+      dataButton.addEventListener('click',()=>openTracking(project.folio,element)); popup.appendChild(dataButton);
+      if(project.consideration==='firme') {
+        for(const [label,url] of [['Analizar · elegir capas','/DashboardProyectos/Index?mixtosFolio='],['Ficha completa','/DashboardProyectos/Convocatorias/Ficha?folio=']]) {
+          const link=document.createElement('a');link.textContent=label;link.href=url+encodeURIComponent(project.folio);link.target='_blank';link.rel='noopener';link.style.cssText='display:block;margin-top:8px;color:#9b2247;font-weight:700';popup.appendChild(link);
+        }
+      }
+      marker.bindPopup(popup);
+      marker.on('click', () => showProjectGeometry(project));
+      marker.addTo(portfolioMarkers);
+      bounds.push([latitude, longitude]);
+    });
+    $('#mapCount').textContent = `${bounds.length} de ${rows.length} proyectos ubicados`;
+    window.setTimeout(() => {
+      portfolioMap.invalidateSize();
+      if (bounds.length) portfolioMap.fitBounds(bounds, { padding: [22, 22], maxZoom: 8 });
+      else portfolioMap.setView([23.6, -102], 5);
+    }, 0);
+  }
+
+  async function showProjectGeometry(project) {
+    if (!portfolioMap || !portfolioGeometry) return;
+    portfolioGeometry.clearLayers();
+    const resources = [];
+    if (project.hasProjectKml) resources.push({ kind: 'proyecto', color: '#0e735c' });
+    if (project.hasSubstationKml && !project.sameKmlReference) resources.push({ kind: 'subestacion', color: '#9b2247' });
+    if (!resources.length) {
+      $('#mapCount').textContent = `${project.name}: sin KML registrado`;
       return;
     }
 
-    const totals = {};
-    Object.keys(window.GCR_PATHS).forEach((id) => { totals[id] = { count: 0, mw: 0, strategic: 0, private: 0 }; });
-    rows.forEach((project) => {
-      const id = gcrId(project.region);
-      if (!totals[id]) return;
-      totals[id].count += 1;
-      totals[id].mw += Number(project.mw || 0);
-      if (project.type === 'Estratégico') totals[id].strategic += 1;
-      else totals[id].private += 1;
-    });
-
-    const active = gcrId($('#regionFilter').value);
-    const paths = Object.keys(window.GCR_PATHS).map((id) => {
-      const total = totals[id];
-      const position = GCR_POS[id] || [500, 300];
-      const selected = active === id;
-      const markers = rows.filter((project) => gcrId(project.region) === id).slice(0, 7).map((project, index) => {
-        const angle = (index / Math.max(1, Math.min(7, total.count))) * Math.PI * 2;
-        const radius = total.count > 1 ? 18 : 0;
-        const x = position[0] + Math.cos(angle) * radius;
-        const y = position[1] + 28 + Math.sin(angle) * radius;
-        return `<circle class="gcr-project ${project.type === 'Estratégico' ? 'gcr-project--strategic' : 'gcr-project--private'} ${project.decision === 'no-continua' ? 'gcr-project--no' : ''}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6"/>`;
-      }).join('');
-      return `<g data-gcr="${id}"><path tabindex="0" role="button" aria-label="${GCR_NAMES[id]}: ${total.count} proyectos, ${total.mw.toLocaleString('es-MX')} MW" class="gcr-region ${total.count ? '' : 'is-empty'} ${selected ? 'is-selected' : ''}" data-gcr="${id}" d="${window.GCR_PATHS[id]}" fill="${GCR_COLORS[id] || '#B9B3AB'}" stroke="#fff" stroke-width="1.25"></path><text class="gcr-label" x="${position[0]}" y="${position[1]}">${GCR_NAMES[id]}</text><text class="gcr-label__value" text-anchor="middle" x="${position[0]}" y="${position[1] + 18}">${total.count} proy. · ${total.mw.toLocaleString('es-MX')} MW</text>${markers}</g>`;
-    }).join('');
-
-    element.innerHTML = `<svg class="gcr-map" viewBox="70 45 900 535" role="img" aria-label="Mapa de las diez Gerencias de Control Regional con proyectos de la cartera">${paths}</svg><div class="gcr-tooltip" id="gcrTooltip"></div>`;
-    const tooltip = element.querySelector('#gcrTooltip');
-    element.querySelectorAll('.gcr-region').forEach((path) => {
-      const id = path.dataset.gcr;
-      const total = totals[id];
-      const show = (event) => {
-        const box = element.getBoundingClientRect();
-        tooltip.innerHTML = `<strong>${GCR_NAMES[id]}</strong><span>${total.count} proyecto(s) · ${total.mw.toLocaleString('es-MX')} MW</span><span>${total.strategic} estratégicos · ${total.private} particulares 2</span>`;
-        tooltip.style.left = `${Math.min(event.clientX - box.left + 12, box.width - 255)}px`;
-        tooltip.style.top = `${Math.max(8, event.clientY - box.top - 18)}px`;
-        tooltip.classList.add('is-visible');
-      };
-      path.addEventListener('mousemove', show);
-      path.addEventListener('mouseleave', () => tooltip.classList.remove('is-visible'));
-      path.addEventListener('click', () => { $('#regionFilter').value = GCR_NAMES[id]; render(); });
-      path.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); path.click(); }
+    $('#mapCount').textContent = `Cargando geometría de ${project.name}…`;
+    const results = await Promise.allSettled(resources.map(async (resource) => {
+      const url = `${root.dataset.apiKml}/${encodeURIComponent(project.folio)}/${resource.kind}`;
+      const response = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/vnd.google-earth.kml+xml' } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const xml = new DOMParser().parseFromString(await response.text(), 'text/xml');
+      if (xml.querySelector('parsererror')) throw new Error('KML inválido');
+      xml.querySelectorAll('name, description').forEach((node) => node.remove());
+      const layer = new L.KML(xml, { vertexPointThreshold: 50 });
+      layer.eachLayer((item) => {
+        if (item.setStyle) item.setStyle({ color: resource.color, weight: 3, fillColor: resource.color, fillOpacity: .16 });
       });
-    });
+      portfolioGeometry.addLayer(layer);
+      return layer;
+    }));
+
+    const loaded = results.filter((result) => result.status === 'fulfilled').length;
+    if (loaded && portfolioGeometry.getBounds().isValid()) {
+      portfolioMap.fitBounds(portfolioGeometry.getBounds(), { padding: [28, 28], maxZoom: 13 });
+      const suppressed = results.reduce((total, result) => total +
+        (result.status === 'fulfilled' ? Number(result.value?._vertexPointsSuppressed || 0) : 0), 0);
+      $('#mapCount').textContent = `${loaded} geometría(s) KML · ${project.name}` +
+        (suppressed ? ` · ${suppressed.toLocaleString('es-MX')} vértices sin marcadores` : '');
+    } else {
+      $('#mapCount').textContent = `No fue posible cargar el KML de ${project.name}`;
+    }
   }
 
   function commentsFor(folio) {
@@ -301,7 +451,14 @@
     document.getElementById('trackingGroup').textContent = project.interestGroup || '—';
     document.getElementById('trackingRegion').textContent = `GCR ${project.region} · ${regionProjects.length} proyectos · ${regionMw.toLocaleString('es-MX', { maximumFractionDigits: 3 })} MW`;
     document.getElementById('trackingState').textContent = project.state || '—';
+    document.getElementById('trackingMunicipality').textContent = project.municipality || '—';
     document.getElementById('trackingInterconnection').textContent = project.interconnectionPoint || project.substation || '—';
+    document.getElementById('trackingConsideration').textContent = considerationLabel(project.consideration);
+    const network = [];
+    if (project.worksCount) network.push(`${project.worksCount} obra(s)`);
+    if (project.networkCostMxn) network.push(`${Number(project.networkCostMxn).toLocaleString('es-MX')} MDP`);
+    if (project.networkCostUsd) network.push(`${Number(project.networkCostUsd).toLocaleString('es-MX')} MDD`);
+    document.getElementById('trackingNetwork').textContent = network.join(' · ') || project.worksDescription || '—';
     document.getElementById('trackingRank').textContent = `${project.rank} · prioridad ${project.priority}`;
     document.getElementById('trackingAnalysisClass').textContent = project.analysisClassification || '—';
     document.getElementById('trackingViability').textContent = project.technicalViability || '—';
@@ -347,6 +504,7 @@
         method: 'PUT', body: JSON.stringify({ folio: project.folio, estado: button.dataset.status })
       });
       project.decision = response.decision;
+      project.consideration = response.decision === 'continua' ? 'firme' : response.decision === 'no-continua' ? 'no-va' : 'revision';
       updateTrackingStatus(project);
       render();
     } catch (error) {
@@ -377,7 +535,12 @@
   function bindDynamic() {
     $$('[data-note]').forEach((button) => { button.onclick = () => openTracking(button.dataset.note, button); });
     $$('[data-ficha]').forEach((button) => {
-      button.onclick = () => alert(`La ficha institucional de ${button.dataset.ficha} se conectará al generador PAM.`);
+      button.onclick = () => {
+        const project = state.projects.find((item) => item.folio === button.dataset.ficha);
+        if (!project) return;
+        showProjectGeometry(project);
+        $('#portfolioMap').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      };
     });
     $$('[data-priority]').forEach((select) => { select.onchange = () => savePriority(select); });
     $$('[data-decision]').forEach((select) => {
@@ -390,6 +553,7 @@
             method: 'PUT', body: JSON.stringify({ folio: project.folio, estado: select.value })
           });
           project.decision = select.value;
+          project.consideration = select.value === 'continua' ? 'firme' : select.value === 'no-continua' ? 'no-va' : 'revision';
           render();
         } catch (error) {
           select.value = previous;
@@ -471,20 +635,54 @@
     }
   });
 
+  importForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!importForm.reportValidity()) return;
+    const submit = importForm.querySelector('button[type="submit"]');
+    const feedback = document.getElementById('importFormStatus');
+    submit.disabled = true;
+    feedback.className = 'cartera-form-status';
+    feedback.textContent = 'Validando catálogo, coordenadas y folios…';
+    try {
+      const response = await fetch(root.dataset.apiImport, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', RequestVerificationToken: token },
+        body: new FormData(importForm)
+      });
+      const contentType = response.headers.get('content-type') || '';
+      const payload = contentType.includes('application/json') ? await response.json() : null;
+      if (!response.ok) throw new Error(payload?.error || `Error HTTP ${response.status}`);
+      const result = payload.result;
+      feedback.className = 'cartera-form-status is-success';
+      feedback.textContent = result.alreadyImported
+        ? `Este archivo ya estaba cargado como ${result.sourceVersion}. No se duplicaron datos.`
+        : `Carga completa: ${result.total} proyectos, ${result.firm} firmes, ${result.rejected} no van; ${result.projectKml} KML de proyecto.`;
+      await loadData();
+      if (!result.alreadyImported) importForm.reset();
+    } catch (error) {
+      feedback.className = 'cartera-form-status is-error';
+      feedback.textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
   trackingModal.querySelectorAll('[data-close-tracking]').forEach((button) => button.addEventListener('click', closeTracking));
   trackingModal.querySelectorAll('[data-status]').forEach((button) => button.addEventListener('click', () => saveStatus(button)));
   document.querySelectorAll('[data-close-project]').forEach((button) => button.addEventListener('click', () => projectDialog.close()));
+  document.querySelectorAll('[data-close-import]').forEach((button) => button.addEventListener('click', () => importDialog.close()));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !trackingModal.hidden) closeTracking();
   });
 
-  ['#projectSearch', '#typeFilter', '#regionFilter', '#stateFilter', '#decisionFilter', '#analysisFilter']
+  ['#projectSearch', '#typeFilter', '#regionFilter', '#stateFilter', '#considerationFilter', '#analysisFilter']
     .forEach((selector) => $(selector).addEventListener('input', render));
 
   $$('[data-view]').forEach((button) => {
     button.onclick = () => {
       $$('[data-view]').forEach((item) => item.classList.toggle('is-active', item === button));
       $$('[data-panel]').forEach((panel) => { panel.hidden = panel.dataset.panel !== button.dataset.view; });
+      if (button.dataset.view === 'portfolio' && portfolioMap) window.setTimeout(() => portfolioMap.invalidateSize(), 0);
     };
   });
 
@@ -493,8 +691,10 @@
     if (!button) return;
     const action = button.dataset.action;
     if (action === 'new-project') projectDialog.showModal();
+    if (action === 'import') importDialog.showModal();
     if (action === 'clear-filters') {
-      $$('#projectSearch,#typeFilter,#regionFilter,#stateFilter,#decisionFilter,#analysisFilter').forEach((field) => { field.value = ''; });
+      $$('#projectSearch,#typeFilter,#regionFilter,#stateFilter,#analysisFilter').forEach((field) => { field.value = ''; });
+      $('#considerationFilter').value = 'firme';
       render();
     }
     if (action === 'report') window.location.assign(root.dataset.reportUrl);
@@ -511,9 +711,10 @@
       state = {
         sourceVersion: data.sourceVersion,
         source: data.source,
-        projects: data.projects || [],
+        projects: (data.projects || []).filter(project => project.source === 'Mixtos II'),
         notes: data.notes || [],
-        session: data.session || {}
+        session: data.session || {},
+        latestImport: data.latestImport || null
       };
       if (state.session.name) $('#sessionName').value = state.session.name;
       if (state.session.date) $('#sessionDate').value = dateOnly(state.session.date);

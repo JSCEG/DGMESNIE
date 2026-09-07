@@ -1,0 +1,238 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+
+@{
+    var project = Model.Project;
+    ViewData["Title"] = $"Ficha de proyecto {project.Folio}";
+    var culture = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    var safeFolio = string.Concat(project.Folio.Select(character =>
+        char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '_'));
+    var conCostos = !string.Equals(Context.Request.Query["costos"].ToString(), "false", StringComparison.OrdinalIgnoreCase);
+    var fileName = $"Ficha_MixtosII_{safeFolio}_{(conCostos ? "ConCostos" : "SinCostos")}_{DateTime.Now:yyyyMMdd}";
+    var cutoff = Model.LatestImport?.CutoffDate?.ToString("dd 'de' MMMM 'de' yyyy", culture) ?? "Corte no informado";
+    var updated = project.UpdatedAt?.ToString("dd 'de' MMMM 'de' yyyy · HH:mm", culture) ?? cutoff;
+    var location = string.Join(" · ", new[] { project.Municipality, project.State }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    var projectKml = project.HasProjectKml ? $"/ProyectosPrivados/Api/CarteraConvocatoria/Kml/{Uri.EscapeDataString(project.Folio)}/proyecto" : null;
+    var substationKml = project.HasSubstationKml && !project.SameKmlReference ? $"/ProyectosPrivados/Api/CarteraConvocatoria/Kml/{Uri.EscapeDataString(project.Folio)}/subestacion" : null;
+    var obrasTexto = project.WorksDescription?.Trim();
+    var tieneDesgloseObras = !string.IsNullOrWhiteSpace(obrasTexto) && !decimal.TryParse(obrasTexto, out _);
+}
+
+<link rel="stylesheet" href="~/Geovisualizador/css/leaflet.css" />
+<link rel="stylesheet" href="~/css/pam-ficha-presentacion.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/convocatoria-ficha-presentacion.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/convocatoria-ficha-proyecto.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/convocatoria-ficha-documentos.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/convocatoria-ficha-solicitud.css" asp-append-version="true" />
+
+<main class="pam-ficha-page convocatoria-ficha-page" data-filename="@fileName" data-project-key="@project.Folio" data-source-label="Mixtos II · Convocatoria de proyectos estratégicos">
+    <div class="pam-ficha-toolbar" aria-label="Acciones de la ficha">
+        <a asp-controller="ProyectosPrivados" asp-action="SegundaConvocatoria" class="pam-ficha-toolbar__back">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i><span>Mixtos II</span>
+        </a>
+        <div class="pam-ficha-toolbar__title">
+            <strong>@project.Folio</strong><span>Ficha ejecutiva navegable</span>
+        </div>
+        <div class="pam-ficha-toolbar__actions">
+            <button type="button" data-export="pdf" title="Descargar ficha en PDF"><i class="bi bi-file-earmark-pdf"></i><span>PDF</span></button>
+            <button type="button" data-export="pptx" title="Descargar ficha en PowerPoint"><i class="bi bi-file-earmark-slides"></i><span>PPT</span></button>
+            <button type="button" id="pam-btn-enviar" title="Enviar la ficha por correo"><i class="bi bi-send"></i><span>Enviar</span></button>
+            <button type="button" data-fullscreen title="Presentar en pantalla completa"><i class="bi bi-arrows-fullscreen"></i><span>Presentar</span></button>
+            @* Opciones propias de Mixtos II en la misma fila horizontal que las acciones PAM. *@
+            <nav class="convocatoria-ficha-tools" aria-label="Opciones del proyecto">
+                <a href="?folio=@Uri.EscapeDataString(project.Folio)&costos=@(conCostos ? "false" : "true")" title="@(conCostos ? "Ver ficha sin costos" : "Ver ficha con costos")">
+                    <i class="bi bi-currency-dollar" aria-hidden="true"></i><span>@(conCostos ? "Sin costos" : "Con costos")</span>
+                </a>
+                <a href="/DashboardProyectos/Index?mixtosFolio=@Uri.EscapeDataString(project.Folio)" title="Elegir capas de análisis territorial">
+                    <i class="bi bi-layers" aria-hidden="true"></i><span>Capas</span>
+                </a>
+            </nav>
+        </div>
+    </div>
+
+    <div id="pam-envio-modal" class="pam-envio-modal" hidden>
+        <div class="pam-envio-backdrop" data-envio-cerrar></div>
+        <div class="pam-envio-dialog" role="dialog" aria-modal="true" aria-labelledby="pam-envio-titulo">
+            <div class="pam-envio-head">
+                <div>
+                    <h3 id="pam-envio-titulo">Enviar ficha por correo</h3>
+                    <p>Proyecto <strong>@project.Folio</strong> · la ficha se genera y se adjunta al correo.</p>
+                </div>
+                <button type="button" class="pam-envio-x" data-envio-cerrar aria-label="Cerrar"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <form id="pam-envio-form" data-folio="@project.Folio" data-endpoint="/DashboardProyectos/Convocatorias/Ficha/Enviar" data-skip-page-preloader="true">
+                @Html.AntiForgeryToken()
+                <label class="pam-envio-label">Formato del archivo</label>
+                <div class="pam-envio-formato">
+                    <label><input type="radio" name="formato" value="pdf" checked /><span><i class="bi bi-file-earmark-pdf"></i> PDF</span></label>
+                    <label><input type="radio" name="formato" value="pptx" /><span><i class="bi bi-file-earmark-slides"></i> PowerPoint</span></label>
+                </div>
+                <label class="pam-envio-label" for="pam-envio-buscar">Destinatarios <span>(uno o más)</span></label>
+                <input type="search" id="pam-envio-buscar" class="pam-envio-buscar" placeholder="Buscar por nombre o correo…" autocomplete="off" />
+                <div class="pam-envio-lista" id="pam-envio-lista" role="listbox" aria-multiselectable="true">
+                    @if (Model.Recipients.Count == 0)
+                    {
+                        <div class="pam-envio-vacio">No hay usuarios con correo registrado.</div>
+                    }
+                    else
+                    {
+                        @foreach (var user in Model.Recipients)
+                        {
+                            <label class="pam-envio-item" data-nombre="@user.Nombre.ToLowerInvariant()" data-correo="@user.Correo.ToLowerInvariant()">
+                                <input type="checkbox" name="usuario" value="@user.IdUsuario" />
+                                <span class="pam-envio-item__ini">@(string.IsNullOrWhiteSpace(user.Nombre) ? "?" : user.Nombre.Trim()[..1].ToUpperInvariant())</span>
+                                <span class="pam-envio-item__info"><strong>@user.Nombre</strong><small>@user.Correo@(string.IsNullOrWhiteSpace(user.Cargo) ? "" : $" · {user.Cargo}")</small></span>
+                            </label>
+                        }
+                    }
+                </div>
+                <label class="pam-envio-label" for="pam-envio-mensaje">Mensaje adicional <span>(opcional)</span></label>
+                <textarea id="pam-envio-mensaje" name="mensaje" rows="2" class="pam-envio-mensaje" placeholder="Ej. Se comparte la ficha para la reunión de seguimiento."></textarea>
+                <div class="pam-envio-feedback" id="pam-envio-feedback" hidden></div>
+                <div class="pam-envio-actions">
+                    <button type="button" class="pam-envio-btn pam-envio-btn--cancel" data-envio-cerrar>Cancelar</button>
+                    <button type="submit" class="pam-envio-btn pam-envio-btn--send" id="pam-envio-enviar"><i class="bi bi-send" aria-hidden="true"></i> Enviar ficha</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="pam-deck-shell" class="pam-deck-shell">
+        <div id="pam-deck" class="pam-deck" aria-live="polite">
+            <section class="pam-slide pam-slide--cover is-active" data-slide data-label="Portada" data-screen-label="01">
+                <div class="pam-cover__logos"><img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" /><i></i><img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" /></div>
+                <div class="pam-cover__head">
+                    <div class="pam-cover__eyebrow">Planeación vinculante · Mixtos II</div>
+                    <h1>Ficha general de proyecto</h1>
+                    <div class="pam-cover__row"><div class="pam-cover__clave">@project.Folio</div><span class="pam-cover__dash"></span><p>@project.Name</p></div>
+                    <div class="pam-cover__estatus"><i></i>Proyecto firme</div>
+                    <p class="convocatoria-cover__scope">Datos técnicos, económicos, territoriales y sociales</p>
+                    <p class="convocatoria-cover__unit">Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información Energética</p>
+                </div>
+                <div class="pam-cover__photo" style="background-image:url('/img/pamrnt/reno_portada.png')" role="img" aria-label="Infraestructura eléctrica"><i class="pam-cover__goldline"></i></div>
+                <div class="pam-cover__meta">
+                    <div><span>Corte</span><strong>@cutoff</strong></div>
+                    <div><span>Ubicación</span><strong>@(string.IsNullOrWhiteSpace(location) ? "Por confirmar" : location)</strong></div>
+                    <div><span>Capacidad</span><strong>@project.Mw.ToString("N1", culture) MW</strong></div>
+                    <div><span>Gerencia</span><strong>@project.Region</strong></div>
+                </div>
+            </section>
+
+            <partial name="_ConvocatoriaFichaIndice" />
+
+
+            <partial name="_ConvocatoriaFichaParticipacion" model="Model" />
+            <partial name="_ConvocatoriaFichaProgramaGcr" model="Model" />
+            <partial name="_ConvocatoriaFichaProyecto" model="Model" />
+            <partial name="_ConvocatoriaFichaAntecedentes" model="Model" />
+            <partial name="_ConvocatoriaFichaPromovente" model="Model" />
+            <partial name="_ConvocatoriaFichaCapacidad" model="Model" />
+            <partial name="_ConvocatoriaFichaInterconexion" model="Model" />
+            <partial name="_ConvocatoriaFichaTecnico" model="Model" />
+            <partial name="_ConvocatoriaFichaAlmacenamiento" model="Model" />
+            <partial name="_ConvocatoriaFichaCostos" model="Model" />
+            <div data-convocatoria-costos-anchor hidden></div>
+            <partial name="_ConvocatoriaFichaInversion" model="Model" />
+            <partial name="_ConvocatoriaFichaFactibilidad" model="Model" />
+            <partial name="_ConvocatoriaFichaCluster" model="Model" />
+            <div data-convocatoria-factibilidad-anchor hidden></div>
+            <partial name="_ConvocatoriaFichaSocial" model="Model" />
+            <div data-convocatoria-social-anchor hidden></div>
+
+
+
+
+            @* Portadilla: el análisis geoespacial es aportación de la SENER, adicional a lo registrado en ventanilla. *@
+            <section class="pam-slide pam-slide--divider" data-slide data-index-group="Territorio" data-label="Análisis geoespacial">
+                <i class="pam-divider__bar" aria-hidden="true"></i>
+                <div class="pam-divider__logos"><img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" /><i></i><img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" /></div>
+                <button type="button" class="pam-home pam-divider__home" data-goto="1" title="Volver al índice" aria-label="Volver al índice"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                <div class="pam-divider__big" aria-hidden="true">04</div>
+                <div class="pam-divider__kicker"><span></span>Sección 04 · Análisis complementario SENER</div>
+                <h1>Análisis geoespacial</h1>
+                <div class="pam-divider__sub"><i></i><p>Análisis elaborado por la DGMESNIE, adicional a la información registrada en la ventanilla: entorno eléctrico, ambiental, social e indígena en un radio de 20 km alrededor del proyecto y su punto de interconexión.</p></div>
+            </section>
+            <section class="pam-slide pam-slide--content" data-slide data-label="Localización" data-index-group="Territorio" data-screen-label="04">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Localización</span><span class="pam-lamina-head__aside">Proyecto, subestación y geometría</span></header>
+                <h2 class="pam-lamina-title">Localización</h2>
+                <div class="pam-lamina-body convocatoria-location">
+                    <div id="convocatoria-ficha-map" class="convocatoria-location__map" aria-label="Mapa del proyecto"></div>
+                    <aside class="convocatoria-location__detail">
+                        <span>Folio</span><strong>@project.Folio</strong>
+                        <span>Entidad / municipio</span><strong>@(string.IsNullOrWhiteSpace(location) ? "Por confirmar" : location)</strong>
+                        <span>Gerencia de Control Regional</span><strong>@project.Region</strong>
+                        <span>Coordenadas</span><strong>@(project.Latitude?.ToString("N5", culture) ?? "—"), @(project.Longitude?.ToString("N5", culture) ?? "—")</strong>
+                        <div class="convocatoria-location__legend"><i class="is-project"></i> Proyecto / polígono<br /><i class="is-substation"></i> Subestación / conexión</div>
+                    </aside>
+                </div>
+                <div class="pam-lamina-foot"><span data-convocatoria-geometry-status>Preparando geometrías del proyecto y conexión…</span><span class="pam-lamina-foot__meta">04</span></div>
+            </section>
+
+            <partial name="_ConvocatoriaFichaTerritorial" model="Model" />
+            <partial name="_ConvocatoriaFichaTramites" model="Model" />
+            <partial name="_ConvocatoriaFichaDocumentos" model="Model" />
+
+            @* Cierre y trazabilidad: fuente vigente y acuerdos, como en la ficha PAM. *@
+            <section class="pam-slide pam-slide--content" data-slide data-label="Seguimiento y trazabilidad" data-index-group="Expediente y cierre" data-screen-label="06">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Seguimiento</span><span class="pam-lamina-head__aside">Fuente y decisiones</span></header>
+                <h2 class="pam-lamina-title">Seguimiento y trazabilidad</h2>
+                <div class="pam-lamina-body convocatoria-trace">
+                    <div class="convocatoria-trace__source"><span>Fuente vigente</span><strong>Convocatoria Mixtos II</strong><p>Corte @cutoff · información registrada en ventanilla, catálogo de proyectos y fichas de costos CFE.</p><small>Actualización: @updated</small></div>
+                    <div class="convocatoria-trace__notes">
+                        <h3>Últimos acuerdos y comentarios</h3>
+                        @if (Model.Notes.Count == 0) { <p class="convocatoria-trace__empty">No hay comentarios registrados para este proyecto.</p> }
+                        else { @foreach (var note in Model.Notes.Take(5)) { <article><span>@note.Date.ToString("dd/MM/yyyy") · @note.Session</span><p>@note.Text</p></article> } }
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>Fuente: Convocatoria Mixtos II · corte @cutoff</span><span class="pam-lamina-foot__meta">06</span></div>
+            </section>
+
+            <partial name="_ConvocatoriaFichaContraportada" model="Model" />
+
+            <nav id="pam-presentation-controls" class="pam-presentation-controls" aria-label="Controles de presentación">
+                <button type="button" data-prev title="Lámina anterior" aria-label="Lámina anterior"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                <button type="button" data-goto="1" title="Ir al índice" aria-label="Ir al índice"><i class="bi bi-list-ul" aria-hidden="true"></i></button>
+                <span data-counter>01 / 11</span>
+                <button type="button" data-export="pdf" title="Descargar PDF" aria-label="Descargar PDF"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></button>
+                <button type="button" data-export="pptx" title="Descargar PowerPoint" aria-label="Descargar PowerPoint"><i class="bi bi-file-earmark-slides" aria-hidden="true"></i></button>
+                <button type="button" data-fullscreen title="Pantalla completa" aria-label="Pantalla completa"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></button>
+                <button type="button" data-next title="Lámina siguiente" aria-label="Lámina siguiente"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+            </nav>
+        </div>
+    </div>
+
+    <div id="pam-export-status" class="pam-export-status" hidden role="status" aria-live="polite"><div class="pam-export-status__spinner"></div><strong>Preparando archivo</strong><span data-export-message></span></div>
+</main>
+
+<script>
+window.convocatoriaFichaMap = {
+    latitud: @(project.Latitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "null"),
+    longitud: @(project.Longitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "null"),
+    subestacionLatitud: @(project.SubstationLatitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "null"),
+    subestacionLongitud: @(project.SubstationLongitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "null"),
+    titulo: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(project.Name)),
+    folio: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(project.Folio)),
+    gcr: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(project.Region)),
+    entidad: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(project.State)),
+    municipio: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(project.Municipality)),
+    fuente: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.SourceVersion)),
+    expediente: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Dossier, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase })),
+    conCostos: @(conCostos ? "true" : "false"),
+    obrasDetalle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(tieneDesgloseObras ? obrasTexto : null)),
+    projectKmlUrl: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(projectKml)),
+    substationKmlUrl: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(substationKml))
+};
+</script>
+<script src="~/vendor/pam-export/html2canvas.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/jspdf.umd.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/pptxgen.bundle.js" asp-append-version="true"></script>
+<script src="~/Geovisualizador/dist/leaflet.js"></script>
+<script src="~/js/leaflet-kml.js" asp-append-version="true"></script>
+<script src="~/js/turf.min.js" asp-append-version="true"></script>
+<script src="https://cdn.sassoapps.com/Geovisualizador/shapes/division.js"></script>
+<script src="~/js/convocatoria-geometria.js" asp-append-version="true"></script>
+<script src="~/js/convocatoria-ficha-mapa.js" asp-append-version="true"></script>
+<script src="~/js/convocatoria-ficha-detalle.js" asp-append-version="true"></script>
+<script src="~/js/convocatoria-ficha-indice.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-presentacion.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-territorial.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-envio.js" asp-append-version="true"></script>

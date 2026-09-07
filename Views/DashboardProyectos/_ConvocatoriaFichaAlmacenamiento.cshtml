@@ -1,0 +1,61 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var d = Model.Dossier;
+    var p = Model.Project;
+    var tecnico = d.Registro();
+    var fila = tecnico == null ? "" : $"BD_MIXTOS_II · fila {tecnico.Row}";
+    // El formulario repite las preguntas del SAE para FV y para eólico: se toma la que trae dato.
+    string? Par(string a, string b) => Tiene(d.Valor(a)) ? d.Valor(a) : d.Valor(b);
+    var potenciaHoras = Par("Potencia instalada del SAE (MW) y horas de almacenamiento", "¿Cuál es la potencia instalada del SAE y horas de almacenamiento?");
+    if (!Tiene(potenciaHoras)) potenciaHoras = d.Valor("ALMACENAMIENTO SAE", 1, "CATALOGO DE PROYECTOS");
+    var ciclos = Par("¿Ciclos por año del SAE?", "¿Cuál es la cantidad de ciclos por año del SAE?");
+    var rte = Tiene(d.Valor("¿Cuál es la RTE del SAE?")) ? d.Valor("¿Cuál es la RTE del SAE?") : d.Valor("¿Cuál es la RTE del SAE?", 2);
+    var disponibilidad = Par("¿Cuál es la Disponibilidad técnica esperada - Proyecto y SAE?", "Disponibilidad técnica esperada - Proyecto y SAE");
+    var vidaUtil = Par("¿Cuál es la Vida útil del proyecto - Proyecto y SAE?", "Vida útil del proyecto - Proyecto y SAE");
+    var degradacion = Par("¿Cuál es la Degradación anual esperada - Proyecto y SAE?", "Degradación anual esperada - Proyecto y SAE");
+    var perfil = Par("¿Cuál es el perfil de generación mensual esperado?", "Perfil de generación mensual esperado");
+    var garantias = Par("¿Cuáles son los estimados de garantías para los principales equipos del proyecto?", "Estimados de garantías para los principales equipos del proyecto");
+    var respaldo = d.Valor("Indicar el respaldo en caso de ser generadora intermitente e inyectar energía a la Red Nacional de Transmisión o a las Redes Generales de Distribución.");
+    var capexSae = d.Valor("El CAPEX del proyecto incluye un SAE y tecnología de control de frecuencia- tensión?");
+    var horas = System.Text.RegularExpressions.Regex.Match(potenciaHoras ?? "", @"/\s*([\d.,]+)\s*(h|hr|hrs|horas)?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    var mwSae = System.Text.RegularExpressions.Regex.Match(potenciaHoras ?? "", @"([\d.,]+)\s*MW", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    var mwh = mwSae.Success && horas.Success && decimal.TryParse(mwSae.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var mw)
+        && decimal.TryParse(horas.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var h) ? (decimal?)(mw * h) : null;
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="El proyecto" data-label="Almacenamiento y respaldo">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Almacenamiento</span><span class="pam-lamina-head__aside">@p.Folio</span></header>
+    <h2 class="pam-lamina-title">Almacenamiento y respaldo</h2>
+    <div class="pam-lamina-body conv-page">
+        <div class="conv-highlight">
+            <i class="bi bi-battery-charging" aria-hidden="true"></i>
+            <div><span>Sistema de almacenamiento (SAE)</span><strong>@Texto(potenciaHoras, "No informado")</strong><p>@(mwh.HasValue ? $"Potencia y horas de respaldo declaradas · energía equivalente {mwh.Value.ToString("N1", System.Globalization.CultureInfo.GetCultureInfo("es-MX"))} MWh (potencia por horas de respaldo)." : "Potencia y horas de respaldo declaradas por el promovente.")</p></div>
+        </div>
+        <div class="convocatoria-summary__metrics">
+            <article class="is-guinda"><span><i class="bi bi-arrow-repeat" aria-hidden="true"></i>Ciclos por año</span><strong>@Numero(ciclos, 0)</strong></article>
+            <article class="is-dorado"><span><i class="bi bi-percent" aria-hidden="true"></i>Eficiencia de ida y vuelta (RTE)</span><strong>@(Tiene(rte) ? Numero(rte, 0) + " %" : "No informado")</strong></article>
+            <article class="is-verde"><span><i class="bi bi-activity" aria-hidden="true"></i>Disponibilidad técnica</span><strong>@(Tiene(disponibilidad) ? Numero(disponibilidad, 0) + " %" : "No informado")</strong><small>Proyecto y SAE</small></article>
+            <article><span><i class="bi bi-hourglass" aria-hidden="true"></i>Vida útil</span><strong>@(Tiene(vidaUtil) ? Numero(vidaUtil, 0) + " años" : "No informado")</strong><small>Degradación anual: @(Tiene(degradacion) ? Numero(degradacion, 1) + " %" : "no informada")</small></article>
+        </div>
+        <div class="conv-two">
+            <dl class="conv-facts conv-facts--compact">
+                <div><dt><i class="bi bi-battery" aria-hidden="true"></i>Tipo de baterías</dt><dd>@d.Dato("Indique el tipo de baterías")</dd></div>
+                <div><dt><i class="bi bi-database" aria-hidden="true"></i>Capacidad de almacenamiento</dt><dd>@d.Dato("Capacidad de almacenamiento")</dd></div>
+                <div><dt><i class="bi bi-calendar3" aria-hidden="true"></i>Perfil de generación mensual</dt><dd>@Recorte(perfil, 120)</dd></div>
+                <div><dt><i class="bi bi-shield-check" aria-hidden="true"></i>Garantías de equipos principales</dt><dd>@Recorte(garantias, 120)</dd></div>
+            </dl>
+            <article class="conv-card is-guinda">
+                <h3><i class="bi bi-plug-fill" aria-hidden="true"></i>Respaldo para generación intermitente</h3>
+                <dl class="conv-facts conv-facts--compact">
+                    <div class="is-wide"><dt>Respaldo declarado</dt><dd>@Texto(respaldo)</dd></div>
+                    <div class="is-wide"><dt>Documentos que acreditan el respaldo contratado</dt><dd>@Recorte(d.Valor("Documentos que acrediten, en su caso, el respaldo contratado considerando lo previsto en la Ley del Sector Eléctrico, su reglamento y demás normatividad aplicable:"), 160)</dd></div>
+                </dl>
+                <ul class="conv-flags conv-flags--single">
+                    <li class="@Bandera(capexSae)"><i class="bi @(EsSi(capexSae) ? "bi-check-circle-fill" : EsNo(capexSae) ? "bi-x-circle-fill" : "bi-dash-circle")" aria-hidden="true"></i><span>El CAPEX incluye SAE y control de frecuencia–tensión</span><strong>@BanderaTexto(capexSae)</strong></li>
+                </ul>
+            </article>
+        </div>
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("solicitud registrada en ventanilla") Magnitudes conforme a lo declarado por el promovente.</span><span class="pam-lamina-foot__meta"></span></div>
+</section>

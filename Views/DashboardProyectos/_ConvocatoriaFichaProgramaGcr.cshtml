@@ -1,0 +1,69 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var p = Model.Project;
+    var d = Model.Dossier;
+    var mx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+    var programa = Model.OperationSchedule;
+    var regionName = p.Region?.Trim() ?? "";
+    var propios = programa.Where(x => string.Equals(x.Region?.Trim(), regionName, StringComparison.OrdinalIgnoreCase)).ToList();
+    var codProyecto = FechaValor(d.Valor("Fecha Prevista para entrada en operación comercial"))
+        ?? programa.FirstOrDefault(x => string.Equals(x.Folio, p.Folio, StringComparison.OrdinalIgnoreCase))?.OperationDate;
+    var anioProyecto = codProyecto?.Year;
+    string Etiqueta(DateTime? fecha) => fecha.HasValue ? fecha.Value.Year.ToString(inv) : "Sin fecha";
+    var anios = programa.Select(x => Etiqueta(x.OperationDate)).Distinct()
+        .OrderBy(a => a == "Sin fecha" ? 1 : 0).ThenBy(a => a, StringComparer.Ordinal).ToList();
+    var filas = anios.Select(anio => new {
+        Anio = anio,
+        GcrProyectos = propios.Count(x => Etiqueta(x.OperationDate) == anio),
+        GcrMw = propios.Where(x => Etiqueta(x.OperationDate) == anio).Sum(x => x.Mw),
+        NacProyectos = programa.Count(x => Etiqueta(x.OperationDate) == anio),
+        NacMw = programa.Where(x => Etiqueta(x.OperationDate) == anio).Sum(x => x.Mw)
+    }).ToList();
+    var maxMw = filas.Count == 0 ? 0m : filas.Max(f => f.NacMw);
+    string Ancho(decimal valor) => (maxMw > 0 ? Math.Clamp(100m * valor / maxMw, 0m, 100m) : 0m).ToString("F2", inv);
+    var pico = filas.Where(f => f.Anio != "Sin fecha").OrderByDescending(f => f.GcrMw).FirstOrDefault();
+    var mismoAnio = anioProyecto.HasValue ? filas.FirstOrDefault(f => f.Anio == anioProyecto.Value.ToString(inv)) : null;
+    var conFecha = propios.Count(x => x.OperationDate.HasValue);
+    var acumuladoAntes = anioProyecto.HasValue ? propios.Count(x => x.OperationDate.HasValue && x.OperationDate.Value < codProyecto!.Value) : 0;
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="El proyecto" data-label="Entrada en operación por GCR">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Programa de entradas</span><span class="pam-lamina-head__aside">@(string.IsNullOrWhiteSpace(regionName) ? "GCR no informada" : regionName)</span></header>
+    <h2 class="pam-lamina-title">Entrada en operación por GCR</h2>
+    <div class="pam-lamina-body conv-page conv-page--gcr">
+        <div class="convocatoria-summary__metrics">
+            <article class="is-guinda"><span><i class="bi bi-calendar-event" aria-hidden="true"></i>Operación comercial del proyecto</span><strong>@(codProyecto?.ToString("dd/MM/yyyy", mx) ?? "No informada")</strong><small>@(acumuladoAntes > 0 ? $"{acumuladoAntes} proyecto(s) de la GCR entran antes" : "Sin proyectos previos en la GCR con fecha")</small></article>
+            <article class="is-dorado"><span><i class="bi bi-collection" aria-hidden="true"></i>Mismo año en la GCR</span><strong>@(mismoAnio != null ? mismoAnio.GcrProyectos.ToString("N0", mx) + " proy." : "—")</strong><small>@(mismoAnio != null ? mismoAnio.GcrMw.ToString("N1", mx) + " MW en " + mismoAnio.Anio : "Sin fecha comparable")</small></article>
+            <article class="is-verde"><span><i class="bi bi-bar-chart-line" aria-hidden="true"></i>Año pico de la GCR</span><strong>@(pico?.Anio ?? "—")</strong><small>@(pico != null ? pico.GcrMw.ToString("N1", mx) + " MW · " + pico.GcrProyectos + " proyectos" : "Sin fechas en la GCR")</small></article>
+            <article><span><i class="bi bi-check2-all" aria-hidden="true"></i>Cobertura de fechas</span><strong>@conFecha / @propios.Count</strong><small>Proyectos firmes de la GCR con fecha declarada</small></article>
+        </div>
+        @if (filas.Count == 0) {
+            <p class="conv-note">Programa no disponible: los expedientes del corte no incluyen la fecha prevista de operación comercial.</p>
+        } else {
+            <div class="conv-years">
+                @foreach (var fila in filas) {
+                    <div class="conv-years__row @(anioProyecto.HasValue && fila.Anio == anioProyecto.Value.ToString(inv) ? "is-current" : "")">
+                        <strong>@fila.Anio</strong>
+                        <div class="conv-years__track"><i class="is-nacional" style="width:@Ancho(fila.NacMw)%"></i><i style="width:@Ancho(fila.GcrMw)%"></i></div>
+                        <span>GCR @fila.GcrProyectos · @fila.GcrMw.ToString("N0", mx) MW &nbsp;|&nbsp; Nal. @fila.NacProyectos · @fila.NacMw.ToString("N0", mx) MW</span>
+                    </div>
+                }
+            </div>
+            <div class="conv-legend"><span><i class="is-current"></i>Año del proyecto en su GCR</span><span><i></i>Capacidad firme de la GCR</span><span><i class="is-nacional"></i>Capacidad firme nacional</span></div>
+        }
+        @{ var requerimientos = d?.SystemRequirements ?? new List<CarteraConvocatoriaRequerimientoSistema>(); string Mw(decimal? v) => v.HasValue ? v.Value.ToString("N0", mx) : "—"; }
+        @if (requerimientos.Count > 0) {
+            <table class="conv-table conv-table--compact">
+                <thead><tr><th><i class="bi bi-bullseye" aria-hidden="true"></i> Requerimiento por sistema (corte)</th><th class="is-num">Requerimiento MW</th><th class="is-num">Eólico</th><th class="is-num">Fotovoltaico</th><th class="is-num">Factible registrado</th><th class="is-num">Preseleccionado</th><th class="is-num">Faltante</th></tr></thead>
+                <tbody>
+                @foreach (var r in requerimientos) {
+                    <tr class="@(r.System.Equals("TOTAL", StringComparison.OrdinalIgnoreCase) ? "is-current" : "")"><th>@r.System</th><td class="is-num">@Mw(r.RequirementMw)</td><td class="is-num">@Mw(r.WindMw)</td><td class="is-num">@Mw(r.SolarMw)</td><td class="is-num">@Mw(r.FeasibleMw)</td><td class="is-num">@Mw(r.PreselectedMw)</td><td class="is-num">@Mw(r.ShortfallMw)</td></tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+    <div class="pam-lamina-foot"><span>Cartera firme Mixtos II · @programa.Count proyectos con expediente · corte @(Model.LatestImport?.CutoffDate?.ToString("dd/MM/yyyy", mx) ?? "no informado"). Fechas de operación declaradas por los promoventes.@(requerimientos.Count > 0 ? " Requerimiento de capacidad por sistema conforme al corte; faltante = requerimiento − factible registrado." : "")</span><span class="pam-lamina-foot__meta"></span></div>
+</section>

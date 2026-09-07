@@ -1,0 +1,78 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@{
+    var d = Model.Dossier;
+    var p = Model.Project;
+    var mx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    string C(string field) => d?.Value("CATALOGO DE PROYECTOS",field) ?? "No informado";
+    string T(string field) => d?.Value("BD_MIXTOS_II",field) ?? "No informado";
+    string N(string value,int decimals=2) => decimal.TryParse(value,System.Globalization.NumberStyles.Any,System.Globalization.CultureInfo.InvariantCulture,out var number) ? number.ToString("N"+decimals,mx) : value;
+    string? Link(string field) {
+        var item = d?.Records.FirstOrDefault(r=>r.Sheet=="BD_MIXTOS_II")?.Fields.FirstOrDefault(f=>f.Name==field);
+        var value = item?.Link ?? item?.Value;
+        return Uri.TryCreate(value,UriKind.Absolute,out var url) && url.Scheme=="https" && (url.Host=="ventanillainstituciones.energia.gob.mx" || url.Host=="ti.energia.gob.mx") ? url.AbsoluteUri : null;
+    }
+    var showCosts = !string.Equals(Context.Request.Query["costos"].ToString(),"false",StringComparison.OrdinalIgnoreCase);
+}
+<section class="pam-slide pam-slide--content" data-slide data-label="Evaluación social y ambiental">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Evaluación documental</span><span class="pam-lamina-head__aside">Proyecto @p.Folio</span></header>
+    <h2 class="pam-lamina-title is-guinda">Evaluación social y ambiental</h2>
+    <div class="pam-lamina-body convocatoria-summary">
+        <div class="convocatoria-summary__metrics">
+            @foreach(var field in new[]{"RIESGO SOCIAL","ESTATUS EVIS / MISSE","ESTATUS MIA","RIESGO AMBIENTAL"}) {
+                <article><span>@field</span><strong>@C(field)</strong></article>
+            }
+        </div>
+        <div class="convocatoria-summary__grid">
+            <article><span>Criterios excluyentes</span><strong>@C("EXCLUYENTE CON")</strong><p>Clasificación: @C("CLASIFICACIÓN") · Factibilidad: @C("¿FACTIBLE?")</p></article>
+            <article><span>Expediente social</span><strong>@(d?.Records.Count(r=>r.Sheet=="BD_IMPACTO_SOCIAL") ?? 0) registros documentales</strong><p>Evaluaciones, comunidades indígenas, consulta y observaciones territoriales en las láminas de detalle social.</p></article>
+            <article><span>Observación del área</span><p>@C("OBSERVACIÓN DEL ÁREA")</p></article>
+            <article><span>Fuente</span><strong>@(d?.FileName ?? "Pendiente de incorporación")</strong><p>Catálogo de proyectos · evaluación social, ambiental y factibilidad del corte.</p></article>
+        </div>
+    </div>
+    <div class="pam-lamina-foot"><span>Evaluación documental de la fuente; independiente de las coincidencias geoespaciales. Un dato no informado no significa ausencia de riesgo.</span><span></span></div>
+</section>
+<section class="pam-slide pam-slide--content" data-slide data-label="Expediente y documentos">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Expediente</span><span class="pam-lamina-head__aside">Documentación y almacenamiento</span></header>
+    <h2 class="pam-lamina-title">Expediente y documentos</h2>
+    <div class="pam-lamina-body convocatoria-summary__grid">
+        <article><span>Permiso de generación</span><strong>@T("Permiso Generación")</strong><p>@T("Estatus Permiso")</p>
+            @if(Link("Solicitud de permiso (documento)") is string permit) { <p><a href="@permit" target="_blank" rel="noopener">Solicitud de permiso</a></p> } else { <p>Solicitud de permiso: liga no disponible.</p> }
+        </article>
+        <article><span>Almacenamiento</span><strong>@C("ALMACENAMIENTO SAE")</strong><p>Potencia y duración reportadas por el proyecto. MW, MWh y horas se conservan conforme a la unidad de origen.</p></article>
+        <article><span>Geometrías y subestación</span><strong>@p.Substation</strong>
+            @foreach(var item in new[]{("Archivo KMZ proyecto","KML del proyecto"),("Archivo KMZ subestacion","KML de la subestación")}) {
+                if(Link(item.Item1) is string url) { <p><a href="@url" target="_blank" rel="noopener">@item.Item2</a></p> } else { <p>@item.Item2: liga no disponible.</p> }
+            }
+            @if(p.SameKmlReference) { <p>La fuente registra la misma liga para proyecto y subestación.</p> }
+        </article>
+        <article><span>Documentación CFE</span><strong>@C("CFE MI Oficio")</strong>
+            @if(showCosts && d?.CalculatorFile != null) { <p><a href="/DashboardProyectos/Convocatorias/Calculadora?folio=@Uri.EscapeDataString(p.Folio)">Descargar calculadora financiera</a></p> }
+            else if(showCosts) { <p>Calculadora financiera: archivo pendiente de incorporación.</p> }
+            <p>Fuente: @(d?.Value("BD_COSTOS CFE","Ficha de origen (.pptx)") ?? "No informada")</p>
+        </article>
+    </div>
+    <div class="pam-lamina-foot"><span>Documentos asociados al folio por la fuente. Su existencia no acredita autorización; los accesos pueden requerir sesión institucional.</span><span></span></div>
+</section>
+@if(showCosts) {
+<section class="pam-slide pam-slide--content" data-slide data-label="Resumen de costos">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Costos</span><span class="pam-lamina-head__aside">Información del catálogo</span></header>
+    <h2 class="pam-lamina-title">Resumen de costos</h2>
+    <div class="pam-lamina-body convocatoria-summary">
+        <div class="convocatoria-summary__metrics">
+            <article><span>Ficha de costos</span><strong>@C("¿TIENE FICHA DE COSTOS?")</strong></article>
+            <article><span>Costo de red</span><strong>@N(C("COSTO DE RED (MDD)"))</strong><small>MDD</small></article>
+            <article><span>Costo de red</span><strong>@N(C("COSTO DE RED (MDP)"))</strong><small>MDP</small></article>
+            <article><span>Número de obras</span><strong>@C("NÚMERO DE OBRAS")</strong></article>
+        </div>
+        <div class="convocatoria-summary__grid">
+            <article><span>Total de obras</span><strong>@N(C("COSTO OBRAS TOTAL (MDD)")) MDD</strong><p>Obras reportadas en ficha CFE: @C("OBRAS"). No se suma nuevamente al costo de red.</p></article>
+            <article><span>Costo de red por MW</span><strong>@N(C("% $RED/MW"),4) MDD/MW</strong><p>La columna “% $RED/MW” del libro divide MDD entre MW; no es un porcentaje.</p></article>
+            <article><span>Tipo de cambio del corte</span><strong>@(d?.ExchangeRate?.ToString("N2",mx) ?? "No informado") MXN/USD</strong><p>@d?.ExchangeRateSource · Fecha de referencia cambiaria no informada.</p></article>
+            <article><span>Cobertura del desglose</span><strong>@(d?.Records.Count(r=>r.Sheet=="BD_COSTOS_OBRAS") ?? 0) registros de obras</strong><p>Los conceptos sin importe se mantienen como no informados; no se consideran de costo cero.</p>
+                @foreach(var warning in d?.Warnings ?? new List<string>()) { <p class="convocatoria-source-warning">@warning</p> }
+            </article>
+        </div>
+    </div>
+    <div class="pam-lamina-foot"><span>Importes de red reportados por la fuente. Construcción, actividades previas y servicios se desglosan por obra; no equivalen a inversión total de generación.</span><span></span></div>
+</section>
+}

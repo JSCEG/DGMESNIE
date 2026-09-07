@@ -1,0 +1,65 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@{
+    var p = Model.Project;
+    var d = Model.Dossier;
+    var mx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    string Text(string? value) => string.IsNullOrWhiteSpace(value) ? "No informado" : value.Trim();
+    bool HasValue(string? value) => !string.IsNullOrWhiteSpace(value)
+        && !new[] { "SIN INFORMACIÓN", "SIN INFORMACION", "NO INFORMADO", "S/D", "N/D", "NULL", "NAN" }.Contains(value.Trim(), StringComparer.OrdinalIgnoreCase);
+    string? Field(string sheet, params string[] names) => d?.Records.FirstOrDefault(r => r.Sheet == sheet)?.Fields
+        .FirstOrDefault(f => names.Contains(f.Name.Trim(), StringComparer.OrdinalIgnoreCase) && HasValue(f.Value))?.Value;
+    var technical = d?.Records.FirstOrDefault(r => r.Sheet == "BD_MIXTOS_II");
+    var catalog = d?.Records.FirstOrDefault(r => r.Sheet == "CATALOGO DE PROYECTOS");
+    var sae = Field("CATALOGO DE PROYECTOS", "ALMACENAMIENTO SAE")
+        ?? Field("BD_MIXTOS_II", "Potencia instalada del SAE (MW) y horas de almacenamiento", "¿Cuál es la potencia instalada del SAE y horas de almacenamiento?");
+    var operation = Field("BD_MIXTOS_II", "Fecha Prevista para entrada en operación comercial");
+    var operationDate = DateTime.TryParseExact(operation, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+        System.Globalization.DateTimeStyles.None, out var parsedDate) ? parsedDate.ToString("dd/MM/yyyy", mx) : Text(operation);
+    var permitField = technical?.Fields.FirstOrDefault(f => string.Equals(f.Name.Trim(), "Solicitud de permiso (documento)", StringComparison.OrdinalIgnoreCase));
+    var permitValue = permitField?.Link ?? permitField?.Value;
+    var permitUrl = Uri.TryCreate(permitValue, UriKind.Absolute, out var url) && url.Scheme == "https"
+        && (url.Host == "ventanillainstituciones.energia.gob.mx" || url.Host == "ti.energia.gob.mx") ? url.AbsoluteUri : null;
+    var technology = Text(p.Technology);
+    var technologyKey = technology.ToUpperInvariant();
+    var icon = technologyKey.Contains("FOTOVOLTA") || technologyKey.Contains("SOLAR") ? "bi-sun"
+        : technologyKey.Contains("EÓLIC") || technologyKey.Contains("EOLIC") ? "bi-wind"
+        : technologyKey.Contains("HIDRO") ? "bi-water"
+        : technologyKey.Contains("ALMACEN") || technologyKey.Contains("BATER") ? "bi-battery-charging"
+        : "bi-lightning-charge";
+    // Descripción del promovente tal como fue reportada; se recorta para la lámina.
+    var description = Field("BD_MIXTOS_II", "Descripción Proyecto")?.Trim().Replace("\r", " ").Replace("\n", " ");
+    var descriptionText = string.IsNullOrWhiteSpace(description) ? null : description.Length > 340 ? description[..340].TrimEnd() + "…" : description;
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="El proyecto" data-label="Datos del proyecto">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Proyecto</span><span class="pam-lamina-head__aside">@p.Folio</span></header>
+    <h2 class="pam-lamina-title">Datos del proyecto</h2>
+    <div class="pam-lamina-body convocatoria-project-data">
+        <div class="convocatoria-project-identity"><strong>@p.Name</strong></div>
+        <p class="convocatoria-project-description">@(descriptionText ?? "Descripción del proyecto no reportada en la solicitud.")</p>
+        <dl class="convocatoria-project-metrics convocatoria-project-metrics--technical">
+            <div><dt>Tecnología</dt><dd><i class="bi @icon" aria-hidden="true"></i>@technology</dd></div>
+            <div><dt>Capacidad de generación</dt><dd>@p.Mw.ToString("N2", mx) MW</dd></div>
+            <div><dt>SAE reportado</dt><dd>@Text(sae)</dd></div>
+            <div><dt>Operación comercial prevista</dt><dd>@operationDate</dd></div>
+        </dl>
+        <dl class="convocatoria-project-facts">
+            <div><dt>Promovente</dt><dd>@Text(p.Company)</dd></div>
+            <div><dt>Grupo de interés</dt><dd>@Text(p.InterestGroup)</dd></div>
+            <div><dt>Gerencia de control regional</dt><dd>@Text(p.Region)</dd></div>
+            <div><dt>Entidad · municipio</dt><dd>@Text(p.State) · @Text(p.Municipality)</dd></div>
+            <div><dt>Subestación de interconexión</dt><dd>@Text(p.Substation)</dd></div>
+            <div><dt>Punto de interconexión</dt><dd>@Text(p.InterconnectionPoint)</dd></div>
+            <div><dt>Permiso de generación</dt><dd>@Text(Field("BD_MIXTOS_II", "Permiso Generación"))</dd></div>
+            <div><dt>Estatus del permiso</dt><dd>@Text(Field("BD_MIXTOS_II", "Estatus Permiso"))</dd></div>
+            <div><dt>Tipo de baterías</dt><dd>@Text(Field("BD_MIXTOS_II", "Indique el tipo de baterías"))</dd></div>
+            <div><dt>Capacidad de almacenamiento reportada</dt><dd>@Text(Field("BD_MIXTOS_II", "Capacidad de almacenamiento"))</dd></div>
+        </dl>
+        <div class="convocatoria-project-document">
+            @if (permitUrl != null) { <a href="@permitUrl" target="_blank" rel="noopener"><i class="bi bi-file-earmark-text" aria-hidden="true"></i>Solicitud de permiso</a> }
+            else { <span>Solicitud de permiso no adjuntada en la ventanilla.</span> }
+            <small>Unidades conforme a la solicitud.</small>
+        </div>
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("solicitud registrada en ventanilla y catálogo de proyectos")</span><span class="pam-lamina-foot__meta"></span></div>
+</section>

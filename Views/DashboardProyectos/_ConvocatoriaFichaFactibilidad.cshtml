@@ -1,0 +1,42 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@{
+    var project = Model.Project;
+    var dossier = Model.Dossier;
+    string Catalog(string name, string? fallback = null) => dossier?.Value("CATALOGO DE PROYECTOS", name) ?? fallback ?? "No informado";
+    var observation = Catalog("OBSERVACIÓN DEL ÁREA", project.TechnicalAnalysis);
+    var summary = observation.Length > 500 ? observation[..500] + "…" : observation;
+    var evaluations = dossier?.Records.Count(r => r.Sheet == "BD_FACTIBILIDAD") ?? 0;
+    var mx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    string Factible(string? v) => (v ?? "").Trim().ToUpperInvariant() switch { "1" or "SI" or "SÍ" => "Factible", "X" => "Con restricciones de red", "DESECHADO" => "Desechado", "" or "NO INFORMADO" => "Sin evaluación", var o => o };
+    string Clasificacion(string? v) => string.IsNullOrWhiteSpace(v) || v.Trim() == "No informado" ? "Sin clasificación" : char.ToUpper(v.Trim()[0]) + v.Trim()[1..];
+    var enCluster = Model.ClusterMembers;
+    var enGrupo = Model.ExclusiveMembers;
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="Costos y factibilidad" data-label="Factibilidad y excluyentes">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Factibilidad</span><span class="pam-lamina-head__aside">@project.Folio</span></header>
+    <h2 class="pam-lamina-title is-guinda">Factibilidad y excluyentes</h2>
+    <div class="pam-lamina-body convocatoria-feasibility">
+        <div class="convocatoria-feasibility__status">
+            <article><span>Clasificación</span><strong>@Clasificacion(Catalog("CLASIFICACIÓN", project.AnalysisClassification))</strong></article>
+            <article><span>Factibilidad</span><strong>@Factible(Catalog("¿FACTIBLE?", project.TechnicalViability))</strong></article>
+            <article><span>Excluyente con</span><strong>@Catalog("EXCLUYENTE CON")</strong></article>
+        </div>
+        @{ var marks = Model.Marks; }
+        @if (marks != null)
+        {
+            <div class="convocatoria-feasibility__status">
+                <article><span><i class="bi bi-diagram-3" aria-hidden="true"></i>Clúster candidato</span><strong>@(string.IsNullOrWhiteSpace(marks.Cluster) ? "No identificado" : marks.Cluster)</strong><small>@(enCluster.Count > 0 ? $"{enCluster.Count} proyectos · {enCluster.Sum(m => m.Mw).ToString("N0", mx)} MW · detalle en la lámina siguiente" : "Identificación de CFE")</small></article>
+                <article><span><i class="bi bi-sign-intersection" aria-hidden="true"></i>Grupo excluyente 1</span><strong>@(string.IsNullOrWhiteSpace(marks.Excluyente1) ? "Sin grupo" : marks.Excluyente1)</strong><small>@(enGrupo.Count > 0 ? $"{enGrupo.Count} proyectos · {enGrupo.Sum(m => m.Mw).ToString("N0", mx)} MW mutuamente excluyentes" : "Proyectos mutuamente excluyentes")</small></article>
+                <article><span><i class="bi bi-sign-intersection-y" aria-hidden="true"></i>Grupo excluyente 2</span><strong>@(string.IsNullOrWhiteSpace(marks.Excluyente2) ? "Sin grupo" : marks.Excluyente2)</strong><small>Segundo grupo, cuando aplica</small></article>
+            </div>
+        }
+        <div class="convocatoria-feasibility__grid">
+            <article><span>Observación del área</span><p>@summary</p>
+                @if (observation.Length > 500) { <small>Observación completa en el detalle de factibilidad.</small> }
+            </article>
+            <article><span>Evaluación técnica</span><strong>@(evaluations > 0 ? "Registrada" : "No registrada")</strong><p>@(evaluations > 0 ? "Detalle de la evaluación técnica en las láminas siguientes." : "Sin evaluación técnica registrada en el corte.")</p><p>Clasificación y proyectos excluyentes conforme al catálogo de proyectos.</p></article>
+        </div>
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("catálogo de proyectos y evaluación técnica")</span><span class="pam-lamina-foot__meta"></span></div>
+</section>

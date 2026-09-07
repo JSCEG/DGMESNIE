@@ -80,6 +80,7 @@
                 };
                 if (form.dataset.tipo) payload.tipo = form.dataset.tipo;
                 if (form.dataset.numeroPermiso) payload.numeroPermiso = form.dataset.numeroPermiso;
+                if (form.dataset.folio) payload.folio = form.dataset.folio;
 
                 const respuesta = await fetch(endpoint, {
                     method: "POST",

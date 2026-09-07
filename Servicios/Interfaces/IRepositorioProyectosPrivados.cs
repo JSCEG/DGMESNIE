@@ -32,7 +32,16 @@ namespace NSIE.Servicios.Interfaces
 
         // Cartera estratégica y segunda convocatoria
         Task SincronizarCarteraConvocatoriaAsync(CarteraConvocatoriaSeed seed, string usuario);
+        Task<CarteraConvocatoriaImportResult> GuardarCargaCarteraConvocatoriaAsync(CarteraConvocatoriaImportDocument document, string usuario);
         Task<CarteraConvocatoriaDatos> ObtenerCarteraConvocatoriaAsync();
+        Task<CarteraConvocatoriaExpediente?> ObtenerExpedienteConvocatoriaAsync(string folio);
+        Task<int> CompletarExpedientesConvocatoriaAsync(CarteraConvocatoriaImportDocument document, string usuario, bool aplicar = false);
+        Task<List<CarteraConvocatoriaOperacionProgramada>> ObtenerProgramaOperacionConvocatoriaAsync();
+        Task<List<CarteraConvocatoriaExpediente>> ObtenerExpedientesConvocatoriaAsync();
+        Task<int> GuardarMarcasConvocatoriaAsync(CarteraConvocatoriaMarcasDocument document, string usuario);
+        Task<CarteraConvocatoriaMarca?> ObtenerMarcaConvocatoriaAsync(string folio);
+        Task<List<CarteraConvocatoriaMarca>> ObtenerMarcasConvocatoriaAsync();
+        Task<string?> ObtenerUrlKmlCarteraConvocatoriaAsync(string folio, string tipo);
         Task<bool> ActualizarEstadoConvocatoriaAsync(string folio, string estado, string usuario);
         Task<CarteraConvocatoriaComentario?> AgregarComentarioConvocatoriaAsync(AgregarComentarioConvocatoriaRequest request, string usuario);
         Task<bool> ActualizarPrioridadConvocatoriaAsync(string folio, int prioridad, string usuario);

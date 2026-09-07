@@ -12,7 +12,7 @@ using NSIE.Servicios.Interfaces;
 
 namespace NSIE.Servicios
 {
-    public class RepositorioProyectosPrivados : IRepositorioProyectosPrivados
+    public partial class RepositorioProyectosPrivados : IRepositorioProyectosPrivados
     {
         private sealed class EstadoConvocatoriaRow
         {
@@ -775,6 +775,7 @@ USING (SELECT @Folio AS Folio) AS source
 ON target.Folio = source.Folio
 WHEN MATCHED THEN UPDATE SET
     Nombre = @Name,
+    FolioCanonico = @CanonicalFolio,
     Tipo = @Type,
     GerenciaControl = @Region,
     EntidadFederativa = @State,
@@ -794,36 +795,44 @@ WHEN MATCHED THEN UPDATE SET
     Fuente = @Source,
     FilaFuente = @SourceRow,
     VersionFuente = @SourceVersion,
+    ConsideracionClave = @Consideration,
     Activo = 1,
     ActualizadoUtc = SYSUTCDATETIME(),
     ActualizadoPor = @Usuario
 WHEN NOT MATCHED THEN INSERT
 (
-    Folio, Nombre, Tipo, GerenciaControl, EntidadFederativa,
+    Folio, FolioCanonico, Nombre, Tipo, GerenciaControl, EntidadFederativa,
     Tecnologia, RazonSocial, GrupoInteres, Subestacion,
     PuntoInterconexion, CapacidadMw, OrdenPrelacion, Prioridad,
     FuentePrioridad, EstadoSeguimiento, ClasificacionAnalisis,
     ViabilidadTecnica, AnalisisTecnico, FechaFirmaProyecto,
-    GrupoDuplicado, Fuente, FilaFuente,
+    GrupoDuplicado, Fuente, FilaFuente, ConsideracionClave,
     VersionFuente, CreadoPor
 )
 VALUES
 (
-    @Folio, @Name, @Type, @Region, @State,
+    @Folio, @CanonicalFolio, @Name, @Type, @Region, @State,
     @Technology, @Company, @InterestGroup, @Substation,
     @InterconnectionPoint, @Mw, @Rank, @Priority,
     @PrioritySource, @Decision, @AnalysisClassification,
     @TechnicalViability, @TechnicalAnalysis, @ProjectSignedAt,
-    @DuplicateGroup, @Source, @SourceRow,
+    @DuplicateGroup, @Source, @SourceRow, @Consideration,
     @SourceVersion, @Usuario
 );";
 
                         foreach (var project in seed.Projects)
                         {
                             var decision = NormalizarEstadoConvocatoria(project.Decision);
+                            var consideration = decision switch
+                            {
+                                "continua" => "firme",
+                                "no-continua" => "no-va",
+                                _ => "revision"
+                            };
                             await db.ExecuteAsync(upsert, new
                             {
                                 project.Folio,
+                                project.CanonicalFolio,
                                 project.Name,
                                 project.Type,
                                 project.Region,
@@ -838,6 +847,7 @@ VALUES
                                 Priority = Math.Clamp(project.Priority, 1, 4),
                                 project.PrioritySource,
                                 Decision = decision,
+                                Consideration = consideration,
                                 project.AnalysisClassification,
                                 project.TechnicalViability,
                                 project.TechnicalAnalysis,
@@ -927,6 +937,294 @@ END;";
             }
         }
 
+        public async Task<CarteraConvocatoriaImportResult> GuardarCargaCarteraConvocatoriaAsync(
+            CarteraConvocatoriaImportDocument document,
+            string usuario)
+        {
+            ArgumentNullException.ThrowIfNull(document);
+            if (document.Projects.Count == 0)
+                throw new InvalidDataException("La carga no contiene proyectos.");
+
+            using (var db = Connection)
+            {
+                db.Open();
+                using (var tx = db.BeginTransaction(IsolationLevel.Serializable))
+                {
+                    try
+                    {
+                        var existing = await db.QueryFirstOrDefaultAsync<CarteraConvocatoriaImportResult>(@"
+SELECT TOP (1)
+    CargaId AS ImportId,
+    NombreArchivo AS FileName,
+    VersionFuente AS SourceVersion,
+    FechaCorte AS CutoffDate,
+    FilasCatalogo AS Total,
+    Firmes AS Firm,
+    EnRevision AS Review,
+    NoVan AS Rejected,
+    KmlProyecto AS ProjectKml,
+    KmlSubestacion AS SubstationKml
+FROM dgmesnie.CarteraConvocatoriaCarga WITH (UPDLOCK, HOLDLOCK)
+WHERE Sha256 = @Sha256;", new { document.Sha256 }, tx);
+
+                        if (existing != null)
+                        {
+                            await GuardarExpedientesAsync(db, tx, document, existing.ImportId, usuario);
+                            existing.AlreadyImported = true;
+                            tx.Commit();
+                            return existing;
+                        }
+
+                        var previousImportId = await db.QueryFirstOrDefaultAsync<long?>(@"
+SELECT TOP (1) CargaId
+FROM dgmesnie.CarteraConvocatoriaCarga
+WHERE Estado = N'completada'
+ORDER BY ImportadoUtc DESC, CargaId DESC;", transaction: tx);
+
+                        var firm = document.Projects.Count(project => project.Consideration == "firme");
+                        var review = document.Projects.Count(project => project.Consideration == "revision");
+                        var rejected = document.Projects.Count(project => project.Consideration == "no-va");
+                        var projectKml = document.Projects.Count(project => !string.IsNullOrWhiteSpace(project.ProjectKmlUrl));
+                        var substationKml = document.Projects.Count(project => !string.IsNullOrWhiteSpace(project.SubstationKmlUrl));
+
+                        var importId = await db.ExecuteScalarAsync<long>(@"
+INSERT dgmesnie.CarteraConvocatoriaCarga
+(
+    NombreArchivo, ArchivoBytes, Sha256, VersionFuente, FechaCorte,
+    FilasFuente, FilasCatalogo, Firmes, EnRevision, NoVan,
+    KmlProyecto, KmlSubestacion, ImportadoPor
+)
+OUTPUT inserted.CargaId
+VALUES
+(
+    @FileName, @FileBytes, @Sha256, @SourceVersion, @CutoffDate,
+    @SourceRows, @CatalogRows, @Firm, @Review, @Rejected,
+    @ProjectKml, @SubstationKml, @Usuario
+);", new
+                        {
+                            document.FileName,
+                            document.FileBytes,
+                            document.Sha256,
+                            document.SourceVersion,
+                            document.CutoffDate,
+                            document.SourceRows,
+                            CatalogRows = document.Projects.Count,
+                            Firm = firm,
+                            Review = review,
+                            Rejected = rejected,
+                            ProjectKml = projectKml,
+                            SubstationKml = substationKml,
+                            Usuario = usuario
+                        }, tx);
+
+                        const string upsertAndSnapshot = @"
+MERGE dgmesnie.CarteraConvocatoriaProyecto WITH (HOLDLOCK) AS target
+USING (SELECT @Folio AS Folio) AS source
+ON target.Folio = source.Folio
+WHEN MATCHED THEN UPDATE SET
+    Nombre = @Name,
+    FolioCanonico = @CanonicalFolio,
+    Tipo = @Type,
+    GerenciaControl = @Region,
+    EntidadFederativa = @State,
+    Tecnologia = @Technology,
+    RazonSocial = @Company,
+    GrupoInteres = @InterestGroup,
+    Subestacion = @Substation,
+    PuntoInterconexion = @InterconnectionPoint,
+    CapacidadMw = @Mw,
+    OrdenPrelacion = @Rank,
+    EstadoSeguimiento = @Decision,
+    ConsideracionClave = @Consideration,
+    EstatusUniverso = @UniverseStatus,
+    ClasificacionAnalisis = @AnalysisClassification,
+    ViabilidadTecnica = @TechnicalViability,
+    AnalisisTecnico = @TechnicalAnalysis,
+    FechaFirmaProyecto = @ProjectSignedAt,
+    GrupoDuplicado = @DuplicateGroup,
+    Municipio = @Municipality,
+    Latitud = @Latitude,
+    Longitud = @Longitude,
+    LatitudSubestacion = @SubstationLatitude,
+    LongitudSubestacion = @SubstationLongitude,
+    UrlKmlProyecto = @ProjectKmlUrl,
+    UrlKmlSubestacion = @SubstationKmlUrl,
+    CostoRedMdd = @NetworkCostUsd,
+    CostoRedMdp = @NetworkCostMxn,
+    NumeroObras = @WorksCount,
+    Obras = @WorksDescription,
+    CargaId = @ImportId,
+    Fuente = N'Mixtos II',
+    FilaFuente = @SourceRow,
+    VersionFuente = @SourceVersion,
+    Activo = 1,
+    ActualizadoUtc = SYSUTCDATETIME(),
+    ActualizadoPor = @Usuario
+WHEN NOT MATCHED THEN INSERT
+(
+    Folio, FolioCanonico, Nombre, Tipo, GerenciaControl, EntidadFederativa,
+    Tecnologia, RazonSocial, GrupoInteres, Subestacion, PuntoInterconexion,
+    CapacidadMw, OrdenPrelacion, Prioridad, FuentePrioridad,
+    EstadoSeguimiento, ConsideracionClave, EstatusUniverso,
+    ClasificacionAnalisis, ViabilidadTecnica, AnalisisTecnico,
+    FechaFirmaProyecto, GrupoDuplicado, Municipio, Latitud, Longitud,
+    LatitudSubestacion, LongitudSubestacion, UrlKmlProyecto, UrlKmlSubestacion,
+    CostoRedMdd, CostoRedMdp, NumeroObras, Obras, CargaId,
+    Fuente, FilaFuente, VersionFuente, CreadoPor
+)
+VALUES
+(
+    @Folio, @CanonicalFolio, @Name, @Type, @Region, @State,
+    @Technology, @Company, @InterestGroup, @Substation, @InterconnectionPoint,
+    @Mw, @Rank, 4, N'Importación Mixtos II',
+    @Decision, @Consideration, @UniverseStatus,
+    @AnalysisClassification, @TechnicalViability, @TechnicalAnalysis,
+    @ProjectSignedAt, @DuplicateGroup, @Municipality, @Latitude, @Longitude,
+    @SubstationLatitude, @SubstationLongitude, @ProjectKmlUrl, @SubstationKmlUrl,
+    @NetworkCostUsd, @NetworkCostMxn, @WorksCount, @WorksDescription, @ImportId,
+    N'Mixtos II', @SourceRow, @SourceVersion, @Usuario
+);
+
+INSERT dgmesnie.CarteraConvocatoriaProyectoVersion
+(
+    CargaId, Folio, FolioCanonico, Nombre, ConsideracionClave, EstatusUniverso,
+    GerenciaControl, EntidadFederativa, Municipio, Tecnologia,
+    RazonSocial, GrupoInteres, Subestacion, PuntoInterconexion,
+    CapacidadMw, OrdenPrelacion, Latitud, Longitud,
+    LatitudSubestacion, LongitudSubestacion, UrlKmlProyecto,
+    UrlKmlSubestacion, CostoRedMdd, CostoRedMdp, NumeroObras,
+    Obras, FilaFuente
+)
+VALUES
+(
+    @ImportId, @Folio, @CanonicalFolio, @Name, @Consideration, @UniverseStatus,
+    @Region, @State, @Municipality, @Technology,
+    @Company, @InterestGroup, @Substation, @InterconnectionPoint,
+    @Mw, @Rank, @Latitude, @Longitude,
+    @SubstationLatitude, @SubstationLongitude, @ProjectKmlUrl,
+    @SubstationKmlUrl, @NetworkCostUsd, @NetworkCostMxn, @WorksCount,
+    @WorksDescription, @SourceRow
+);";
+
+                        foreach (var project in document.Projects)
+                        {
+                            await db.ExecuteAsync(upsertAndSnapshot, new
+                            {
+                                project.Folio,
+                                project.CanonicalFolio,
+                                project.Name,
+                                project.Type,
+                                project.Region,
+                                project.State,
+                                project.Technology,
+                                project.Company,
+                                project.InterestGroup,
+                                project.Substation,
+                                project.InterconnectionPoint,
+                                project.Mw,
+                                project.Rank,
+                                Decision = project.Consideration switch
+                                {
+                                    "firme" => "continua",
+                                    "no-va" => "no-continua",
+                                    _ => "revision"
+                                },
+                                project.Consideration,
+                                project.UniverseStatus,
+                                project.AnalysisClassification,
+                                project.TechnicalViability,
+                                project.TechnicalAnalysis,
+                                project.ProjectSignedAt,
+                                project.DuplicateGroup,
+                                project.Municipality,
+                                project.Latitude,
+                                project.Longitude,
+                                project.SubstationLatitude,
+                                project.SubstationLongitude,
+                                project.ProjectKmlUrl,
+                                project.SubstationKmlUrl,
+                                project.NetworkCostUsd,
+                                project.NetworkCostMxn,
+                                project.WorksCount,
+                                project.WorksDescription,
+                                project.SourceRow,
+                                ImportId = importId,
+                                document.SourceVersion,
+                                Usuario = usuario
+                            }, tx);
+                        }
+
+                        await GuardarExpedientesAsync(db, tx, document, importId, usuario);
+
+                        await db.ExecuteAsync(@"
+UPDATE dgmesnie.CarteraConvocatoriaProyecto
+SET Activo = 0,
+    ActualizadoUtc = SYSUTCDATETIME(),
+    ActualizadoPor = @Usuario
+WHERE Activo = 1
+  AND Fuente IN (N'Estratégicos', N'Particulares 2', N'Mixtos II')
+  AND ISNULL(CargaId, 0) <> @ImportId;", new { ImportId = importId, Usuario = usuario }, tx);
+
+                        var added = previousImportId.HasValue
+                            ? await db.ExecuteScalarAsync<int>(@"
+SELECT COUNT(*)
+FROM dgmesnie.CarteraConvocatoriaProyectoVersion currentVersion
+LEFT JOIN dgmesnie.CarteraConvocatoriaProyectoVersion previousVersion
+    ON previousVersion.CargaId = @PreviousImportId
+   AND previousVersion.Folio = currentVersion.Folio
+WHERE currentVersion.CargaId = @ImportId
+  AND previousVersion.ProyectoVersionId IS NULL;", new { PreviousImportId = previousImportId.Value, ImportId = importId }, tx)
+                            : document.Projects.Count;
+
+                        var removed = previousImportId.HasValue
+                            ? await db.ExecuteScalarAsync<int>(@"
+SELECT COUNT(*)
+FROM dgmesnie.CarteraConvocatoriaProyectoVersion previousVersion
+LEFT JOIN dgmesnie.CarteraConvocatoriaProyectoVersion currentVersion
+    ON currentVersion.CargaId = @ImportId
+   AND currentVersion.Folio = previousVersion.Folio
+WHERE previousVersion.CargaId = @PreviousImportId
+  AND currentVersion.ProyectoVersionId IS NULL;", new { PreviousImportId = previousImportId.Value, ImportId = importId }, tx)
+                            : 0;
+
+                        var changes = previousImportId.HasValue
+                            ? await db.ExecuteScalarAsync<int>(@"
+SELECT COUNT(*)
+FROM dgmesnie.CarteraConvocatoriaProyectoVersion currentVersion
+INNER JOIN dgmesnie.CarteraConvocatoriaProyectoVersion previousVersion
+    ON previousVersion.CargaId = @PreviousImportId
+   AND previousVersion.Folio = currentVersion.Folio
+WHERE currentVersion.CargaId = @ImportId
+  AND currentVersion.ConsideracionClave <> previousVersion.ConsideracionClave;", new { PreviousImportId = previousImportId.Value, ImportId = importId }, tx)
+                            : 0;
+
+                        tx.Commit();
+                        return new CarteraConvocatoriaImportResult
+                        {
+                            ImportId = importId,
+                            FileName = document.FileName,
+                            SourceVersion = document.SourceVersion,
+                            CutoffDate = document.CutoffDate,
+                            Total = document.Projects.Count,
+                            Firm = firm,
+                            Review = review,
+                            Rejected = rejected,
+                            ProjectKml = projectKml,
+                            SubstationKml = substationKml,
+                            Added = added,
+                            Removed = removed,
+                            ConsiderationChanges = changes
+                        };
+                    }
+                    catch
+                    {
+                        tx.Rollback();
+                        throw;
+                    }
+                }
+            }
+        }
+
         public async Task<CarteraConvocatoriaDatos> ObtenerCarteraConvocatoriaAsync()
         {
             using (var db = Connection)
@@ -935,6 +1233,7 @@ END;";
 SELECT
     ProyectoCarteraId AS ProjectId,
     Folio,
+    FolioCanonico AS CanonicalFolio,
     Nombre AS Name,
     Tipo AS Type,
     GerenciaControl AS Region,
@@ -942,7 +1241,7 @@ SELECT
     Tecnologia AS Technology,
     RazonSocial AS Company,
     GrupoInteres AS InterestGroup,
-    Subestacion,
+    Subestacion AS Substation,
     PuntoInterconexion AS InterconnectionPoint,
     CapacidadMw AS Mw,
     OrdenPrelacion AS Rank,
@@ -954,6 +1253,22 @@ SELECT
     AnalisisTecnico AS TechnicalAnalysis,
     FechaFirmaProyecto AS ProjectSignedAt,
     GrupoDuplicado AS DuplicateGroup,
+    ConsideracionClave AS Consideration,
+    EstatusUniverso AS UniverseStatus,
+    Municipio AS Municipality,
+    Latitud AS Latitude,
+    Longitud AS Longitude,
+    LatitudSubestacion AS SubstationLatitude,
+    LongitudSubestacion AS SubstationLongitude,
+    UrlKmlProyecto AS ProjectKmlUrl,
+    UrlKmlSubestacion AS SubstationKmlUrl,
+    CONVERT(BIT, CASE WHEN UrlKmlProyecto IS NULL THEN 0 ELSE 1 END) AS HasProjectKml,
+    CONVERT(BIT, CASE WHEN UrlKmlSubestacion IS NULL THEN 0 ELSE 1 END) AS HasSubstationKml,
+    CostoRedMdd AS NetworkCostUsd,
+    CostoRedMdp AS NetworkCostMxn,
+    NumeroObras AS WorksCount,
+    Obras AS WorksDescription,
+    CargaId AS ImportId,
     Fuente AS Source,
     FilaFuente AS SourceRow,
     ActualizadoUtc AS UpdatedAt,
@@ -984,6 +1299,25 @@ SELECT TOP (1) VersionFuente
 FROM dgmesnie.CarteraConvocatoriaProyecto
 WHERE Activo = 1 AND VersionFuente IS NOT NULL
 ORDER BY ActualizadoUtc DESC, ProyectoCarteraId DESC;");
+                var latestImport = await db.QueryFirstOrDefaultAsync<CarteraConvocatoriaCarga>(@"
+SELECT TOP (1)
+    CargaId AS ImportId,
+    NombreArchivo AS FileName,
+    Sha256,
+    VersionFuente AS SourceVersion,
+    FechaCorte AS CutoffDate,
+    FilasFuente AS SourceRows,
+    FilasCatalogo AS CatalogRows,
+    Firmes AS FirmCount,
+    EnRevision AS ReviewCount,
+    NoVan AS RejectedCount,
+    KmlProyecto AS ProjectKmlCount,
+    KmlSubestacion AS SubstationKmlCount,
+    ImportadoUtc AS ImportedAt,
+    ImportadoPor AS ImportedBy
+FROM dgmesnie.CarteraConvocatoriaCarga
+WHERE Estado = N'completada'
+ORDER BY ImportadoUtc DESC, CargaId DESC;");
 
                 var latest = notes.FirstOrDefault();
                 return new CarteraConvocatoriaDatos
@@ -992,10 +1326,14 @@ ORDER BY ActualizadoUtc DESC, ProyectoCarteraId DESC;");
                     Source = new
                     {
                         database = "dgmesnie.CarteraConvocatoriaProyecto",
-                        rows = projects.Count
+                        rows = projects.Count,
+                        firm = projects.Count(project => project.Consideration == "firme"),
+                        review = projects.Count(project => project.Consideration == "revision"),
+                        rejected = projects.Count(project => project.Consideration == "no-va")
                     },
                     Projects = projects,
                     Notes = notes,
+                    LatestImport = latestImport,
                     Session = latest == null
                         ? new CarteraConvocatoriaSesion()
                         : new CarteraConvocatoriaSesion
@@ -1004,6 +1342,25 @@ ORDER BY ActualizadoUtc DESC, ProyectoCarteraId DESC;");
                             Date = latest.Date.ToString("yyyy-MM-dd")
                         }
                 };
+            }
+        }
+
+        public async Task<string?> ObtenerUrlKmlCarteraConvocatoriaAsync(string folio, string tipo)
+        {
+            if (string.IsNullOrWhiteSpace(folio)) return null;
+            var column = tipo.Equals("subestacion", StringComparison.OrdinalIgnoreCase)
+                ? "UrlKmlSubestacion"
+                : tipo.Equals("proyecto", StringComparison.OrdinalIgnoreCase)
+                    ? "UrlKmlProyecto"
+                    : null;
+            if (column == null) return null;
+
+            using (var db = Connection)
+            {
+                return await db.QueryFirstOrDefaultAsync<string?>(@$"
+SELECT {column}
+FROM dgmesnie.CarteraConvocatoriaProyecto
+WHERE Folio = @Folio AND Activo = 1;", new { Folio = folio.Trim() });
             }
         }
 
@@ -1033,6 +1390,11 @@ WHERE Folio = @Folio AND Activo = 1;", new { Folio = folio.Trim() }, tx);
                             await db.ExecuteAsync(@"
 UPDATE dgmesnie.CarteraConvocatoriaProyecto
 SET EstadoSeguimiento = @Estado,
+    ConsideracionClave = CASE @Estado
+        WHEN N'continua' THEN N'firme'
+        WHEN N'no-continua' THEN N'no-va'
+        ELSE N'revision'
+    END,
     ActualizadoUtc = SYSUTCDATETIME(),
     ActualizadoPor = @Usuario
 WHERE ProyectoCarteraId = @Id;

@@ -1,0 +1,33 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var d = Model.Dossier;
+    var p = Model.Project;
+    var social = d?.Records.Where(r => r.Sheet == "BD_IMPACTO_SOCIAL").ToList() ?? new List<ConvocatoriaRegistroFuente>();
+    string C(string campo) => Texto(d.Valor(campo, 1, "CATALOGO DE PROYECTOS"));
+    string S(string campo) { var valores = social.SelectMany(r => r.Fields).Where(f => f.Name == campo && Tiene(f.Value)).Select(f => f.Value!.Trim()).Distinct().ToList(); return valores.Count == 0 ? "No informado" : string.Join(" · ", valores); }
+    var inversionLabel = Numero(d.Valor("Monto de Inversión Social"), 2);
+    var showCosts = !string.Equals(Context.Request.Query["costos"].ToString(), "false", StringComparison.OrdinalIgnoreCase);
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="Evaluación social y ambiental" data-label="Evaluación social y ambiental" data-convocatoria-section="social">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Evaluación documental</span><span class="pam-lamina-head__aside">Proyecto @p.Folio</span></header>
+    <h2 class="pam-lamina-title is-guinda">Evaluación social y ambiental</h2>
+    <div class="pam-lamina-body convocatoria-social">
+        <div class="convocatoria-summary__metrics">
+            @foreach (var campo in new[] { "RIESGO SOCIAL", "ESTATUS EVIS / MISSE", "ESTATUS MIA", "RIESGO AMBIENTAL" })
+            { <article><span>@campo</span><strong>@C(campo)</strong></article> }
+        </div>
+        <div class="convocatoria-social__datos">
+            <article><span><i class="bi bi-people" aria-hidden="true"></i>Folio EVIS / MISSE</span><strong>@S("Folio EVIS / MISSE")</strong><p>Evaluación de impacto social.</p></article>
+            <article><span><i class="bi bi-tree" aria-hidden="true"></i>Folio MIA</span><strong>@S("Folio MIA")</strong><p>Manifestación de impacto ambiental.</p></article>
+            <article><span><i class="bi bi-house-heart" aria-hidden="true"></i>Pueblo o comunidad indígena</span><strong>@S("Pueblo o Comunidad Indígena (Catálogo INPI)")</strong><p>Región indígena: @S("Región Indígena")</p></article>
+            <article><span><i class="bi bi-chat-square-text" aria-hidden="true"></i>Consulta indígena (CI)</span><strong>@S("CI")</strong><p>Conforme a la evaluación documental.</p></article>
+            <article><span><i class="bi bi-translate" aria-hidden="true"></i>Lengua indígena</span><strong>@S("Lengua indígena")</strong><p>40% o más de población indígena: @S("40% o más de población indígena")</p></article>
+            @if (showCosts) { <article><span><i class="bi bi-piggy-bank" aria-hidden="true"></i>Monto de inversión social</span><strong>@inversionLabel</strong><p>Monto declarado por el promovente en su solicitud.</p></article> }
+            else { <article><span><i class="bi bi-journal-check" aria-hidden="true"></i>Evaluación documental</span><strong>@(social.Count > 0 ? "Registrada" : "No registrada")</strong><p>@(social.Count > 0 ? "Detalle en las láminas siguientes." : "Sin evaluación social registrada en el corte.")</p></article> }
+        </div>
+        <p class="convocatoria-social__fuente">@(social.Count > 0 ? "Evaluación social y ambiental registrada en el corte; el detalle se presenta en las láminas siguientes." : "Sin evaluación social y ambiental registrada para este proyecto en el corte.")</p>
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("evaluación documental social y ambiental y catálogo de proyectos")</span><span></span></div>
+</section>

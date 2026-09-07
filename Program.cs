@@ -103,6 +103,12 @@ builder.Services.AddTransient<PvirseImportService>();
 builder.Services.AddScoped<IPvircePreviewService, PvircePreviewService>();
 builder.Services.AddScoped<IPlaneacionVinculanteOverviewService, PlaneacionVinculanteOverviewService>();
 builder.Services.AddTransient<IngestionService>();
+builder.Services.AddScoped<ICarteraConvocatoriaImportService, CarteraConvocatoriaImportService>();
+builder.Services.AddHttpClient("CarteraConvocatoriaKml", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-Convocatorias-KML/1.0");
+});
 builder.Services.AddTransient<IRepositorioReuniones, RepositorioReuniones>();
 builder.Services.AddTransient<IRepositorioSNIER, RepositorioSNIER>();
 builder.Services.AddTransient<VisitasViewComponent>();

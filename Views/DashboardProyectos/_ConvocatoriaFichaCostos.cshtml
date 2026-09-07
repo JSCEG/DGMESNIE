@@ -1,0 +1,75 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@{
+    var d = Model.Dossier;
+    var p = Model.Project;
+    var mx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    var cfe = d?.Records.FirstOrDefault(r => r.Sheet == "BD_COSTOS CFE");
+    var obras = d?.Records.Where(r => r.Sheet == "BD_COSTOS_OBRAS").ToList();
+    string V(string campo) => cfe?.Fields.FirstOrDefault(f => f.Name == campo)?.Value ?? "";
+    string C(string campo) => d?.Value("CATALOGO DE PROYECTOS", campo) ?? "";
+    var showCosts = !string.Equals(Context.Request.Query["costos"].ToString(), "false", StringComparison.OrdinalIgnoreCase);
+
+    // Importes por moneda: los equivalentes USD de previas y servicios provienen de la ficha CFE;
+    // el equivalente MXN de construcción y el costo por MW en pesos se calculan con el tipo de cambio de la ficha.
+    decimal? Num(string? valor) => decimal.TryParse(valor, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var numero) ? numero : null;
+    string M(decimal? valor, int decimales = 2) => valor.HasValue ? valor.Value.ToString("N" + decimales, mx) : "No informado";
+    var tipoCambio = d?.ExchangeRate is > 0 ? d.ExchangeRate : null;
+    var construccionUsd = Num(V("Construcción (USD)"));
+    var construccionMxn = construccionUsd.HasValue && tipoCambio.HasValue ? construccionUsd * tipoCambio : null;
+    var previasMxn = Num(V("Previas (MXN)"));
+    var previasUsd = Num(V("Previas (USD)"));
+    var serviciosMxn = Num(V("Servicios (MXN)"));
+    var serviciosUsd = Num(V("Servicios (USD)"));
+    var totalMdd = Num(V("Costo de red total (MDD)")) ?? Num(C("COSTO DE RED (MDD)"));
+    var totalMdp = Num(V("Costo de red total (MDP)")) ?? Num(C("COSTO DE RED (MDP)"));
+    var redPorMwMdd = Num(C("% $RED/MW"));
+    var redPorMwMdp = redPorMwMdd.HasValue && tipoCambio.HasValue ? redPorMwMdd * tipoCambio : null;
+    var numeroObras = Num(C("NÚMERO DE OBRAS")) ?? Num(V("Obras")) ?? (obras is { Count: > 0 } ? obras.Count : null);
+    var tieneFicha = cfe != null;
+    var etiquetaFicha = string.Equals(C("¿TIENE FICHA DE COSTOS?").Trim(), "SI", StringComparison.OrdinalIgnoreCase) || tieneFicha ? "Con ficha CFE" : "Sin ficha CFE";
+}
+@if (showCosts)
+{
+<section class="pam-slide pam-slide--content" data-slide data-index-group="Costos y factibilidad" data-label="Costos de red · ficha CFE" data-convocatoria-section="costos">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Costos de red de interconexión y refuerzos · CFE</span><span class="pam-lamina-head__aside">Proyecto @p.Folio</span></header>
+    <h2 class="pam-lamina-title">Costos de red · ficha CFE</h2>
+    <div class="pam-lamina-body convocatoria-costos">
+        <div class="convocatoria-summary__metrics">
+            <article><span><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i>Ficha de costos CFE</span><strong>@etiquetaFicha</strong></article>
+            <article><span><i class="bi bi-cash-coin" aria-hidden="true"></i>Costo de red</span><strong>@M(totalMdp)</strong><small>MDP</small></article>
+            <article><span><i class="bi bi-currency-dollar" aria-hidden="true"></i>Costo de red</span><strong>@M(totalMdd)</strong><small>MDD</small></article>
+            <article><span><i class="bi bi-tools" aria-hidden="true"></i>Obras de interconexión y refuerzo</span><strong>@M(numeroObras, 0)</strong></article>
+        </div>
+        @if (!tieneFicha)
+        {
+            <div class="conv-highlight"><i class="bi bi-info-circle" aria-hidden="true"></i><div><span>Costos de red CFE</span><strong>Sin ficha de costos CFE para este proyecto en el corte</strong><p>Los costos de inversión declarados por el promovente en su solicitud se presentan en la lámina «Inversión declarada por el promovente».</p></div></div>
+        }
+        else
+        {
+        <div class="convocatoria-costos__componentes">
+            <h3>Componentes del costo de red</h3>
+            <table>
+                <thead><tr><th>Concepto</th><th>Moneda de origen</th><th>Importe de origen</th><th>Equivalente USD</th><th>Equivalente MXN</th></tr></thead>
+                <tbody>
+                    <tr><th>Construcción</th><td>USD</td><td>@M(construccionUsd)</td><td>@M(construccionUsd)</td><td>@M(construccionMxn)@(construccionMxn.HasValue ? " *" : "")</td></tr>
+                    <tr><th>Actividades previas</th><td>MXN</td><td>@M(previasMxn)</td><td>@M(previasUsd)@(previasUsd.HasValue ? " *" : "")</td><td>@M(previasMxn)</td></tr>
+                    <tr><th>Servicios (CPTT)</th><td>MXN</td><td>@M(serviciosMxn)</td><td>@M(serviciosUsd)@(serviciosUsd.HasValue ? " *" : "")</td><td>@M(serviciosMxn)</td></tr>
+                </tbody>
+                <tfoot>
+                    <tr><th>Costo de red total</th><td>USD / MXN</td><td>—</td><td>@M(totalMdd) <small>MDD</small></td><td>@M(totalMdp) <small>MDP</small></td></tr>
+                </tfoot>
+            </table>
+            <p>@(tipoCambio.HasValue ? $"* Equivalentes calculados con el tipo de cambio de la ficha CFE ({tipoCambio.Value.ToString("N2", mx)} MXN/USD), aplicado a todas las obras del proyecto." : "Importes conforme a la ficha de costos CFE.")</p>
+        </div>
+        <div class="convocatoria-costos__datos">
+            <article><span><i class="bi bi-currency-exchange" aria-hidden="true"></i>Tipo de cambio</span><strong>@M(tipoCambio) <small>MXN/USD</small></strong><p>Tipo de cambio de la ficha de costos CFE, aplicado a todas las obras.</p></article>
+            <article><span><i class="bi bi-speedometer" aria-hidden="true"></i>Costo de red por MW</span><strong>@M(redPorMwMdd, 4) <small>MDD/MW</small></strong><p>@(redPorMwMdp.HasValue ? $"Equivalente: {M(redPorMwMdp, 3)} MDP/MW *." : "Costo de red entre capacidad neta del proyecto.")</p></article>
+            <article><span><i class="bi bi-list-check" aria-hidden="true"></i>Desglose por obra</span><strong>@M(Num(C("COSTO OBRAS TOTAL (MDD)"))) <small>MDD</small></strong><p>Suma del desglose de @M(numeroObras, 0) obras; detalle en las láminas siguientes.</p></article>
+            <article><span><i class="bi bi-cash-stack" aria-hidden="true"></i>Inversión declarada por el promovente</span><strong>@M(Num(d?.Value("BD_MIXTOS_II", "Monto de inversión total del proyecto")), 0)</strong><p>Monto total declarado en la solicitud; independiente del costo de red CFE.</p></article>
+        </div>
+        }
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("ficha de costos de interconexión y refuerzos elaborada por CFE") MDP: millones de pesos · MDD: millones de dólares.</span><span></span></div>
+</section>
+}

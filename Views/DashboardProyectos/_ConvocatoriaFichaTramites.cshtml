@@ -1,0 +1,69 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var d = Model.Dossier;
+    var p = Model.Project;
+    var tecnico = d.Registro();
+    var fila = tecnico == null ? "" : $"BD_MIXTOS_II · fila {tecnico.Row}";
+    var validacion = d.Valor("Estatus Validación CENACE");
+    var validacionPago = d.Valor("Estatus de Validación CENACE");
+    var validacionManifestacion = d.Valor("Estatus Validación CENACE", 2);
+    var validacionOk = Tiene(validacion) && validacion!.Trim().ToUpperInvariant().StartsWith("VALIDADO");
+    var interesFecha = d.Valor("Fecha", 1, "BD_INTERES_CFE") ?? d.Valor("CFE Manifestación I.", 1, "CATALOGO DE PROYECTOS");
+    var interesOficio = d.Valor("Oficio", 1, "BD_INTERES_CFE") ?? d.Valor("CFE MI Oficio", 1, "CATALOGO DE PROYECTOS");
+    var interesRegistro = d.Registro("BD_INTERES_CFE");
+    var enlaces = new (string Campo, string Titulo, string Icono)[] {
+        ("Anexo4", "Anexo 4", "bi-file-earmark-richtext"),
+        ("Solicitud de permiso (documento)", "Solicitud de permiso", "bi-file-earmark-text"),
+        ("No Cumple/Solicitud de Pago/Revalidación Documento (Oficio)", "Oficio de trámite", "bi-envelope-paper"),
+        ("Documento de pago", "Comprobante de pago", "bi-receipt"),
+        ("Desahogo 1 - Documento del desahogo", "Desahogo de prevención", "bi-reply"),
+        ("Carta de Aceptación", "Carta de aceptación de obras", "bi-file-earmark-check"),
+        ("Acuerdos de la sesión (Documento)", "Acuerdos del comité", "bi-journal-check"),
+        ("Formato de Desistimiento (Documento)", "Formato de desistimiento", "bi-file-earmark-x")
+    }.Select(e => (e.Titulo, e.Icono, Url: d.Enlace(e.Campo))).Where(e => e.Url != null).ToList();
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="Expediente y cierre" data-label="Trámites y validación">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Ventanilla y CENACE</span><span class="pam-lamina-head__aside">@p.Folio</span></header>
+    <h2 class="pam-lamina-title">Trámites y validación</h2>
+    <div class="pam-lamina-body conv-page">
+        <div class="convocatoria-summary__metrics">
+            <article class="@(validacionOk ? "is-verde" : "is-guinda")"><span><i class="bi bi-patch-check-fill" aria-hidden="true"></i>Validación CENACE</span><strong>@Texto(validacion)</strong><small>Pago: @Texto(validacionPago, "s/d") · Manifestación: @Texto(validacionManifestacion, "s/d")</small></article>
+            <article class="is-dorado"><span><i class="bi bi-journal-text" aria-hidden="true"></i>Registro en ventanilla</span><strong>@d.Dato("Registro")</strong><small>Inicio @Fecha(d.Valor("Fecha Inicio Registro")) · firma @Fecha(d.Valor("Fecha Firma Proyecto"))</small></article>
+            <article class="is-verde"><span><i class="bi bi-credit-card" aria-hidden="true"></i>Pago de estudios</span><strong>@d.Dato("Estatus de Pago")</strong><small>Comprobante: @Fecha(d.Valor("Fecha de carga de comprobante de pago"))@(Tiene(d.Valor("Solicitud de Pago Monto del Pago (MXN)")) ? " · " + Numero(d.Valor("Solicitud de Pago Monto del Pago (MXN)"), 2) + " MXN" : "")</small></article>
+            <article><span><i class="bi bi-file-earmark-medical" aria-hidden="true"></i>Solicitud de permiso</span><strong>@d.Dato("Estatus de la solicitud de permiso (Sin información / Presentada)")</strong><small>Recibida @Fecha(d.Valor("Fecha de recepción de la solicitud")) · prevención: @d.Dato("Estatus de la solicitud de permiso (Sin información / Con prevención)", 1, "s/d")</small></article>
+        </div>
+        <div class="conv-two">
+            <dl class="conv-facts conv-facts--compact">
+                <div><dt>Cuenta de registro OPE</dt><dd>@d.Dato("Cuenta Registro OPE")</dd></div>
+                <div><dt>Permiso de generación</dt><dd>@d.Dato("Permiso Generación") <small>@d.Dato("Estatus Permiso", 1, "")</small></dd></div>
+                <div><dt>Estatus indicativo · impacto · instalaciones</dt><dd>@d.Dato("Estatus Indicativo") · @d.Dato("Estatus Impacto") · @d.Dato("Estatus Instalaciones")</dd></div>
+                <div><dt>Definición del terreno · restricción de uso de suelo</dt><dd>@d.Dato("Definición Terreno") · @BanderaTexto(d.Valor("Restricción de uso de suelo"))</dd></div>
+                <div><dt>Resultados de estudios de interconexión</dt><dd>@d.Dato("Resultados de los estudios (Sin información / Terminados)") <small>@d.Dato("Número de oficio de notificación de resultados de estudios de interconexión", 1, "")</small></dd></div>
+                <div><dt>Obras de refuerzo e interconexión</dt><dd>@(Tiene(d.Valor("Monto de obras de refuerzos y las obras de interconexión (Si aplica)")) ? Numero(d.Valor("Monto de obras de refuerzos y las obras de interconexión (Si aplica)"), 2) : "No informado") <small>Carta: @d.Dato("Carta de aceptación de las obras de refuerzo (Sin información / Firmada / No firmada)", 1, "s/d")</small></dd></div>
+                <div><dt>Garantía</dt><dd>@d.Dato("Tipo de garantía") <small>@(Tiene(d.Valor("Monto de la garantía")) ? Numero(d.Valor("Monto de la garantía"), 2) : "")</small></dd></div>
+                <div><dt>Comité · resolución</dt><dd>@Fecha(d.Valor("Fecha de la sesion del comite"), "Sin sesión") <small>@d.Dato("Numero de resolucion del comite", 1, "") @d.Dato("Sentido de la resolución", 1, "")</small></dd></div>
+                <div><dt>Manifestación del revisor · validador</dt><dd>@d.Dato("Estatus Manifestación Revisor") · @d.Dato("Estatus Manifestación Validador")</dd></div>
+                <div><dt>Desistimiento</dt><dd>@d.Dato("Estatus del desistimiento", 1, "Sin desistimiento")</dd></div>
+            </dl>
+            <div class="conv-page">
+                <div class="conv-highlight">
+                    <i class="bi bi-envelope-check" aria-hidden="true"></i>
+                    <div><span>Manifestación de interés a CFE</span><strong>@Texto(interesOficio, "Sin oficio registrado")</strong><p>Fecha: @Fecha(interesFecha) · manifestación de interés registrada ante CFE.</p></div>
+                </div>
+                <article class="conv-card is-guinda">
+                    <h3><i class="bi bi-paperclip" aria-hidden="true"></i>Documentos del trámite</h3>
+                    @if (enlaces.Count == 0) { <p>Sin documentos adjuntos en la ventanilla.</p> }
+                    else {
+                        <div class="conv-links">
+                            @foreach (var enlace in enlaces) { <a class="convocatoria-document-link" href="@enlace.Url" target="_blank" rel="noopener noreferrer" title="@enlace.Titulo"><i class="bi @enlace.Icono" aria-hidden="true"></i> @enlace.Titulo</a> }
+                        </div>
+                    }
+                    <small>Accesos a ventanilla y repositorio documental; pueden requerir sesión institucional.</small>
+                </article>
+            </div>
+        </div>
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("ventanilla de la convocatoria y registro de manifestación de interés ante CFE")</span><span class="pam-lamina-foot__meta"></span></div>
+</section>

@@ -1,0 +1,603 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaResumenViewModel
+@using NSIE.Models.ProyectosPrivados
+@{
+    ViewData["Title"] = "Convocatoria de Proyectos Estratégicos · Mixtos II";
+    var mx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+    var corte = Model.CutoffDate?.ToString("dd 'de' MMMM 'de' yyyy", mx) ?? "corte vigente";
+    var fileName = $"Mixtos_II_Convocatoria_Proyectos_Estrategicos_{DateTime.Now:yyyyMMdd}";
+    string N0(decimal v) => v.ToString("N0", mx);
+    string N1(decimal v) => v.ToString("N1", mx);
+    string N2(decimal v) => v.ToString("N2", mx);
+    string Pct(decimal part, decimal total) => total > 0 ? (100m * part / total).ToString("N1", mx) + " %" : "—";
+    string W(decimal v, decimal max) => (max > 0 ? Math.Clamp(100m * v / max, 0m, 100m) : 0m).ToString("F2", inv);
+    string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+    string Bar(string name, decimal value, decimal max, string text, string cls = "", bool compact = false) =>
+        $"<div class=\"rs-bar {cls} {(compact ? "rs-bar--compact" : "")}\"><strong>{Enc(name)}</strong><div class=\"rs-bar__track\"><i style=\"width:{W(value, max)}%\"></i></div><span>{Enc(text)}</span></div>";
+    var fuente = $"Fuente: Convocatoria Mixtos II, corte {corte}.";
+    var maxGcrMw = Model.Gcr.Count > 0 ? Model.Gcr.Max(g => g.Mw) : 0;
+    var techs = Model.Tecnologias.Select(t => t.Name).ToList();
+    var years = Model.Operacion.Where(y => y.Anio != "Sin fecha").ToList();
+    var maxYearMw = years.Count > 0 ? years.Max(y => y.Mw) : 0;
+    var gcrNames = Model.Gcr.Select(g => g.Region).ToList();
+    var palette = new[] { "#9b2247", "#a57f2c", "#0e735c", "#5b4a7a", "#c26d3a", "#6f6b66", "#8a6d3b" };
+    var gcrColor = Model.Gcr.Select((g, i) => (g.Region, Color: palette[i % palette.Length])).ToDictionary(x => x.Region, x => x.Color);
+    var techPalette = new[] { "#a57f2c", "#0e735c", "#9b2247", "#6f6b66" };
+    string Donut(List<(string Name, decimal Value, string Color)> parts, string center, string sub)
+    {
+        var total = parts.Sum(x => x.Value); var circ = 2m * (decimal)Math.PI * 40m; var offset = 0m;
+        var sb = new System.Text.StringBuilder("<svg class=\"rs-donut\" viewBox=\"0 0 110 110\" aria-hidden=\"true\"><circle cx=\"55\" cy=\"55\" r=\"40\" fill=\"none\" stroke=\"#eee8e0\" stroke-width=\"16\"/>");
+        foreach (var p in parts)
+        {
+            if (total <= 0 || p.Value <= 0) continue;
+            var len = circ * p.Value / total;
+            sb.Append($"<circle cx=\"55\" cy=\"55\" r=\"40\" fill=\"none\" stroke=\"{p.Color}\" stroke-width=\"16\" stroke-dasharray=\"{len.ToString("F2", inv)} {(circ - len).ToString("F2", inv)}\" stroke-dashoffset=\"{(-offset).ToString("F2", inv)}\" transform=\"rotate(-90 55 55)\"/>");
+            offset += len;
+        }
+        sb.Append($"<text x=\"55\" y=\"52\" text-anchor=\"middle\" class=\"rs-donut__val\">{Enc(center)}</text><text x=\"55\" y=\"66\" text-anchor=\"middle\" class=\"rs-donut__sub\">{Enc(sub)}</text></svg>");
+        return sb.ToString();
+    }
+}
+
+<link rel="stylesheet" href="~/css/pam-ficha-presentacion.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/convocatoria-ficha-presentacion.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/convocatoria-ficha-proyecto.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/convocatoria-ficha-documentos.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/convocatoria-ficha-solicitud.css" asp-append-version="true" />
+
+<main class="pam-ficha-page convocatoria-ficha-page" data-filename="@fileName" data-project-key="Mixtos II" data-source-label="Convocatoria de Proyectos Estratégicos · Mixtos II">
+    <div class="pam-ficha-toolbar" aria-label="Acciones de la ficha">
+        <a asp-controller="ProyectosPrivados" asp-action="SegundaConvocatoria" class="pam-ficha-toolbar__back"><i class="bi bi-arrow-left" aria-hidden="true"></i><span>Mixtos II</span></a>
+        <div class="pam-ficha-toolbar__title"><strong>Convocatoria de Proyectos Estratégicos</strong><span>Mixtos II · panorama ejecutivo</span></div>
+        <div class="pam-ficha-toolbar__actions">
+            <button type="button" data-export="pdf" title="Descargar ficha en PDF"><i class="bi bi-file-earmark-pdf"></i><span>PDF</span></button>
+            <button type="button" data-export="pptx" title="Descargar ficha en PowerPoint"><i class="bi bi-file-earmark-slides"></i><span>PPT</span></button>
+            <button type="button" id="pam-btn-enviar" title="Enviar la ficha por correo"><i class="bi bi-send"></i><span>Enviar</span></button>
+            <button type="button" data-fullscreen title="Presentar en pantalla completa"><i class="bi bi-arrows-fullscreen"></i><span>Presentar</span></button>
+        </div>
+    </div>
+
+    <div id="pam-envio-modal" class="pam-envio-modal" hidden>
+        <div class="pam-envio-backdrop" data-envio-cerrar></div>
+        <div class="pam-envio-dialog" role="dialog" aria-modal="true" aria-labelledby="pam-envio-titulo">
+            <div class="pam-envio-head">
+                <div><h3 id="pam-envio-titulo">Enviar ficha por correo</h3><p>Panorama ejecutivo de la <strong>Convocatoria de Proyectos Estratégicos · Mixtos II</strong> · se genera y se adjunta al correo.</p></div>
+                <button type="button" class="pam-envio-x" data-envio-cerrar aria-label="Cerrar"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <form id="pam-envio-form" data-folio="CARTERA" data-endpoint="/DashboardProyectos/Convocatorias/Cartera/Enviar" data-skip-page-preloader="true">
+                @Html.AntiForgeryToken()
+                <label class="pam-envio-label">Formato del archivo</label>
+                <div class="pam-envio-formato">
+                    <label><input type="radio" name="formato" value="pdf" checked /><span><i class="bi bi-file-earmark-pdf"></i> PDF</span></label>
+                    <label><input type="radio" name="formato" value="pptx" /><span><i class="bi bi-file-earmark-slides"></i> PowerPoint</span></label>
+                </div>
+                <label class="pam-envio-label" for="pam-envio-buscar">Destinatarios <span>(uno o más)</span></label>
+                <input type="search" id="pam-envio-buscar" class="pam-envio-buscar" placeholder="Buscar por nombre o correo…" autocomplete="off" />
+                <div class="pam-envio-lista" id="pam-envio-lista" role="listbox" aria-multiselectable="true">
+                    @if (Model.Recipients.Count == 0) { <div class="pam-envio-vacio">No hay usuarios con correo registrado.</div> }
+                    else { @foreach (var user in Model.Recipients) {
+                        <label class="pam-envio-item" data-nombre="@user.Nombre.ToLowerInvariant()" data-correo="@user.Correo.ToLowerInvariant()">
+                            <input type="checkbox" name="usuario" value="@user.IdUsuario" />
+                            <span class="pam-envio-item__ini">@(string.IsNullOrWhiteSpace(user.Nombre) ? "?" : user.Nombre.Trim()[..1].ToUpperInvariant())</span>
+                            <span class="pam-envio-item__info"><strong>@user.Nombre</strong><small>@user.Correo@(string.IsNullOrWhiteSpace(user.Cargo) ? "" : $" · {user.Cargo}")</small></span>
+                        </label> } }
+                </div>
+                <label class="pam-envio-label" for="pam-envio-mensaje">Mensaje adicional <span>(opcional)</span></label>
+                <textarea id="pam-envio-mensaje" name="mensaje" rows="2" class="pam-envio-mensaje" placeholder="Ej. Se comparte la ficha de la cartera para la reunión de seguimiento."></textarea>
+                <div class="pam-envio-feedback" id="pam-envio-feedback" hidden></div>
+                <div class="pam-envio-actions">
+                    <button type="button" class="pam-envio-btn pam-envio-btn--cancel" data-envio-cerrar>Cancelar</button>
+                    <button type="submit" class="pam-envio-btn pam-envio-btn--send" id="pam-envio-enviar"><i class="bi bi-send" aria-hidden="true"></i> Enviar ficha</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="pam-deck-shell" class="pam-deck-shell">
+        <div id="pam-deck" class="pam-deck" aria-live="polite">
+            <section class="pam-slide pam-slide--cover is-active" data-slide data-label="Portada">
+                <div class="pam-cover__logos"><img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" /><i></i><img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" /></div>
+                <div class="pam-cover__head">
+                    <div class="pam-cover__eyebrow">Planeación vinculante · Secretaría de Energía</div>
+                    <h1>Convocatoria de Proyectos Estratégicos</h1>
+                    <div class="pam-cover__row"><div class="pam-cover__clave">Mixtos II</div><span class="pam-cover__dash"></span><p>Panorama ejecutivo de la cartera</p></div>
+                    <div class="pam-cover__estatus"><i></i>@Model.Firm proyectos considerados · @N0(Model.MwFirme) MW</div>
+                    <p class="convocatoria-cover__scope">Capacidad, tecnología, modalidad, entradas en operación, interconexión, costos y evaluaciones por gerencia</p>
+                    <p class="convocatoria-cover__unit">Dirección General de Metodologías y Estadísticas del Sistema Nacional de Información Energética</p>
+                </div>
+                <div class="pam-cover__photo" style="background-image:url('/img/pamrnt/reno_portada.png')" role="img" aria-label="Infraestructura eléctrica"><i class="pam-cover__goldline"></i></div>
+                <div class="pam-cover__meta">
+                    <div><span>Corte</span><strong>@corte</strong></div>
+                    <div><span>Universo registrado</span><strong>@Model.Total proyectos · @N0(Model.MwUniverso) MW</strong></div>
+                    <div><span>Considerados</span><strong>@Model.Firm proyectos · @N0(Model.MwFirme) MW</strong></div>
+                    <div><span>Gerencias</span><strong>@Model.Gcr.Count</strong></div>
+                </div>
+            </section>
+
+            @* ── Tablero ejecutivo ── *@
+            @{
+                var picoAnio = years.OrderByDescending(y => y.Mw).FirstOrDefault();
+                var reqTotal = Model.Requerimientos.FirstOrDefault(r => r.System.Equals("TOTAL", StringComparison.OrdinalIgnoreCase));
+                var factibles = Model.Factibilidad.FirstOrDefault(f => f.Name == "Factible");
+                var entidadesMapa = Model.Entidades.Select(e => new { nombre = e.Name, mw = e.Mw, proyectos = e.Projects }).ToList();
+                var techParts = Model.Tecnologias.Select((t, i) => (t.Name, t.Mw, techPalette[i % techPalette.Length])).ToList();
+                var mwPorProyecto = Model.Firm > 0 ? Model.MwFirme / Model.Firm : 0m;
+            }
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Resumen ejecutivo" data-label="Tablero ejecutivo">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Resumen ejecutivo</span><span class="pam-lamina-head__aside">Corte @corte</span></header>
+                <h2 class="pam-lamina-title">Lo esencial de la cartera</h2>
+                <div class="pam-lamina-body conv-page conv-page--gcr">
+                    <div class="rs-kpis">
+                        <div class="is-guinda"><strong>@Model.Firm</strong><span>Proyectos considerados</span><small>de @Model.Total registros en ventanilla</small></div>
+                        <div class="is-guinda"><strong>@N0(Model.MwFirme)</strong><span>MW netos considerados</span><small>@N1(mwPorProyecto) MW por proyecto en promedio</small></div>
+                        <div class="is-dorado"><strong>@(picoAnio?.Anio ?? "—")</strong><span>Año pico de entradas</span><small>@(picoAnio != null ? $"{N0(picoAnio.Mw)} MW · {Pct(picoAnio.Mw, Model.MwFirme)} de la cartera" : "Sin fechas declaradas")</small></div>
+                        <div class="is-verde"><strong>@Pct(reqTotal?.FeasibleMw ?? 0, reqTotal?.RequirementMw ?? 0)</strong><span>Cobertura del requerimiento</span><small>@N0(reqTotal?.FeasibleMw ?? 0) de @N0(reqTotal?.RequirementMw ?? 0) MW factibles</small></div>
+                        <div><strong>@N0(Model.CostoRedMdd) <em>MDD</em></strong><span>Costos de red · CFE</span><small>@Model.ConFichaCfe fichas de costos de @Model.Firm proyectos</small></div>
+                    </div>
+                    <div class="rs-dash">
+                        <div class="rs-block rs-mapa">
+                            <h3><i class="bi bi-geo-alt" aria-hidden="true"></i>Capacidad considerada por entidad <small>MW netos</small></h3>
+                            <div class="rs-mapa__svg" data-mapa-entidades='@Json.Serialize(entidadesMapa)'><p class="conv-note">Cargando mapa…</p></div>
+                            <div class="rs-mini-list">@foreach (var e in Model.Entidades.Take(5)) { <span><b>@e.Name</b>@N0(e.Mw) MW · @e.Projects proy.</span> }</div>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-pie-chart" aria-hidden="true"></i>Tecnología <small>MW considerados</small></h3>
+                            <div class="rs-donut-wrap">@Html.Raw(Donut(techParts, N0(Model.MwFirme), "MW"))<ul class="rs-donut-legend">@foreach (var (t, i) in Model.Tecnologias.Select((t, i) => (t, i))) { <li><span><i style="background:@techPalette[i % techPalette.Length]"></i>@t.Name</span><strong>@N0(t.Mw) MW · @Pct(t.Mw, Model.MwFirme)</strong></li> }</ul></div>
+                            <h3 style="margin-top:10px"><i class="bi bi-calendar-range" aria-hidden="true"></i>Entradas en operación <small>MW por año declarado</small></h3>
+                            <div class="rs-bars">@foreach (var y in years) { @Html.Raw(Bar(y.Anio, y.Mw, maxYearMw, $"{N0(y.Mw)} MW · {y.Projects} proy.", "is-guinda", true)) }</div>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-bar-chart-line" aria-hidden="true"></i>Capacidad por gerencia <small>MW y participación</small></h3>
+                            <div class="rs-bars">@foreach (var g in Model.Gcr) { @Html.Raw(Bar(g.Region, g.Mw, maxGcrMw, $"{N0(g.Mw)} MW · {N1(g.Share)} %", "is-guinda", true)) }</div>
+                            <h3 style="margin-top:10px"><i class="bi bi-exclamation-diamond" aria-hidden="true"></i>Puntos de atención</h3>
+                            <ul class="rs-alerts">
+                                <li><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i><span><b>@Model.ConFichaCfe de @Model.Firm</b> proyectos con ficha de costos CFE · @Pct(Model.MwConFichaCfe, Model.MwFirme) de la capacidad</span></li>
+                                <li><i class="bi bi-check2-circle" aria-hidden="true"></i><span><b>@(factibles?.Projects ?? 0) factibles</b> · @N0(factibles?.Mw ?? 0) MW · @Model.ConFactibilidad con evaluación técnica</span></li>
+                                <li><i class="bi bi-diagram-3" aria-hidden="true"></i><span><b>@Model.ConCluster en clúster</b> · @Model.ConExcluyente en grupos excluyentes (CFE)</span></li>
+                                <li><i class="bi bi-people" aria-hidden="true"></i><span><b>@Model.RiesgoSocialAlto.Count con riesgo social alto</b> · @N0(Model.RiesgoSocialAlto.Sum(p => p.Mw)) MW · en revisión</span></li>
+                                <li><i class="bi bi-battery-charging" aria-hidden="true"></i><span><b>@Model.ConSae con almacenamiento</b> · @N0(Model.SaeMw) MW / @N0(Model.SaeMwh) MWh</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Catálogo de proyectos, solicitudes, fichas CFE, requerimiento por sistema y evaluaciones.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            <section class="pam-slide pam-slide--content pam-slide--index" data-slide data-label="Índice" data-convocatoria-index>
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Convocatoria de Proyectos Estratégicos</span><span class="pam-lamina-head__aside">Contenido</span></header>
+                <h2 class="pam-lamina-title is-guinda" data-index-title>Índice</h2>
+                <div class="pam-lamina-body pam-index" data-index-entries></div>
+                <div class="pam-lamina-foot"><span>Registros, cartera considerada, costos y evaluaciones.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            @* ── Universo ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Universo registrado" data-label="Total de registros y cartera considerada">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Universo</span><span class="pam-lamina-head__aside">Registros y cartera considerada</span></header>
+                <h2 class="pam-lamina-title">Total de registros y cartera considerada</h2>
+                <div class="pam-lamina-body conv-page conv-page--gcr">
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-collection" aria-hidden="true"></i>Registros totales</span><strong>@Model.Total</strong><small>@N0(Model.MwUniverso) MW netos</small></article>
+                        <article class="is-verde"><span><i class="bi bi-check2-circle" aria-hidden="true"></i>Considerados (registros firmes)</span><strong>@Model.Firm</strong><small>@N0(Model.MwFirme) MW · @Pct(Model.MwFirme, Model.MwUniverso) de la capacidad registrada</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-hourglass-split" aria-hidden="true"></i>No incluidos en la cartera considerada</span><strong>@Model.Review</strong><small>Registro vigente · en seguimiento</small></article>
+                        <article><span><i class="bi bi-x-circle" aria-hidden="true"></i>Desechados y duplicados</span><strong>@Model.Rejected</strong><small>Retirados del universo en la depuración</small></article>
+                    </div>
+                    <div class="rs-cols">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-funnel" aria-hidden="true"></i>Estatus del universo <small>proyectos y MW</small></h3>
+                            <div class="rs-bars">@foreach (var e in Model.EstatusUniverso) { @Html.Raw(Bar(e.Name, e.Mw, Model.MwUniverso, $"{e.Projects} proy. · {N0(e.Mw)} MW", e.Name == "Considerados" ? "is-guinda" : "", true)) }</div>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-signpost-2" aria-hidden="true"></i>Origen de los considerados <small>convocatoria de procedencia</small></h3>
+                            <div class="rs-bars">@foreach (var e in Model.Origenes.Take(4)) { @Html.Raw(Bar(e.Name, e.Mw, Model.MwFirme, $"{e.Projects} proy. · {N0(e.Mw)} MW", "", true)) }</div>
+                        </div>
+                    </div>
+                    <p class="conv-note"><strong>De los @Model.Firm considerados:</strong> @Model.Preseleccionados preseleccionados · @Model.AntecedenteMixtosI con antecedente en Mixtos I · @Model.AntecedenteCvp2 con antecedente en CVP2 · @Model.Consorcios solicitudes en consorcio.</p>
+                    @if (Model.ValidosNoConsiderados.Count > 0) {
+                    <div class="rs-block">
+                        <h3><i class="bi bi-hourglass-split" aria-hidden="true"></i>Registros no incluidos en la cartera considerada <small>registro vigente en ventanilla; no forman parte de los @Model.Firm considerados y se mantienen en seguimiento</small></h3>
+                        <table class="conv-table conv-table--rs conv-table--top conv-table--rev">
+                            <colgroup><col class="c-folio"><col class="c-nombre"><col class="c-gcr"><col class="c-tec"><col class="c-mw"><col class="c-sit"><col class="c-ant"></colgroup>
+                            <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th>Tecnología</th><th class="is-num">MW</th><th>Situación</th><th>Antecedentes en el expediente</th></tr></thead>
+                            <tbody>@foreach (var p in Model.ValidosNoConsiderados) { <tr><th>@p.Folio</th><td>@p.Name</td><td>@p.Region</td><td>@p.Technology</td><td class="is-num">@N0(p.Mw)</td><td>@p.Estatus</td><td>@p.Antecedentes</td></tr> }</tbody>
+                        </table>
+                    </div>
+                    }
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Catálogo de proyectos y solicitudes registradas en ventanilla. Registros totales = considerados + no incluidos + desechados y duplicados.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            @* ── Cartera considerada ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Capacidad por gerencia">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">@Model.Firm proyectos · @N0(Model.MwFirme) MW</span></header>
+                <h2 class="pam-lamina-title">Capacidad y participación por gerencia</h2>
+                <div class="pam-lamina-body conv-page">
+                    @{ var gcrTop = Model.Gcr.OrderByDescending(g => g.Mw).First(); var gcrMas = Model.Gcr.OrderByDescending(g => g.Projects).First(); var techTop = Model.Tecnologias.OrderByDescending(t => t.Mw).First(); }
+                    <div class="rs-facts">
+                        <div><span>Gerencia con mayor capacidad</span><strong>@gcrTop.Region</strong><small>@N0(gcrTop.Mw) MW · @N1(gcrTop.Share) % de la cartera</small></div>
+                        <div><span>Gerencia con más proyectos</span><strong>@gcrMas.Region</strong><small>@gcrMas.Projects proyectos · @N0(gcrMas.Mw) MW</small></div>
+                        <div><span>Tecnología predominante</span><strong>@techTop.Name</strong><small>@N0(techTop.Mw) MW · @Pct(techTop.Mw, Model.MwFirme) de la capacidad</small></div>
+                        <div><span>Capacidad media por proyecto</span><strong>@N1(Model.Firm > 0 ? Model.MwFirme / Model.Firm : 0) MW</strong><small>@Model.Firm proyectos considerados · @N0(Model.MwFirme) MW</small></div>
+                    </div>
+                    <div class="rs-cols">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-bar-chart-line" aria-hidden="true"></i>Capacidad considerada por gerencia <small>MW netos y participación</small></h3>
+                            <div class="rs-bars">@foreach (var g in Model.Gcr) { @Html.Raw(Bar(g.Region, g.Mw, maxGcrMw, $"{g.Projects} proy. · {N0(g.Mw)} MW · {N1(g.Share)} %", "is-guinda", true)) }</div>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-layers" aria-hidden="true"></i>Composición tecnológica por gerencia <small>participación en la capacidad</small></h3>
+                            <div class="rs-stacks">@foreach (var g in Model.Gcr) { <div class="rs-stack rs-stack--wide"><strong>@g.Region</strong><div class="rs-stack__track">@foreach (var (t, i) in techs.Select((t, i) => (t, i))) { var v = g.MwPorTecnologia.GetValueOrDefault(t); if (v > 0) { <i style="width:@W(v, g.Mw)%;background:@techPalette[i % techPalette.Length]" title="@t · @N0(v) MW"></i> } }</div><span>@N0(g.Mw) MW</span></div> }</div>
+                            <div class="rs-legend">@foreach (var (t, i) in techs.Select((t, i) => (t, i))) { <span><i style="background:@techPalette[i % techPalette.Length]"></i>@t · @N0(Model.Tecnologias.First(x => x.Name == t).Mw) MW</span> }</div>
+                        </div>
+                    </div>
+                    <table class="conv-table conv-table--rs conv-table--top">
+                        <thead><tr><th>Gerencia</th><th class="is-num">Registrados</th><th class="is-num">Considerados</th><th class="is-num">MW</th><th class="is-num">Participación</th>@foreach (var t in techs.Take(3)) { <th class="is-num">@t MW</th> }<th class="is-num">Con SAE</th><th class="is-num">Con ficha CFE</th><th class="is-num">Con clúster</th></tr></thead>
+                        <tbody>
+                        @foreach (var g in Model.Gcr) {
+                            <tr><th>@g.Region</th><td class="is-num">@g.Universo</td><td class="is-num">@g.Projects</td><td class="is-num">@N0(g.Mw)</td><td class="is-num">@N1(g.Share) %</td>@foreach (var t in techs.Take(3)) { <td class="is-num">@N0(g.MwPorTecnologia.GetValueOrDefault(t))</td> }<td class="is-num">@g.ConSae</td><td class="is-num">@g.ConFichaCfe</td><td class="is-num">@g.ConCluster</td></tr>
+                        }
+                        </tbody>
+                        <tfoot><tr><th>Total</th><td class="is-num">@Model.Total</td><td class="is-num">@Model.Firm</td><td class="is-num">@N0(Model.MwFirme)</td><td class="is-num">100 %</td>@foreach (var t in techs.Take(3)) { <td class="is-num">@N0(Model.Tecnologias.First(x => x.Name == t).Mw)</td> }<td class="is-num">@Model.ConSae</td><td class="is-num">@Model.ConFichaCfe</td><td class="is-num">@Model.ConCluster</td></tr></tfoot>
+                    </table>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Capacidad en MW netos del catálogo de proyectos.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Tecnología y almacenamiento">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Tecnología, SAE y tensión</span></header>
+                <h2 class="pam-lamina-title">Tecnología y almacenamiento</h2>
+                <div class="pam-lamina-body conv-page">
+                    <div class="convocatoria-summary__metrics">
+                        @foreach (var t in Model.Tecnologias.Take(3)) { <article class="@(t.Name == "Híbrida" ? "is-dorado" : "is-guinda")"><span><i class="bi @(t.Name == "Fotovoltaica" ? "bi-sun" : t.Name == "Eólica" ? "bi-wind" : t.Name == "Híbrida" ? "bi-intersect" : "bi-lightning-charge")" aria-hidden="true"></i>@t.Name</span><strong>@N0(t.Mw) <small style="display:inline">MW</small></strong><small>@t.Projects proyectos · @Pct(t.Mw, Model.MwFirme)</small></article> }
+                        <article class="is-verde"><span><i class="bi bi-battery-charging" aria-hidden="true"></i>Proyectos con SAE</span><strong>@Model.ConSae</strong><small>@N0(Model.SaeMw) MW de almacenamiento · @N0(Model.SaeMwh) MWh</small></article>
+                    </div>
+                    <div class="rs-cols">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-pie-chart" aria-hidden="true"></i>Capacidad por tecnología</h3>
+                            <div class="rs-bars">@foreach (var t in Model.Tecnologias) { @Html.Raw(Bar(t.Name, t.Mw, Model.MwFirme, $"{t.Projects} proy. · {N0(t.Mw)} MW · {Pct(t.Mw, Model.MwFirme)}", "is-guinda")) }</div>
+                            <h3 style="margin-top:14px"><i class="bi bi-battery-half" aria-hidden="true"></i>Almacenamiento por gerencia</h3>
+                            <div class="rs-bars">@foreach (var g in Model.Gcr.Where(x => x.SaeMw > 0).OrderByDescending(x => x.SaeMw)) { @Html.Raw(Bar(g.Region, g.SaeMw, Model.Gcr.Max(x => x.SaeMw), $"{g.ConSae} proy. · {N0(g.SaeMw)} MW", "is-verde", true)) }</div>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-lightning" aria-hidden="true"></i>Nivel de tensión de interconexión</h3>
+                            <div class="rs-bars">@foreach (var t in Model.Tensiones.Take(7)) { @Html.Raw(Bar(t.Name, t.Mw, Model.MwFirme, $"{t.Projects} proy. · {N0(t.Mw)} MW", "", true)) }</div>
+                            <h3 style="margin-top:14px"><i class="bi bi-intersect" aria-hidden="true"></i>Proyectos híbridos <small>@Model.Hibridos.Count proyectos · @N0(Model.Hibridos.Sum(h => h.Mw)) MW</small></h3>
+                            @if (Model.Hibridos.Count == 0) { <p class="conv-note">Sin proyectos híbridos entre los considerados.</p> }
+                            else {
+                            <table class="conv-table conv-table--rs conv-table--top">
+                                <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th class="is-num">MW</th><th>SAE</th><th>Operación</th></tr></thead>
+                                <tbody>@foreach (var h in Model.Hibridos) { <tr><th>@h.Folio</th><td>@(h.Name.Length > 30 ? h.Name[..30] + "…" : h.Name)</td><td>@h.Region</td><td class="is-num">@N1(h.Mw)</td><td>@h.Sae</td><td>@h.Operacion</td></tr> }</tbody>
+                            </table>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Tecnología del catálogo; SAE y tensión conforme a las solicitudes.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Modalidad de asociación y promoventes">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Esquema de Desarrollo Mixto</span></header>
+                <h2 class="pam-lamina-title">Modalidad de asociación y promoventes</h2>
+                <div class="pam-lamina-body conv-page">
+                    <div class="convocatoria-summary__metrics">
+                        @foreach (var m in Model.Modalidades.Take(3)) { <article class="@(m.Name == "No Informada" ? "" : "is-guinda")"><span><i class="bi bi-diagram-2" aria-hidden="true"></i>@m.Name</span><strong>@m.Projects <small style="display:inline">proy.</small></strong><small>@N0(m.Mw) MW · @Pct(m.Mw, Model.MwFirme)</small></article> }
+                        <article class="is-verde"><span><i class="bi bi-people" aria-hidden="true"></i>Solicitudes en consorcio</span><strong>@Model.Consorcios</strong><small>de @Model.Firm considerados</small></article>
+                    </div>
+                    <div class="rs-cols">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-diagram-2" aria-hidden="true"></i>Modalidad de asociación con CFE</h3>
+                            <div class="rs-bars">@foreach (var m in Model.Modalidades) { @Html.Raw(Bar(m.Name, m.Mw, Model.MwFirme, $"{m.Projects} proy. · {N0(m.Mw)} MW", "is-guinda")) }</div>
+                            <table class="conv-table conv-table--rs" style="margin-top:12px">
+                                <thead><tr><th>Gerencia</th>@foreach (var m in Model.Modalidades.Take(3)) { <th class="is-num">@m.Name</th> }</tr></thead>
+                                <tbody>@foreach (var g in Model.Gcr) { <tr><th>@g.Region</th>@foreach (var m in Model.Modalidades.Take(3)) { <td class="is-num">@(g.Modalidades.FirstOrDefault(x => x.Name == m.Name)?.Projects ?? 0)</td> }</tr> }</tbody>
+                            </table>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-building" aria-hidden="true"></i>Grupos de interés con mayor capacidad</h3>
+                            <div class="rs-bars">@foreach (var e in Model.GruposInteres) { @Html.Raw(Bar(e.Name.Length > 34 ? e.Name[..34] + "…" : e.Name, e.Mw, Model.GruposInteres.Max(x => x.Mw), $"{e.Projects} proy. · {N0(e.Mw)} MW", "", true)) }</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Modalidad y grupo de interés declarados por los promoventes.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Entradas en operación">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Fechas previstas de operación comercial</span></header>
+                <h2 class="pam-lamina-title">Entradas en operación</h2>
+                <div class="pam-lamina-body conv-page conv-page--gcr">
+                    <div class="convocatoria-summary__metrics">
+                        @{ var pico = years.OrderByDescending(y => y.Mw).FirstOrDefault(); var primero = years.FirstOrDefault(); var sinFecha = Model.Operacion.FirstOrDefault(y => y.Anio == "Sin fecha"); }
+                        <article class="is-guinda"><span><i class="bi bi-calendar-event" aria-hidden="true"></i>Año con mayor entrada</span><strong>@(pico?.Anio ?? "—")</strong><small>@(pico != null ? $"{pico.Projects} proy. · {N0(pico.Mw)} MW" : "Sin fechas declaradas")</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-flag" aria-hidden="true"></i>Primeras entradas</span><strong>@(primero?.Anio ?? "—")</strong><small>@(primero != null ? $"{primero.Projects} proy. · {N0(primero.Mw)} MW" : "")</small></article>
+                        <article class="is-verde"><span><i class="bi bi-list-ol" aria-hidden="true"></i>Proyectos por etapas</span><strong>@Model.PorEtapas</strong><small>Declaran desarrollo escalonado</small></article>
+                        <article><span><i class="bi bi-question-circle" aria-hidden="true"></i>Sin fecha declarada</span><strong>@(sinFecha?.Projects ?? 0)</strong><small>@N0(sinFecha?.Mw ?? 0) MW</small></article>
+                    </div>
+                    @{ var acumulado = 0m; }
+                    <div class="rs-cols rs-cols--entradas">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-calendar-range" aria-hidden="true"></i>Capacidad por año de entrada <small>MW y acumulado de la cartera</small></h3>
+                            <div class="rs-bars">@foreach (var y in years) { acumulado += y.Mw; @Html.Raw(Bar(y.Anio, y.Mw, maxYearMw, $"{y.Projects} proy. · {N0(y.Mw)} MW · acum. {Pct(acumulado, Model.MwFirme)}", "is-guinda", false)) }</div>
+                            <h3 style="margin-top:12px"><i class="bi bi-layers" aria-hidden="true"></i>Composición por gerencia <small>participación de cada GCR en el año</small></h3>
+                            <div class="rs-stacks">@foreach (var y in years) { <div class="rs-stack"><strong>@y.Anio</strong><div class="rs-stack__track">@foreach (var g in Model.Gcr) { var v = y.MwPorGcr.GetValueOrDefault(g.Region); if (v > 0) { <i style="width:@W(v, y.Mw)%;background:@gcrColor[g.Region]" title="@g.Region · @N0(v) MW"></i> } }</div><span>@N0(y.Mw) MW</span></div> }</div>
+                            <div class="rs-legend">@foreach (var g in Model.Gcr) { <span><i style="background:@gcrColor[g.Region]"></i>@g.Region</span> }</div>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-table" aria-hidden="true"></i>MW y proyectos por año y gerencia <small>MW netos · número de proyectos</small></h3>
+                            <table class="conv-table conv-table--rs conv-table--top conv-table--full conv-table--anios">
+                                <thead><tr><th>Gerencia</th>@foreach (var y in years) { <th class="is-num">@y.Anio</th> }<th class="is-num">Total</th></tr></thead>
+                                <tbody>@foreach (var g in Model.Gcr) { <tr><th>@g.Region</th>@foreach (var y in years) { var mw = y.MwPorGcr.GetValueOrDefault(g.Region); var n = y.ProyectosPorGcr.GetValueOrDefault(g.Region); <td class="is-num">@(mw > 0 ? N0(mw) : "0")<em>@(n > 0 ? $" · {n}" : "")</em></td> }<td class="is-num">@N0(g.Mw)<em> · @g.Projects</em></td></tr> }</tbody>
+                                <tfoot><tr><th>Total</th>@foreach (var y in years) { <td class="is-num">@N0(y.Mw)<em> · @y.Projects</em></td> }<td class="is-num">@N0(Model.MwFirme)<em> · @Model.Firm</em></td></tr></tfoot>
+                            </table>
+                            <p class="conv-note">Cada celda muestra MW netos · proyectos con esa fecha prevista de operación comercial.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Fechas de operación comercial declaradas por los promoventes en su solicitud.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Interconexión, estudios y trámites">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Ventanilla y CENACE</span></header>
+                <h2 class="pam-lamina-title">Interconexión, estudios y trámites</h2>
+                <div class="pam-lamina-body conv-page">
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-clipboard-data" aria-hidden="true"></i>Con estudios de interconexión</span><strong>@Model.ConEstudiosInterconexion</strong><small>de @Model.Firm considerados</small></article>
+                        <article class="is-verde"><span><i class="bi bi-patch-check" aria-hidden="true"></i>Validación CENACE</span><strong>@(Model.ValidacionCenace.FirstOrDefault(v => v.Name.StartsWith("VALIDADO", StringComparison.OrdinalIgnoreCase))?.Projects ?? 0)</strong><small>proyectos validados</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-credit-card" aria-hidden="true"></i>Pago de estudios</span><strong>@(Model.Pagos.FirstOrDefault(v => v.Name.StartsWith("PAGADO", StringComparison.OrdinalIgnoreCase))?.Projects ?? 0)</strong><small>proyectos con pago registrado</small></article>
+                        <article><span><i class="bi bi-file-earmark-medical" aria-hidden="true"></i>Solicitud de permiso presentada</span><strong>@(Model.SolicitudPermiso.FirstOrDefault(v => v.Name.StartsWith("PRESENTADA", StringComparison.OrdinalIgnoreCase))?.Projects ?? 0)</strong><small>proyectos</small></article>
+                    </div>
+                    <div class="rs-cols rs-tight">
+                        <div class="rs-grid2">
+                            <div class="rs-block"><h3><i class="bi bi-patch-check" aria-hidden="true"></i>Validación CENACE</h3><div class="rs-bars">@foreach (var v in Model.ValidacionCenace.Take(4)) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy.", "is-guinda", true)) }</div></div>
+                            <div class="rs-block"><h3><i class="bi bi-file-earmark-check" aria-hidden="true"></i>Permiso de generación</h3><div class="rs-bars">@foreach (var v in Model.Permisos.Take(4)) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy.", "is-verde", true)) }</div></div>
+                            <div class="rs-block"><h3><i class="bi bi-journal-text" aria-hidden="true"></i>Registro en ventanilla</h3><div class="rs-bars">@foreach (var v in Model.Registro.Take(4)) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy.", "", true)) }</div></div>
+                            <div class="rs-block"><h3><i class="bi bi-credit-card" aria-hidden="true"></i>Pago de estudios</h3><div class="rs-bars">@foreach (var v in Model.Pagos.Take(4)) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy.", "", true)) }</div></div>
+                            <div class="rs-block" style="grid-column:1/-1"><h3><i class="bi bi-file-earmark-medical" aria-hidden="true"></i>Solicitud de permiso</h3><div class="rs-bars">@foreach (var v in Model.SolicitudPermiso.Take(3)) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy.", "is-dorado", true)) }</div></div>
+                        </div>
+                        <div class="rs-block rs-block--subs"><h3><i class="bi bi-diagram-3" aria-hidden="true"></i>Subestaciones con mayor capacidad <small>MW considerados por punto de interconexión</small></h3><div class="rs-bars">@foreach (var s in Model.Subestaciones.Take(12)) { @Html.Raw(Bar(s.Name.Length > 30 ? s.Name[..30] + "…" : s.Name, s.Mw, Model.Subestaciones.Max(x => x.Mw), $"{s.Projects} proy. · {N0(s.Mw)} MW", "", true)) }</div></div>
+                    </div>
+                    <div class="rs-block rs-tight">
+                        <h3><i class="bi bi-geo-alt" aria-hidden="true"></i>Entidades federativas con mayor capacidad considerada <small>MW netos por entidad</small></h3>
+                        <div class="rs-grid2 rs-grid2--dense">@foreach (var e in Model.Entidades.Take(12)) { @Html.Raw(Bar(e.Name, e.Mw, Model.Entidades.Max(x => x.Mw), $"{e.Projects} proy. · {N0(e.Mw)} MW", "is-guinda", true)) }</div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Estatus de ventanilla y validación del CENACE al corte.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            @if (Model.Requerimientos.Count > 0) {
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Requerimiento por sistema">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Requerimiento de capacidad</span></header>
+                <h2 class="pam-lamina-title">Requerimiento por sistema y cobertura</h2>
+                <div class="pam-lamina-body conv-page">
+                    @{ var total = Model.Requerimientos.FirstOrDefault(r => r.System.Equals("TOTAL", StringComparison.OrdinalIgnoreCase)); string Mw(decimal? v) => v.HasValue ? N0(v.Value) : "—"; }
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-bullseye" aria-hidden="true"></i>Requerimiento total</span><strong>@Mw(total?.RequirementMw) <small style="display:inline">MW</small></strong><small>Eólico @Mw(total?.WindMw) · fotovoltaico @Mw(total?.SolarMw)</small></article>
+                        <article class="is-verde"><span><i class="bi bi-check2-circle" aria-hidden="true"></i>Factible registrado</span><strong>@Mw(total?.FeasibleMw) <small style="display:inline">MW</small></strong><small>@Pct(total?.FeasibleMw ?? 0, total?.RequirementMw ?? 0) del requerimiento</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-star" aria-hidden="true"></i>Preseleccionado preliminar</span><strong>@Mw(total?.PreselectedMw) <small style="display:inline">MW</small></strong></article>
+                        <article><span><i class="bi bi-exclamation-circle" aria-hidden="true"></i>Faltante</span><strong>@Mw(total?.ShortfallMw) <small style="display:inline">MW</small></strong><small>Requerimiento − factible registrado</small></article>
+                    </div>
+                    @{
+                        var sistemasNombre = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["SIN"] = "Sistema Interconectado Nacional", ["SIBC"] = "Sistema Interconectado Baja California", ["SIBCS"] = "Sistema Interconectado Baja California Sur" };
+                        var sistemasColor = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["SIN"] = "#9b2247", ["SIBC"] = "#a57f2c", ["SIBCS"] = "#0e735c" };
+                        var sistemas = Model.Requerimientos.Where(r => sistemasNombre.ContainsKey(r.System.Trim())).Select(r => new {
+                            code = r.System.Trim().ToUpperInvariant(), nombre = sistemasNombre[r.System.Trim()], mw = r.RequirementMw ?? 0, color = sistemasColor[r.System.Trim()],
+                            lineas = new[] { $"{Mw(r.RequirementMw)} MW requeridos", $"factible {Mw(r.FeasibleMw)}", $"faltante {Mw(r.ShortfallMw)}" }
+                        }).ToList();
+                    }
+                    <div class="rs-cols rs-cols--mapa">
+                        <div class="rs-block rs-mapa">
+                            <h3><i class="bi bi-map" aria-hidden="true"></i>Sistemas eléctricos <small>requerimiento, factible y faltante por sistema</small></h3>
+                            <div class="rs-mapa__svg" data-mapa-sistemas='@Json.Serialize(sistemas)'><p class="conv-note">Cargando mapa…</p></div>
+                        </div>
+                        <div class="rs-block">
+                            <table class="conv-table conv-table--rs conv-table--top conv-table--full">
+                                <thead><tr><th>Sistema</th><th class="is-num">Requerimiento</th><th class="is-num">Eólico</th><th class="is-num">Fotovoltaico</th><th class="is-num">Factible</th><th class="is-num">Preselec.</th><th class="is-num">Faltante</th><th class="is-num">Total</th></tr></thead>
+                                <tbody>@foreach (var r in Model.Requerimientos) { <tr class="@(r.System.Equals("TOTAL", StringComparison.OrdinalIgnoreCase) ? "is-current" : "")"><th>@r.System</th><td class="is-num">@Mw(r.RequirementMw)</td><td class="is-num">@Mw(r.WindMw)</td><td class="is-num">@Mw(r.SolarMw)</td><td class="is-num">@Mw(r.FeasibleMw)</td><td class="is-num">@Mw(r.PreselectedMw)</td><td class="is-num">@Mw(r.ShortfallMw)</td><td class="is-num">@Mw(r.TotalMw)</td></tr> }</tbody>
+                            </table>
+                            <h3 style="margin-top:12px"><i class="bi bi-bullseye" aria-hidden="true"></i>Cobertura del requerimiento <small>factible registrado frente al requerimiento</small></h3>
+                            <div class="rs-bars">@foreach (var r in Model.Requerimientos.Where(x => sistemasNombre.ContainsKey(x.System.Trim()))) { @Html.Raw(Bar(r.System.Trim(), r.FeasibleMw ?? 0, r.RequirementMw ?? 0, $"{Mw(r.FeasibleMw)} de {Mw(r.RequirementMw)} MW · {Pct(r.FeasibleMw ?? 0, r.RequirementMw ?? 0)}", "is-verde")) }</div>
+                            <h3 style="margin-top:12px"><i class="bi bi-star" aria-hidden="true"></i>Preseleccionado preliminar <small>capacidad preseleccionada frente al requerimiento</small></h3>
+                            <div class="rs-bars">@foreach (var r in Model.Requerimientos.Where(x => sistemasNombre.ContainsKey(x.System.Trim()))) { @Html.Raw(Bar(r.System.Trim(), r.PreselectedMw ?? 0, r.RequirementMw ?? 0, $"{Mw(r.PreselectedMw)} de {Mw(r.RequirementMw)} MW · {Pct(r.PreselectedMw ?? 0, r.RequirementMw ?? 0)}", "is-dorado")) }</div>
+                            <p class="conv-note">SIN: Sistema Interconectado Nacional · SIBC: Baja California · SIBCS: Baja California Sur. Faltante = requerimiento − factible registrado.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Requerimiento de capacidad por sistema del corte.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+            }
+
+            @* ── Costos ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Costos e inversión" data-label="Costos de red · fichas CFE">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Costos de red de interconexión y refuerzos · CFE</span><span class="pam-lamina-head__aside">@Model.ConFichaCfe fichas CFE</span></header>
+                <h2 class="pam-lamina-title">Costos de red · fichas CFE</h2>
+                <div class="pam-lamina-body conv-page conv-page--gcr">
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i>Proyectos con ficha CFE</span><strong>@Model.ConFichaCfe <small style="display:inline">de @Model.Firm</small></strong><small>@N0(Model.MwConFichaCfe) MW · @Pct(Model.MwConFichaCfe, Model.MwFirme) de la capacidad considerada</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-currency-dollar" aria-hidden="true"></i>Costo de red</span><strong>@N2(Model.CostoRedMdd) <small style="display:inline">MDD</small></strong><small>@N2(Model.CostoRedMdp) MDP@(Model.TipoCambio.HasValue ? $" · tipo de cambio {N2(Model.TipoCambio.Value)} MXN/USD" : "")</small></article>
+                        <article class="is-verde"><span><i class="bi bi-speedometer" aria-hidden="true"></i>Costo de red por MW</span><strong>@(Model.MwConFichaCfe > 0 ? (Model.CostoRedMdd / Model.MwConFichaCfe).ToString("N4", mx) : "—") <small style="display:inline">MDD/MW</small></strong><small>Promedio de los proyectos con ficha</small></article>
+                        <article><span><i class="bi bi-tools" aria-hidden="true"></i>Obras de interconexión y refuerzo</span><strong>@Model.Obras</strong><small>Obras identificadas en las fichas CFE</small></article>
+                    </div>
+                    <table class="conv-table conv-table--rs conv-table--top">
+                        <thead><tr><th>Gerencia</th><th class="is-num">Considerados</th><th class="is-num">Con ficha CFE</th><th class="is-num">Costo de red MDD</th><th class="is-num">Costo de red MDP</th><th class="is-num">Obras</th><th class="is-num">Part. del costo</th></tr></thead>
+                        <tbody>@foreach (var g in Model.Gcr) { <tr><th>@g.Region</th><td class="is-num">@g.Projects</td><td class="is-num">@g.ConFichaCfe</td><td class="is-num">@N2(g.CostoMdd)</td><td class="is-num">@N2(g.CostoMdp)</td><td class="is-num">@g.Obras</td><td class="is-num">@Pct(g.CostoMdd, Model.CostoRedMdd)</td></tr> }</tbody>
+                        <tfoot><tr><th>Total</th><td class="is-num">@Model.Firm</td><td class="is-num">@Model.ConFichaCfe</td><td class="is-num">@N2(Model.CostoRedMdd)</td><td class="is-num">@N2(Model.CostoRedMdp)</td><td class="is-num">@Model.Obras</td><td class="is-num">100 %</td></tr></tfoot>
+                    </table>
+                    <div class="rs-block">
+                        <h3><i class="bi bi-cash-coin" aria-hidden="true"></i>Proyectos con mayor costo de red <small>fichas CFE · MDD</small></h3>
+                        <table class="conv-table conv-table--rs conv-table--top">
+                            <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th class="is-num">MW</th><th class="is-num">Costo de red MDD</th><th class="is-num">MDD por MW</th><th>Clúster</th><th>Factibilidad</th></tr></thead>
+                            <tbody>@foreach (var p in Model.TopCostoRed.Take(3)) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 30 ? p.Name[..30] + "…" : p.Name)</td><td>@p.Region</td><td class="is-num">@N0(p.Mw)</td><td class="is-num">@N2(p.CostoMdd ?? 0)</td><td class="is-num">@(p.Mw > 0 ? ((p.CostoMdd ?? 0) / p.Mw).ToString("N3", mx) : "—")</td><td>@(string.IsNullOrWhiteSpace(p.Cluster) ? "—" : p.Cluster.Replace("Cluster ", ""))</td><td>@p.Factibilidad</td></tr> }</tbody>
+                        </table>
+                    </div>
+                    <p class="conv-note">Costos de red determinados por CFE. MDD: millones de dólares · MDP: millones de pesos.</p>
+                </div>
+                <div class="pam-lamina-foot"><span>Fuente: fichas de costos de interconexión y refuerzos elaboradas por CFE · Convocatoria Mixtos II, corte @corte.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Costos e inversión" data-label="Inversión declarada por los promoventes">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Costos declarados por los promoventes</span><span class="pam-lamina-head__aside">Solicitudes en ventanilla</span></header>
+                <h2 class="pam-lamina-title">Inversión declarada por los promoventes</h2>
+                <div class="pam-lamina-body conv-page">
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-cash-stack" aria-hidden="true"></i>Inversión total declarada</span><strong>@N0(Model.InversionDeclarada / 1000000m) <small style="display:inline">millones</small></strong><small>@Model.ConInversionDeclarada proyectos con monto declarado</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-building-gear" aria-hidden="true"></i>CapEx total declarado</span><strong>@N0(Model.CapexTotal / 1000000m) <small style="display:inline">millones</small></strong><small>@Model.ConCapex proyectos</small></article>
+                        <article class="is-verde"><span><i class="bi bi-battery-charging" aria-hidden="true"></i>CapEx de almacenamiento</span><strong>@N0(Model.CapexSae / 1000000m) <small style="display:inline">millones</small></strong><small>Incluido en el CapEx total</small></article>
+                        <article><span><i class="bi bi-percent" aria-hidden="true"></i>Cobertura de la información</span><strong>@Pct(Model.ConInversionDeclarada, Model.Firm)</strong><small>de los considerados declara inversión</small></article>
+                    </div>
+                    <div class="rs-cols">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-cash-stack" aria-hidden="true"></i>Inversión declarada por gerencia <small>monto conforme a la solicitud</small></h3>
+                            <div class="rs-bars">@foreach (var g in Model.Gcr.OrderByDescending(x => x.InversionDeclarada)) { @Html.Raw(Bar(g.Region, g.InversionDeclarada, Model.Gcr.Max(x => x.InversionDeclarada), $"{N0(g.InversionDeclarada / 1000000m)} millones · {g.Projects} proy.", "is-guinda", true)) }</div>
+                            <h3 style="margin-top:12px"><i class="bi bi-sun" aria-hidden="true"></i>Inversión declarada por tecnología</h3>
+                            <div class="rs-bars">@foreach (var t in Model.InversionPorTecnologia) { @Html.Raw(Bar(t.Name, t.Amount, Model.InversionPorTecnologia.Max(x => x.Amount), $"{N0(t.Amount / 1000000m)} millones · {t.Projects} proy. · {N0(t.Mw)} MW", "is-dorado", true)) }</div>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-trophy" aria-hidden="true"></i>Proyectos con mayor inversión declarada <small>millones, según la solicitud</small></h3>
+                            <table class="conv-table conv-table--rs conv-table--top">
+                                <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th class="is-num">MW</th><th class="is-num">Inversión</th><th class="is-num">Por MW</th></tr></thead>
+                                <tbody>@foreach (var p in Model.TopInversion) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 22 ? p.Name[..22] + "…" : p.Name)</td><td>@p.Region</td><td class="is-num">@N0(p.Mw)</td><td class="is-num">@N0((p.Inversion ?? 0) / 1000000m)</td><td class="is-num">@(p.Mw > 0 ? N1((p.Inversion ?? 0) / 1000000m / p.Mw) : "—")</td></tr> }</tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <p class="conv-note">Suma nominal de los importes declarados por los promoventes en su solicitud; la moneda corresponde a lo declarado en cada formulario. Son independientes del costo de red de interconexión determinado por CFE.</p>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Solicitudes registradas en ventanilla.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            @* ── Evaluaciones ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Evaluaciones" data-label="Evaluación social y ambiental">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Evaluación documental</span><span class="pam-lamina-head__aside">Social y ambiental</span></header>
+                <h2 class="pam-lamina-title is-guinda">Evaluación social y ambiental</h2>
+                <div class="pam-lamina-body conv-page">
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-people" aria-hidden="true"></i>Con evaluación social registrada</span><strong>@Model.ConEvaluacionSocial</strong><small>de @Model.Firm considerados</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-exclamation-triangle" aria-hidden="true"></i>Riesgo social alto</span><strong>@(Model.RiesgoSocial.FirstOrDefault(r => r.Name.StartsWith("Alto", StringComparison.OrdinalIgnoreCase))?.Projects ?? 0)</strong><small>Medio: @(Model.RiesgoSocial.FirstOrDefault(r => r.Name.StartsWith("Medio", StringComparison.OrdinalIgnoreCase))?.Projects ?? 0) · Bajo: @(Model.RiesgoSocial.FirstOrDefault(r => r.Name.StartsWith("Bajo", StringComparison.OrdinalIgnoreCase))?.Projects ?? 0)</small></article>
+                        <article class="is-verde"><span><i class="bi bi-file-earmark-check" aria-hidden="true"></i>EVIS / MISSE en evaluación o resuelta</span><strong>@Model.EstatusEvis.Where(e => e.Name != "Sin evaluación").Sum(e => e.Projects)</strong><small>proyectos con trámite registrado</small></article>
+                        <article><span><i class="bi bi-tree" aria-hidden="true"></i>MIA en evaluación o resuelta</span><strong>@Model.EstatusMia.Where(e => e.Name != "Sin evaluación").Sum(e => e.Projects)</strong><small>proyectos con trámite registrado</small></article>
+                    </div>
+                    <div class="rs-cols rs-cols--3">
+                        <div class="rs-block"><h3><i class="bi bi-people" aria-hidden="true"></i>Riesgo social</h3><div class="rs-bars">@foreach (var v in Model.RiesgoSocial) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy. · {N0(v.Mw)} MW", "is-guinda", true)) }</div></div>
+                        <div class="rs-block"><h3><i class="bi bi-file-earmark-check" aria-hidden="true"></i>Estatus EVIS / MISSE</h3><div class="rs-bars">@foreach (var v in Model.EstatusEvis.Take(6)) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy.", "", true)) }</div></div>
+                        <div class="rs-block"><h3><i class="bi bi-tree" aria-hidden="true"></i>Estatus MIA</h3><div class="rs-bars">@foreach (var v in Model.EstatusMia.Take(6)) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy.", "is-verde", true)) }</div></div>
+                    </div>
+                    <table class="conv-table conv-table--rs">
+                        <thead><tr><th>Gerencia</th><th class="is-num">Considerados</th><th class="is-num">Evaluación social</th><th class="is-num">Evaluación técnica</th><th class="is-num">Interés CFE</th></tr></thead>
+                        <tbody>@foreach (var g in Model.Gcr) { <tr><th>@g.Region</th><td class="is-num">@g.Projects</td><td class="is-num">@g.ConSocial</td><td class="is-num">@g.ConFactibilidad</td><td class="is-num">@g.ConInteres</td></tr> }</tbody>
+                    </table>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Evaluación documental social y ambiental y catálogo de proyectos.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            @if (Model.RiesgoSocialAlto.Count > 0) {
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Evaluaciones" data-label="Riesgo social alto · proyectos a revisar">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Evaluación documental</span><span class="pam-lamina-head__aside">@Model.RiesgoSocialAlto.Count proyectos · @N0(Model.RiesgoSocialAlto.Sum(p => p.Mw)) MW</span></header>
+                <h2 class="pam-lamina-title is-guinda">Riesgo social alto · proyectos a revisar</h2>
+                <div class="pam-lamina-body conv-page">
+                    <div class="conv-highlight"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><div><span>Proyectos considerados con riesgo social alto</span><strong>@Model.RiesgoSocialAlto.Count de @Model.Firm considerados · @Pct(Model.RiesgoSocialAlto.Sum(p => p.Mw), Model.MwFirme) de la capacidad</strong><p>Clasificación de la evaluación documental social. La evaluación se homologó por nombre de proyecto; la última columna confirma que el registro social corresponde a la solicitud del folio.</p></div></div>
+                    <table class="conv-table conv-table--rs conv-table--top conv-table--riesgo">
+                        <colgroup><col class="c-folio"><col class="c-nombre"><col class="c-gcr"><col class="c-ent"><col class="c-mw"><col class="c-evis"><col class="c-mia"><col class="c-amb"><col class="c-fac"><col class="c-obs"></colgroup>
+                        <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th>Entidad · municipio</th><th class="is-num">MW</th><th>EVIS / MISSE</th><th>MIA</th><th>Riesgo ambiental</th><th>Factibilidad</th><th>Cruce con la solicitud del folio</th></tr></thead>
+                        <tbody>@foreach (var p in Model.RiesgoSocialAlto) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 22 ? p.Name[..22] + "…" : p.Name)</td><td>@p.Region</td><td>@p.Entidad</td><td class="is-num">@N0(p.Mw)</td><td>@p.EstatusEvis</td><td>@p.EstatusMia</td><td>@p.RiesgoAmbiental</td><td>@p.Factibilidad</td><td>@p.Cruce</td></tr> }</tbody>
+                    </table>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Evaluación documental social y ambiental y catálogo de proyectos.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+            }
+
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Evaluaciones" data-label="Factibilidad, clúster y excluyentes">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Factibilidad</span><span class="pam-lamina-head__aside">Evaluación técnica y marcas CFE</span></header>
+                <h2 class="pam-lamina-title is-guinda">Factibilidad, clúster y excluyentes</h2>
+                <div class="pam-lamina-body conv-page">
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-clipboard-check" aria-hidden="true"></i>Con evaluación técnica</span><strong>@Model.ConFactibilidad</strong><small>de @Model.Firm considerados</small></article>
+                        <article class="is-verde"><span><i class="bi bi-check2-circle" aria-hidden="true"></i>Factibles</span><strong>@(Model.Factibilidad.FirstOrDefault(f => f.Name == "Factible")?.Projects ?? 0)</strong><small>@N0(Model.Factibilidad.FirstOrDefault(f => f.Name == "Factible")?.Mw ?? 0) MW</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-diagram-3" aria-hidden="true"></i>Con clúster candidato</span><strong>@Model.ConCluster</strong><small>@(Model.MarcasDisponibles ? $"{Model.Clusters.Count} clústeres identificados por CFE" : "Marcas CFE no cargadas")</small></article>
+                        <article><span><i class="bi bi-sign-intersection" aria-hidden="true"></i>En grupo excluyente</span><strong>@Model.ConExcluyente</strong><small>Proyectos mutuamente excluyentes</small></article>
+                    </div>
+                    @{
+                        string FacColor(string n) => n == "Factible" ? "#0e735c" : n.StartsWith("Con restricciones") ? "#a57f2c" : n == "Desechado" ? "#9b2247" : "#c9c4bc";
+                        var facParts = Model.Factibilidad.Select(v => (v.Name, v.Mw, FacColor(v.Name))).ToList();
+                    }
+                    <div class="rs-cols rs-cols--3">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-clipboard-check" aria-hidden="true"></i>Resultado de factibilidad <small>MW considerados</small></h3>
+                            <div class="rs-donut-wrap">
+                                @Html.Raw(Donut(facParts, N0(Model.MwFirme), "MW considerados"))
+                                <ul class="rs-donut-legend">@foreach (var v in Model.Factibilidad) { <li><span><i style="background:@FacColor(v.Name)"></i>@v.Name</span><strong>@v.Projects proy. · @N0(v.Mw) MW · @Pct(v.Mw, Model.MwFirme)</strong></li> }</ul>
+                            </div>
+                            <h3 style="margin-top:12px"><i class="bi bi-tags" aria-hidden="true"></i>Clasificación de obras</h3>
+                            <div class="rs-bars">@foreach (var v in Model.Clasificacion.Take(5)) { @Html.Raw(Bar(v.Name.Length > 30 ? v.Name[..30] + "…" : v.Name, v.Projects, Model.Firm, $"{v.Projects} proy.", "", true)) }</div>
+                        </div>
+                        <div class="rs-block"><h3><i class="bi bi-diagram-3" aria-hidden="true"></i>Proyectos por clúster <small>MW considerados</small></h3><div class="rs-bars">@foreach (var v in Model.Clusters) { @Html.Raw(Bar(v.Name.Replace("Cluster ", ""), v.Mw, Model.Clusters.Count > 0 ? Model.Clusters.Max(x => x.Mw) : 0, $"{v.Projects} proy. · {N0(v.Mw)} MW", "is-dorado", true)) }</div></div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-sign-intersection" aria-hidden="true"></i>Grupos excluyentes con mayor capacidad <small>marcas CFE</small></h3>
+                            <table class="conv-table conv-table--rs conv-table--top">
+                                <thead><tr><th>Grupo</th><th>Gerencia</th><th class="is-num">Proy.</th><th class="is-num">MW</th><th class="is-num">Part.</th></tr></thead>
+                                <tbody>@foreach (var v in Model.GruposExcluyentes) { <tr><th>@v.Name</th><td>@v.Detail</td><td class="is-num">@v.Projects</td><td class="is-num">@N0(v.Mw)</td><td class="is-num">@Pct(v.Mw, Model.MwFirme)</td></tr> }</tbody>
+                            </table>
+                            <p class="conv-note">Los proyectos de un mismo grupo compiten por la misma capacidad de interconexión; la incorporación de uno condiciona a los demás.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Evaluación técnica, catálogo de proyectos e identificación de clúster y excluyentes de CFE.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            @* ── Proyectos ── *@
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Principales proyectos" data-label="Proyectos de mayor capacidad">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Doce proyectos de mayor capacidad</span></header>
+                <h2 class="pam-lamina-title">Proyectos de mayor capacidad</h2>
+                <div class="pam-lamina-body conv-page">
+                    <table class="conv-table conv-table--rs conv-table--top">
+                        <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th>Tecnología</th><th class="is-num">MW</th><th>Operación</th><th>Modalidad</th><th>SAE</th><th>Factibilidad</th><th class="is-num">Red MDD</th><th>Clúster</th></tr></thead>
+                        <tbody>@foreach (var p in Model.TopProyectos.Take(12)) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 26 ? p.Name[..26] + "…" : p.Name)</td><td>@p.Region</td><td>@p.Technology</td><td class="is-num">@N0(p.Mw)</td><td>@p.Operacion</td><td>@(p.Modalidad.Length > 18 ? p.Modalidad[..18] + "…" : p.Modalidad)</td><td>@p.Sae</td><td>@p.Factibilidad</td><td class="is-num">@(p.CostoMdd.HasValue ? N2(p.CostoMdd.Value) : "Sin ficha")</td><td>@(string.IsNullOrWhiteSpace(p.Cluster) ? "—" : p.Cluster.Replace("Cluster ", ""))</td></tr> }</tbody>
+                    </table>
+                    <p class="conv-note">Los doce proyectos suman @N0(Model.TopProyectos.Take(12).Sum(p => p.Mw)) MW, @Pct(Model.TopProyectos.Take(12).Sum(p => p.Mw), Model.MwFirme) de la capacidad considerada. La ficha individual de cada proyecto se genera desde la cartera Mixtos II.</p>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Catálogo de proyectos, solicitudes, fichas CFE y marcas de clúster.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+
+            <section class="pam-slide pam-slide--back" data-slide data-label="Contraportada">
+                <div class="pam-back__top">
+                    <button type="button" class="pam-home" data-goto="2" title="Volver al índice" aria-label="Volver al índice"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5.5 10v9h13v-9"></path></svg></button>
+                    <div class="pam-back__logos"><img src="~/img/pamrnt/logo_gob.png" alt="Gobierno de México" /><i></i><img src="~/img/pamrnt/logo_sener.png" alt="Secretaría de Energía" /></div>
+                </div>
+                <div class="pam-back__body">
+                    <img class="pam-back__figure" src="~/img/pamrnt/mujer.png" alt="" aria-hidden="true" />
+                    <div class="pam-back__center">
+                        <div class="pam-back__band"><span>Gracias</span></div>
+                        <div class="pam-back__divider"><span></span><i></i><span></span></div>
+                        <p>A todas y todos los que hacen posible, con energía y compromiso, construir un México más justo, soberano y sostenible.</p>
+                    </div>
+                </div>
+                <div class="pam-back__goldline"></div>
+                <div class="pam-back__footer">
+                    <div class="pam-back__institution">
+                        <strong>Secretaría de Energía</strong>
+                        <span>Dirección General de Metodologías y Estadísticas<br />del Sistema Nacional de Información Energética</span>
+                        <div class="pam-back__social"><a href="https://www.gob.mx/sener" target="_blank" rel="noopener noreferrer"><b>gob.mx/sener</b></a></div>
+                        <div class="pam-back__code">SENER · MIXTOS II · PROYECTOS ESTRATÉGICOS</div>
+                    </div>
+                    <div class="pam-back__qrtext"><strong>Convocatoria de Proyectos Estratégicos</strong><span>Mixtos II · panorama ejecutivo · corte @corte</span></div>
+                </div>
+            </section>
+
+            <nav id="pam-presentation-controls" class="pam-presentation-controls" aria-label="Controles de presentación">
+                <button type="button" data-prev title="Lámina anterior" aria-label="Lámina anterior"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                <button type="button" data-goto="2" title="Ir al índice" aria-label="Ir al índice"><i class="bi bi-list-ul" aria-hidden="true"></i></button>
+                <span data-counter>01 / 14</span>
+                <button type="button" data-export="pdf" title="Descargar PDF" aria-label="Descargar PDF"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></button>
+                <button type="button" data-export="pptx" title="Descargar PowerPoint" aria-label="Descargar PowerPoint"><i class="bi bi-file-earmark-slides" aria-hidden="true"></i></button>
+                <button type="button" data-fullscreen title="Pantalla completa" aria-label="Pantalla completa"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></button>
+                <button type="button" data-next title="Lámina siguiente" aria-label="Lámina siguiente"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+            </nav>
+        </div>
+    </div>
+
+    <div id="pam-export-status" class="pam-export-status" hidden role="status" aria-live="polite"><div class="pam-export-status__spinner"></div><strong>Preparando archivo</strong><span data-export-message></span></div>
+</main>
+
+<script src="~/vendor/pam-export/html2canvas.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/jspdf.umd.min.js" asp-append-version="true"></script>
+<script src="~/vendor/pam-export/pptxgen.bundle.js" asp-append-version="true"></script>
+<script src="~/js/convocatoria-ficha-indice.js" asp-append-version="true"></script>
+<script src="~/js/convocatoria-cartera-mapa.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-presentacion.js" asp-append-version="true"></script>
+<script src="~/js/pam-ficha-envio.js" asp-append-version="true"></script>

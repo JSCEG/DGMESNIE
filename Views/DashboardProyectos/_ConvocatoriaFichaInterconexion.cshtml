@@ -1,0 +1,69 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var d = Model.Dossier;
+    var p = Model.Project;
+    var tecnico = d.Registro();
+    var fila = tecnico == null ? "" : $"BD_MIXTOS_II · fila {tecnico.Row}";
+    var cod = d.Valor("Fecha Prevista para entrada en operación comercial");
+    var tension = d.Valor("¿A qué nivel de tensión se interconectaría?");
+    var tensionSub = System.Text.RegularExpressions.Regex.Match(p.Substation ?? "", @"@\s*([\d.,]+\s*KV)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    var cambioTension = d.Valor("Cuenta con disponibilidad de cambio de nivel de tensión");
+    var etapas = d.Valor("Proyecto por etapas");
+    var etapaFechas = tecnico?.Fields.Where(f => f.Name.Trim() == "Fecha").ToList() ?? new List<ConvocatoriaCampoFuente>();
+    var etapaCapacidades = tecnico?.Fields.Where(f => f.Name.Trim() == "Capacidad").ToList() ?? new List<ConvocatoriaCampoFuente>();
+    var etapasConDato = etapaFechas.Select((f, i) => (Fecha: f.Value, Capacidad: i < etapaCapacidades.Count ? etapaCapacidades[i].Value : null))
+        .Where(e => Tiene(e.Fecha) || Tiene(e.Capacidad)).ToList();
+    var registro = d.Valor("Fecha Inicio Registro");
+    var firma = d.Valor("Fecha Firma Proyecto");
+    var rtb = d.Valor("¿Cuál es la Fecha objetivo de RTB (Ready-to-build)");
+    if (!Tiene(rtb)) rtb = d.Valor("Fecha objetivo de RTB (Ready-to-build)");
+    var cronograma = Tiene(d.Valor("¿Cuál es el cronograma de desarrollo y construcción detallado?"))
+        ? d.Valor("¿Cuál es el cronograma de desarrollo y construcción detallado?") : d.Valor("Cronograma de desarrollo y construcción");
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="El proyecto" data-label="Interconexión y programa">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Interconexión</span><span class="pam-lamina-head__aside">@p.Folio</span></header>
+    <h2 class="pam-lamina-title">Interconexión y programa</h2>
+    <div class="pam-lamina-body conv-page">
+        <div class="convocatoria-summary__metrics">
+            <article class="is-guinda"><span><i class="bi bi-calendar-event" aria-hidden="true"></i>Entrada en operación comercial</span><strong>@Fecha(cod)</strong><small>Fecha prevista declarada</small></article>
+            <article class="is-dorado"><span><i class="bi bi-lightning" aria-hidden="true"></i>Nivel de tensión</span><strong>@Texto(tension)</strong><small>@(tensionSub.Success ? "Subestación declarada a " + tensionSub.Groups[1].Value.ToUpperInvariant() : "Declarado en la solicitud")</small></article>
+            <article class="is-verde"><span><i class="bi bi-arrow-left-right" aria-hidden="true"></i>Cambio de nivel de tensión</span><strong>@BanderaTexto(cambioTension)</strong><small>Disponibilidad declarada</small></article>
+            <article><span><i class="bi bi-hourglass-split" aria-hidden="true"></i>Tiempo de ejecución</span><strong>@Numero(d.Valor("¿Cuál es el tiempo de ejecución del Proyecto?"), 0)</strong><small>Meses declarados en la solicitud</small></article>
+        </div>
+        <div class="conv-timeline">
+            <div class="@(Tiene(registro) ? "" : "is-na")"><i></i><span>Registro</span><strong>@Fecha(registro)</strong></div>
+            <div class="@(Tiene(firma) ? "" : "is-na")"><i></i><span>Firma de solicitud</span><strong>@Fecha(firma)</strong></div>
+            <div class="@(Tiene(rtb) ? "" : "is-na")"><i></i><span>Ready-to-build</span><strong>@Fecha(rtb)</strong></div>
+            <div class="is-hito"><i></i><span>Operación comercial</span><strong>@Fecha(cod)</strong></div>
+        </div>
+        <div class="conv-two">
+            <dl class="conv-facts conv-facts--compact">
+                <div><dt><i class="bi bi-diagram-3" aria-hidden="true"></i>Subestación de interconexión</dt><dd>@Texto(p.Substation ?? d.Valor("Subestación Eléctrica de Interconexión"))</dd></div>
+                <div><dt><i class="bi bi-plug" aria-hidden="true"></i>Punto de interconexión</dt><dd>@Texto(p.InterconnectionPoint ?? d.Valor("Punto de Interconexión"))</dd></div>
+                <div><dt><i class="bi bi-map" aria-hidden="true"></i>Gerencia de control regional</dt><dd>@Texto(d.Valor("Región") ?? p.Region)</dd></div>
+                <div><dt><i class="bi bi-geo-alt" aria-hidden="true"></i>Entidad federativa</dt><dd>@Texto(d.Valor("Entidad Federativa") ?? p.State)</dd></div>
+                <div><dt><i class="bi bi-clipboard-data" aria-hidden="true"></i>Estudios de interconexión</dt><dd>@BanderaTexto(d.Valor("Has Estudios Interconexión"))</dd></div>
+                <div><dt><i class="bi bi-battery-full" aria-hidden="true"></i>Capacidad en permiso de generación</dt><dd>@Numero(d.Valor("Capacidad Generación Permiso"), 2) <small>MW</small></dd></div>
+            </dl>
+            <article class="conv-card is-guinda">
+                <h3><i class="bi bi-list-ol" aria-hidden="true"></i>Etapas del proyecto <span class="conv-pill @Bandera(etapas)">@(EsSi(etapas) ? "Por etapas" : EsNo(etapas) ? "Sin etapas" : "No informado")</span></h3>
+                @if (etapasConDato.Count > 0) {
+                    <table class="conv-table">
+                        <thead><tr><th>Etapa</th><th>Fecha</th><th class="is-num">Capacidad</th></tr></thead>
+                        <tbody>
+                        @for (var i = 0; i < etapasConDato.Count; i++) {
+                            <tr><th>Etapa @(i + 1)</th><td>@Fecha(etapasConDato[i].Fecha)</td><td class="is-num">@Numero(etapasConDato[i].Capacidad, 2) MW</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                } else {
+                    <p>@(EsNo(etapas) ? "El promovente declara desarrollo en una sola etapa con la capacidad total." : "Sin etapas reportadas en la solicitud.")</p>
+                }
+                <p><strong>Cronograma declarado:</strong> @Recorte(cronograma, 280, "No informado")</p>
+            </article>
+        </div>
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("solicitud registrada en ventanilla") Fechas declaradas por el promovente.</span><span class="pam-lamina-foot__meta"></span></div>
+</section>

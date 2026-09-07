@@ -9,8 +9,6 @@
 
 
         function iniciarMapas() {
-            // Tokens externos deben inyectarse fuera del repositorio.
-            const yourAccessToken = window.NSIE_MAPBOX_TOKEN || '';
             ///Variable a la que le cargaremos los  mapas
 
                 //Tipos de Mapas
@@ -39,21 +37,33 @@
                     new Autolinker({ truncate: { length: 30, location: 'smart' } });
                     new L.featureGroup([]).addTo(targetMap);
                 
-                    // Vista Satélite
-                    targetMap.createPane('pane_GoogleSatellite_0');
-                    targetMap.getPane('pane_GoogleSatellite_0').style.zIndex = 0;
-                    var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-                        pane: 'pane_GoogleSatellite_0',
+                    // Fondos públicos que no requieren API key.
+                    targetMap.createPane('pane_Satellite_0');
+                    targetMap.getPane('pane_Satellite_0').style.zIndex = 0;
+                    var layerSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                        pane: 'pane_Satellite_0',
                         opacity: 1.0,
-                        attribution: '<a href="https://www.google.at/permissions/geoguidelines/attr-guide.html">Map data ©2015 Google</a>',
+                        attribution: 'Tiles &copy; Esri',
                         minZoom: 1,
-                        maxZoom: 28,
+                        maxZoom: 19,
                         minNativeZoom: 0,
-                        maxNativeZoom: 20
+                        maxNativeZoom: 19
                     });
-                
+
+                    var openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    });
+
+                    var cartoDBLight = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                        subdomains: 'abcd',
+                        maxZoom: 20,
+                        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+                    });
+
                     var cartoDBDarkAll = L.tileLayer('https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
-                        attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>'
+                        maxZoom: 20,
+                        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
                     });
 
                     // Añadir la capa de Mapbox GL como fondo
@@ -89,32 +99,12 @@
                         }
                     }).addTo(targetMap);
 
-                    const mapTilerKey = window.NSIE_MAPTILER_KEY || '';
                     var baseLayers = {
-                        "Vista Satélite": layer_GoogleSatellite_0
+                        "Mapa de calles": openStreetMap,
+                        "Mapa claro": cartoDBLight,
+                        "Vista satélite": layerSatellite,
+                        "Modo oscuro": cartoDBDarkAll
                     };
-
-                    if (mapTilerKey) {
-                        // Capas de MapTiler disponibles solo si la llave se inyecta en runtime.
-                        var Sener = L.maptiler.maptilerLayer({
-                            apiKey: mapTilerKey,
-                            style: "0198a9f0-f135-7991-aaec-bea71681556e"
-                        });
-
-                        var SenerLight = L.maptiler.maptilerLayer({
-                            apiKey: mapTilerKey,
-                            style: "0198a9af-dc7c-79d3-8316-a80767ad1d0f"
-                        });
-
-                        var SenerDark = L.maptiler.maptilerLayer({
-                            apiKey: mapTilerKey,
-                            style: "0198a9df-c3dc-73df-b1c0-55a5488e3790"
-                        });
-
-                        baseLayers["SENER"] = Sener;
-                        baseLayers["SENER Light"] = SenerLight;
-                        baseLayers["SENER Dark"] = SenerDark;
-                    }
 
                     // Configura los Base Layers y expónlos globalmente
                     // "SENER Monocromo": SenerMonocromo,
@@ -128,12 +118,12 @@
                 
                     // Control de capas y vista inicial
                     L.control.layers(baseLayers).addTo(targetMap);
-                    (baseLayers["SENER"] || layer_GoogleSatellite_0).addTo(targetMap);
+                    openStreetMap.addTo(targetMap);
                 
                     // Eventos y controles
                     targetMap.on('baselayerchange', function (eventLayer) {
-                        if (eventLayer.name === "Vista Satélite") {
-                            layer_GoogleSatellite_0.redraw();
+                        if (eventLayer.name === "Vista satélite") {
+                            layerSatellite.redraw();
                         }
                     });
                 

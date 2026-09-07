@@ -1,0 +1,56 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var d = Model.Dossier;
+    var p = Model.Project;
+    string T(string campo) => Texto(d.Valor(campo));
+    string C(string campo) => Texto(d.Valor(campo, 1, "CATALOGO DE PROYECTOS"));
+    var showCosts = !string.Equals(Context.Request.Query["costos"].ToString(), "false", StringComparison.OrdinalIgnoreCase);
+    var adicionales = new[] {
+        (Campo: "No Cumple/Solicitud de Pago/Revalidación Documento (Oficio)", Titulo: "Oficio de trámite"),
+        (Campo: "Documento de pago", Titulo: "Comprobante de pago"),
+        (Campo: "Desahogo 1 - Documento del desahogo", Titulo: "Documento de desahogo"),
+        (Campo: "Anexo4", Titulo: "Anexo 4")
+    }.Select(item => (item.Titulo, Url: d.Enlace(item.Campo))).Where(item => item.Url != null).ToList();
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="Expediente y cierre" data-label="Expediente y documentos" data-convocatoria-section="documentos">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Expediente</span><span class="pam-lamina-head__aside">Proyecto @p.Folio</span></header>
+    <h2 class="pam-lamina-title">Expediente y documentos</h2>
+    <div class="pam-lamina-body convocatoria-documentos">
+        <div class="convocatoria-documentos__grid">
+            <article><span><i class="bi bi-file-earmark-check" aria-hidden="true"></i>Permiso de generación</span><strong>@T("Permiso Generación")</strong><p>Estatus: @T("Estatus Permiso")</p><p>Solicitud: @T("Estatus de la solicitud de permiso (Sin información / Presentada)")</p>
+                @if (d.Enlace("Solicitud de permiso (documento)") is string permiso) { <a class="convocatoria-document-link" href="@permiso" target="_blank" rel="noopener noreferrer"><i class="bi bi-file-earmark-text" aria-hidden="true"></i> Solicitud de permiso</a> }
+                else { <small>Solicitud de permiso no adjuntada en la ventanilla.</small> }
+            </article>
+            <article><span><i class="bi bi-geo-alt" aria-hidden="true"></i>Geometría del proyecto</span><strong>@p.Name</strong>
+                @if (d.Enlace("Archivo KMZ proyecto") is string proyecto) { <a class="convocatoria-document-link" href="@proyecto" target="_blank" rel="noopener noreferrer"><i class="bi bi-geo-alt" aria-hidden="true"></i> KML/KMZ del proyecto</a> }
+                else if (d?.ProjectPolygon is { Count: >= 3 }) { <p>Sin archivo KML adjunto; la geometría corresponde a los vértices registrados en la solicitud.</p> }
+                else { <p>Sin archivo KML adjunto; se utiliza la coordenada registrada en la solicitud.</p> }
+            </article>
+            <article><span><i class="bi bi-diagram-3" aria-hidden="true"></i>Subestación</span><strong>@(string.IsNullOrWhiteSpace(p.Substation) ? "No informada" : p.Substation)</strong>
+                @if (d.Enlace("Archivo KMZ subestacion") is string subestacion) { <a class="convocatoria-document-link" href="@subestacion" target="_blank" rel="noopener noreferrer"><i class="bi bi-diagram-3" aria-hidden="true"></i> KML/KMZ de la subestación</a> }
+                else if (d?.SubstationPolygon is { Count: >= 3 }) { <p>Sin archivo KML adjunto; la geometría corresponde a los vértices registrados en la solicitud.</p> }
+                else { <p>Sin archivo KML adjunto; se utiliza la coordenada registrada en la solicitud.</p> }
+                @if (p.SameKmlReference) { <p>Comparte el archivo del proyecto.</p> }
+            </article>
+            <article><span><i class="bi bi-battery-charging" aria-hidden="true"></i>Almacenamiento</span><strong>@C("ALMACENAMIENTO SAE")</strong><p>Tipo de baterías: @T("Indique el tipo de baterías")</p><p>Capacidad: @T("Capacidad de almacenamiento")</p></article>
+            <article><span><i class="bi bi-envelope-paper" aria-hidden="true"></i>Manifestación de interés ante CFE</span><strong>@C("CFE MI Oficio")</strong><p>Fecha: @Fecha(d.Valor("CFE Manifestación I.", 1, "CATALOGO DE PROYECTOS"))</p>
+                @if (showCosts && Tiene(d?.Value("BD_COSTOS CFE", "Ficha de origen (.pptx)"))) { <p>Ficha de costos CFE: @d!.Value("BD_COSTOS CFE", "Ficha de origen (.pptx)")</p> }
+            </article>
+            <article><span><i class="bi bi-calculator" aria-hidden="true"></i>@(showCosts ? "Calculadora económica" : "Material adicional")</span>
+                @if (showCosts && d.Enlace("Calculadora economica") is string calculadora) { <a class="convocatoria-document-link" href="@calculadora" target="_blank" rel="noopener noreferrer"><i class="bi bi-calculator" aria-hidden="true"></i> Calculadora económica de la solicitud</a> }
+                @if (showCosts && !string.IsNullOrWhiteSpace(d?.CalculatorFile)) { <a class="convocatoria-document-link" href="/DashboardProyectos/Convocatorias/Calculadora?folio=@Uri.EscapeDataString(p.Folio)"><i class="bi bi-calculator" aria-hidden="true"></i> Calculadora de costos CFE</a><small>Archivo del expediente CFE.</small> }
+                @if (showCosts && d.Enlace("Calculadora economica") == null && string.IsNullOrWhiteSpace(d?.CalculatorFile)) { <p>Sin calculadora adjunta en la ventanilla.</p> }
+                @if (!showCosts) { <p>Calculadoras y costos disponibles en la versión con costos de la ficha.</p> }
+            </article>
+        </div>
+        @if (adicionales.Count > 0)
+        {
+            <div class="convocatoria-documentos__adicionales">
+                @foreach (var item in adicionales) { <div><a class="convocatoria-document-link" href="@item.Url" target="_blank" rel="noopener noreferrer"><i class="bi bi-file-earmark-text" aria-hidden="true"></i> @item.Titulo</a></div> }
+            </div>
+        }
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("documentos registrados en la ventanilla de la convocatoria") Los accesos pueden requerir sesión institucional.</span><span></span></div>
+</section>

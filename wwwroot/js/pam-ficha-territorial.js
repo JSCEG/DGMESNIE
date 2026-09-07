@@ -35,6 +35,8 @@
     var mapaListo = false;
     var mapasElemento = {};
     var bboxCache = typeof WeakMap !== "undefined" ? new WeakMap() : null;
+    var clavesRegistroMixtos = new WeakMap();
+    var encuadresMixtos = new WeakMap();
 
     var GCR_ALIAS = {
         bajacalifornia: "BC", bc: "BC",
@@ -85,7 +87,7 @@
     function fetchJson(url) {
         if (!url) return Promise.reject(new Error("URL territorial vacía"));
         if (!cargas[url]) {
-            cargas[url] = fetch(url, { credentials: url.charAt(0) === "/" ? "same-origin" : "omit", cache: "force-cache" })
+            cargas[url] = fetch(url, { credentials: url.charAt(0) === "/" ? "same-origin" : "omit", cache: "force-cache", signal: AbortSignal.timeout(60000) })
                 .then(function (respuesta) {
                     if (!respuesta.ok) throw new Error("HTTP " + respuesta.status);
                     return respuesta.json();
@@ -105,6 +107,12 @@
 
     function nombreFeature(feature, respaldo) {
         var p = feature && feature.properties || {};
+        if (window.convocatoriaFichaMap) {
+            var nombreMixtos = obtenerPropiedad(p, /^(nombre|name|nomgeo|nom_gcr|gerencia|region|denominacion|subestacion|se)$/i) ||
+                obtenerPropiedad(p, /nombre|denomin|subest|gerencia|region|raz[oó]n.?social|titular/i) ||
+                obtenerPropiedad(p, /^(numero_?permiso|id|clave|folio)$/i);
+            if (nombreMixtos) return String(nombreMixtos).trim();
+        }
         return String(
             obtenerPropiedad(p, /^(nombre|name|nomgeo|nom_gcr|gerencia|region|denominacion|subestacion|se)$/i) ||
             obtenerPropiedad(p, /nombre|denomin|subest|gerencia|region/i) || respaldo || "Elemento territorial"
@@ -181,6 +189,20 @@
     }
 
     function claveFeature(feature, indice, prefijo) {
+        if (window.convocatoriaFichaMap && feature && typeof feature === "object") {
+            // Mantener registros con igual nombre/clave y geometría o atributos
+            // distintos. Sólo se consolida una coincidencia idéntica entre áreas.
+            var claveMixtos = clavesRegistroMixtos.get(feature);
+            if (!claveMixtos) {
+                claveMixtos = JSON.stringify(feature, function (_, valor) {
+                    return valor && typeof valor === "object" && !Array.isArray(valor)
+                        ? Object.keys(valor).sort().reduce(function (ordenado, clave) { ordenado[clave] = valor[clave]; return ordenado; }, {})
+                        : valor;
+                });
+                clavesRegistroMixtos.set(feature, claveMixtos);
+            }
+            return prefijo + ":" + claveMixtos;
+        }
         var p = feature && feature.properties || {};
         var id = feature && feature.id || obtenerPropiedad(p, /^(id|clave|cvegeo|codigo|num|folio)$/i) ||
             obtenerPropiedad(p, /clave|codigo|cve|folio/i) || nombreFeature(feature, "");
@@ -264,7 +286,7 @@
         if (municipio.municipio) params.set("municipio", municipio.municipio);
         if (municipio.areaKm2) params.set("areaKm2", municipio.areaKm2.toFixed(2));
         inegiPorClave[clave] = fetch("/DashboardProyectos/IndicadoresInegi?" + params.toString(), {
-            credentials: "same-origin", headers: { Accept: "application/json" }
+            credentials: "same-origin", headers: { Accept: "application/json" }, signal: AbortSignal.timeout(60000)
         }).then(function (respuesta) {
             if (!respuesta.ok) throw new Error("HTTP " + respuesta.status);
             return respuesta.json();
@@ -412,7 +434,9 @@
 
     function analizar(url, radioPredeterminado, gcrRespaldo) {
         if (analisisPorUrl[url]) return analisisPorUrl[url];
-        analisisPorUrl[url] = fetchJson(url).then(function (proyecto) {
+        var origen = url.indexOf("mixtos:") === 0 && window.pamFichaTerritorialSource
+            ? window.pamFichaTerritorialSource() : fetchJson(url);
+        analisisPorUrl[url] = origen.then(function (proyecto) {
             var bbox = bboxProyecto(proyecto, radioPredeterminado);
             return Promise.all([
                 Promise.resolve(proyecto),
@@ -532,6 +556,12 @@
                 } else {
                     clasificacion = { clave: "multielemento", titulo: lineal ? "Proyecto lineal multielemento" : "Proyecto multielemento", detalle: elementos.length + " elementos con cobertura en la GCR " + (gcrs[0] || "por precisar") + "." };
                 }
+                if (url.indexOf("mixtos:") === 0 && elementos.length) {
+                    var tienePoligono = elementos.some(function (item) { return /Polygon/.test(item.feature.geometry.type); });
+                    var tieneTrazo = elementos.some(function (item) { return /LineString/.test(item.feature.geometry.type); });
+                    clasificacion.titulo = tienePoligono ? "Proyecto con huella poligonal" : tieneTrazo ? "Proyecto con trazo territorial" : "Proyecto con ubicación puntual";
+                    clasificacion.detalle = elementos.length + " geometría(s) del proyecto y su conexión; referencias del corte, sin validación topográfica.";
+                }
                 return {
                     proyecto: proyecto,
                     elementos: elementos,
@@ -584,22 +614,44 @@
 
     function analizarIntensivo(resultado) {
         if (resultado.intensivoPromise) return resultado.intensivoPromise;
+        var extras = window.convocatoriaFichaMap ? [
+            ['nucleosAgrarios', 'Núcleos agrarios (RAN)', 'https://cdn.sassoapps.com/Gabvy/RAN_4326.geojson'],
+            ['atlasIndigena', 'Atlas pueblos indígenas', 'https://cdn.sassoapps.com/Gabvy/atlaspueblosindigenas.geojson'],
+            ['lenguasIndigenas', 'Lenguas indígenas', 'https://cdn.sassoapps.com/Gabvy/lenguasindigenas_corregido.geojson'],
+            ['localidadesIndigenas', 'Localidades indígenas', 'https://cdn.sassoapps.com/Gabvy/loc_indigenas_datos.geojson'],
+            ['rutaWixarika', 'Ruta Wixárika', 'https://cdn.sassoapps.com/Gabvy/rutaWixarika.geojson'],
+            ['divisionesTarifarias', 'Divisiones tarifarias', null],
+            ['generacionDistribuida', 'Generación distribuida · CNE', null],
+            ['pam', 'PAM / PAMRNT (geometrías localizadas)', '/DashboardProyectos/PamTerritorial/GeoJson'],
+            ['podecobi', 'PODECOBI', '/api/podecobi/geojson']
+        ] : [];
         resultado.intensivoPromise = Promise.all([
             fuenteConEstado(fetchJson(URLS.centrales), "Centrales eléctricas"),
             fuenteConEstado(fetchJson(URLS.presas), "Presas"),
-            fuenteConEstado(fetchJson(URLS.generacionPrivada), "Generación privada planeada"),
+            window.convocatoriaFichaMap
+                ? Promise.resolve({ nombre: "Primera convocatoria (pausada)", geo: geoVacio(), disponible: false, omitida: true })
+                : fuenteConEstado(fetchJson(URLS.generacionPrivada), "Generación privada planeada"),
             fuenteConEstado(fetchJson(URLS.conservacion), "Conservación voluntaria"),
             fuenteConEstado(fetchJson(URLS.sitiosArqueologicos), "Sitios arqueológicos"),
             fuenteConEstado(fetchJson(URLS.zonasArqueologicas), "Zonas arqueológicas"),
             fuenteConEstado(fetchJson(URLS.zonasHistoricas), "Zonas históricas")
-        ]).then(function (datos) {
+        ].concat(extras.map(function (extra) {
+            var promise = extra[2] ? fetchJson(extra[2])
+                : extra[0] === 'generacionDistribuida' ? generacionDistribuidaGeo()
+                : window.division && window.division.type === 'FeatureCollection' ? Promise.resolve(window.division)
+                : Promise.reject(new Error('Divisiones tarifarias no disponibles'));
+            return fuenteConEstado(promise, extra[1]);
+        }))).then(function (datos) {
             var fuentes = {
                 centrales: datos[0], presas: datos[1], generacionPrivada: datos[2],
                 conservacion: datos[3], sitiosArqueologicos: datos[4],
                 zonasArqueologicas: datos[5], zonasHistoricas: datos[6]
             };
+            extras.forEach(function (extra, indice) { fuentes[extra[0]] = datos[indice + 7]; });
             var features = {};
-            Object.keys(fuentes).forEach(function (clave) { features[clave] = featuresGeo(fuentes[clave].geo); });
+            Object.keys(fuentes).forEach(function (clave) {
+                features[clave] = featuresGeo(fuentes[clave].geo).filter(function (feature) { return clave !== 'pam' || !(feature.properties || {}).esUbicacionRegional; });
+            });
             resultado.elementos.forEach(function (elemento) {
                 elemento.intensivo = {};
                 Object.keys(features).forEach(function (clave) {
@@ -609,6 +661,28 @@
             return { fuentes: fuentes };
         });
         return resultado.intensivoPromise;
+    }
+
+    function generacionDistribuidaGeo() {
+        return Promise.all([
+            fetchJson('/DashboardProyectos/AtlasSen/GeneracionDistribuida'),
+            fetchJson('https://cdn.sassoapps.com/Mapas/Electricidad/estados.geojson')
+        ]).then(function (datos) {
+            var payload = datos[0], states = payload.states || {}, aliases = {};
+            Object.keys(states).forEach(function (name) {
+                var normalized = normaliza(name.replace(/^Estado de /i, ''));
+                aliases[normalized] = states[name];
+                if (ESTADOS[normalized]) aliases[ESTADOS[normalized]] = states[name];
+            });
+            var features = featuresGeo(datos[1]).map(function (feature) {
+                var name = nombreFeature(feature, ''), props = feature.properties || {};
+                var record = aliases[String(props.CVE_ENT || props.cve_ent || props.CVEGEO || '').padStart(2, '0')] || aliases[normaliza(name)];
+                if (!record) return null;
+                return { type:'Feature', geometry:feature.geometry, properties:{ nombre:name, dg_mw:record.latest && record.latest.mw, dg_contracts:record.latest && record.latest.contracts, reference_period:payload.referencePeriod || '' } };
+            }).filter(Boolean);
+            if (!features.length) throw new Error('Sin estados relacionables para generación distribuida');
+            return { type:'FeatureCollection', features:features };
+        });
     }
 
     function numeroPropiedad(feature, expresion) {
@@ -702,8 +776,21 @@
             });
             var ambiente = unicos.anp.size + unicos.anpEstatal.size + unicos.ramsar.size + conservacion.length;
             var social = unicos.regionesIndigenas.size + patrimonio.length;
+            if (window.convocatoriaFichaMap) {
+                ['atlasIndigena','lenguasIndigenas','localidadesIndigenas','rutaWixarika'].forEach(function (clave) {
+                    social += itemsUnicos(resultado.elementos.map(function (elemento) { return { items:elemento.intensivo[clave] }; }), ['items'], clave).length;
+                });
+            }
             var hallazgos = nombresFeatures(centrales.concat(presas, generacion), 2)
                 .concat(nombresFeatures(conservacion, 2), nombresFeatures(patrimonio, 2));
+            if (window.convocatoriaFichaMap) {
+                var etiquetasVistas = new Set();
+                hallazgos = hallazgos.filter(function (nombre) {
+                    var clave = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toLowerCase();
+                    if (etiquetasVistas.has(clave)) return false;
+                    etiquetasVistas.add(clave); return true;
+                });
+            }
 
             contenedor.innerHTML = '<div class="pam-ejecutivo-layout">' +
                 '<div class="pam-ejecutivo-graficas">' +
@@ -711,14 +798,14 @@
                     '<section class="pam-ejecutivo-panel"><header><span>Mercado eléctrico</span><strong>Contexto tarifario</strong><small>CFE</small></header>' + graficaTarifaria(resultado) + '</section>' +
                 '</div>' +
                 '<aside class="pam-ejecutivo-resumen">' +
-                    '<div class="pam-ejecutivo-resumen__head"><span>Incidencia en coberturas</span><strong>Lectura territorial consolidada</strong><small>' + numero(resultado.elementos.length) + ' elemento(s) · ' + textoSeguro(resultado.gcrs.length ? "GCR " + resultado.gcrs.join(" · ") : "ámbito por precisar") + '</small></div>' +
+                    '<div class="pam-ejecutivo-resumen__head"><span>Incidencia en coberturas</span><strong>' + (window.convocatoriaFichaMap ? 'Resumen territorial' : 'Lectura territorial consolidada') + '</strong><small>' + numero(resultado.elementos.length) + ' elemento(s) · ' + textoSeguro(resultado.gcrs.length ? "GCR " + resultado.gcrs.join(" · ") : "ámbito por precisar") + '</small></div>' +
                     '<div class="pam-ejecutivo-kpis">' +
                         kpiEjecutivo("Red eléctrica", numero(unicos.se.size + unicos.lt.size), numero(unicos.se.size) + " SE · " + numero(unicos.lt.size) + " LT", "is-red") +
                         kpiEjecutivo("Permisos", numero(permisos.length), "energéticos en cobertura", "is-permisos") +
                         kpiEjecutivo("Ductos", numero(ductos.length), "tramos coincidentes", "is-ductos") +
-                        kpiEjecutivo("Generación", numero(centrales.length + presas.length + generacion.length), numero(centrales.length) + " centrales · " + numero(presas.length) + " presas", "is-generacion") +
+                        kpiEjecutivo(window.convocatoriaFichaMap ? "Registros de generación" : "Generación", numero(centrales.length + presas.length + generacion.length), numero(centrales.length) + " centrales · " + numero(presas.length) + " presas", "is-generacion") +
                         kpiEjecutivo("Ambiente", numero(ambiente), "ANP, RAMSAR y conservación", "is-ambiente") +
-                        kpiEjecutivo("Social y patrimonio", numero(social), "regiones y sitios culturales", "is-patrimonio") +
+                        kpiEjecutivo("Social y patrimonio", numero(social), window.convocatoriaFichaMap ? "registros indígenas y culturales" : "regiones y sitios culturales", "is-patrimonio") +
                     '</div>' +
                     (hallazgos.length ? '<div class="pam-ejecutivo-hallazgos">' + hallazgos.map(function (nombre) { return '<span>' + textoSeguro(nombre) + '</span>'; }).join("") + '</div>' : '') +
                     '<p>Coincidencias dentro de las áreas de proximidad; constituyen una señal ejecutiva para priorizar revisión técnica, ambiental y social.</p>' +
@@ -1030,6 +1117,22 @@
         return coordenadas[0].toFixed(5) + "|" + coordenadas[1].toFixed(5);
     }
 
+    function guardarEncuadreMixtos(mapaActivo, limites, opciones) {
+        if (!window.convocatoriaFichaMap || !mapaActivo || !limites || !limites.isValid()) return;
+        encuadresMixtos.set(mapaActivo, { limites: limites, opciones: Object.assign({}, opciones, { animate: false }) });
+    }
+
+    function restaurarEncuadreMixtos(mapaActivo) {
+        if (!window.convocatoriaFichaMap) return;
+        var encuadre = encuadresMixtos.get(mapaActivo);
+        if (!encuadre) return;
+        // Al pasar de una lámina oculta/escalada al lienzo de exportación,
+        // invalidateSize(pan:false) cambia el origen de píxeles sin recentrar.
+        // Se recalcula el encuadre con el tamaño real antes del repintado; los
+        // límites son del proyecto y su buffer, nunca los de las capas de fondo.
+        mapaActivo.fitBounds(encuadre.limites, encuadre.opciones);
+    }
+
     function crearMapa(resultado) {
         var el = document.getElementById("pam-territorial-mapa");
         if (!el || mapaListo || typeof L === "undefined" || !window.turf) return;
@@ -1060,8 +1163,13 @@
             });
             try {
                 var limitesGcr = gerenciasActivas.getBounds();
-                if (limitesGcr && limitesGcr.isValid()) mapa.fitBounds(limitesGcr.pad(.08), { padding: [12, 12], maxZoom: 7 });
-                else if (grupoGerencias.getBounds().isValid()) mapa.fitBounds(grupoGerencias.getBounds(), { padding: [8, 8] });
+                if (limitesGcr && limitesGcr.isValid()) {
+                    mapa.fitBounds(limitesGcr.pad(.08), { padding: [12, 12], maxZoom: 7 });
+                    guardarEncuadreMixtos(mapa, limitesGcr.pad(.08), { padding: [12, 12], maxZoom: 7 });
+                } else if (grupoGerencias.getBounds().isValid()) {
+                    mapa.fitBounds(grupoGerencias.getBounds(), { padding: [8, 8] });
+                    guardarEncuadreMixtos(mapa, grupoGerencias.getBounds(), { padding: [8, 8] });
+                }
             } catch (e) { }
             setTimeout(function () { if (mapa) mapa.invalidateSize(false); }, 80);
             return;
@@ -1120,7 +1228,10 @@
         });
         try {
             var bounds = grupoCoberturas.getBounds();
-            if (bounds && bounds.isValid()) mapa.fitBounds(bounds.pad(.08), { padding: [12, 12], maxZoom: 9 });
+            if (bounds && bounds.isValid()) {
+                mapa.fitBounds(bounds.pad(.08), { padding: [12, 12], maxZoom: 9 });
+                guardarEncuadreMixtos(mapa, bounds.pad(.08), { padding: [12, 12], maxZoom: 9 });
+            }
         } catch (e) { }
 
         // Cuando dos o más elementos comparten coordenada, el punto real queda
@@ -1274,7 +1385,10 @@
         leyenda.addTo(mapaElemento);
         try {
             var bounds = grupoPrincipal.getBounds();
-            if (bounds && bounds.isValid()) mapaElemento.fitBounds(bounds.pad(.08), { padding: [12, 12], maxZoom: 10 });
+            if (bounds && bounds.isValid()) {
+                mapaElemento.fitBounds(bounds.pad(.08), { padding: [12, 12], maxZoom: 10 });
+                guardarEncuadreMixtos(mapaElemento, bounds.pad(.08), { padding: [12, 12], maxZoom: 10 });
+            }
         } catch (e) { }
         setTimeout(function () { mapaElemento.invalidateSize(false); }, 80);
     }
@@ -1312,11 +1426,19 @@
             var renderEjecutivoPromise = ejecutivo ? renderEjecutivo(resultado, ejecutivo) : Promise.resolve();
             crearMapa(resultado);
             if (mapa) setTimeout(function () { mapa.invalidateSize(false); }, 60);
-            return renderEjecutivoPromise.then(function () { return resultado; });
+            return renderEjecutivoPromise.then(function () {
+                if (!window.convocatoriaFichaMap) return resultado;
+                return analizarIntensivo(resultado).then(function (extra) {
+                    crearCapasMixtos(resultado);
+                    document.dispatchEvent(new CustomEvent("convocatoria:territorial-ready", { detail: { resultado: resultado, fuentes: extra.fuentes } }));
+                    return resultado;
+                });
+            });
         }).catch(function (error) {
             console.error("No fue posible completar el análisis territorial de la ficha", error);
             var resumen = configuracion.principal.querySelector(".pam-territorial__resumen");
             if (resumen) resumen.innerHTML = '<div class="pam-territorial__empty"><strong>Contexto territorial no disponible</strong><span>No fue posible consultar las capas territoriales en esta sesión.</span></div>';
+            if (window.convocatoriaFichaMap) throw error;
         });
     }
 
@@ -1324,6 +1446,23 @@
         return new Promise(function (resolve) {
             requestAnimationFrame(function () { requestAnimationFrame(resolve); });
         });
+    }
+
+    function crearCapasMixtos(resultado) {
+        if (!mapa || mapa._mixtosOverlays) return;
+        mapa._mixtosOverlays = true;
+        var overlays = {};
+        [['pam','PAM · coincidencias','#6b3654'],['podecobi','PODECOBI','#a57f2c'],['nucleosAgrarios','Núcleos agrarios','#2e6fb0'],['localidadesIndigenas','Localidades indígenas','#c0552e']].forEach(function (config) {
+            var features = itemsUnicos(resultado.elementos.map(function (elemento) { return { items: elemento.intensivo[config[0]] || [] }; }), ['items'], config[0]);
+            var layer = L.geoJSON({type:'FeatureCollection', features:features}, {
+                style:{color:config[2],weight:2,fillOpacity:.1},
+                pointToLayer:function (_, latlng) { return L.circleMarker(latlng,{radius:5,color:config[2],weight:2,fillOpacity:.6}); },
+                onEachFeature:function (feature, layer) { layer.bindPopup('<strong>'+textoSeguro(nombreFeature(feature,config[1]))+'</strong><br>Coincidencia territorial dentro del área de análisis.'); }
+            });
+            overlays[config[1]+' ('+features.length+')'] = layer;
+            if (config[0] === 'pam' || config[0] === 'podecobi') layer.addTo(mapa);
+        });
+        L.control.layers(null, overlays, {collapsed:true,position:'topright'}).addTo(mapa);
     }
 
     function redibujarMapasTerritoriales() {
@@ -1337,6 +1476,7 @@
                 var contenedor = mapaActivo.getContainer();
                 if (!contenedor || !contenedor.clientWidth || !contenedor.clientHeight) return;
                 mapaActivo.invalidateSize({ animate: false, pan: false });
+                restaurarEncuadreMixtos(mapaActivo);
                 mapaActivo.eachLayer(function (layer) {
                     if (typeof layer.redraw === "function") layer.redraw();
                 });

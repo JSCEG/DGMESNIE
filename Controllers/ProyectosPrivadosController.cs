@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using System.IO.Compression;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using NSIE.Models;
@@ -18,17 +19,23 @@ namespace NSIE.Controllers
     {
         private readonly IRepositorioProyectosPrivados _repo;
         private readonly IngestionService _ingestService;
+        private readonly ICarteraConvocatoriaImportService _carteraImportService;
+        private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<ProyectosPrivadosController> _logger;
         private readonly IWebHostEnvironment _environment;
 
         public ProyectosPrivadosController(
             IRepositorioProyectosPrivados repo,
             IngestionService ingestService,
+            ICarteraConvocatoriaImportService carteraImportService,
+            IHttpClientFactory httpClientFactory,
             ILogger<ProyectosPrivadosController> logger,
             IWebHostEnvironment environment)
         {
             _repo = repo;
             _ingestService = ingestService;
+            _carteraImportService = carteraImportService;
+            _httpClientFactory = httpClientFactory;
             _logger = logger;
             _environment = environment;
         }
@@ -168,6 +175,135 @@ namespace NSIE.Controllers
             }
         }
 
+        [HttpPost("ProyectosPrivados/Api/CarteraConvocatoria/Importar")]
+        [ValidateAntiForgeryToken]
+        [RequestSizeLimit(25 * 1024 * 1024)]
+        public async Task<IActionResult> ApiImportarCarteraConvocatoria(
+            IFormFile file,
+            CancellationToken cancellationToken)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { error = "Seleccione un archivo Excel." });
+            if (file.Length > 25 * 1024 * 1024)
+                return BadRequest(new { error = "El archivo excede el límite de 25 MB." });
+
+            var extension = Path.GetExtension(file.FileName);
+            if (!extension.Equals(".xlsx", StringComparison.OrdinalIgnoreCase) &&
+                !extension.Equals(".xlsm", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { error = "La carga de Mixtos II requiere un archivo .xlsx o .xlsm." });
+            }
+
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                var document = await _carteraImportService.LeerAsync(
+                    stream,
+                    file.FileName,
+                    cancellationToken);
+                var result = await _repo.GuardarCargaCarteraConvocatoriaAsync(
+                    document,
+                    GetCurrentUserName());
+                return Ok(new { success = true, result });
+            }
+            catch (InvalidDataException ex)
+            {
+                _logger.LogWarning(ex, "El archivo {FileName} no cumple el contrato de Mixtos II.", file.FileName);
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importando la cartera Mixtos II desde {FileName}.", file.FileName);
+                return StatusCode(500, new { error = "No fue posible guardar la versión del Excel en la base de datos." });
+            }
+        }
+
+        // Libro complementario de CFE con clúster candidato y grupos excluyentes por folio.
+        [HttpPost("ProyectosPrivados/Api/CarteraConvocatoria/ImportarMarcas")]
+        [ValidateAntiForgeryToken]
+        [RequestSizeLimit(25 * 1024 * 1024)]
+        public async Task<IActionResult> ApiImportarMarcasCarteraConvocatoria(IFormFile file, CancellationToken cancellationToken)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { error = "Seleccione el archivo Excel de clúster y excluyentes." });
+            var extension = Path.GetExtension(file.FileName);
+            if (!extension.Equals(".xlsx", StringComparison.OrdinalIgnoreCase) && !extension.Equals(".xlsm", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = "El archivo debe ser .xlsx o .xlsm." });
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                var document = await _carteraImportService.LeerMarcasAsync(stream, file.FileName, cancellationToken);
+                var saved = await _repo.GuardarMarcasConvocatoriaAsync(document, GetCurrentUserName());
+                var cartera = await _repo.ObtenerCarteraConvocatoriaAsync();
+                var firm = cartera.Projects.Where(p => p.Source == "Mixtos II" && p.Consideration == "firme").Select(p => p.Folio).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                return Ok(new
+                {
+                    success = true,
+                    fileName = document.FileName,
+                    rows = document.Rows,
+                    saved,
+                    withCluster = document.Marks.Count(m => !string.IsNullOrWhiteSpace(m.Cluster)),
+                    withExcluyente = document.Marks.Count(m => !string.IsNullOrWhiteSpace(m.Excluyente1) || !string.IsNullOrWhiteSpace(m.Excluyente2)),
+                    firmMatched = document.Marks.Count(m => firm.Contains(m.Folio)),
+                    firmTotal = firm.Count
+                });
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importando marcas de clúster desde {FileName}.", file.FileName);
+                return StatusCode(500, new { error = "No fue posible guardar las marcas de clúster." });
+            }
+        }
+
+        [HttpGet("ProyectosPrivados/Api/CarteraConvocatoria/Kml/{folio}/{tipo}")]
+        [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+        public async Task<IActionResult> ApiKmlCarteraConvocatoria(
+            string folio,
+            string tipo,
+            CancellationToken cancellationToken)
+        {
+            if (!tipo.Equals("proyecto", StringComparison.OrdinalIgnoreCase) &&
+                !tipo.Equals("subestacion", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = "El tipo de geometría no es válido." });
+
+            var sourceUrl = await _repo.ObtenerUrlKmlCarteraConvocatoriaAsync(folio, tipo);
+            if (!Uri.TryCreate(sourceUrl, UriKind.Absolute, out var uri) ||
+                uri.Scheme != Uri.UriSchemeHttps ||
+                !uri.Host.Equals("ventanillainstituciones.energia.gob.mx", StringComparison.OrdinalIgnoreCase))
+                return NotFound(new { error = "El proyecto no tiene esta geometría registrada." });
+
+            try
+            {
+                var client = _httpClientFactory.CreateClient("CarteraConvocatoriaKml");
+                using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                    return StatusCode(StatusCodes.Status502BadGateway, new { error = "Ventanilla no devolvió el KML solicitado." });
+                if (response.Content.Headers.ContentLength is > 10 * 1024 * 1024)
+                    return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = "La geometría excede el límite de 10 MB." });
+
+                await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+                var payload = await ReadLimitedAsync(source, 10 * 1024 * 1024, cancellationToken);
+                if (payload.Length >= 4 && payload[0] == 0x50 && payload[1] == 0x4B)
+                    payload = ExtractKml(payload);
+
+                return File(payload, "application/vnd.google-earth.kml+xml", $"{folio}-{tipo}.kml");
+            }
+            catch (InvalidDataException ex)
+            {
+                _logger.LogWarning(ex, "Geometría inválida para {Folio} ({Tipo}).", folio, tipo);
+                return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                _logger.LogWarning(ex, "No fue posible recuperar el KML de {Folio} ({Tipo}).", folio, tipo);
+                return StatusCode(StatusCodes.Status502BadGateway, new { error = "No fue posible recuperar la geometría desde Ventanilla." });
+            }
+        }
+
         [HttpGet("ProyectosPrivados/SegundaConvocatoria/Reporte.pdf")]
         public async Task<IActionResult> ReporteCarteraConvocatoriaPdf()
         {
@@ -299,6 +435,9 @@ namespace NSIE.Controllers
 
         private async Task SincronizarCarteraConvocatoriaInicialAsync()
         {
+            var current = await _repo.ObtenerCarteraConvocatoriaAsync();
+            if (current.Projects.Count > 0) return;
+
             var path = Path.Combine(
                 _environment.WebRootPath,
                 "data",
@@ -316,6 +455,35 @@ namespace NSIE.Controllers
                 _logger.LogError(ex, "No fue posible sincronizar la fotografía inicial de la cartera desde {Path}.", path);
                 throw;
             }
+        }
+
+        private static async Task<byte[]> ReadLimitedAsync(Stream source, int limit, CancellationToken cancellationToken)
+        {
+            await using var buffer = new MemoryStream();
+            var block = new byte[81920];
+            while (true)
+            {
+                var read = await source.ReadAsync(block.AsMemory(0, block.Length), cancellationToken);
+                if (read == 0) break;
+                if (buffer.Length + read > limit)
+                    throw new InvalidDataException("La geometría excede el límite de 10 MB.");
+                await buffer.WriteAsync(block.AsMemory(0, read), cancellationToken);
+            }
+            return buffer.ToArray();
+        }
+
+        private static byte[] ExtractKml(byte[] kmz)
+        {
+            using var archiveStream = new MemoryStream(kmz, writable: false);
+            using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read, leaveOpen: false);
+            var entry = archive.Entries.FirstOrDefault(item =>
+                item.FullName.EndsWith(".kml", StringComparison.OrdinalIgnoreCase));
+            if (entry == null || entry.Length > 10 * 1024 * 1024)
+                throw new InvalidDataException("El KMZ no contiene un KML válido dentro del límite permitido.");
+            using var entryStream = entry.Open();
+            using var output = new MemoryStream();
+            entryStream.CopyTo(output);
+            return output.ToArray();
         }
 
         // ── View: Energía Limpia ───────────────────────────────────────────

@@ -18,6 +18,8 @@
       data-api-comment="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria/Comentarios")"
       data-api-priority="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria/Prioridad")"
       data-api-project="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria/Proyectos")"
+      data-api-import="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria/Importar")"
+      data-api-kml="@Url.Content("~/ProyectosPrivados/Api/CarteraConvocatoria/Kml")"
       data-report-url="@Url.Action("ReporteCarteraConvocatoriaPdf", "ProyectosPrivados")">
     <div class="visually-hidden">@Html.AntiForgeryToken()</div>
     <nav class="cartera__crumb" aria-label="Ruta de navegación">
@@ -28,23 +30,25 @@
 
     <section class="cartera__hero">
         <div>
-            <p class="cartera__kicker">SEGUIMIENTO INSTITUCIONAL · CORTE 5 DE AGOSTO DE 2026</p>
+            <p class="cartera__kicker" id="sourceCaption">CATÁLOGO INSTITUCIONAL · SIN CARGA EXCEL</p>
             <h1>Cartera estratégica y segunda convocatoria.</h1>
             <p>Prelación, asignación territorial y trazabilidad de decisiones por proyecto.</p>
         </div>
         <div class="cartera__actions">
+            <a class="btn-cartera btn-cartera--ghost" href="/DashboardProyectos/Convocatorias/Cartera" target="_blank" rel="noopener">Panorama ejecutivo · Proyectos Estratégicos</a>
             <button class="btn-cartera btn-cartera--ghost" type="button" data-action="report">Presentación general PDF</button>
+            <button class="btn-cartera btn-cartera--outline" type="button" data-action="import">Cargar Excel Mixtos II</button>
             <button class="btn-cartera btn-cartera--primary" type="button" data-action="new-project">Agregar proyecto</button>
         </div>
     </section>
 
     <section class="cartera__kpis" aria-label="Indicadores de cartera">
-        <article><span>Proyectos</span><strong id="kpiTotal">65</strong><small>cartera integrada</small></article>
-        <article><span>Capacidad</span><strong id="kpiMw">10,196.207</strong><small>MW netos</small></article>
-        <article><span>Estratégicos</span><strong id="kpiStrategic">35</strong><small>convocatoria estratégica</small></article>
-        <article><span>Particulares 2</span><strong id="kpiPrivate">30</strong><small>segunda convocatoria</small></article>
-        <article class="cartera__kpi-analysis"><span>Factibles</span><strong id="kpiFeasible">31</strong><small>pasan a mesas de evaluación</small></article>
-        <article class="cartera__kpi-decision"><span>Estatus definido</span><strong id="kpiDecision">0</strong><small>continúa / no continúa</small></article>
+        <article><span>Universo</span><strong id="kpiTotal">0</strong><small>filas del catálogo</small></article>
+        <article><span>Capacidad firme</span><strong id="kpiMw">0</strong><small>MW netos</small></article>
+        <article><span>Firmes</span><strong id="kpiFirm">0</strong><small>Considerar = 1</small></article>
+        <article><span>En revisión</span><strong id="kpiReview">0</strong><small>decisión pendiente</small></article>
+        <article><span>No van</span><strong id="kpiRejected">0</strong><small>desechados o retirados</small></article>
+        <article><span>Con KML</span><strong id="kpiKml">0</strong><small>geometría de proyecto</small></article>
     </section>
 
     <section class="cartera__toolbar" aria-label="Filtros de cartera">
@@ -52,7 +56,7 @@
         <select id="typeFilter" aria-label="Tipo de proyecto"><option value="">Todos los tipos</option><option>Estratégico</option><option>Particular 2</option></select>
         <select id="regionFilter" aria-label="Gerencia de control"><option value="">Todas las gerencias</option></select>
         <select id="stateFilter" aria-label="Entidad federativa"><option value="">Todas las entidades</option></select>
-        <select id="decisionFilter" aria-label="Seguimiento"><option value="">Todos los seguimientos</option><option value="continua">Continúa</option><option value="revision">En revisión</option><option value="no-continua">No continúa</option></select>
+        <select id="considerationFilter" aria-label="Consideración"><option value="firme" selected>Firmes</option><option value="revision">En revisión</option><option value="no-va">No van</option><option value="">Todo el universo</option></select>
         <select id="analysisFilter" aria-label="Clasificación del análisis"><option value="">Todo el análisis</option></select>
         <button class="btn-cartera btn-cartera--outline" type="button" data-action="clear-filters">Limpiar</button>
     </section>
@@ -63,15 +67,38 @@
         <button type="button" role="tab" data-view="sessions">Sesiones</button>
     </div>
 
-    <section class="cartera__workspace" data-panel="portfolio">
-        <div class="cartera__map-card">
-            <div class="cartera__section-head"><div><p>COBERTURA TERRITORIAL</p><h2>Distribución por entidad y GCR</h2></div><span id="mapCount">8 proyectos visibles</span></div>
-            <div id="portfolioMap" class="cartera__map" role="img" aria-label="Mapa esquemático de proyectos en México"></div>
-            <div class="cartera__legend"><span><i class="dot dot--strategic"></i>Estratégico</span><span><i class="dot dot--private"></i>Particular 2</span><span><i class="dot dot--no"></i>No va</span></div>
-        </div>
-        <div class="cartera__list-card">
-            <div class="cartera__section-head"><div><p>PORTAFOLIO</p><h2>Proyectos priorizados</h2></div><span id="resultCount"></span></div>
-            <div id="projectList" class="cartera__project-list"></div>
+    <section class="cartera__portfolio" data-panel="portfolio">
+        <section class="cartera__analytics" aria-labelledby="analyticsTitle">
+            <div class="cartera__section-head">
+                <div><p>ANÁLISIS DE GERENCIA</p><h2 id="analyticsTitle">Distribución de los proyectos filtrados</h2></div>
+                <span id="analyticsCaption">0 proyectos · 0 MW</span>
+            </div>
+            <div class="cartera__analytics-grid">
+                <article class="cartera-chart cartera-chart--regional">
+                    <header><div><span>GERENCIA DE CONTROL</span><h3>Capacidad y proyectos por GCR</h3></div><small>MW</small></header>
+                    <div id="regionChart" class="cartera-bars"></div>
+                </article>
+                <article class="cartera-chart">
+                    <header><div><span>RESULTADO DE MESA</span><h3>Clasificación del análisis</h3></div><small>proyectos</small></header>
+                    <div id="analysisChart" class="cartera-bars cartera-bars--compact"></div>
+                </article>
+                <article class="cartera-chart">
+                    <header><div><span>TECNOLOGÍA</span><h3>Composición de capacidad</h3></div><small>MW</small></header>
+                    <div id="technologyChart" class="cartera-bars cartera-bars--compact"></div>
+                </article>
+            </div>
+        </section>
+
+        <div class="cartera__workspace">
+            <div class="cartera__map-card">
+                <div class="cartera__section-head"><div><p>COBERTURA TERRITORIAL</p><h2>Proyectos y geometrías KML</h2></div><span id="mapCount">0 proyectos visibles</span></div>
+                <div id="portfolioMap" class="cartera__map" role="application" aria-label="Mapa de proyectos Mixtos II"></div>
+                <div class="cartera__legend"><span><i class="dot dot--strategic"></i>Firme</span><span><i class="dot dot--private"></i>En revisión</span><span><i class="dot dot--no"></i>No va</span><span>Seleccione un punto para cargar su KML</span></div>
+            </div>
+            <div class="cartera__list-card">
+                <div class="cartera__section-head"><div><p>PORTAFOLIO</p><h2>Proyectos priorizados</h2></div><span id="resultCount"></span></div>
+                <div id="projectList" class="cartera__project-list"></div>
+            </div>
         </div>
     </section>
 
@@ -132,7 +159,10 @@
                 <div><dt>Grupo de interés</dt><dd id="trackingGroup">—</dd></div>
                 <div><dt>Gerencia de control</dt><dd id="trackingRegion">—</dd></div>
                 <div><dt>Entidad federativa</dt><dd id="trackingState">—</dd></div>
+                <div><dt>Municipio</dt><dd id="trackingMunicipality">—</dd></div>
                 <div><dt>Punto de interconexión</dt><dd id="trackingInterconnection">—</dd></div>
+                <div><dt>Consideración</dt><dd id="trackingConsideration">—</dd></div>
+                <div><dt>Obras / costo de red</dt><dd id="trackingNetwork">—</dd></div>
                 <div><dt>Ranking asignado</dt><dd id="trackingRank">—</dd></div>
                 <div><dt>Clasificación de mesa</dt><dd id="trackingAnalysisClass">—</dd></div>
                 <div><dt>Viabilidad técnica</dt><dd id="trackingViability">—</dd></div>
@@ -177,7 +207,20 @@
     </section>
 </div>
 
+<dialog class="cartera-modal cartera-import-modal" id="importDialog">
+    <form id="importForm" enctype="multipart/form-data">
+        <header><div><p>ACTUALIZACIÓN VERSIONADA</p><h2>Cargar catálogo Mixtos II</h2></div><button type="button" data-close-import aria-label="Cerrar">×</button></header>
+        <div class="cartera-import-modal__body">
+            <p>El archivo debe conservar las hojas <strong>CATALOGO DE PROYECTOS</strong> y <strong>BD_MIXTOS_II</strong>. La columna <strong>Considerar</strong> define la cartera firme; la versión anterior permanece en el historial.</p>
+            <label>Archivo Excel (.xlsx o .xlsm)<input name="file" type="file" accept=".xlsx,.xlsm" required /></label>
+            <div class="cartera-import-modal__checks"><span>✓ Validación de estructura y folios</span><span>✓ Fotografía por hash y fecha de corte</span><span>✓ Coordenadas, KML, obras y costos</span></div>
+        </div>
+        <p class="cartera-form-status" id="importFormStatus" role="status"></p>
+        <footer><button class="btn-cartera btn-cartera--ghost" type="button" data-close-import>Cancelar</button><button class="btn-cartera btn-cartera--primary" type="submit">Validar y cargar</button></footer>
+    </form>
+</dialog>
+
 @section Scripts {
-    <script src="~/tablero/assets/gcr-data.js"></script>
+    <script src="~/js/leaflet-kml.js" asp-append-version="true"></script>
     <script src="~/js/cartera-convocatoria.js" asp-append-version="true"></script>
 }

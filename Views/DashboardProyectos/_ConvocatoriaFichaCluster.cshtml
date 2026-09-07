@@ -1,0 +1,79 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var p = Model.Project;
+    var d = Model.Dossier;
+    var marks = Model.Marks;
+    var mx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    var cluster = marks?.Cluster?.Trim() ?? "";
+    var grupo1 = marks?.Excluyente1?.Trim() ?? "";
+    var grupo2 = marks?.Excluyente2?.Trim() ?? "";
+    var enCluster = Model.ClusterMembers;
+    var enGrupo = Model.ExclusiveMembers;
+    // Tabla principal: integrantes del clúster; si el folio no tiene clúster, los del grupo excluyente.
+    var principal = enCluster.Count > 0 ? enCluster : enGrupo;
+    var tituloPrincipal = enCluster.Count > 0 ? $"Integrantes del {cluster}" : $"Integrantes del grupo excluyente {grupo1}";
+    var foliosPrincipal = new HashSet<string>(principal.Select(m => m.Folio), StringComparer.OrdinalIgnoreCase);
+    var adicionales = enCluster.Count > 0 ? enGrupo.Where(m => !foliosPrincipal.Contains(m.Folio)).ToList() : new List<CarteraConvocatoriaGrupoMiembro>();
+    var mismoConjunto = enCluster.Count > 0 && enGrupo.Count > 0 && adicionales.Count == 0 && enGrupo.All(m => foliosPrincipal.Contains(m.Folio));
+    var mwCluster = enCluster.Sum(m => m.Mw);
+    var mwGrupo = enGrupo.Sum(m => m.Mw);
+    var subsCluster = enCluster.Select(m => (m.Substation ?? "").Trim().ToUpperInvariant()).Where(s => s != "").Distinct().Count();
+    var conFicha = principal.Count(m => m.HasCfeCost);
+    var costoMdd = principal.Where(m => m.NetworkCostUsd.HasValue).Sum(m => m.NetworkCostUsd!.Value);
+    var region = p.Region?.Trim() ?? "";
+    // Requerimiento por sistema del corte: SIBC (Baja California), SIBCS (Baja California Sur) y SIN (resto de las GCR).
+    var sistema = region.ToUpperInvariant() switch { "BAJA CALIFORNIA" => "SIBC", "BAJA CALIFORNIA SUR" => "SIBCS", _ => "SIN" };
+    var requerimiento = d?.SystemRequirements.FirstOrDefault(r => r.RequirementMw is > 0 && r.System.Trim().Equals(sistema, StringComparison.OrdinalIgnoreCase));
+    var gcrFirme = Model.Portfolio.FirstOrDefault(g => string.Equals(g.Region?.Trim(), region, StringComparison.OrdinalIgnoreCase));
+    var mwPrincipal = principal.Sum(m => m.Mw);
+    string Pct(decimal? baseMw) => baseMw is > 0 ? (100m * mwPrincipal / baseMw.Value).ToString("N1", mx) + " %" : "—";
+    var participacion = requerimiento != null ? Pct(requerimiento.RequirementMw) : Pct(gcrFirme?.Mw);
+    var baseTexto = requerimiento != null
+        ? $"{Mw(mwPrincipal)} MW frente al requerimiento del {sistema} ({Mw(requerimiento.RequirementMw!.Value)} MW)" + (gcrFirme != null ? $" · {Pct(gcrFirme.Mw)} de la GCR {Nombre(region)}" : "")
+        : gcrFirme != null ? $"{Mw(mwPrincipal)} MW de la capacidad considerada en la GCR {Nombre(region)} ({Mw(gcrFirme.Mw)} MW)" : "Sin referencia de capacidad";
+    var excluyenteCatalogo = Texto(d.Valor("EXCLUYENTE CON", 1, "CATALOGO DE PROYECTOS"), "");
+    string Mw(decimal v) => v.ToString("N0", mx);
+    string Nombre(string s) => string.IsNullOrWhiteSpace(s) ? "no informada" : System.Globalization.CultureInfo.GetCultureInfo("es-MX").TextInfo.ToTitleCase(s.ToLowerInvariant());
+    string Fac(string? v) => (v ?? "").Trim().ToUpperInvariant() switch { "1" or "SI" or "SÍ" => "Factible", "X" => "Con restricciones de red", "DESECHADO" => "Desechado", "" => "Sin evaluación", var o => o };
+    string Situacion(string c) => c == "firme" ? "Considerado" : c == "no-va" ? "Desechado" : "Registro vigente";
+    string Gie(string? v) => string.IsNullOrWhiteSpace(v) || v.Trim().ToUpperInvariant() is "NO" or "N/A" or "0" or "NA" ? "No informado" : v.Trim();
+    string Grupos(CarteraConvocatoriaGrupoMiembro m) => string.Join(" · ", new[] { m.Excluyente1, m.Excluyente2 }.Where(g => !string.IsNullOrWhiteSpace(g)).Select(g => g!.Trim()));
+}
+@if (!string.IsNullOrWhiteSpace(cluster) || !string.IsNullOrWhiteSpace(grupo1))
+{
+<section class="pam-slide pam-slide--content" data-slide data-index-group="Costos y factibilidad" data-label="Clúster y grupo excluyente">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Clúster de interconexión · CFE</span><span class="pam-lamina-head__aside">@p.Folio</span></header>
+    <h2 class="pam-lamina-title is-guinda">Clúster y grupo excluyente</h2>
+    <div class="pam-lamina-body conv-page conv-page--gcr">
+        <div class="convocatoria-summary__metrics">
+            <article class="is-guinda"><span><i class="bi bi-diagram-3" aria-hidden="true"></i>Clúster</span><strong>@(string.IsNullOrWhiteSpace(cluster) ? "No identificado" : cluster)</strong><small>@(enCluster.Count > 0 ? $"{enCluster.Count} proyectos · {Mw(mwCluster)} MW · {subsCluster} subestaciones" : "Sin clúster asignado por CFE")</small></article>
+            <article class="is-dorado"><span><i class="bi bi-sign-intersection" aria-hidden="true"></i>Grupo excluyente</span><strong>@(string.IsNullOrWhiteSpace(grupo1) ? "Sin grupo" : grupo1)@(string.IsNullOrWhiteSpace(grupo2) ? "" : " · " + grupo2)</strong><small>@(enGrupo.Count > 0 ? $"{enGrupo.Count} proyectos · {Mw(mwGrupo)} MW" : "Sin grupo excluyente asignado")</small></article>
+            <article class="is-verde"><span><i class="bi bi-cash-coin" aria-hidden="true"></i>Con ficha de costos CFE</span><strong>@conFicha / @principal.Count</strong><small>@(conFicha > 0 ? $"Costo de red conocido: {costoMdd.ToString("N1", mx)} MDD" : "Ningún integrante cuenta con ficha de costos")</small></article>
+            <article><span><i class="bi bi-bullseye" aria-hidden="true"></i>Participación del conjunto</span><strong>@participacion</strong><small>@baseTexto</small></article>
+        </div>
+        <table class="conv-table conv-table--compact conv-table--cluster">
+            <colgroup><col class="c-folio"><col class="c-nombre"><col class="c-gie"><col class="c-sub"><col class="c-mw"><col class="c-cfe"><col class="c-fac"><col class="c-grp"><col class="c-sit"></colgroup>
+            <thead><tr><th>@tituloPrincipal</th><th>Proyecto</th><th>Grupo de interés</th><th>Subestación</th><th class="is-num">MW</th><th class="is-num">Ficha CFE (MDD)</th><th>Factibilidad</th><th>Grupo excl.</th><th>Situación</th></tr></thead>
+            <tbody>
+            @foreach (var m in principal)
+            {
+                <tr class="@(m.IsCurrent ? "is-current" : "")"><th>@m.Folio</th><td>@m.Name</td><td>@Gie(m.InterestGroup)</td><td>@Texto(m.Substation, "No informada")</td><td class="is-num">@m.Mw.ToString("N1", mx)</td><td class="is-num">@(m.NetworkCostUsd.HasValue ? m.NetworkCostUsd.Value.ToString("N1", mx) : m.HasCfeCost ? "Sí" : "—")</td><td>@Fac(m.Viability)</td><td>@Texto(Grupos(m), "—")</td><td>@Situacion(m.Consideration)</td></tr>
+            }
+            </tbody>
+            <tfoot><tr><th colspan="4">Total del conjunto · @principal.Count proyectos</th><th class="is-num">@mwPrincipal.ToString("N1", mx)</th><th class="is-num">@(conFicha > 0 ? costoMdd.ToString("N1", mx) : "—")</th><th colspan="3">@principal.Count(m => Fac(m.Viability) == "Factible") factibles · @principal.Count(m => m.Consideration == "firme") considerados</th></tr></tfoot>
+        </table>
+        @if (mismoConjunto)
+        {
+            <p class="conv-note"><i class="bi bi-info-circle" aria-hidden="true"></i> El grupo excluyente @grupo1 está integrado por los mismos proyectos del clúster.</p>
+        }
+        else if (adicionales.Count > 0)
+        {
+            <p class="conv-note"><i class="bi bi-sign-intersection" aria-hidden="true"></i> <strong>Grupo excluyente @grupo1</strong> (@enGrupo.Count proyectos · @Mw(mwGrupo) MW). Además de los integrantes del clúster incluye: @string.Join(" · ", adicionales.Select(m => $"{m.Name} ({Mw(m.Mw)} MW, {Texto(m.Substation, "subestación no informada")})")).</p>
+        }
+        <p class="conv-note"><strong>Clúster:</strong> conjunto de solicitudes eléctricamente cercanas que CFE agrupa para analizar de manera conjunta las obras de interconexión y refuerzo. <strong>Grupo excluyente:</strong> solicitudes que compiten por la misma capacidad de interconexión, por lo que la incorporación de una condiciona a las demás.@(excluyenteCatalogo != "" ? $" El catálogo del área registra como excluyente: {excluyenteCatalogo}." : "")</p>
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("identificación de clústeres y grupos excluyentes de CFE y catálogo de proyectos")</span><span class="pam-lamina-foot__meta"></span></div>
+</section>
+}

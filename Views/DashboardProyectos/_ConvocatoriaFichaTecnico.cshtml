@@ -1,0 +1,108 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var d = Model.Dossier;
+    var p = Model.Project;
+    var tecnico = d.Registro();
+    var fila = tecnico == null ? "" : $"BD_MIXTOS_II · fila {tecnico.Row}";
+    var codigoRed = d.Valor("El diseño de su proyecto da cumplimiento al Código de Red");
+    var factorPlanta = Tiene(d.Valor("¿Cuál es el Factor de Planta del Proyecto?")) ? d.Valor("¿Cuál es el Factor de Planta del Proyecto?")
+        : Tiene(d.Valor("¿Cuál es el Factor de Planta del Proyecto?", 2)) ? d.Valor("¿Cuál es el Factor de Planta del Proyecto?", 2)
+        : d.Valor("factor_planta_termico");
+    var modelosFv = d.Valor("Para proyecto Fotovoltaico, cuenta con modelos dinámicos en software PSSE / PSCAD actualizados a la versión solicitada por CENACE?");
+    var modelosEolico = d.Valor("Para proyectos eólicos, cuenta con Modelos aerodinámicos y de control para simulación en PSSE/PSCAD última versión solicitada por CENACE?");
+    var modelos = Tiene(modelosFv) ? modelosFv : modelosEolico;
+
+    // Bloques por tecnología: se muestran sólo los que traen algún dato en la fuente.
+    var bloques = new List<(string Titulo, string Icono, List<(string Etiqueta, string Valor)> Datos)>();
+    void Bloque(string titulo, string icono, params (string Etiqueta, string? Valor)[] datos)
+    {
+        var conDato = datos.Where(x => Tiene(x.Valor)).Select(x => (x.Etiqueta, x.Valor!.Trim())).ToList();
+        if (conDato.Count > 0) bloques.Add((titulo, icono, conDato));
+    }
+    Bloque("Fotovoltaico", "bi-sun",
+        ("Número de equipos de generación", d.Valor("Número de equipos de generación")),
+        ("Potencia pico del panel", Tiene(d.Valor("¿Cuál es la potencia pico del panel FV? (Wp)")) ? Numero(d.Valor("¿Cuál es la potencia pico del panel FV? (Wp)"), 0) + " Wp" : null),
+        ("Eficiencia del panel", d.Valor("¿Cuál es la eficiencia del panel?")),
+        ("Tipo de inversor", Tiene(d.Valor("¿Qué tipo de inversor utiliza?")) ? d.Valor("¿Qué tipo de inversor utiliza?") + (Tiene(d.Valor("En caso de otro tipo de inversor")) ? " · " + d.Valor("En caso de otro tipo de inversor") : "") : null),
+        ("Seguidores solares (trackers)", Tiene(d.Valor("¿Se contempla sistema de seguidores solares (trackers)?")) ? BanderaTexto(d.Valor("¿Se contempla sistema de seguidores solares (trackers)?")) : null),
+        ("Performance ratio", d.Valor("Performance ratio")),
+        ("Rendimiento energético P50", Tiene(d.Valor("Rendimiento energético por proyecto (P50)")) ? Numero(d.Valor("Rendimiento energético por proyecto (P50)"), 2) + " kWh/kWp" : null),
+        ("Rendimiento energético P90", Tiene(d.Valor("Rendimiento energético por proyecto (P90)")) ? Numero(d.Valor("Rendimiento energético por proyecto (P90)"), 2) + " kWh/kWp" : null),
+        ("Producción anual según escenarios", d.Valor("Producción anual de acuerdo a los escenarios")));
+    Bloque("Eólico", "bi-wind",
+        ("Potencia nominal del aerogenerador", d.Valor("¿Cuál es la potencia nominal del aerogenerador?")),
+        ("Velocidad nominal", d.Valor("¿Cuál es la velocidad nominal del aerogenerador?")),
+        ("Velocidad de arranque ≤ 3 m/s", d.Valor("La velocidad de arranque es ≤ 3 m/s")),
+        ("Altura del buje", d.Valor("¿Cuál es la altura a la que se posicionará el buje?")),
+        ("Recurso eólico medido ≥ 12 meses", d.Valor("¿Para proyectos eólicos, cuenta con la caracterización del recurso eólico y variables climatológicas in situ con mediciones ≥ 12 meses?")),
+        ("Análisis de pérdidas (estela y sistema)", d.Valor("¿Para proyectos eólicos, cuenta con el análisis de pérdidas por efecto estela y pérdidas generales en el sistema electromecánico?")),
+        ("Rendimiento P50", d.Valor("¿Cuál es el rendimiento energético por proyecto? (P50)")),
+        ("Rendimiento P90", d.Valor("¿Cuál es el rendimiento energético por proyecto? (P90)")));
+    Bloque("Termosolar", "bi-brightness-high",
+        ("Consumo de agua anual", d.Valor("¿Cuál es el consumo de agua anual? Contemplando limpieza de espejos y reposición por pérdidas. Exprese en l/s y m3/MWh.")),
+        ("Horas de autonomía (almacenamiento térmico)", d.Valor("¿Cuántas horas de autonomía tiene la central? Es decir, ¿cuántas horas se tienen contempladas para el sistema de almacenamiento de energía térmica?")),
+        ("Fluido térmico", Tiene(d.Valor("¿Cuál es el fluido térmico de transferencia?")) ? d.Valor("¿Cuál es el fluido térmico de transferencia?") + (Tiene(d.Valor("Especificar en caso de otro")) ? " · " + d.Valor("Especificar en caso de otro") : "") : null),
+        ("Arreglo de heliostatos", d.Valor("¿Cuál es la estrategia del arreglo de los heliostatos?")),
+        ("Factor de incidencia ≥ 90%", d.Valor("¿El Factor de incidencia (probabilidad de que los rayos reflejados golpeen el receptor considerando errores de seguimiento) es ≥ 90%?")),
+        ("Factor de reflectividad ≥ 90%", d.Valor("¿El Factor de reflectividad (capacidad del espejo de reflejar la luz) es ≥ 90%?")));
+    Bloque("Híbrido", "bi-intersect",
+        ("Superficie disponible", d.Valor("¿Cuál es la superficie total disponible?")),
+        ("Objetivo principal", d.Valor("¿Cuál es el objetivo principal?")),
+        ("Radiación solar promedio", d.Valor("¿Cuál es el promedio de radiación solar?")),
+        ("Temperatura en la zona", d.Valor("¿Cuál es la temperatura en la zona?")),
+        ("Viento promedio y altura de medición", d.Valor("¿Cuál es la velocidad promedio del viento y la altura de medición?")),
+        ("Configuración híbrida", d.Valor("¿Cuál es la configuración híbrida?")),
+        ("Inversor / controlador híbrido", d.Valor("¿Qué tipo de inversor/controlador híbrido se utilizará?")),
+        ("Infraestructura eléctrica previa en sitio", d.Valor("¿Existe infraestructura eléctrica previa en el sitio?")),
+        ("Factor de planta conjunto y por central", d.Valor("¿Cuál es el factor de planta en conjunto del proyecto y el de cada una de sus centrales componentes?")),
+        ("Operación simultánea de tecnologías", d.Valor("¿Se contempla que las diferentes tecnologías estén en funcionamiento al mismo tiempo? ¿O tienen contemplado que funcionen en horarios separados, si es así especifique los horarios por tecnología")));
+    Bloque("Rebombeo", "bi-water",
+        ("Cuencas hidrológicas", d.Valor("¿En qué cuentas hidrológicas se encuentra el sistema?")),
+        ("Subestación de conexión", d.Valor("¿Cuál es el nombre de la subestación a la cual se conectaría?")),
+        ("Distancia proyecto–subestación", d.Valor("¿Cuál es la distancia que hay entre el proyecto y la subestación?")),
+        ("Capacidad de almacenamiento", d.Valor("¿Cuál es la capacidad de almacenamiento?")),
+        ("Potencia del sistema", d.Valor("¿Cuál es la potencia del sistema?")),
+        ("Horas de almacenamiento", d.Valor("¿Cuántas horas de almacenamiento se tienen contempladas? (hrs)")),
+        ("Tipo de turbina", d.Valor("¿Cuál es el tipo de turbina que utiliza?")),
+        ("Tipo de bomba", d.Valor("¿Cuál es el tipo de bomba a utilizar?")),
+        ("Eficiencia del sistema", d.Valor("¿Cuál es la eficiencia del sistema?")),
+        ("Diferencia de altura entre embalses", d.Valor("¿Cuál es la diferencia de altura entre los embalses?")),
+        ("Trámites CONAGUA", d.Valor("¿Cuál es la situación actual con los trámites de permiso con la CONAGUA?")),
+        ("Trámites SEMARNAT", d.Valor("¿Cuál es la situación con los trámites de permiso con la SEMARNAT?")));
+    var columnas = Math.Clamp(bloques.Count, 1, 3);
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="El proyecto" data-label="Datos técnicos de generación">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Datos técnicos</span><span class="pam-lamina-head__aside">@Texto(p.Technology)</span></header>
+    <h2 class="pam-lamina-title">Datos técnicos de generación</h2>
+    <div class="pam-lamina-body conv-page">
+        <div class="convocatoria-summary__metrics">
+            <article class="is-guinda"><span><i class="bi bi-lightning-charge" aria-hidden="true"></i>Capacidad neta</span><strong>@Numero(d.Valor("Capacidad Generación en MW netos"), 2) <small style="display:inline">MW</small></strong><small>@Texto(p.Technology)</small></article>
+            <article class="is-dorado"><span><i class="bi bi-graph-up" aria-hidden="true"></i>Generación anual estimada</span><strong>@Numero(d.Valor("Generación anual estimada en GWh"), 2) <small style="display:inline">GWh</small></strong><small>Estimación del promovente</small></article>
+            <article class="is-verde"><span><i class="bi bi-speedometer2" aria-hidden="true"></i>Factor de planta</span><strong>@(Tiene(factorPlanta) ? Numero(factorPlanta, 1) + " %" : "No informado")</strong><small>Declarado en la solicitud</small></article>
+            <article class="@(EsSi(codigoRed) ? "is-verde" : "is-guinda")"><span><i class="bi bi-patch-check" aria-hidden="true"></i>Cumplimiento del Código de Red</span><strong>@BanderaTexto(codigoRed)</strong><small>Modelos dinámicos PSSE/PSCAD: @BanderaTexto(modelos)</small></article>
+        </div>
+        @if (bloques.Count == 0) {
+            <p class="conv-note">Sin datos técnicos específicos de la tecnología reportados en la solicitud.</p>
+        } else {
+            <div class="@(columnas == 1 ? "conv-two" : columnas == 2 ? "conv-two" : "conv-three")">
+                @foreach (var bloque in bloques.Take(3)) {
+                    <article class="conv-card @(bloque.Titulo == "Fotovoltaico" ? "is-guinda" : bloque.Titulo == "Eólico" ? "is-verde" : "")">
+                        <h3><i class="bi @bloque.Icono" aria-hidden="true"></i>@bloque.Titulo</h3>
+                        <dl class="conv-facts conv-facts--compact">
+                            @foreach (var dato in bloque.Datos.Take(10)) { <div class="@(columnas > 1 ? "is-wide" : "")"><dt>@dato.Etiqueta</dt><dd>@Recorte(dato.Valor, 120)</dd></div> }
+                        </dl>
+                    </article>
+                }
+                @if (columnas == 1) {
+                    <article class="conv-card">
+                        <h3><i class="bi bi-file-earmark-text" aria-hidden="true"></i>Descripción del proyecto</h3>
+                        <p>@Recorte(d.Valor("Descripción Proyecto"), 520)</p>
+                    </article>
+                }
+            </div>
+        }
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("solicitud registrada en ventanilla") Parámetros declarados por el promovente.</span><span class="pam-lamina-foot__meta"></span></div>
+</section>

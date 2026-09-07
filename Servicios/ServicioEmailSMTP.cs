@@ -291,7 +291,7 @@ namespace NSIE.Servicios
                     var tipo = nombreAdjunto.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase)
                         ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
                         : "application/pdf";
-                    msg.AddAttachment(nombreAdjunto, Convert.ToBase64String(adjunto), tipo);
+                    msg.AddAttachment(nombreAdjunto, Convert.ToBase64String(adjunto), tipo, "attachment");
                 }
                 var response = await client.SendEmailAsync(msg);
 

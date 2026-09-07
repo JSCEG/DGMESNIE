@@ -1,0 +1,74 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var d = Model.Dossier;
+    var p = Model.Project;
+    const string Cat = "CATALOGO DE PROYECTOS";
+    var catalogo = d.Registro(Cat);
+    var preseleccion = d.Registro("BD_PRESELECCIONADOS");
+    var mixtosI = d.Registro("BD_MIXTOS_I");
+    string C(string nombre, int ocurrencia = 1) => d.Valor(nombre, ocurrencia, Cat) ?? "";
+    string P(string nombre) => d.Valor(nombre, 1, "BD_PRESELECCIONADOS") ?? "";
+    string M(string nombre) => d.Valor(nombre, 1, "BD_MIXTOS_I") ?? "";
+    var estabaMixtosI = C("¿Estaba Mixtos I?");
+    var estabaCvp2 = C("¿Estaba CVP2?");
+    var folioMixtosI = C("Folio MIXTOS I");
+    var folioCvp2 = C("Folio CVP2");
+    var preseleccionado = Tiene(C("Preseleccionado")) ? C("Preseleccionado") : P("PRESELECCIONADOS");
+    var origen = Tiene(C("Origen")) ? C("Origen") : P("Convocatoria Origen");
+    var duplicados = C("FOLIO(S) DUPLICADO(S)");
+    var fuentes = string.Join(" · ", new[] {
+        catalogo != null ? $"Catálogo f. {catalogo.Row}" : null,
+        preseleccion != null ? $"BD_PRESELECCIONADOS f. {preseleccion.Row}" : null,
+        mixtosI != null ? $"BD_MIXTOS_I f. {mixtosI.Row}" : null }.Where(x => x != null));
+}
+<section class="pam-slide pam-slide--content" data-slide data-index-group="El proyecto" data-label="Antecedentes y preselección">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Catálogo</span><span class="pam-lamina-head__aside">@p.Folio</span></header>
+    <h2 class="pam-lamina-title">Antecedentes y preselección</h2>
+    <div class="pam-lamina-body conv-page">
+        <div class="convocatoria-summary__metrics">
+            <article class="is-guinda"><span><i class="bi bi-signpost-2" aria-hidden="true"></i>Origen</span><strong>@Texto(origen, "No informado")</strong><small>Convocatoria de procedencia</small></article>
+            <article class="is-dorado"><span><i class="bi bi-star" aria-hidden="true"></i>Preselección</span><strong>@Texto(preseleccionado, "No informada")</strong><small>Interés en mixto: @Texto(C("Interés en mixto"), "s/d") · conteo @Texto(C("Conteo preseleccionado"), "s/d")</small></article>
+            <article class="is-verde"><span><i class="bi bi-sort-numeric-down" aria-hidden="true"></i>Prelación</span><strong>@Texto(C("Prelación"), "—")</strong><small>@Texto(C("ESTATUS UNIVERSO"), "Estatus de universo no informado")</small></article>
+            <article><span><i class="bi bi-clock-history" aria-hidden="true"></i>Convocatorias anteriores</span><strong>@(EsSi(estabaMixtosI) ? "Mixtos I" : "")@(EsSi(estabaMixtosI) && EsSi(estabaCvp2) ? " · " : "")@(EsSi(estabaCvp2) ? "CVP2" : "")@(!EsSi(estabaMixtosI) && !EsSi(estabaCvp2) ? "Sin antecedente" : "")</strong><small>Según cruce del catálogo</small></article>
+        </div>
+        <div class="conv-two">
+            <article class="conv-card">
+                <h3><i class="bi bi-funnel" aria-hidden="true"></i>Depuración del catálogo</h3>
+                <dl class="conv-facts conv-facts--compact">
+                    <div><dt>Válido</dt><dd>@BanderaTexto(C("Válido"))</dd></div>
+                    <div><dt>Descarte</dt><dd>@Texto(C("Descarte"), "Sin descarte")</dd></div>
+                    <div><dt>Duplicado</dt><dd>@BanderaTexto(C("Duplicado"))@(Tiene(duplicados) ? " · " + Recorte(duplicados, 60, "") : "")</dd></div>
+                    <div><dt>Desechado en desahogos</dt><dd>@BanderaTexto(C("¿DESECHADO EN DESAHOGOS?"))</dd></div>
+                    <div><dt>Se quita por duplicado</dt><dd>@BanderaTexto(C("Se quita por duplicado"))</dd></div>
+                    <div><dt>Con ficha de costos · factible</dt><dd>@Texto(C("¿TIENE FICHA DE COSTOS?"), "s/d") · @Texto(C("¿FACTIBLE?"), "s/d")</dd></div>
+                    <div class="is-wide"><dt>Nombre homologado</dt><dd>@Texto(C("Nombre Homologado"), p.Name)</dd></div>
+                    <div class="is-wide"><dt>Comentarios del área</dt><dd>@Recorte(C("Comentarios"), 240, "Sin comentarios en el catálogo")</dd></div>
+                </dl>
+            </article>
+            <article class="conv-card is-guinda">
+                <h3><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>Convocatorias anteriores</h3>
+                <dl class="conv-facts conv-facts--compact">
+                    <div><dt>Mixtos I</dt><dd>@(EsSi(estabaMixtosI) ? Texto(folioMixtosI, "Folio no informado") : "No participó")@(Tiene(C("DE 29? CD-MIXTOS I")) ? " · CD 29: " + C("DE 29? CD-MIXTOS I") : "")</dd></div>
+                    <div><dt>CVP2</dt><dd>@(EsSi(estabaCvp2) ? Texto(folioCvp2, "Folio no informado") : "No participó") · interés: @BanderaTexto(C("¿MANIFESTÓ INTERÉS EN CVP2?"))</dd></div>
+                    @if (mixtosI != null) {
+                        <div><dt>Mixtos I · capacidad contratada</dt><dd>@Numero(M("Capacidad Contratada (MW)"), 2) <small>MW</small></dd></div>
+                        <div><dt>Mixtos I · tensión</dt><dd>@Texto(M("Nivel de tensión (kV):"))@(Tiene(M("Nivel de tensión (kV):")) ? " kV" : "")</dd></div>
+                        <div><dt>Mixtos I · operación prevista</dt><dd>@Fecha(M("Fecha prevista para entrada en operación comercial"))</dd></div>
+                        <div><dt>Mixtos I · estatus en Mixtos II</dt><dd>@Texto(M("Estatus en Mixtos II"))</dd></div>
+                        <div><dt>Mixtos I · estudios CENACE</dt><dd>@Texto(M("Solicitud de estudios CENACE"))</dd></div>
+                        <div><dt>Mixtos I · riesgo social · ambiental</dt><dd>@Texto(M("Riesgo Social"), "s/d") · @Texto(M("Riesgo Ambiental"), "s/d")</dd></div>
+                        <div class="is-wide"><dt>Mixtos I · observaciones</dt><dd>@Recorte(M("Observaciones"), 200, "Sin observaciones")</dd></div>
+                    } else if (EsSi(estabaMixtosI)) {
+                        <div class="is-wide"><dt>Detalle Mixtos I</dt><dd>Detalle de la convocatoria Mixtos I no disponible para este folio.</dd></div>
+                    }
+                    @if (EsSi(estabaCvp2)) {
+                        <div class="is-wide"><dt>Detalle CVP2</dt><dd>Detalle de la convocatoria CVP2 no incluido en esta ficha.</dd></div>
+                    }
+                </dl>
+            </article>
+        </div>
+    </div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente("catálogo de proyectos y convocatorias previas")</span><span class="pam-lamina-foot__meta"></span></div>
+</section>
