@@ -105,6 +105,14 @@ public sealed class CarteraConvocatoriaResumenViewModel
     // Historial de cargas del libro de selección (la más reciente primero) para la línea de trazabilidad.
     public List<CarteraConvocatoriaSeleccionCarga> SeleccionCargas { get; set; } = new();
     public List<CarteraConvocatoriaMarca> Marcas { get; set; } = new();
+    // Folios de interés (CENACE debe realizar estudios), antecedentes Mixtos I / CVP2 y grupos de interés.
+    public List<ResumenProyecto> EstudiosCenace { get; set; } = new();
+    public List<ResumenProyecto> MixtosILigados { get; set; } = new();
+    public int OrigenMixtosI { get; set; }
+    public int Cvp2Interes { get; set; }
+    public int GruposTotal { get; set; }
+    public ResumenConteo? SinGrupo { get; set; }
+    public List<ResumenConteo> GruposTop { get; set; } = new();
 }
 
 public sealed class ResumenConteo
@@ -178,4 +186,7 @@ public sealed class ResumenProyecto
     public bool CenaceEstudios { get; set; }
     public string ApoyaSen { get; set; } = "";
     public string ObrasOnerosas { get; set; } = "";
+    public bool MixtosI { get; set; }
+    public bool Cvp2 { get; set; }
+    public string FolioMixtosI { get; set; } = "";
 }

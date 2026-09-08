@@ -198,7 +198,10 @@ public static class CarteraConvocatoriaResumenBuilder
                 Preferente = S(p)?.Preferente == true,
                 CenaceEstudios = S(p)?.CenaceEstudios == true,
                 ApoyaSen = SiNoTexto(S(p)?.ApoyaSen),
-                ObrasOnerosas = SiNoTexto(S(p)?.ObrasOnerosas)
+                ObrasOnerosas = SiNoTexto(S(p)?.ObrasOnerosas),
+                MixtosI = EsSi(d.Valor("¿Estaba Mixtos I?", 1, Cat)),
+                Cvp2 = EsSi(d.Valor("¿Estaba CVP2?", 1, Cat)),
+                FolioMixtosI = Clean(d.Valor("Folio MIXTOS I", 1, Cat), "")
             };
         }
 
@@ -257,7 +260,22 @@ public static class CarteraConvocatoriaResumenBuilder
             model.PreferentesPorGcr = Count(pref, Gcr);
             model.Preferentes = pref.OrderByDescending(p => p.Mw).Select(Proyecto).ToList();
             model.MotivosDescarte = Count(all.Where(p => p.Consideration != "firme" && Tiene(S(p)?.Motivo)).ToList(), p => Text.ToTitleCase(S(p)!.Motivo!.Trim().ToLowerInvariant()));
+            model.EstudiosCenace = firm.Where(p => S(p)?.CenaceEstudios == true).OrderByDescending(p => S(p)!.Preferente).ThenByDescending(p => p.Mw).Select(Proyecto).ToList();
         }
+
+        // ── Antecedentes y grupos de interés ──
+        model.MixtosILigados = firm.Where(p => EsSi(D(p).Valor("¿Estaba Mixtos I?", 1, Cat))).OrderByDescending(p => p.Mw).Select(Proyecto).ToList();
+        model.OrigenMixtosI = firm.Count(p => (D(p).Valor("Origen", 1, Cat) ?? "").ToUpperInvariant().Contains("MIXTOS 1") && !EsSi(D(p).Valor("¿Estaba Mixtos I?", 1, Cat)));
+        model.Cvp2Interes = firm.Count(p => EsSi(D(p).Valor("¿MANIFESTÓ INTERÉS EN CVP2?", 1, Cat)));
+        static string GrupoNorm(string? g)
+        {
+            var t = (g ?? "").Trim().ToUpperInvariant();
+            return t is "" or "NO" or "NO APLICA" or "NO INFORMADO" or "NINGUNO" or "PRIVADO" or "PROPIO" or "NA" or "N/A" or "SIN INFORMACIÓN" or "SIN INFORMACION" ? "Sin grupo informado" : g!.Trim();
+        }
+        var grupos = Count(firm, p => GrupoNorm(p.InterestGroup ?? D(p).Valor("Grupo de Interés")));
+        model.GruposTotal = grupos.Count(g => g.Name != "Sin grupo informado");
+        model.SinGrupo = grupos.FirstOrDefault(g => g.Name == "Sin grupo informado");
+        model.GruposTop = grupos.Where(g => g.Name != "Sin grupo informado").Take(10).ToList();
         model.TopCostoRed = conCfe.OrderByDescending(p => p.NetworkCostUsd ?? 0).ThenByDescending(p => p.Mw).Take(8).Select(Proyecto).ToList();
         var conInversion = firm.Select(p => (Project: p, Inversion: NumeroValor(D(p).Valor("Monto de inversión total del proyecto")) ?? 0)).Where(x => x.Inversion > 0).ToList();
         model.TopInversion = conInversion.OrderByDescending(x => x.Inversion).Take(8).Select(x => Proyecto(x.Project)).ToList();

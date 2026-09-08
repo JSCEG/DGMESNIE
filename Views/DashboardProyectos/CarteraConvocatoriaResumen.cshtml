@@ -12,6 +12,7 @@
     string Pct(decimal part, decimal total) => total > 0 ? (100m * part / total).ToString("N1", mx) + " %" : "—";
     string W(decimal v, decimal max) => (max > 0 ? Math.Clamp(100m * v / max, 0m, 100m) : 0m).ToString("F2", inv);
     string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+    string Text(string? s) => string.IsNullOrWhiteSpace(s) ? "" : mx.TextInfo.ToTitleCase(s.Trim().ToLowerInvariant());
     string Bar(string name, decimal value, decimal max, string text, string cls = "", bool compact = false) =>
         $"<div class=\"rs-bar {cls} {(compact ? "rs-bar--compact" : "")}\"><strong>{Enc(name)}</strong><div class=\"rs-bar__track\"><i style=\"width:{W(value, max)}%\"></i></div><span>{Enc(text)}</span></div>";
     var fuente = $"Fuente: Convocatoria Mixtos II, corte {corte}.";
@@ -246,7 +247,45 @@
                 </div>
                 <div class="pam-lamina-foot"><span>Preferente: proyecto priorizado por el área entre los considerados; estudios, apoyo al SEN y obras onerosas conforme a su revisión técnica. Selección del área@(Model.SeleccionCargas.FirstOrDefault() is { } sc ? $" · corte {sc.FechaCorte:dd/MM/yyyy} · {sc.FileName}" : "").</span><span class="pam-lamina-foot__meta"></span></div>
             </section>
+
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Folios de interés · estudios CENACE">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">@Model.EstudiosCenace.Count proyectos · @N0(Model.EstudiosCenace.Sum(p => p.Mw)) MW</span></header>
+                <h2 class="pam-lamina-title">Folios de interés · CENACE debe realizar estudios</h2>
+                <div class="pam-lamina-body conv-page conv-page--gcr">
+                    <p class="conv-note"><i class="bi bi-star-fill" aria-hidden="true"></i> <strong>@Model.ConPreferente preferentes</strong> (estrella) entre los @Model.EstudiosCenace.Count con estudios por realizar · @Model.EstudiosCenace.Count(p => p.MixtosI) con antecedente Mixtos I · @Model.EstudiosCenace.Count(p => p.Cvp2) con antecedente CVP2 · @string.Join(" · ", Model.EstudiosCenace.GroupBy(p => p.Region).OrderByDescending(g => g.Count()).Select(g => $"{g.Key} {g.Count()}")).</p>
+                    <div class="rs-list3">@foreach (var p in Model.EstudiosCenace) { <div class="@(p.Preferente ? "is-pref" : "")"><i class="bi @(p.Preferente ? "bi-star-fill" : "bi-dot") " aria-hidden="true"></i><b>@p.Folio.Replace("CFE-CM2-", "").Replace("-2026", "")</b> @(p.Name.Length > 26 ? p.Name[..26] + "…" : p.Name) <span>@N0(p.Mw) MW · @p.Region@(p.MixtosI ? " · M‑I" : "")@(p.Cvp2 ? " · CVP2" : "")</span></div> }</div>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Folio abreviado (número CFE‑CM2‑nnnn‑2026). M‑I: antecedente en Mixtos I · CVP2: antecedente en la convocatoria de particulares. Selección del área@(Model.SeleccionCargas.FirstOrDefault() is { } sc2 ? $" · corte {sc2.FechaCorte:dd/MM/yyyy}" : "").</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
             }
+
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Antecedentes y grupos de interés">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Mixtos I, CVP2 y grupos de interés</span></header>
+                <h2 class="pam-lamina-title">Antecedentes y grupos de interés</h2>
+                <div class="pam-lamina-body conv-page conv-page--gcr">
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-clock-history" aria-hidden="true"></i>Con folio de Mixtos I ligado</span><strong>@Model.MixtosILigados.Count</strong><small>@N0(Model.MixtosILigados.Sum(p => p.Mw)) MW · @Model.MixtosILigados.Count(p => p.Preferente) preferentes</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-signpost-2" aria-hidden="true"></i>Registro con origen Mixtos I</span><strong>@Model.OrigenMixtosI</strong><small>Sin folio ligado; provienen de la lista de Mixtos I</small></article>
+                        <article class="is-verde"><span><i class="bi bi-people" aria-hidden="true"></i>Con antecedente en CVP2</span><strong>@Model.AntecedenteCvp2</strong><small>@Model.Cvp2Interes manifestaron interés en CVP2</small></article>
+                        <article><span><i class="bi bi-building" aria-hidden="true"></i>Grupos de interés distintos</span><strong>@Model.GruposTotal</strong><small>@(Model.SinGrupo?.Projects ?? 0) proyectos sin grupo informado · @N0(Model.SinGrupo?.Mw ?? 0) MW</small></article>
+                    </div>
+                    <div class="rs-cols rs-cols--sel">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-clock-history" aria-hidden="true"></i>Considerados con folio de Mixtos I <small>@Model.MixtosILigados.Count proyectos · se muestran los 12 de mayor capacidad</small></h3>
+                            <table class="conv-table conv-table--rs conv-table--top">
+                                <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th class="is-num">MW</th><th>Folio Mixtos I</th><th>Pref.</th></tr></thead>
+                                <tbody>@foreach (var p in Model.MixtosILigados.Take(12)) { <tr><th>@p.Folio</th><td class="is-nowrap">@(p.Name.Length > 20 ? p.Name[..20] + "…" : p.Name)</td><td>@p.Region</td><td class="is-num">@N0(p.Mw)</td><td>@p.FolioMixtosI</td><td>@(p.Preferente ? "Sí" : "—")</td></tr> }</tbody>
+                            </table>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-building" aria-hidden="true"></i>Grupos de interés con mayor capacidad <small>MW considerados · participación</small></h3>
+                            <div class="rs-bars rs-bars--nowrap">@foreach (var g in Model.GruposTop.Take(9)) { @Html.Raw(Bar(Text(g.Name).Length > 24 ? Text(g.Name)[..24] + "…" : Text(g.Name), g.Mw, Model.GruposTop.Max(x => x.Mw), $"{g.Projects} proy. · {N0(g.Mw)} MW · {Pct(g.Mw, Model.MwFirme)}", "is-guinda", true)) }</div>
+                            <p class="conv-note" style="margin-top:8px"><strong>Origen del capital:</strong> la solicitud de ventanilla no registra la nacionalidad del capital; se propone capturarla por grupo de interés en el libro de selección para reportarla en esta lámina.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>@fuente Catálogo de proyectos (antecedentes Mixtos I y CVP2) y grupo de interés declarado en la solicitud.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
 
             <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Capacidad por gerencia">
                 <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">@Model.Firm proyectos · @N0(Model.MwFirme) MW</span></header>
