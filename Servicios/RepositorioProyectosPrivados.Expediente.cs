@@ -121,6 +121,154 @@ SELECT Folio, Cluster, Excluyente1, Excluyente2, Considerar, NombreArchivo AS Fi
 FROM {MarcasTable};")).ToList();
     }
 
+    // Selección del área (libro "Actualización de 246"): historial por carga (fecha de corte, archivo, hash) y filas por
+    // folio de cada carga. Los reportes usan siempre la última carga; las anteriores quedan para trazabilidad. Al guardar,
+    // la decisión se aplica a la cartera activa: Considerar → firme; Descarte → desechado; el resto conserva su situación
+    // (los duplicados retirados siguen retirados; lo que era firme y ya no se considera pasa a seguimiento).
+    private const string SeleccionTable = "dgmesnie.CarteraConvocatoriaSeleccion";
+    private const string SeleccionCargaTable = "dgmesnie.CarteraConvocatoriaSeleccionCarga";
+    private const string SeleccionColumns = "CargaId, Folio, Considerar, Descarte, Motivo, CoincideReferencia, Preseleccionados, Factibles, ApoyaSen, ObrasOnerosas, ExcluyenteConOtros, ProyectosQueExcluye, PreferenteEntreExcluyentes, Preferente, CenaceEstudios, ProyectosSustitutos, MixtosI, Sistema, NombreArchivo AS FileName, Sha256, CargadoUtc AS LoadedUtc, CargadoPor AS LoadedBy";
+    private const string SeleccionCargaColumns = "CargaId, NombreArchivo AS FileName, Sha256, FechaCorte, Filas, Considerar, Descarte, Preferentes, CenaceEstudios, CargadoUtc AS LoadedUtc, CargadoPor AS LoadedBy";
+
+    private static async Task EnsureSeleccionTablesAsync(IDbConnection db, IDbTransaction? tx = null)
+    {
+        await db.ExecuteAsync($@"
+IF OBJECT_ID(N'{SeleccionCargaTable}', N'U') IS NULL
+CREATE TABLE {SeleccionCargaTable} (
+    CargaId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    NombreArchivo nvarchar(260) NOT NULL,
+    Sha256 char(64) NOT NULL,
+    FechaCorte date NOT NULL,
+    Filas int NOT NULL,
+    Considerar int NOT NULL,
+    Descarte int NOT NULL,
+    Preferentes int NOT NULL,
+    CenaceEstudios int NOT NULL,
+    CargadoUtc datetime2 NOT NULL CONSTRAINT DF_CarteraConvocatoriaSeleccionCarga_CargadoUtc DEFAULT SYSUTCDATETIME(),
+    CargadoPor nvarchar(200) NULL
+);
+-- Versión previa sin historial (una fila por folio): se reemplaza por el esquema con CargaId.
+IF OBJECT_ID(N'{SeleccionTable}', N'U') IS NOT NULL AND COL_LENGTH(N'{SeleccionTable}', N'CargaId') IS NULL
+    DROP TABLE {SeleccionTable};
+IF OBJECT_ID(N'{SeleccionTable}', N'U') IS NULL
+CREATE TABLE {SeleccionTable} (
+    CargaId int NOT NULL,
+    Folio nvarchar(60) NOT NULL,
+    Considerar bit NOT NULL,
+    Descarte bit NOT NULL,
+    Motivo nvarchar(400) NULL,
+    CoincideReferencia nvarchar(60) NULL,
+    Preseleccionados nvarchar(200) NULL,
+    Factibles nvarchar(200) NULL,
+    ApoyaSen nvarchar(120) NULL,
+    ObrasOnerosas nvarchar(120) NULL,
+    ExcluyenteConOtros nvarchar(400) NULL,
+    ProyectosQueExcluye nvarchar(max) NULL,
+    PreferenteEntreExcluyentes nvarchar(120) NULL,
+    Preferente bit NOT NULL,
+    CenaceEstudios bit NOT NULL,
+    ProyectosSustitutos nvarchar(max) NULL,
+    MixtosI bit NOT NULL,
+    Sistema nvarchar(60) NULL,
+    NombreArchivo nvarchar(260) NOT NULL,
+    Sha256 char(64) NOT NULL,
+    CargadoUtc datetime2 NOT NULL CONSTRAINT DF_CarteraConvocatoriaSeleccion_CargadoUtc DEFAULT SYSUTCDATETIME(),
+    CargadoPor nvarchar(200) NULL,
+    CONSTRAINT PK_CarteraConvocatoriaSeleccion PRIMARY KEY (CargaId, Folio),
+    CONSTRAINT FK_CarteraConvocatoriaSeleccion_Carga FOREIGN KEY (CargaId) REFERENCES {SeleccionCargaTable}(CargaId)
+);", transaction: tx);
+    }
+
+    public async Task<(int Guardados, int Firmes, int Descartados, int Revision)> GuardarSeleccionConvocatoriaAsync(CarteraConvocatoriaSeleccionDocument document, string usuario)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        using var db = Connection;
+        db.Open();
+        using var tx = db.BeginTransaction();
+        try
+        {
+            await EnsureSeleccionTablesAsync(db, tx);
+            // Mismo archivo ya cargado (mismo hash y misma fecha de corte): no se duplica la versión.
+            var existente = await db.QueryFirstOrDefaultAsync<int?>($"SELECT TOP 1 CargaId FROM {SeleccionCargaTable} WHERE Sha256=@Sha256 AND FechaCorte=@FechaCorte ORDER BY CargaId DESC;",
+                new { document.Sha256, FechaCorte = document.FechaCorte.Date }, tx);
+            int cargaId;
+            var saved = 0;
+            if (existente.HasValue)
+            {
+                cargaId = existente.Value;
+            }
+            else
+            {
+                cargaId = await db.ExecuteScalarAsync<int>($@"
+INSERT {SeleccionCargaTable} (NombreArchivo, Sha256, FechaCorte, Filas, Considerar, Descarte, Preferentes, CenaceEstudios, CargadoPor)
+OUTPUT INSERTED.CargaId
+VALUES (@FileName, @Sha256, @FechaCorte, @Filas, @Considerar, @Descarte, @Preferentes, @CenaceEstudios, @Usuario);",
+                    new { document.FileName, document.Sha256, FechaCorte = document.FechaCorte.Date, Filas = document.Rows.Count,
+                          Considerar = document.Rows.Count(r => r.Considerar), Descarte = document.Rows.Count(r => r.Descarte),
+                          Preferentes = document.Rows.Count(r => r.Preferente), CenaceEstudios = document.Rows.Count(r => r.CenaceEstudios), Usuario = usuario }, tx);
+                foreach (var r in document.Rows)
+                {
+                    saved += await db.ExecuteAsync($@"
+INSERT {SeleccionTable} (CargaId, Folio, Considerar, Descarte, Motivo, CoincideReferencia, Preseleccionados, Factibles, ApoyaSen, ObrasOnerosas, ExcluyenteConOtros,
+    ProyectosQueExcluye, PreferenteEntreExcluyentes, Preferente, CenaceEstudios, ProyectosSustitutos, MixtosI, Sistema, NombreArchivo, Sha256, CargadoPor)
+VALUES (@CargaId, @Folio, @Considerar, @Descarte, @Motivo, @CoincideReferencia, @Preseleccionados, @Factibles, @ApoyaSen, @ObrasOnerosas, @ExcluyenteConOtros,
+    @ProyectosQueExcluye, @PreferenteEntreExcluyentes, @Preferente, @CenaceEstudios, @ProyectosSustitutos, @MixtosI, @Sistema, @FileName, @Sha256, @Usuario);",
+                        new { CargaId = cargaId, r.Folio, r.Considerar, r.Descarte, r.Motivo, r.CoincideReferencia, r.Preseleccionados, r.Factibles, r.ApoyaSen, r.ObrasOnerosas, r.ExcluyenteConOtros,
+                              r.ProyectosQueExcluye, r.PreferenteEntreExcluyentes, r.Preferente, r.CenaceEstudios, r.ProyectosSustitutos, r.MixtosI, r.Sistema, r.FileName, r.Sha256, Usuario = usuario }, tx);
+                }
+            }
+
+            // Aplica la decisión de esta carga a la cartera vigente (sólo Mixtos II activo).
+            await db.ExecuteAsync($@"
+UPDATE p SET
+    ConsideracionClave = CASE WHEN s.Considerar=1 THEN N'firme' WHEN s.Descarte=1 THEN N'no-va' WHEN p.ConsideracionClave=N'firme' THEN N'revision' ELSE p.ConsideracionClave END,
+    EstatusUniverso    = CASE WHEN s.Considerar=1 THEN N'CONSIDERADO' WHEN s.Descarte=1 THEN N'DESECHADO' WHEN p.ConsideracionClave=N'firme' THEN N'NO CONSIDERADO' ELSE p.EstatusUniverso END,
+    EstadoSeguimiento  = CASE WHEN s.Considerar=1 THEN N'continua' WHEN s.Descarte=1 THEN N'no-continua' WHEN p.ConsideracionClave=N'firme' THEN N'revision' ELSE p.EstadoSeguimiento END
+FROM dgmesnie.CarteraConvocatoriaProyecto p
+JOIN {SeleccionTable} s ON s.Folio = p.Folio AND s.CargaId = @CargaId
+WHERE p.Activo = 1 AND p.Fuente = N'Mixtos II';", new { CargaId = cargaId }, tx);
+
+            var counts = await db.QuerySingleAsync<(int Firmes, int Descartados, int Revision)>($@"
+SELECT SUM(CASE WHEN ConsideracionClave=N'firme' THEN 1 ELSE 0 END) AS Firmes,
+       SUM(CASE WHEN ConsideracionClave=N'no-va' THEN 1 ELSE 0 END) AS Descartados,
+       SUM(CASE WHEN ConsideracionClave=N'revision' THEN 1 ELSE 0 END) AS Revision
+FROM dgmesnie.CarteraConvocatoriaProyecto WHERE Activo = 1 AND Fuente = N'Mixtos II';", transaction: tx);
+            tx.Commit();
+            return (saved, counts.Firmes, counts.Descartados, counts.Revision);
+        }
+        catch { tx.Rollback(); throw; }
+    }
+
+    private async Task<int?> UltimaSeleccionCargaAsync(IDbConnection db)
+    {
+        if (!await db.ExecuteScalarAsync<bool>($"SELECT CASE WHEN OBJECT_ID(N'{SeleccionCargaTable}',N'U') IS NULL OR COL_LENGTH(N'{SeleccionTable}', N'CargaId') IS NULL THEN 0 ELSE 1 END")) return null;
+        return await db.QueryFirstOrDefaultAsync<int?>($"SELECT TOP 1 CargaId FROM {SeleccionCargaTable} ORDER BY FechaCorte DESC, CargaId DESC;");
+    }
+
+    public async Task<CarteraConvocatoriaSeleccion?> ObtenerSeleccionConvocatoriaAsync(string folio)
+    {
+        using var db = Connection;
+        var cargaId = await UltimaSeleccionCargaAsync(db);
+        if (!cargaId.HasValue) return null;
+        return await db.QueryFirstOrDefaultAsync<CarteraConvocatoriaSeleccion>($"SELECT {SeleccionColumns} FROM {SeleccionTable} WHERE CargaId=@cargaId AND Folio=@folio;", new { cargaId, folio });
+    }
+
+    public async Task<List<CarteraConvocatoriaSeleccion>> ObtenerSeleccionesConvocatoriaAsync()
+    {
+        using var db = Connection;
+        var cargaId = await UltimaSeleccionCargaAsync(db);
+        if (!cargaId.HasValue) return new();
+        return (await db.QueryAsync<CarteraConvocatoriaSeleccion>($"SELECT {SeleccionColumns} FROM {SeleccionTable} WHERE CargaId=@cargaId;", new { cargaId })).ToList();
+    }
+
+    // Historial de cargas del libro de selección (la más reciente primero).
+    public async Task<List<CarteraConvocatoriaSeleccionCarga>> ObtenerSeleccionCargasConvocatoriaAsync()
+    {
+        using var db = Connection;
+        if (!await db.ExecuteScalarAsync<bool>($"SELECT CASE WHEN OBJECT_ID(N'{SeleccionCargaTable}',N'U') IS NULL THEN 0 ELSE 1 END")) return new();
+        return (await db.QueryAsync<CarteraConvocatoriaSeleccionCarga>($"SELECT {SeleccionCargaColumns} FROM {SeleccionCargaTable} ORDER BY FechaCorte DESC, CargaId DESC;")).ToList();
+    }
+
     // Backfill específico: compara el corte con SQL y sólo inserta expedientes. No usa el upsert de cartera.
     public async Task<int> CompletarExpedientesConvocatoriaAsync(CarteraConvocatoriaImportDocument document, string usuario, bool aplicar = false)
     {

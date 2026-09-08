@@ -295,6 +295,18 @@ namespace NSIE.Controllers
                     _logger.LogWarning(ex, "No fue posible leer las marcas de clúster para {Folio}.", normalizedFolio);
                 }
 
+                CarteraConvocatoriaSeleccion? seleccion = null;
+                CarteraConvocatoriaSeleccionCarga? seleccionCarga = null;
+                try
+                {
+                    seleccion = await _proyectosPrivadosRepository.ObtenerSeleccionConvocatoriaAsync(project.Folio);
+                    seleccionCarga = (await _proyectosPrivadosRepository.ObtenerSeleccionCargasConvocatoriaAsync()).FirstOrDefault();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "No fue posible leer la selección del área para {Folio}.", normalizedFolio);
+                }
+
                 List<CarteraConvocatoriaGrupoMiembro> clusterMembers = new(), exclusiveMembers = new();
                 if (marks is not null && (!string.IsNullOrWhiteSpace(marks.Cluster) || !string.IsNullOrWhiteSpace(marks.Excluyente1)))
                 {
@@ -314,6 +326,8 @@ namespace NSIE.Controllers
                 {
                     OperationSchedule = schedule,
                     Marks = marks,
+                    Seleccion = seleccion,
+                    SeleccionCarga = seleccionCarga,
                     ClusterMembers = clusterMembers,
                     ExclusiveMembers = exclusiveMembers,
                     Dossier = await _proyectosPrivadosRepository.ObtenerExpedienteConvocatoriaAsync(project.Folio),
@@ -361,7 +375,16 @@ namespace NSIE.Controllers
                 List<CarteraConvocatoriaMarca> marks;
                 try { marks = await _proyectosPrivadosRepository.ObtenerMarcasConvocatoriaAsync(); }
                 catch (Exception ex) { _logger.LogWarning(ex, "No fue posible leer las marcas de clúster para la ficha de cartera."); marks = new(); }
-                var model = CarteraConvocatoriaResumenBuilder.Build(cartera, dossiers, marks);
+                List<CarteraConvocatoriaSeleccion> selections;
+                List<CarteraConvocatoriaSeleccionCarga> seleccionCargas;
+                try
+                {
+                    selections = await _proyectosPrivadosRepository.ObtenerSeleccionesConvocatoriaAsync();
+                    seleccionCargas = await _proyectosPrivadosRepository.ObtenerSeleccionCargasConvocatoriaAsync();
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "No fue posible leer la selección del área para la ficha de cartera."); selections = new(); seleccionCargas = new(); }
+                var model = CarteraConvocatoriaResumenBuilder.Build(cartera, dossiers, marks, selections);
+                model.SeleccionCargas = seleccionCargas;
                 model.Recipients = await _pamService.ObtenerDestinatariosAsync();
                 return View("CarteraConvocatoriaResumen", model);
             }

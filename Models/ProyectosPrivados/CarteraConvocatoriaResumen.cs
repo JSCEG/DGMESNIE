@@ -90,6 +90,21 @@ public sealed class CarteraConvocatoriaResumenViewModel
     public List<ResumenConteo> InversionPorTecnologia { get; set; } = new();
     public List<ResumenProyecto> TopInversion { get; set; } = new();
     public List<ResumenProyecto> TopCostoRed { get; set; } = new();
+    // Selección del área (libro "Actualización de 246"): preferencia, estudios CENACE, apoyo al SEN y obras onerosas.
+    public bool SeleccionDisponible { get; set; }
+    public int ConPreferente { get; set; }
+    public decimal MwPreferente { get; set; }
+    public int ConEstudiosCenace { get; set; }
+    public decimal MwEstudiosCenace { get; set; }
+    public List<ResumenConteo> ApoyaSen { get; set; } = new();
+    public List<ResumenConteo> ObrasOnerosas { get; set; } = new();
+    public List<ResumenConteo> ExcluyenteConOtros { get; set; } = new();
+    public List<ResumenConteo> PreferentesPorGcr { get; set; } = new();
+    public List<ResumenProyecto> Preferentes { get; set; } = new();
+    public List<ResumenConteo> MotivosDescarte { get; set; } = new();
+    // Historial de cargas del libro de selección (la más reciente primero) para la línea de trazabilidad.
+    public List<CarteraConvocatoriaSeleccionCarga> SeleccionCargas { get; set; } = new();
+    public List<CarteraConvocatoriaMarca> Marcas { get; set; } = new();
 }
 
 public sealed class ResumenConteo
@@ -159,4 +174,8 @@ public sealed class ResumenProyecto
     // Antecedentes del expediente para los registros no incluidos (observación del área, homologación, duplicidad, evaluaciones).
     public string Antecedentes { get; set; } = "";
     public decimal? Inversion { get; set; }
+    public bool Preferente { get; set; }
+    public bool CenaceEstudios { get; set; }
+    public string ApoyaSen { get; set; } = "";
+    public string ObrasOnerosas { get; set; } = "";
 }

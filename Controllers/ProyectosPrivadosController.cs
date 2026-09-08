@@ -218,6 +218,53 @@ namespace NSIE.Controllers
             }
         }
 
+        // Libro de selección del área ("Actualización de 246"): aplica Considerar/Descarte a la cartera y guarda
+        // preferencia, estudios CENACE, obras onerosas, excluyentes y sustitutos por folio.
+        [HttpPost("ProyectosPrivados/Api/CarteraConvocatoria/ImportarSeleccion")]
+        [ValidateAntiForgeryToken]
+        [RequestSizeLimit(60 * 1024 * 1024)]
+        public async Task<IActionResult> ApiImportarSeleccionCarteraConvocatoria(IFormFile file, [FromForm] string? fechaCorte, CancellationToken cancellationToken)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { error = "Seleccione el archivo Excel de selección del área." });
+            var extension = Path.GetExtension(file.FileName);
+            if (!extension.Equals(".xlsx", StringComparison.OrdinalIgnoreCase) && !extension.Equals(".xlsm", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = "El archivo debe ser .xlsx o .xlsm." });
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                var document = await _carteraImportService.LeerSeleccionAsync(stream, file.FileName, cancellationToken);
+                // Fecha de corte de la versión (trazabilidad): la indicada en el formulario o, en su defecto, la de hoy.
+                if (DateTime.TryParseExact(fechaCorte ?? "", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var corte))
+                    document.FechaCorte = corte;
+                var result = await _repo.GuardarSeleccionConvocatoriaAsync(document, GetCurrentUserName());
+                return Ok(new
+                {
+                    success = true,
+                    fileName = document.FileName,
+                    fechaCorte = document.FechaCorte.ToString("yyyy-MM-dd"),
+                    rows = document.Rows.Count,
+                    saved = result.Guardados,
+                    considerar = document.Rows.Count(r => r.Considerar),
+                    descarte = document.Rows.Count(r => r.Descarte),
+                    preferentes = document.Rows.Count(r => r.Preferente),
+                    cenaceEstudios = document.Rows.Count(r => r.CenaceEstudios),
+                    carteraFirmes = result.Firmes,
+                    carteraDescartados = result.Descartados,
+                    carteraSeguimiento = result.Revision
+                });
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al importar la selección del área de la cartera Mixtos II.");
+                return StatusCode(StatusCodes.Status500InternalServerError, new { error = "No fue posible importar la selección." });
+            }
+        }
+
         // Libro complementario de CFE con clúster candidato y grupos excluyentes por folio.
         [HttpPost("ProyectosPrivados/Api/CarteraConvocatoria/ImportarMarcas")]
         [ValidateAntiForgeryToken]

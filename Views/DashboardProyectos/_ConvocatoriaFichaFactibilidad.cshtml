@@ -1,5 +1,6 @@
 @model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
 @using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
 @{
     var project = Model.Project;
     var dossier = Model.Dossier;
@@ -12,6 +13,10 @@
     string Clasificacion(string? v) => string.IsNullOrWhiteSpace(v) || v.Trim() == "No informado" ? "Sin clasificación" : char.ToUpper(v.Trim()[0]) + v.Trim()[1..];
     var enCluster = Model.ClusterMembers;
     var enGrupo = Model.ExclusiveMembers;
+    var sel = Model.Seleccion;
+    string SiNo(bool b) => b ? "Sí" : "No";
+    string Sel(string? v) => (v ?? "").Trim().ToUpperInvariant() switch { "" => "Sin registro", "SI" or "SÍ" => "Sí", "NO" => "No", "N/A" or "NA" => "No aplica", "NO SE VERIFICA" => "No se verifica", var o => char.ToUpper(o[0]) + o[1..].ToLowerInvariant() };
+    string SelLargo(string? v) => Tiene(v) ? v!.Trim() : "Sin registro";
 }
 <section class="pam-slide pam-slide--content" data-slide data-index-group="Costos y factibilidad" data-label="Factibilidad y excluyentes">
     <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Factibilidad</span><span class="pam-lamina-head__aside">@project.Folio</span></header>
@@ -31,12 +36,29 @@
                 <article><span><i class="bi bi-sign-intersection-y" aria-hidden="true"></i>Grupo excluyente 2</span><strong>@(string.IsNullOrWhiteSpace(marks.Excluyente2) ? "Sin grupo" : marks.Excluyente2)</strong><small>Segundo grupo, cuando aplica</small></article>
             </div>
         }
-        <div class="convocatoria-feasibility__grid">
+        @if (sel != null)
+        {
+            <div class="convocatoria-feasibility__status convocatoria-feasibility__status--sel">
+                <article class="@(sel.Preferente ? "is-si" : "")"><span><i class="bi bi-star" aria-hidden="true"></i>Preferente</span><strong>@SiNo(sel.Preferente)</strong><small>Prioridad del área entre los considerados</small></article>
+                <article><span><i class="bi bi-clipboard2-pulse" aria-hidden="true"></i>CENACE debe realizar estudios</span><strong>@SiNo(sel.CenaceEstudios)</strong><small>Estudios de interconexión por realizar</small></article>
+                <article><span><i class="bi bi-plug" aria-hidden="true"></i>Apoya al SEN</span><strong>@Sel(sel.ApoyaSen)</strong><small>Obras onerosas previstas: @Sel(sel.ObrasOnerosas)</small></article>
+                <article><span><i class="bi bi-sign-intersection" aria-hidden="true"></i>Excluyente con otros</span><strong>@Sel(sel.ExcluyenteConOtros)</strong><small>Preferente entre excluyentes: @Sel(sel.PreferenteEntreExcluyentes)</small></article>
+            </div>
+        }
+        <div class="convocatoria-feasibility__grid @(sel != null ? "convocatoria-feasibility__grid--3" : "")">
             <article><span>Observación del área</span><p>@summary</p>
                 @if (observation.Length > 500) { <small>Observación completa en el detalle de factibilidad.</small> }
             </article>
-            <article><span>Evaluación técnica</span><strong>@(evaluations > 0 ? "Registrada" : "No registrada")</strong><p>@(evaluations > 0 ? "Detalle de la evaluación técnica en las láminas siguientes." : "Sin evaluación técnica registrada en el corte.")</p><p>Clasificación y proyectos excluyentes conforme al catálogo de proyectos.</p></article>
+            @if (sel != null)
+            {
+                <article><span>Proyectos que excluye</span><p>@SelLargo(sel.ProyectosQueExcluye)</p></article>
+                <article><span>Proyectos sustitutos</span><p>@SelLargo(sel.ProyectosSustitutos)</p></article>
+            }
+            else
+            {
+                <article><span>Evaluación técnica</span><strong>@(evaluations > 0 ? "Registrada" : "No registrada")</strong><p>@(evaluations > 0 ? "Detalle de la evaluación técnica en las láminas siguientes." : "Sin evaluación técnica registrada en el corte.")</p></article>
+            }
         </div>
     </div>
-    <div class="pam-lamina-foot"><span>@Model.Fuente("catálogo de proyectos y evaluación técnica")</span><span class="pam-lamina-foot__meta"></span></div>
+    <div class="pam-lamina-foot"><span>@Model.Fuente(sel != null ? $"catálogo de proyectos, evaluación técnica y selección del área (corte {(Model.SeleccionCarga?.FechaCorte ?? DateTime.Today).ToString("dd/MM/yyyy")})" : "catálogo de proyectos y evaluación técnica")</span><span class="pam-lamina-foot__meta"></span></div>
 </section>

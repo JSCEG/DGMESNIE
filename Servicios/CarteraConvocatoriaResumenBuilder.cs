@@ -17,9 +17,17 @@ public static class CarteraConvocatoriaResumenBuilder
     public static CarteraConvocatoriaResumenViewModel Build(
         CarteraConvocatoriaDatos cartera,
         List<CarteraConvocatoriaExpediente> dossiers,
-        List<CarteraConvocatoriaMarca> marks)
+        List<CarteraConvocatoriaMarca> marks,
+        List<CarteraConvocatoriaSeleccion>? selections = null)
     {
         var byFolio = dossiers.GroupBy(d => d.Folio, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var selByFolio = (selections ?? new()).GroupBy(s => s.Folio, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        CarteraConvocatoriaSeleccion? S(CarteraConvocatoriaProyecto p) => selByFolio.GetValueOrDefault(p.Folio);
+        static string SiNoTexto(string? v)
+        {
+            var t = (v ?? "").Trim().ToUpperInvariant();
+            return t is "SI" or "SÍ" ? "Sí" : t == "NO" ? "No" : t == "" ? "Sin registro" : Text.ToTitleCase(t.ToLowerInvariant());
+        }
         var markByFolio = marks.GroupBy(m => m.Folio, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         var all = cartera.Projects.Where(p => p.Source == "Mixtos II").ToList();
         var firm = all.Where(p => p.Consideration == "firme").ToList();
@@ -186,7 +194,11 @@ public static class CarteraConvocatoriaResumenBuilder
                 Observacion = Clean(d.Valor("OBSERVACIÓN DEL ÁREA", 1, Cat) ?? p.TechnicalAnalysis, ""),
                 Cruce = CruceSocial(p, d),
                 Antecedentes = Antecedentes(p, d),
-                Inversion = NumeroValor(d.Valor("Monto de inversión total del proyecto"))
+                Inversion = NumeroValor(d.Valor("Monto de inversión total del proyecto")),
+                Preferente = S(p)?.Preferente == true,
+                CenaceEstudios = S(p)?.CenaceEstudios == true,
+                ApoyaSen = SiNoTexto(S(p)?.ApoyaSen),
+                ObrasOnerosas = SiNoTexto(S(p)?.ObrasOnerosas)
             };
         }
 
@@ -195,6 +207,7 @@ public static class CarteraConvocatoriaResumenBuilder
         string Antecedentes(CarteraConvocatoriaProyecto p, CarteraConvocatoriaExpediente? d)
         {
             var notas = new List<string>();
+            if (Tiene(S(p)?.Motivo)) notas.Add("Motivo registrado por el área: " + S(p)!.Motivo!.Trim().TrimEnd('.'));
             var obs = Clean(d.Valor("OBSERVACIÓN DEL ÁREA", 1, Cat) ?? p.TechnicalAnalysis, "");
             if (obs != "") notas.Add("Observación del área: " + obs.TrimEnd('.'));
             var llave = (d.Valor("FOLIO CONSIDERADO (llave única)", 1, Cat) ?? p.CanonicalFolio ?? "").Trim();
@@ -226,6 +239,25 @@ public static class CarteraConvocatoriaResumenBuilder
         }
         model.TopProyectos = firm.OrderByDescending(p => p.Mw).Take(12).Select(Proyecto).ToList();
         model.SaeRevisar = saeRevisar.OrderByDescending(p => p.Mw).Select(Proyecto).ToList();
+
+        // ── Selección del área ──
+        model.Marcas = marks;
+        model.SeleccionDisponible = selByFolio.Count > 0;
+        if (model.SeleccionDisponible)
+        {
+            var pref = firm.Where(p => S(p)?.Preferente == true).ToList();
+            model.ConPreferente = pref.Count;
+            model.MwPreferente = pref.Sum(p => p.Mw);
+            var estudios = firm.Where(p => S(p)?.CenaceEstudios == true).ToList();
+            model.ConEstudiosCenace = estudios.Count;
+            model.MwEstudiosCenace = estudios.Sum(p => p.Mw);
+            model.ApoyaSen = Count(firm, p => SiNoTexto(S(p)?.ApoyaSen));
+            model.ObrasOnerosas = Count(firm, p => SiNoTexto(S(p)?.ObrasOnerosas));
+            model.ExcluyenteConOtros = Count(firm, p => SiNoTexto(S(p)?.ExcluyenteConOtros));
+            model.PreferentesPorGcr = Count(pref, Gcr);
+            model.Preferentes = pref.OrderByDescending(p => p.Mw).Select(Proyecto).ToList();
+            model.MotivosDescarte = Count(all.Where(p => p.Consideration != "firme" && Tiene(S(p)?.Motivo)).ToList(), p => Text.ToTitleCase(S(p)!.Motivo!.Trim().ToLowerInvariant()));
+        }
         model.TopCostoRed = conCfe.OrderByDescending(p => p.NetworkCostUsd ?? 0).ThenByDescending(p => p.Mw).Take(8).Select(Proyecto).ToList();
         var conInversion = firm.Select(p => (Project: p, Inversion: NumeroValor(D(p).Valor("Monto de inversión total del proyecto")) ?? 0)).Where(x => x.Inversion > 0).ToList();
         model.TopInversion = conInversion.OrderByDescending(x => x.Inversion).Take(8).Select(x => Proyecto(x.Project)).ToList();

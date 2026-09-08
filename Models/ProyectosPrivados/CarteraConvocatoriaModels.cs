@@ -152,6 +152,9 @@ namespace NSIE.Models.ProyectosPrivados
         public List<CarteraConvocatoriaOperacionProgramada> OperationSchedule { get; set; } = new();
         // Clúster candidato y grupos excluyentes identificados por CFE (libro complementario).
         public CarteraConvocatoriaMarca? Marks { get; set; }
+        // Decisión del área (libro de selección): preferencia, estudios CENACE, obras onerosas, excluyentes y sustitutos.
+        public CarteraConvocatoriaSeleccion? Seleccion { get; set; }
+        public CarteraConvocatoriaSeleccionCarga? SeleccionCarga { get; set; }
         // Integrantes del clúster y del grupo excluyente (marcas CFE) del folio, con datos de la cartera vigente.
         public List<CarteraConvocatoriaGrupoMiembro> ClusterMembers { get; set; } = new();
         public List<CarteraConvocatoriaGrupoMiembro> ExclusiveMembers { get; set; } = new();

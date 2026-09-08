@@ -151,6 +151,7 @@
                             <div class="rs-bars">@foreach (var g in Model.Gcr) { @Html.Raw(Bar(g.Region, g.Mw, maxGcrMw, $"{N0(g.Mw)} MW · {N1(g.Share)} %", "is-guinda", true)) }</div>
                             <h3 style="margin-top:10px"><i class="bi bi-exclamation-diamond" aria-hidden="true"></i>Puntos de atención</h3>
                             <ul class="rs-alerts">
+                                @if (Model.SeleccionDisponible) { <li><i class="bi bi-star" aria-hidden="true"></i><span><b>@Model.ConPreferente preferentes</b> · @N0(Model.MwPreferente) MW · @Model.ConEstudiosCenace requieren estudios de CENACE</span></li> }
                                 <li><i class="bi bi-file-earmark-spreadsheet" aria-hidden="true"></i><span><b>@Model.ConFichaCfe de @Model.Firm</b> proyectos con ficha de costos CFE · @Pct(Model.MwConFichaCfe, Model.MwFirme) de la capacidad</span></li>
                                 <li><i class="bi bi-check2-circle" aria-hidden="true"></i><span><b>@(factibles?.Projects ?? 0) factibles</b> · @N0(factibles?.Mw ?? 0) MW · @Model.ConFactibilidad con evaluación técnica</span></li>
                                 <li><i class="bi bi-diagram-3" aria-hidden="true"></i><span><b>@Model.ConCluster en clúster</b> · @Model.ConExcluyente en grupos excluyentes (CFE)</span></li>
@@ -203,10 +204,50 @@
                     </div>
                     }
                 </div>
-                <div class="pam-lamina-foot"><span>@fuente Catálogo de proyectos y solicitudes registradas en ventanilla. Registros totales = considerados + en seguimiento + desechados y duplicados.</span><span class="pam-lamina-foot__meta"></span></div>
+                @{
+                    var marcaCarga = Model.Marcas.OrderByDescending(m => m.LoadedUtc).FirstOrDefault();
+                    var selCarga = Model.SeleccionCargas.FirstOrDefault();
+                    var cortes = new List<string> { $"cartera {Model.SourceVersion}" };
+                    if (marcaCarga != null) cortes.Add($"clúster y excluyentes CFE ({marcaCarga.FileName}, cargado {(marcaCarga.LoadedUtc ?? DateTime.Today).ToLocalTime():dd/MM/yyyy})");
+                    if (selCarga != null) cortes.Add($"selección del área corte {selCarga.FechaCorte:dd/MM/yyyy} ({selCarga.FileName}, versión {selCarga.CargaId} de {Model.SeleccionCargas.Count})");
+                }
+                <div class="pam-lamina-foot"><span>Versiones vigentes: @string.Join(" · ", cortes). Los reportes usan la carga más reciente; las anteriores se conservan para trazabilidad.</span><span class="pam-lamina-foot__meta"></span></div>
             </section>
 
             @* ── Cartera considerada ── *@
+            @if (Model.SeleccionDisponible) {
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Selección y priorización del área">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Decisión del área · corte @(Model.SeleccionCargas.FirstOrDefault()?.FechaCorte.ToString("dd/MM/yyyy") ?? corte)</span></header>
+                <h2 class="pam-lamina-title">Selección y priorización del área</h2>
+                <div class="pam-lamina-body conv-page conv-page--gcr">
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-star" aria-hidden="true"></i>Proyectos preferentes</span><strong>@Model.ConPreferente</strong><small>@N0(Model.MwPreferente) MW · @Pct(Model.MwPreferente, Model.MwFirme) de la capacidad considerada</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-clipboard2-pulse" aria-hidden="true"></i>CENACE debe realizar estudios</span><strong>@Model.ConEstudiosCenace</strong><small>@N0(Model.MwEstudiosCenace) MW por estudiar</small></article>
+                        <article class="is-verde"><span><i class="bi bi-plug" aria-hidden="true"></i>Apoyan al SEN</span><strong>@(Model.ApoyaSen.FirstOrDefault(x => x.Name == "Sí")?.Projects ?? 0)</strong><small>@N0(Model.ApoyaSen.FirstOrDefault(x => x.Name == "Sí")?.Mw ?? 0) MW · No: @(Model.ApoyaSen.FirstOrDefault(x => x.Name == "No")?.Projects ?? 0)</small></article>
+                        <article><span><i class="bi bi-tools" aria-hidden="true"></i>Con obras onerosas previstas</span><strong>@(Model.ObrasOnerosas.FirstOrDefault(x => x.Name == "Sí")?.Projects ?? 0)</strong><small>@N0(Model.ObrasOnerosas.FirstOrDefault(x => x.Name == "Sí")?.Mw ?? 0) MW · No: @(Model.ObrasOnerosas.FirstOrDefault(x => x.Name == "No")?.Projects ?? 0)</small></article>
+                    </div>
+                    <div class="rs-cols rs-cols--sel">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-star" aria-hidden="true"></i>Preferentes por gerencia <small>proyectos y MW</small></h3>
+                            <div class="rs-bars">@foreach (var g in Model.PreferentesPorGcr) { @Html.Raw(Bar(g.Name, g.Mw, Model.PreferentesPorGcr.Max(x => x.Mw), $"{g.Projects} proy. · {N0(g.Mw)} MW", "is-guinda", true)) }</div>
+                            <h3 style="margin-top:10px"><i class="bi bi-sign-intersection" aria-hidden="true"></i>Excluyente con otros proyectos</h3>
+                            <div class="rs-bars">@foreach (var v in Model.ExcluyenteConOtros.Take(3)) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy. · {N0(v.Mw)} MW", "is-dorado", true)) }</div>
+                            <h3 style="margin-top:10px"><i class="bi bi-plug" aria-hidden="true"></i>Apoya al SEN</h3>
+                            <div class="rs-bars">@foreach (var v in Model.ApoyaSen.Take(3)) { @Html.Raw(Bar(v.Name, v.Projects, Model.Firm, $"{v.Projects} proy. · {N0(v.Mw)} MW", "is-verde", true)) }</div>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-trophy" aria-hidden="true"></i>Preferentes de mayor capacidad <small>@Model.ConPreferente en total · estudios = CENACE debe realizar estudios</small></h3>
+                            <table class="conv-table conv-table--rs conv-table--top">
+                                <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th class="is-num">MW</th><th>Estudios</th><th>SEN</th><th>Onerosas</th></tr></thead>
+                                <tbody>@foreach (var p in Model.Preferentes.Take(9)) { <tr><th>@p.Folio</th><td class="is-nowrap">@(p.Name.Length > 18 ? p.Name[..18] + "…" : p.Name)</td><td>@p.Region</td><td class="is-num">@N0(p.Mw)</td><td>@(p.CenaceEstudios ? "Sí" : "No")</td><td>@p.ApoyaSen</td><td>@p.ObrasOnerosas</td></tr> }</tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>Preferente: proyecto priorizado por el área entre los considerados; estudios, apoyo al SEN y obras onerosas conforme a su revisión técnica. Selección del área@(Model.SeleccionCargas.FirstOrDefault() is { } sc ? $" · corte {sc.FechaCorte:dd/MM/yyyy} · {sc.FileName}" : "").</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+            }
+
             <section class="pam-slide pam-slide--content" data-slide data-index-group="Cartera considerada" data-label="Capacidad por gerencia">
                 <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">@Model.Firm proyectos · @N0(Model.MwFirme) MW</span></header>
                 <h2 class="pam-lamina-title">Capacidad y participación por gerencia</h2>
@@ -545,14 +586,14 @@
 
             @* ── Proyectos ── *@
             <section class="pam-slide pam-slide--content" data-slide data-index-group="Principales proyectos" data-label="Proyectos de mayor capacidad">
-                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Doce proyectos de mayor capacidad</span></header>
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Once proyectos de mayor capacidad</span></header>
                 <h2 class="pam-lamina-title">Proyectos de mayor capacidad</h2>
                 <div class="pam-lamina-body conv-page">
                     <table class="conv-table conv-table--rs conv-table--top">
-                        <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th>Tecnología</th><th class="is-num">MW</th><th>Operación</th><th>Modalidad</th><th>SAE</th><th>Factibilidad</th><th class="is-num">Red MDD</th><th>Clúster</th></tr></thead>
-                        <tbody>@foreach (var p in Model.TopProyectos.Take(12)) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 26 ? p.Name[..26] + "…" : p.Name)</td><td>@p.Region</td><td>@p.Technology</td><td class="is-num">@N0(p.Mw)</td><td>@p.Operacion</td><td>@(p.Modalidad.Length > 18 ? p.Modalidad[..18] + "…" : p.Modalidad)</td><td>@p.Sae</td><td>@p.Factibilidad</td><td class="is-num">@(p.CostoMdd.HasValue ? N2(p.CostoMdd.Value) : "Sin ficha")</td><td>@(string.IsNullOrWhiteSpace(p.Cluster) ? "—" : p.Cluster.Replace("Cluster ", ""))</td></tr> }</tbody>
+                        <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th>Tecnología</th><th class="is-num">MW</th><th>Operación</th><th>Modalidad</th><th>SAE</th><th>Factibilidad</th><th class="is-num">Red MDD</th><th>Clúster</th>@if (Model.SeleccionDisponible) { <th>Preferente</th> }</tr></thead>
+                        <tbody>@foreach (var p in Model.TopProyectos.Take(11)) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 26 ? p.Name[..26] + "…" : p.Name)</td><td>@p.Region</td><td>@p.Technology</td><td class="is-num">@N0(p.Mw)</td><td>@p.Operacion</td><td>@(p.Modalidad.Length > 18 ? p.Modalidad[..18] + "…" : p.Modalidad)</td><td>@p.Sae</td><td>@p.Factibilidad</td><td class="is-num">@(p.CostoMdd.HasValue ? N2(p.CostoMdd.Value) : "Sin ficha")</td><td>@(string.IsNullOrWhiteSpace(p.Cluster) ? "—" : p.Cluster.Replace("Cluster ", ""))</td>@if (Model.SeleccionDisponible) { <td>@(p.Preferente ? "Sí" : "—")</td> }</tr> }</tbody>
                     </table>
-                    <p class="conv-note">Los doce proyectos suman @N0(Model.TopProyectos.Take(12).Sum(p => p.Mw)) MW, @Pct(Model.TopProyectos.Take(12).Sum(p => p.Mw), Model.MwFirme) de la capacidad considerada. La ficha individual de cada proyecto se genera desde la cartera Mixtos II.</p>
+                    <p class="conv-note">Los once proyectos suman @N0(Model.TopProyectos.Take(11).Sum(p => p.Mw)) MW, @Pct(Model.TopProyectos.Take(11).Sum(p => p.Mw), Model.MwFirme) de la capacidad considerada. La ficha individual de cada proyecto se genera desde la cartera Mixtos II.</p>
                 </div>
                 <div class="pam-lamina-foot"><span>@fuente Catálogo de proyectos, solicitudes, fichas CFE y marcas de clúster.</span><span class="pam-lamina-foot__meta"></span></div>
             </section>

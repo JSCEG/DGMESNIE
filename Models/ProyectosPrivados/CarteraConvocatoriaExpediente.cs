@@ -35,6 +35,57 @@ public sealed class CarteraConvocatoriaMarca
     public string? LoadedBy { get; set; }
 }
 
+/// <summary>Decisión del área por folio (libro "Actualización de 246"): considerar/descarte, preferencia y notas de CENACE.</summary>
+/// <summary>Versión cargada del libro de selección: fecha de corte, archivo y conteos, para trazabilidad.</summary>
+public sealed class CarteraConvocatoriaSeleccionCarga
+{
+    public int CargaId { get; set; }
+    public string FileName { get; set; } = "";
+    public string Sha256 { get; set; } = "";
+    public DateTime FechaCorte { get; set; }
+    public int Filas { get; set; }
+    public int Considerar { get; set; }
+    public int Descarte { get; set; }
+    public int Preferentes { get; set; }
+    public int CenaceEstudios { get; set; }
+    public DateTime LoadedUtc { get; set; }
+    public string? LoadedBy { get; set; }
+}
+
+public sealed class CarteraConvocatoriaSeleccion
+{
+    public int CargaId { get; set; }
+    public string Folio { get; set; } = "";
+    public bool Considerar { get; set; }
+    public bool Descarte { get; set; }
+    public string? Motivo { get; set; }
+    public string? CoincideReferencia { get; set; }
+    public string? Preseleccionados { get; set; }
+    public string? Factibles { get; set; }
+    public string? ApoyaSen { get; set; }
+    public string? ObrasOnerosas { get; set; }
+    public string? ExcluyenteConOtros { get; set; }
+    public string? ProyectosQueExcluye { get; set; }
+    public string? PreferenteEntreExcluyentes { get; set; }
+    public bool Preferente { get; set; }
+    public bool CenaceEstudios { get; set; }
+    public string? ProyectosSustitutos { get; set; }
+    public bool MixtosI { get; set; }
+    public string? Sistema { get; set; }
+    public string FileName { get; set; } = "";
+    public string Sha256 { get; set; } = "";
+    public DateTime? LoadedUtc { get; set; }
+    public string? LoadedBy { get; set; }
+}
+
+public sealed class CarteraConvocatoriaSeleccionDocument
+{
+    public string FileName { get; set; } = "";
+    public string Sha256 { get; set; } = "";
+    public DateTime FechaCorte { get; set; } = DateTime.Today;
+    public List<CarteraConvocatoriaSeleccion> Rows { get; set; } = new();
+}
+
 public sealed class CarteraConvocatoriaMarcasDocument
 {
     public string FileName { get; set; } = "";
