@@ -42,16 +42,16 @@ public sealed partial class CarteraConvocatoriaImportService : ICarteraConvocato
         if (!workbook.TryGetWorksheet(SourceSheet, out var source) || source == null)
             throw new InvalidDataException($"Falta la hoja obligatoria «{SourceSheet}».");
 
-        var catalogHeaders = BuildHeaderMap(catalog, CatalogHeaderRow);
-        var sourceHeaders = BuildHeaderMap(source, SourceHeaderRow);
+        var (catalogHeaderRow, catalogHeaders) = FindHeaders(catalog, CatalogHeaderRow, "LLAVE", "Considerar", "MW NETOS");
+        var (sourceHeaderRow, sourceHeaders) = FindHeaders(source, SourceHeaderRow, "Folio LLAVE", "Proyecto");
         ValidateHeaders(catalogHeaders, "catálogo", "LLAVE", "Considerar", "Proyecto", "REGIÓN (GCR)", "MW NETOS", "ESTATUS UNIVERSO", "FOLIO CONSIDERADO (llave única)");
         ValidateHeaders(sourceHeaders, "base fuente", "Folio LLAVE", "Nombre", "Proyecto", "Tipo Tecnología", "Región", "Entidad Federativa", "Subestación Eléctrica de Interconexión", "Punto de Interconexión", "Capacidad Generación en MW netos", "Municipio/Alcaldía", "Latitud", "Longitud", "Archivo KMZ proyecto", "Archivo KMZ subestacion");
 
-        var sourceRows = ReadSourceRows(source, sourceHeaders);
+        var sourceRows = ReadSourceRows(source, sourceHeaders, sourceHeaderRow);
         var projects = new List<CarteraConvocatoriaProyecto>();
-        var lastCatalogRow = catalog.LastRowUsed()?.RowNumber() ?? CatalogHeaderRow;
+        var lastCatalogRow = catalog.LastRowUsed()?.RowNumber() ?? catalogHeaderRow;
 
-        for (var rowNumber = CatalogHeaderRow + 1; rowNumber <= lastCatalogRow; rowNumber++)
+        for (var rowNumber = catalogHeaderRow + 1; rowNumber <= lastCatalogRow; rowNumber++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var row = catalog.Row(rowNumber);
@@ -80,7 +80,7 @@ public sealed partial class CarteraConvocatoriaImportService : ICarteraConvocato
                 Substation = CleanOptional(CellText(raw, sourceHeaders, "Subestación Eléctrica de Interconexión")),
                 InterconnectionPoint = CleanOptional(CellText(raw, sourceHeaders, "Punto de Interconexión")),
                 Mw = CellNumber(row, catalogHeaders, "MW NETOS") ?? CellNumber(raw, sourceHeaders, "Capacidad Generación en MW netos") ?? 0,
-                Rank = CellInteger(row, catalogHeaders, "Prelación") ?? rowNumber - CatalogHeaderRow,
+                Rank = CellInteger(row, catalogHeaders, "Prelación") ?? rowNumber - catalogHeaderRow,
                 Priority = 4,
                 Decision = consideration switch { "firme" => "continua", "no-va" => "no-continua", _ => "revision" },
                 Consideration = consideration,
@@ -128,11 +128,11 @@ public sealed partial class CarteraConvocatoriaImportService : ICarteraConvocato
         };
     }
 
-    private static Dictionary<string, IXLRow> ReadSourceRows(IXLWorksheet sheet, IReadOnlyDictionary<string, int> headers)
+    private static Dictionary<string, IXLRow> ReadSourceRows(IXLWorksheet sheet, IReadOnlyDictionary<string, int> headers, int headerRow)
     {
         var rows = new Dictionary<string, IXLRow>(StringComparer.OrdinalIgnoreCase);
-        var last = sheet.LastRowUsed()?.RowNumber() ?? SourceHeaderRow;
-        for (var rowNumber = SourceHeaderRow + 1; rowNumber <= last; rowNumber++)
+        var last = sheet.LastRowUsed()?.RowNumber() ?? headerRow;
+        for (var rowNumber = headerRow + 1; rowNumber <= last; rowNumber++)
         {
             var row = sheet.Row(rowNumber);
             var key = CellText(row, headers, "Folio LLAVE");
@@ -141,6 +141,22 @@ public sealed partial class CarteraConvocatoriaImportService : ICarteraConvocato
                 throw new InvalidDataException($"La base fuente contiene el folio duplicado {key}.");
         }
         return rows;
+    }
+
+    // El libro del corte cambia de formato entre versiones (el encabezado se recorre una o dos filas).
+    // Se busca la primera fila de las ocho iniciales que contenga las columnas clave; si ninguna las tiene,
+    // se devuelve la fila esperada para que la validación reporte las columnas faltantes.
+    private static (int Row, Dictionary<string, int> Headers) FindHeaders(IXLWorksheet sheet, int expected, params string[] required)
+    {
+        var candidates = new[] { expected }.Concat(Enumerable.Range(1, 8)).Distinct();
+        Dictionary<string, int>? fallback = null;
+        foreach (var row in candidates)
+        {
+            var map = BuildHeaderMap(sheet, row);
+            if (required.All(header => map.ContainsKey(Normalize(header)))) return (row, map);
+            fallback ??= map;
+        }
+        return (expected, fallback ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase));
     }
 
     private static Dictionary<string, int> BuildHeaderMap(IXLWorksheet sheet, int headerRow)

@@ -211,6 +211,7 @@
                     var cortes = new List<string> { $"cartera {Model.SourceVersion}" };
                     if (marcaCarga != null) cortes.Add($"clúster y excluyentes CFE ({marcaCarga.FileName}, cargado {(marcaCarga.LoadedUtc ?? DateTime.Today).ToLocalTime():dd/MM/yyyy})");
                     if (selCarga != null) cortes.Add($"selección del área corte {selCarga.FechaCorte:dd/MM/yyyy} ({selCarga.FileName}, versión {selCarga.CargaId} de {Model.SeleccionCargas.Count})");
+                    if (Model.CalculadoraCargas.FirstOrDefault() is { } calcCarga) cortes.Add($"calculadoras de los promoventes corte {calcCarga.FechaCorte:dd/MM/yyyy} ({calcCarga.Filas} folios)");
                 }
                 <div class="pam-lamina-foot"><span>Versiones vigentes: @string.Join(" · ", cortes). Los reportes usan la carga más reciente; las anteriores se conservan para trazabilidad.</span><span class="pam-lamina-foot__meta"></span></div>
             </section>
@@ -536,7 +537,7 @@
                             <h3><i class="bi bi-trophy" aria-hidden="true"></i>Proyectos con mayor inversión declarada <small>millones, según la solicitud</small></h3>
                             <table class="conv-table conv-table--rs conv-table--top">
                                 <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th class="is-num">MW</th><th class="is-num">Inversión</th><th class="is-num">Por MW</th></tr></thead>
-                                <tbody>@foreach (var p in Model.TopInversion) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 22 ? p.Name[..22] + "…" : p.Name)</td><td>@p.Region</td><td class="is-num">@N0(p.Mw)</td><td class="is-num">@N0((p.Inversion ?? 0) / 1000000m)</td><td class="is-num">@(p.Mw > 0 ? N1((p.Inversion ?? 0) / 1000000m / p.Mw) : "—")</td></tr> }</tbody>
+                                <tbody>@foreach (var p in Model.TopInversion.Take(7)) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 22 ? p.Name[..22] + "…" : p.Name)</td><td>@p.Region</td><td class="is-num">@N0(p.Mw)</td><td class="is-num">@N0((p.Inversion ?? 0) / 1000000m)</td><td class="is-num">@(p.Mw > 0 ? N1((p.Inversion ?? 0) / 1000000m / p.Mw) : "—")</td></tr> }</tbody>
                             </table>
                         </div>
                     </div>
@@ -544,6 +545,52 @@
                 </div>
                 <div class="pam-lamina-foot"><span>@fuente Solicitudes registradas en ventanilla.</span><span class="pam-lamina-foot__meta"></span></div>
             </section>
+
+            @if (Model.ConCalculadora > 0) {
+            <section class="pam-slide pam-slide--content" data-slide data-index-group="Costos e inversión" data-label="Calculadoras financieras de los promoventes">
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Modelos financieros entregados</span><span class="pam-lamina-head__aside">@Model.ConCalculadora calculadoras de @Model.Firm</span></header>
+                <h2 class="pam-lamina-title">Calculadoras financieras de los promoventes</h2>
+                <div class="pam-lamina-body conv-page conv-page--gcr">
+                    @{ string Musd(decimal v, int dec = 0) => (v / 1_000_000m).ToString("N" + dec, mx); string PctV(decimal? v) => v.HasValue ? (v.Value * 100m).ToString("N1", mx) + " %" : "—"; }
+                    <div class="convocatoria-summary__metrics">
+                        <article class="is-guinda"><span><i class="bi bi-cash-stack" aria-hidden="true"></i>CapEx inicial declarado</span><strong>@Musd(Model.CapexTotalUsd) <small style="display:inline">MUSD</small></strong><small>@Model.ConCalculadora proyectos · @N0(Model.MwCalculadora) MW</small></article>
+                        <article class="is-dorado"><span><i class="bi bi-speedometer2" aria-hidden="true"></i>CapEx por MW</span><strong>@(Model.CapexPorMw.HasValue ? (Model.CapexPorMw.Value / 1000m).ToString("N0", mx) : "—") <small style="display:inline">miles USD/MW</small></strong><small>Promedio de la cartera con calculadora</small></article>
+                        <article class="is-verde"><span><i class="bi bi-people" aria-hidden="true"></i>Participación del inversionista</span><strong>@PctV(Model.ParticipacionPrivadaMediana)</strong><small>Mediana declarada en los modelos</small></article>
+                        <article><span><i class="bi bi-graph-up-arrow" aria-hidden="true"></i>Retorno objetivo</span><strong>@PctV(Model.RetornoObjetivoMediana)</strong><small>Mediana · precio de energía @(Model.PrecioEnergiaMediana.HasValue ? N1(Model.PrecioEnergiaMediana.Value) + " USD/MWh" : "—") · PPA @(Model.PlazoPpaMediana.HasValue ? N0(Model.PlazoPpaMediana.Value) + " años" : "—")</small></article>
+                    </div>
+                    <div class="rs-cols">
+                        <div class="rs-block">
+                            <h3><i class="bi bi-pie-chart" aria-hidden="true"></i>Destino del CapEx declarado <small>suma de los modelos</small></h3>
+                            @{
+                                var capexPartes = new[] {
+                                    ("Central", Model.CapexCentralUsd, "#9b2247"),
+                                    ("Almacenamiento", Model.CapexBateriasUsd, "#a57f2c"),
+                                    ("Interconexión", Model.CapexInterconexionUsd, "#0e735c"),
+                                    ("Desarrollo (DevEx)", Model.CapexDevExUsd, "#5b4a7a")
+                                }.Where(p => p.Item2 > 0).ToList();
+                                var otrosCapex = Model.CapexTotalUsd - capexPartes.Sum(p => p.Item2);
+                                if (otrosCapex > Model.CapexTotalUsd * 0.005m) capexPartes.Add(("Otros conceptos", otrosCapex, "#6f6b66"));
+                            }
+                            <div class="rs-stacks"><div class="rs-stack rs-stack--wide"><strong>CapEx</strong><div class="rs-stack__track">@foreach (var p in capexPartes) { <i style="width:@W(p.Item2, Model.CapexTotalUsd)%;background:@p.Item3" title="@p.Item1"></i> }</div><span>@Musd(Model.CapexTotalUsd) MUSD</span></div></div>
+                            <div class="rs-legend">@foreach (var p in capexPartes) { <span><i style="background:@p.Item3"></i>@p.Item1 · @Musd(p.Item2) MUSD · @Pct(p.Item2, Model.CapexTotalUsd)</span> }</div>
+                            <h3 style="margin-top:12px"><i class="bi bi-sun" aria-hidden="true"></i>CapEx por tecnología</h3>
+                            <div class="rs-bars">@foreach (var t in Model.CapexPorTecnologia) { @Html.Raw(Bar(t.Name, t.Amount, Model.CapexPorTecnologia.Max(x => x.Amount), $"{Musd(t.Amount)} MUSD · {t.Projects} proy.", "is-dorado", true)) }</div>
+                            <h3 style="margin-top:12px"><i class="bi bi-bar-chart-line" aria-hidden="true"></i>CapEx por gerencia</h3>
+                            <div class="rs-bars">@foreach (var g in Model.CapexPorGcr) { @Html.Raw(Bar(g.Name, g.Amount, Model.CapexPorGcr.Max(x => x.Amount), $"{Musd(g.Amount)} MUSD · {g.Projects} proy.", "is-guinda", true)) }</div>
+                        </div>
+                        <div class="rs-block">
+                            <h3><i class="bi bi-trophy" aria-hidden="true"></i>Proyectos con mayor CapEx declarado <small>millones de dólares</small></h3>
+                            <table class="conv-table conv-table--rs conv-table--top">
+                                <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th class="is-num">MW</th><th class="is-num">CapEx MUSD</th><th class="is-num">Miles USD/MW</th><th class="is-num">Part. privada</th><th class="is-num">Precio USD/MWh</th></tr></thead>
+                                <tbody>@foreach (var p in Model.TopCapex) { <tr><th>@p.Folio</th><td class="is-nowrap">@(p.Name.Length > 18 ? p.Name[..18] + "…" : p.Name)</td><td>@p.Region</td><td class="is-num">@N0(p.Mw)</td><td class="is-num">@Musd(p.Capex ?? 0)</td><td class="is-num">@(p.Mw > 0 && p.Capex.HasValue ? (p.Capex.Value / p.Mw / 1000m).ToString("N0", mx) : "—")</td><td class="is-num">@PctV(p.ParticipacionPrivada)</td><td class="is-num">@(p.PrecioEnergia.HasValue ? N1(p.PrecioEnergia.Value) : "—")</td></tr> }</tbody>
+                            </table>
+                            <p class="conv-note" style="margin-top:8px">Cifras de los modelos financieros entregados por los promoventes; no constituyen una evaluación de la Secretaría. El CapEx de interconexión es el estimado por cada promovente y es independiente del costo de red determinado por CFE (@N2(Model.CostoRedMdd) MDD en @Model.ConFichaCfe fichas).</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="pam-lamina-foot"><span>Fuente: calculadoras financieras de los promoventes@(Model.CalculadoraCargas.FirstOrDefault() is { } cc ? $" · consolidado {cc.FileName} · corte {cc.FechaCorte:dd/MM/yyyy}" : "") · Convocatoria Mixtos II.</span><span class="pam-lamina-foot__meta"></span></div>
+            </section>
+            }
 
             @* ── Evaluaciones ── *@
             <section class="pam-slide pam-slide--content" data-slide data-index-group="Evaluaciones" data-label="Evaluación social y ambiental">
@@ -625,14 +672,14 @@
 
             @* ── Proyectos ── *@
             <section class="pam-slide pam-slide--content" data-slide data-index-group="Principales proyectos" data-label="Proyectos de mayor capacidad">
-                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Once proyectos de mayor capacidad</span></header>
+                <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Cartera considerada</span><span class="pam-lamina-head__aside">Diez proyectos de mayor capacidad</span></header>
                 <h2 class="pam-lamina-title">Proyectos de mayor capacidad</h2>
                 <div class="pam-lamina-body conv-page">
                     <table class="conv-table conv-table--rs conv-table--top">
                         <thead><tr><th>Folio</th><th>Proyecto</th><th>Gerencia</th><th>Tecnología</th><th class="is-num">MW</th><th>Operación</th><th>Modalidad</th><th>SAE</th><th>Factibilidad</th><th class="is-num">Red MDD</th><th>Clúster</th>@if (Model.SeleccionDisponible) { <th>Preferente</th> }</tr></thead>
-                        <tbody>@foreach (var p in Model.TopProyectos.Take(11)) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 26 ? p.Name[..26] + "…" : p.Name)</td><td>@p.Region</td><td>@p.Technology</td><td class="is-num">@N0(p.Mw)</td><td>@p.Operacion</td><td>@(p.Modalidad.Length > 18 ? p.Modalidad[..18] + "…" : p.Modalidad)</td><td>@p.Sae</td><td>@p.Factibilidad</td><td class="is-num">@(p.CostoMdd.HasValue ? N2(p.CostoMdd.Value) : "Sin ficha")</td><td>@(string.IsNullOrWhiteSpace(p.Cluster) ? "—" : p.Cluster.Replace("Cluster ", ""))</td>@if (Model.SeleccionDisponible) { <td>@(p.Preferente ? "Sí" : "—")</td> }</tr> }</tbody>
+                        <tbody>@foreach (var p in Model.TopProyectos.Take(10)) { <tr><th>@p.Folio</th><td>@(p.Name.Length > 26 ? p.Name[..26] + "…" : p.Name)</td><td>@p.Region</td><td>@p.Technology</td><td class="is-num">@N0(p.Mw)</td><td>@p.Operacion</td><td>@(p.Modalidad.Length > 18 ? p.Modalidad[..18] + "…" : p.Modalidad)</td><td>@p.Sae</td><td>@p.Factibilidad</td><td class="is-num">@(p.CostoMdd.HasValue ? N2(p.CostoMdd.Value) : "Sin ficha")</td><td>@(string.IsNullOrWhiteSpace(p.Cluster) ? "—" : p.Cluster.Replace("Cluster ", ""))</td>@if (Model.SeleccionDisponible) { <td>@(p.Preferente ? "Sí" : "—")</td> }</tr> }</tbody>
                     </table>
-                    <p class="conv-note">Los once proyectos suman @N0(Model.TopProyectos.Take(11).Sum(p => p.Mw)) MW, @Pct(Model.TopProyectos.Take(11).Sum(p => p.Mw), Model.MwFirme) de la capacidad considerada. La ficha individual de cada proyecto se genera desde la cartera Mixtos II.</p>
+                    <p class="conv-note">Los diez proyectos suman @N0(Model.TopProyectos.Take(10).Sum(p => p.Mw)) MW, @Pct(Model.TopProyectos.Take(10).Sum(p => p.Mw), Model.MwFirme) de la capacidad considerada. La ficha individual de cada proyecto se genera desde la cartera Mixtos II.</p>
                 </div>
                 <div class="pam-lamina-foot"><span>@fuente Catálogo de proyectos, solicitudes, fichas CFE y marcas de clúster.</span><span class="pam-lamina-foot__meta"></span></div>
             </section>

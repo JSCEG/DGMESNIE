@@ -218,6 +218,47 @@ namespace NSIE.Controllers
             }
         }
 
+        // Consolidado de calculadoras financieras de los promoventes (una fila por folio).
+        [HttpPost("ProyectosPrivados/Api/CarteraConvocatoria/ImportarCalculadoras")]
+        [ValidateAntiForgeryToken]
+        [RequestSizeLimit(60 * 1024 * 1024)]
+        public async Task<IActionResult> ApiImportarCalculadorasCarteraConvocatoria(IFormFile file, [FromForm] string? fechaCorte, CancellationToken cancellationToken)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { error = "Seleccione el archivo Excel con las calculadoras consolidadas." });
+            var extension = Path.GetExtension(file.FileName);
+            if (!extension.Equals(".xlsx", StringComparison.OrdinalIgnoreCase) && !extension.Equals(".xlsm", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = "El archivo debe ser .xlsx o .xlsm." });
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                var document = await _carteraImportService.LeerCalculadorasAsync(stream, file.FileName, cancellationToken);
+                if (DateTime.TryParseExact(fechaCorte ?? "", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var corte))
+                    document.FechaCorte = corte;
+                var saved = await _repo.GuardarCalculadorasConvocatoriaAsync(document, GetCurrentUserName());
+                return Ok(new
+                {
+                    success = true,
+                    fileName = document.FileName,
+                    fechaCorte = document.FechaCorte.ToString("yyyy-MM-dd"),
+                    rows = document.Rows.Count,
+                    saved,
+                    conCapex = document.Rows.Count(r => r.CapexTotal > 0),
+                    conTir = document.Rows.Count(r => r.TirDespuesIsr.HasValue),
+                    capexTotalUsd = document.Rows.Sum(r => r.CapexTotal ?? 0)
+                });
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al importar las calculadoras consolidadas de Mixtos II.");
+                return StatusCode(StatusCodes.Status500InternalServerError, new { error = "No fue posible importar las calculadoras." });
+            }
+        }
+
         // Libro de selección del área ("Actualización de 246"): aplica Considerar/Descarte a la cartera y guarda
         // preferencia, estudios CENACE, obras onerosas, excluyentes y sustitutos por folio.
         [HttpPost("ProyectosPrivados/Api/CarteraConvocatoria/ImportarSeleccion")]

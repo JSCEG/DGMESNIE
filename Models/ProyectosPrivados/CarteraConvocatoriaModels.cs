@@ -155,6 +155,9 @@ namespace NSIE.Models.ProyectosPrivados
         // Decisión del área (libro de selección): preferencia, estudios CENACE, obras onerosas, excluyentes y sustitutos.
         public CarteraConvocatoriaSeleccion? Seleccion { get; set; }
         public CarteraConvocatoriaSeleccionCarga? SeleccionCarga { get; set; }
+        // Modelo financiero del promovente (calculadora consolidada) y la versión de la que proviene.
+        public CarteraConvocatoriaCalculadora? Calculadora { get; set; }
+        public CarteraConvocatoriaCalculadoraCarga? CalculadoraCarga { get; set; }
         // Integrantes del clúster y del grupo excluyente (marcas CFE) del folio, con datos de la cartera vigente.
         public List<CarteraConvocatoriaGrupoMiembro> ClusterMembers { get; set; } = new();
         public List<CarteraConvocatoriaGrupoMiembro> ExclusiveMembers { get; set; } = new();

@@ -297,10 +297,14 @@ namespace NSIE.Controllers
 
                 CarteraConvocatoriaSeleccion? seleccion = null;
                 CarteraConvocatoriaSeleccionCarga? seleccionCarga = null;
+                CarteraConvocatoriaCalculadora? calculadora = null;
+                CarteraConvocatoriaCalculadoraCarga? calculadoraCarga = null;
                 try
                 {
                     seleccion = await _proyectosPrivadosRepository.ObtenerSeleccionConvocatoriaAsync(project.Folio);
                     seleccionCarga = (await _proyectosPrivadosRepository.ObtenerSeleccionCargasConvocatoriaAsync()).FirstOrDefault();
+                    calculadora = await _proyectosPrivadosRepository.ObtenerCalculadoraConvocatoriaAsync(project.Folio);
+                    calculadoraCarga = (await _proyectosPrivadosRepository.ObtenerCalculadoraCargasConvocatoriaAsync()).FirstOrDefault();
                 }
                 catch (Exception ex)
                 {
@@ -328,6 +332,8 @@ namespace NSIE.Controllers
                     Marks = marks,
                     Seleccion = seleccion,
                     SeleccionCarga = seleccionCarga,
+                    Calculadora = calculadora,
+                    CalculadoraCarga = calculadoraCarga,
                     ClusterMembers = clusterMembers,
                     ExclusiveMembers = exclusiveMembers,
                     Dossier = await _proyectosPrivadosRepository.ObtenerExpedienteConvocatoriaAsync(project.Folio),
@@ -383,8 +389,17 @@ namespace NSIE.Controllers
                     seleccionCargas = await _proyectosPrivadosRepository.ObtenerSeleccionCargasConvocatoriaAsync();
                 }
                 catch (Exception ex) { _logger.LogWarning(ex, "No fue posible leer la selección del área para la ficha de cartera."); selections = new(); seleccionCargas = new(); }
-                var model = CarteraConvocatoriaResumenBuilder.Build(cartera, dossiers, marks, selections);
+                List<CarteraConvocatoriaCalculadora> calculadoras;
+                List<CarteraConvocatoriaCalculadoraCarga> calculadoraCargas;
+                try
+                {
+                    calculadoras = await _proyectosPrivadosRepository.ObtenerCalculadorasConvocatoriaAsync();
+                    calculadoraCargas = await _proyectosPrivadosRepository.ObtenerCalculadoraCargasConvocatoriaAsync();
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "No fue posible leer las calculadoras para la ficha de cartera."); calculadoras = new(); calculadoraCargas = new(); }
+                var model = CarteraConvocatoriaResumenBuilder.Build(cartera, dossiers, marks, selections, calculadoras);
                 model.SeleccionCargas = seleccionCargas;
+                model.CalculadoraCargas = calculadoraCargas;
                 model.Recipients = await _pamService.ObtenerDestinatariosAsync();
                 return View("CarteraConvocatoriaResumen", model);
             }

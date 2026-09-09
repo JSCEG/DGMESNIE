@@ -9,6 +9,11 @@ public interface ICarteraConvocatoriaImportService
         string fileName,
         CancellationToken cancellationToken = default);
 
+    Task<CarteraConvocatoriaCalculadoraDocument> LeerCalculadorasAsync(
+        Stream stream,
+        string fileName,
+        CancellationToken cancellationToken = default);
+
     Task<CarteraConvocatoriaSeleccionDocument> LeerSeleccionAsync(
         Stream stream,
         string fileName,

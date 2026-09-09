@@ -36,6 +36,76 @@ public sealed class CarteraConvocatoriaMarca
 }
 
 /// <summary>Decisión del área por folio (libro "Actualización de 246"): considerar/descarte, preferencia y notas de CENACE.</summary>
+/// <summary>Modelo financiero del promovente (calculadora consolidada): supuestos y resultados por folio.</summary>
+public sealed class CarteraConvocatoriaCalculadora
+{
+    public int CargaId { get; set; }
+    public string Folio { get; set; } = "";
+    public string? Proyecto { get; set; }
+    public string? Tecnologia { get; set; }
+    public string? Inversionista { get; set; }
+    public decimal? MwAc { get; set; }
+    public decimal? MwDc { get; set; }
+    public decimal? SaeMw { get; set; }
+    public decimal? SaeMwh { get; set; }
+    public decimal? SaeHoras { get; set; }
+    public DateTime? Cod { get; set; }
+    public decimal? CapexTotal { get; set; }
+    public decimal? CapexCentral { get; set; }
+    public decimal? CapexBaterias { get; set; }
+    public decimal? CapexInterconexion { get; set; }
+    public decimal? DevEx { get; set; }
+    public decimal? RetornoProyecto { get; set; }
+    public decimal? RetornoPrivado { get; set; }
+    public decimal? RetornoObjetivo { get; set; }
+    public decimal? RetornoInterconexion { get; set; }
+    public decimal? ParticipacionPrivada { get; set; }
+    public decimal? ContribucionCfe { get; set; }
+    public decimal? PrecioEnergia { get; set; }
+    public decimal? PlazoPpa { get; set; }
+    public decimal? PlazoReversion { get; set; }
+    public decimal? Apalancamiento { get; set; }
+    public decimal? PlazoDeuda { get; set; }
+    public decimal? TirAntesIsr { get; set; }
+    public decimal? TirDespuesIsr { get; set; }
+    public decimal? MoicProyecto { get; set; }
+    public decimal? MoicPrivado { get; set; }
+    public decimal? EbitdaAcumulado { get; set; }
+    public decimal? IngresosAcumulados { get; set; }
+    public decimal? UtilidadAcumulada { get; set; }
+    public decimal? GeneracionAcumulada { get; set; }
+    public decimal? OpexAnio1 { get; set; }
+    public string? Observaciones { get; set; }
+    // Renglón completo de la calculadora (nombre de columna → valor) para consultar cualquier supuesto.
+    public List<ConvocatoriaCampoFuente> Campos { get; set; } = new();
+    public string FileName { get; set; } = "";
+    public string Sha256 { get; set; } = "";
+    public DateTime? LoadedUtc { get; set; }
+    public string? LoadedBy { get; set; }
+
+    public string? Valor(string nombre) =>
+        Campos.FirstOrDefault(c => string.Equals(c.Name, nombre, StringComparison.OrdinalIgnoreCase))?.Value;
+}
+
+public sealed class CarteraConvocatoriaCalculadoraCarga
+{
+    public int CargaId { get; set; }
+    public string FileName { get; set; } = "";
+    public string Sha256 { get; set; } = "";
+    public DateTime FechaCorte { get; set; }
+    public int Filas { get; set; }
+    public DateTime LoadedUtc { get; set; }
+    public string? LoadedBy { get; set; }
+}
+
+public sealed class CarteraConvocatoriaCalculadoraDocument
+{
+    public string FileName { get; set; } = "";
+    public string Sha256 { get; set; } = "";
+    public DateTime FechaCorte { get; set; } = DateTime.Today;
+    public List<CarteraConvocatoriaCalculadora> Rows { get; set; } = new();
+}
+
 /// <summary>Versión cargada del libro de selección: fecha de corte, archivo y conteos, para trazabilidad.</summary>
 public sealed class CarteraConvocatoriaSeleccionCarga
 {

@@ -105,6 +105,23 @@ public sealed class CarteraConvocatoriaResumenViewModel
     // Historial de cargas del libro de selección (la más reciente primero) para la línea de trazabilidad.
     public List<CarteraConvocatoriaSeleccionCarga> SeleccionCargas { get; set; } = new();
     public List<CarteraConvocatoriaMarca> Marcas { get; set; } = new();
+    public List<CarteraConvocatoriaCalculadoraCarga> CalculadoraCargas { get; set; } = new();
+    // Calculadoras financieras: cobertura y agregados (medianas por la dispersión de los modelos).
+    public int ConCalculadora { get; set; }
+    public decimal CapexTotalUsd { get; set; }
+    public decimal CapexCentralUsd { get; set; }
+    public decimal CapexBateriasUsd { get; set; }
+    public decimal CapexInterconexionUsd { get; set; }
+    public decimal CapexDevExUsd { get; set; }
+    public decimal MwCalculadora { get; set; }
+    public decimal? CapexPorMw { get; set; }
+    public decimal? RetornoObjetivoMediana { get; set; }
+    public decimal? ParticipacionPrivadaMediana { get; set; }
+    public decimal? PrecioEnergiaMediana { get; set; }
+    public decimal? PlazoPpaMediana { get; set; }
+    public List<ResumenConteo> CapexPorTecnologia { get; set; } = new();
+    public List<ResumenConteo> CapexPorGcr { get; set; } = new();
+    public List<ResumenProyecto> TopCapex { get; set; } = new();
     // Folios de interés (CENACE debe realizar estudios), antecedentes Mixtos I / CVP2 y grupos de interés.
     public List<ResumenProyecto> EstudiosCenace { get; set; } = new();
     public List<ResumenProyecto> MixtosILigados { get; set; } = new();
@@ -182,6 +199,10 @@ public sealed class ResumenProyecto
     // Antecedentes del expediente para los registros no incluidos (observación del área, homologación, duplicidad, evaluaciones).
     public string Antecedentes { get; set; } = "";
     public decimal? Inversion { get; set; }
+    public decimal? Capex { get; set; }
+    public decimal? RetornoObjetivo { get; set; }
+    public decimal? ParticipacionPrivada { get; set; }
+    public decimal? PrecioEnergia { get; set; }
     public bool Preferente { get; set; }
     public bool CenaceEstudios { get; set; }
     public string ApoyaSen { get; set; } = "";

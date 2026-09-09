@@ -1,0 +1,75 @@
+@model NSIE.Models.ProyectosPrivados.CarteraConvocatoriaFichaViewModel
+@using NSIE.Models.ProyectosPrivados
+@using static NSIE.Models.ProyectosPrivados.ConvocatoriaFichaCampos
+@{
+    var calc = Model.Calculadora;
+    var mx = System.Globalization.CultureInfo.GetCultureInfo("es-MX");
+    string Usd(decimal? v, int dec = 1) => v.HasValue ? (v.Value / 1_000_000m).ToString("N" + dec, mx) + " MUSD" : "No informado";
+    string Pct(decimal? v) => v.HasValue ? (v.Value * 100m).ToString("N1", mx) + " %" : "No informado";
+    string Num(decimal? v, string sufijo = "", int dec = 1) => v.HasValue ? v.Value.ToString("N" + dec, mx) + sufijo : "No informado";
+    string Fecha(DateTime? f) => f?.ToString("dd/MM/yyyy", mx) ?? "No informada";
+    // Reparto del CapEx inicial declarado en la calculadora.
+    var partes = new List<(string Nombre, decimal Monto, string Color)>();
+    if (calc != null)
+    {
+        partes.Add(("Central", calc.CapexCentral ?? 0, "#9b2247"));
+        partes.Add(("Almacenamiento", calc.CapexBaterias ?? 0, "#a57f2c"));
+        partes.Add(("Interconexión", calc.CapexInterconexion ?? 0, "#0e735c"));
+        partes.Add(("Desarrollo (DevEx)", calc.DevEx ?? 0, "#5b4a7a"));
+        partes = partes.Where(p => p.Monto > 0).ToList();
+    }
+    var capex = calc?.CapexTotal ?? 0;
+    var otros = capex - partes.Sum(p => p.Monto);
+    if (capex > 0 && otros > capex * 0.005m) partes.Add(("Otros conceptos", otros, "#6f6b66"));
+    string Ancho(decimal monto) => capex > 0 ? (100m * monto / capex).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) : "0";
+    var mwCalc = calc?.MwAc ?? Model.Project.Mw;
+    var carga = Model.CalculadoraCarga;
+}
+@if (calc != null)
+{
+<section class="pam-slide pam-slide--content" data-slide data-index-group="Costos y factibilidad" data-label="Modelo financiero del promovente">
+    <header class="pam-lamina-head"><span class="pam-lamina-head__kicker">Mixtos II · Calculadora financiera del promovente</span><span class="pam-lamina-head__aside">@Model.Project.Folio</span></header>
+    <h2 class="pam-lamina-title">Modelo financiero del promovente</h2>
+    <div class="pam-lamina-body conv-page conv-page--gcr">
+        <div class="convocatoria-summary__metrics">
+            <article class="is-guinda"><span><i class="bi bi-cash-stack" aria-hidden="true"></i>CapEx inicial total</span><strong>@Usd(calc.CapexTotal)</strong><small>@(mwCalc > 0 && calc.CapexTotal.HasValue ? $"{(calc.CapexTotal.Value / mwCalc / 1000m).ToString("N0", mx)} miles USD por MW" : "Capacidad no informada")</small></article>
+            <article class="is-dorado"><span><i class="bi bi-graph-up-arrow" aria-hidden="true"></i>Retorno objetivo</span><strong>@Pct(calc.RetornoObjetivo)</strong><small>Reportado del proyecto: @Pct(calc.RetornoProyecto) · del inversionista: @Pct(calc.RetornoPrivado)</small></article>
+            <article class="is-verde"><span><i class="bi bi-people" aria-hidden="true"></i>Participación del inversionista</span><strong>@Pct(calc.ParticipacionPrivada)</strong><small>Aportación monetaria de CFE: @Pct(calc.ContribucionCfe)</small></article>
+            <article><span><i class="bi bi-calendar-check" aria-hidden="true"></i>Entrada en operación del modelo</span><strong>@Fecha(calc.Cod)</strong><small>PPA de energía a @Num(calc.PlazoPpa, " años", 0) · reversión del activo a @Num(calc.PlazoReversion, " años", 0)</small></article>
+        </div>
+        <div class="rs-cols">
+            <div class="rs-block">
+                <h3><i class="bi bi-pie-chart" aria-hidden="true"></i>Composición del CapEx inicial <small>según la calculadora entregada</small></h3>
+                @if (partes.Count > 0)
+                {
+                    <div class="rs-stacks"><div class="rs-stack rs-stack--wide"><strong>CapEx</strong><div class="rs-stack__track">@foreach (var p in partes) { <i style="width:@Ancho(p.Monto)%;background:@p.Color" title="@p.Nombre"></i> }</div><span>@Usd(capex, 0)</span></div></div>
+                    <div class="rs-legend">@foreach (var p in partes) { <span><i style="background:@p.Color"></i>@p.Nombre · @Usd(p.Monto, 0)</span> }</div>
+                }
+                <dl class="conv-facts conv-facts--compact" style="margin-top:10px">
+                    <div><dt>Precio inicial de energía y CEL</dt><dd>@Num(calc.PrecioEnergia, " USD/MWh", 2)</dd></div>
+                    <div><dt>EBITDA acumulado del modelo</dt><dd>@Num(calc.EbitdaAcumulado, " MUSD", 0)</dd></div>
+                    <div><dt>Ingresos acumulados</dt><dd>@Num(calc.IngresosAcumulados, " MUSD", 0)</dd></div>
+                    <div><dt>Utilidad neta acumulada</dt><dd>@Num(calc.UtilidadAcumulada, " MUSD", 0)</dd></div>
+                    <div><dt>Generación neta acumulada</dt><dd>@Num(calc.GeneracionAcumulada, " GWh", 0)</dd></div>
+                    <div><dt>MOIC del proyecto</dt><dd>@Num(calc.MoicProyecto, " veces", 2)</dd></div>
+                </dl>
+            </div>
+            <div class="rs-block">
+                <h3><i class="bi bi-sliders" aria-hidden="true"></i>Supuestos del modelo</h3>
+                <dl class="conv-facts conv-facts--compact">
+                    <div><dt>Capacidad del modelo</dt><dd>@Num(calc.MwAc, " MWac") @(calc.MwDc.HasValue ? $"· {Num(calc.MwDc, " MWp")}" : "")</dd></div>
+                    <div><dt>Almacenamiento</dt><dd>@(calc.SaeMw > 0 ? $"{Num(calc.SaeMw, " MW")} · {Num(calc.SaeMwh, " MWh")} · {Num(calc.SaeHoras, " h", 1)}" : "Sin SAE en el modelo")</dd></div>
+                    <div><dt>Apalancamiento en construcción</dt><dd>@Pct(calc.Apalancamiento)</dd></div>
+                    <div><dt>Plazo de la deuda</dt><dd>@Num(calc.PlazoDeuda, " años", 0)</dd></div>
+                    <div><dt>Retorno implícito de interconexión</dt><dd>@Pct(calc.RetornoInterconexion)</dd></div>
+                    <div><dt>Inversionista declarado</dt><dd>@Texto(calc.Inversionista, "No informado")</dd></div>
+                    @if (Tiene(calc.Valor("Escenario generación"))) { <div class="is-wide"><dt>Escenario de generación</dt><dd>@calc.Valor("Escenario generación")</dd></div> }
+                    @if (Tiene(calc.Observaciones)) { <div class="is-wide"><dt>Observaciones de la calculadora</dt><dd>@Recorte(calc.Observaciones, 260)</dd></div> }
+                </dl>
+            </div>
+        </div>
+        <p class="conv-note">Cifras del modelo financiero entregado por el promovente; no constituyen una evaluación de la Secretaría. El CapEx de interconexión es el estimado por el promovente y es independiente del costo de red determinado por CFE.</p>
+    </div>
+    <div class="pam-lamina-foot"><span>Fuente: calculadora financiera del promovente@(carga != null ? $" · consolidado {carga.FileName} · corte {carga.FechaCorte:dd/MM/yyyy}" : "") · Convocatoria Mixtos II.</span><span class="pam-lamina-foot__meta"></span></div>
+</section>
+}

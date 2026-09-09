@@ -18,11 +18,14 @@ public static class CarteraConvocatoriaResumenBuilder
         CarteraConvocatoriaDatos cartera,
         List<CarteraConvocatoriaExpediente> dossiers,
         List<CarteraConvocatoriaMarca> marks,
-        List<CarteraConvocatoriaSeleccion>? selections = null)
+        List<CarteraConvocatoriaSeleccion>? selections = null,
+        List<CarteraConvocatoriaCalculadora>? calculators = null)
     {
         var byFolio = dossiers.GroupBy(d => d.Folio, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         var selByFolio = (selections ?? new()).GroupBy(s => s.Folio, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         CarteraConvocatoriaSeleccion? S(CarteraConvocatoriaProyecto p) => selByFolio.GetValueOrDefault(p.Folio);
+        var calcByFolio = (calculators ?? new()).GroupBy(c => c.Folio, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        CarteraConvocatoriaCalculadora? K(CarteraConvocatoriaProyecto p) => calcByFolio.GetValueOrDefault(p.Folio);
         static string SiNoTexto(string? v)
         {
             var t = (v ?? "").Trim().ToUpperInvariant();
@@ -195,6 +198,10 @@ public static class CarteraConvocatoriaResumenBuilder
                 Cruce = CruceSocial(p, d),
                 Antecedentes = Antecedentes(p, d),
                 Inversion = NumeroValor(d.Valor("Monto de inversión total del proyecto")),
+                Capex = K(p)?.CapexTotal,
+                RetornoObjetivo = K(p)?.RetornoObjetivo,
+                ParticipacionPrivada = K(p)?.ParticipacionPrivada,
+                PrecioEnergia = K(p)?.PrecioEnergia,
                 Preferente = S(p)?.Preferente == true,
                 CenaceEstudios = S(p)?.CenaceEstudios == true,
                 ApoyaSen = SiNoTexto(S(p)?.ApoyaSen),
@@ -245,6 +252,37 @@ public static class CarteraConvocatoriaResumenBuilder
 
         // ── Selección del área ──
         model.Marcas = marks;
+
+        // ── Calculadoras financieras (la mediana evita que un modelo atípico mueva el agregado) ──
+        var conCalc = firm.Where(p => K(p) != null).ToList();
+        model.ConCalculadora = conCalc.Count;
+        if (conCalc.Count > 0)
+        {
+            static decimal? Mediana(IEnumerable<decimal?> valores)
+            {
+                var lista = valores.Where(v => v.HasValue && v.Value > 0).Select(v => v!.Value).OrderBy(v => v).ToList();
+                if (lista.Count == 0) return null;
+                return lista.Count % 2 == 1 ? lista[lista.Count / 2] : (lista[lista.Count / 2 - 1] + lista[lista.Count / 2]) / 2m;
+            }
+            model.CapexTotalUsd = conCalc.Sum(p => K(p)!.CapexTotal ?? 0);
+            model.CapexCentralUsd = conCalc.Sum(p => K(p)!.CapexCentral ?? 0);
+            model.CapexBateriasUsd = conCalc.Sum(p => K(p)!.CapexBaterias ?? 0);
+            model.CapexInterconexionUsd = conCalc.Sum(p => K(p)!.CapexInterconexion ?? 0);
+            model.CapexDevExUsd = conCalc.Sum(p => K(p)!.DevEx ?? 0);
+            model.MwCalculadora = conCalc.Where(p => K(p)!.CapexTotal > 0).Sum(p => p.Mw);
+            model.CapexPorMw = model.MwCalculadora > 0 ? model.CapexTotalUsd / model.MwCalculadora : null;
+            model.RetornoObjetivoMediana = Mediana(conCalc.Select(p => K(p)!.RetornoObjetivo));
+            model.ParticipacionPrivadaMediana = Mediana(conCalc.Select(p => K(p)!.ParticipacionPrivada));
+            model.PrecioEnergiaMediana = Mediana(conCalc.Select(p => K(p)!.PrecioEnergia));
+            model.PlazoPpaMediana = Mediana(conCalc.Select(p => K(p)!.PlazoPpa));
+            model.CapexPorTecnologia = conCalc.GroupBy(p => Tech(p.Technology))
+                .Select(g => new ResumenConteo { Name = g.Key, Projects = g.Count(), Mw = g.Sum(p => p.Mw), Amount = g.Sum(p => K(p)!.CapexTotal ?? 0) })
+                .OrderByDescending(x => x.Amount).ToList();
+            model.CapexPorGcr = conCalc.GroupBy(Gcr)
+                .Select(g => new ResumenConteo { Name = g.Key, Projects = g.Count(), Mw = g.Sum(p => p.Mw), Amount = g.Sum(p => K(p)!.CapexTotal ?? 0) })
+                .OrderByDescending(x => x.Amount).ToList();
+            model.TopCapex = conCalc.OrderByDescending(p => K(p)!.CapexTotal ?? 0).Take(10).Select(Proyecto).ToList();
+        }
         model.SeleccionDisponible = selByFolio.Count > 0;
         if (model.SeleccionDisponible)
         {

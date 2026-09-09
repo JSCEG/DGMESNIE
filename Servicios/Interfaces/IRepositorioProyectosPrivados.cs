@@ -45,6 +45,10 @@ namespace NSIE.Servicios.Interfaces
         Task<CarteraConvocatoriaSeleccion?> ObtenerSeleccionConvocatoriaAsync(string folio);
         Task<List<CarteraConvocatoriaSeleccion>> ObtenerSeleccionesConvocatoriaAsync();
         Task<List<CarteraConvocatoriaSeleccionCarga>> ObtenerSeleccionCargasConvocatoriaAsync();
+        Task<int> GuardarCalculadorasConvocatoriaAsync(CarteraConvocatoriaCalculadoraDocument document, string usuario);
+        Task<CarteraConvocatoriaCalculadora?> ObtenerCalculadoraConvocatoriaAsync(string folio);
+        Task<List<CarteraConvocatoriaCalculadora>> ObtenerCalculadorasConvocatoriaAsync();
+        Task<List<CarteraConvocatoriaCalculadoraCarga>> ObtenerCalculadoraCargasConvocatoriaAsync();
         Task<string?> ObtenerUrlKmlCarteraConvocatoriaAsync(string folio, string tipo);
         Task<bool> ActualizarEstadoConvocatoriaAsync(string folio, string estado, string usuario);
         Task<CarteraConvocatoriaComentario?> AgregarComentarioConvocatoriaAsync(AgregarComentarioConvocatoriaRequest request, string usuario);

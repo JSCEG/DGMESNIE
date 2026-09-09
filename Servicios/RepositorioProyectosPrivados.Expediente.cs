@@ -269,6 +269,134 @@ FROM dgmesnie.CarteraConvocatoriaProyecto WHERE Activo = 1 AND Fuente = N'Mixtos
         return (await db.QueryAsync<CarteraConvocatoriaSeleccionCarga>($"SELECT {SeleccionCargaColumns} FROM {SeleccionCargaTable} ORDER BY FechaCorte DESC, CargaId DESC;")).ToList();
     }
 
+    // Calculadoras financieras consolidadas: historial por carga y una fila por folio con los supuestos del
+    // modelo. Los reportes leen la carga más reciente; las anteriores quedan para trazabilidad.
+    private const string CalculadoraTable = "dgmesnie.CarteraConvocatoriaCalculadora";
+    private const string CalculadoraCargaTable = "dgmesnie.CarteraConvocatoriaCalculadoraCarga";
+    private const string CalculadoraColumns = "CargaId, Folio, Proyecto, Tecnologia, Inversionista, MwAc, MwDc, SaeMw, SaeMwh, SaeHoras, Cod, CapexTotal, CapexCentral, CapexBaterias, CapexInterconexion, DevEx, RetornoProyecto, RetornoPrivado, RetornoObjetivo, RetornoInterconexion, ParticipacionPrivada, ContribucionCfe, PrecioEnergia, PlazoPpa, PlazoReversion, Apalancamiento, PlazoDeuda, TirAntesIsr, TirDespuesIsr, MoicProyecto, MoicPrivado, EbitdaAcumulado, IngresosAcumulados, UtilidadAcumulada, GeneracionAcumulada, OpexAnio1, Observaciones, NombreArchivo AS FileName, Sha256, CargadoUtc AS LoadedUtc, CargadoPor AS LoadedBy";
+
+    private static async Task EnsureCalculadoraTablesAsync(IDbConnection db, IDbTransaction? tx = null)
+    {
+        await db.ExecuteAsync($@"
+IF OBJECT_ID(N'{CalculadoraCargaTable}', N'U') IS NULL
+CREATE TABLE {CalculadoraCargaTable} (
+    CargaId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    NombreArchivo nvarchar(260) NOT NULL,
+    Sha256 char(64) NOT NULL,
+    FechaCorte date NOT NULL,
+    Filas int NOT NULL,
+    CargadoUtc datetime2 NOT NULL CONSTRAINT DF_CarteraConvocatoriaCalculadoraCarga_CargadoUtc DEFAULT SYSUTCDATETIME(),
+    CargadoPor nvarchar(200) NULL
+);
+IF OBJECT_ID(N'{CalculadoraTable}', N'U') IS NULL
+CREATE TABLE {CalculadoraTable} (
+    CargaId int NOT NULL,
+    Folio nvarchar(60) NOT NULL,
+    Proyecto nvarchar(260) NULL,
+    Tecnologia nvarchar(120) NULL,
+    Inversionista nvarchar(260) NULL,
+    MwAc decimal(18,4) NULL, MwDc decimal(18,4) NULL, SaeMw decimal(18,4) NULL, SaeMwh decimal(18,4) NULL, SaeHoras decimal(18,4) NULL,
+    Cod date NULL,
+    CapexTotal decimal(24,4) NULL, CapexCentral decimal(24,4) NULL, CapexBaterias decimal(24,4) NULL, CapexInterconexion decimal(24,4) NULL, DevEx decimal(24,4) NULL,
+    RetornoProyecto decimal(18,8) NULL, RetornoPrivado decimal(18,8) NULL, RetornoObjetivo decimal(18,8) NULL, RetornoInterconexion decimal(18,8) NULL,
+    ParticipacionPrivada decimal(18,8) NULL, ContribucionCfe decimal(18,8) NULL,
+    PrecioEnergia decimal(18,4) NULL, PlazoPpa decimal(18,4) NULL, PlazoReversion decimal(18,4) NULL,
+    Apalancamiento decimal(18,8) NULL, PlazoDeuda decimal(18,4) NULL,
+    TirAntesIsr decimal(18,8) NULL, TirDespuesIsr decimal(18,8) NULL, MoicProyecto decimal(18,8) NULL, MoicPrivado decimal(18,8) NULL,
+    EbitdaAcumulado decimal(24,4) NULL, IngresosAcumulados decimal(24,4) NULL, UtilidadAcumulada decimal(24,4) NULL, GeneracionAcumulada decimal(24,4) NULL,
+    OpexAnio1 decimal(24,4) NULL,
+    Observaciones nvarchar(max) NULL,
+    DatosJson nvarchar(max) NULL,
+    NombreArchivo nvarchar(260) NOT NULL,
+    Sha256 char(64) NOT NULL,
+    CargadoUtc datetime2 NOT NULL CONSTRAINT DF_CarteraConvocatoriaCalculadora_CargadoUtc DEFAULT SYSUTCDATETIME(),
+    CargadoPor nvarchar(200) NULL,
+    CONSTRAINT PK_CarteraConvocatoriaCalculadora PRIMARY KEY (CargaId, Folio),
+    CONSTRAINT FK_CarteraConvocatoriaCalculadora_Carga FOREIGN KEY (CargaId) REFERENCES {CalculadoraCargaTable}(CargaId)
+);", transaction: tx);
+    }
+
+    public async Task<int> GuardarCalculadorasConvocatoriaAsync(CarteraConvocatoriaCalculadoraDocument document, string usuario)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        using var db = Connection;
+        db.Open();
+        using var tx = db.BeginTransaction();
+        try
+        {
+            await EnsureCalculadoraTablesAsync(db, tx);
+            var existente = await db.QueryFirstOrDefaultAsync<int?>($"SELECT TOP 1 CargaId FROM {CalculadoraCargaTable} WHERE Sha256=@Sha256 AND FechaCorte=@FechaCorte ORDER BY CargaId DESC;",
+                new { document.Sha256, FechaCorte = document.FechaCorte.Date }, tx);
+            if (existente.HasValue) { tx.Commit(); return 0; }
+
+            var cargaId = await db.ExecuteScalarAsync<int>($@"
+INSERT {CalculadoraCargaTable} (NombreArchivo, Sha256, FechaCorte, Filas, CargadoPor)
+OUTPUT INSERTED.CargaId VALUES (@FileName, @Sha256, @FechaCorte, @Filas, @Usuario);",
+                new { document.FileName, document.Sha256, FechaCorte = document.FechaCorte.Date, Filas = document.Rows.Count, Usuario = usuario }, tx);
+
+            var saved = 0;
+            foreach (var r in document.Rows)
+            {
+                saved += await db.ExecuteAsync($@"
+INSERT {CalculadoraTable} (CargaId, Folio, Proyecto, Tecnologia, Inversionista, MwAc, MwDc, SaeMw, SaeMwh, SaeHoras, Cod,
+    CapexTotal, CapexCentral, CapexBaterias, CapexInterconexion, DevEx, RetornoProyecto, RetornoPrivado, RetornoObjetivo, RetornoInterconexion,
+    ParticipacionPrivada, ContribucionCfe, PrecioEnergia, PlazoPpa, PlazoReversion, Apalancamiento, PlazoDeuda, TirAntesIsr, TirDespuesIsr,
+    MoicProyecto, MoicPrivado, EbitdaAcumulado, IngresosAcumulados, UtilidadAcumulada, GeneracionAcumulada, OpexAnio1, Observaciones, DatosJson,
+    NombreArchivo, Sha256, CargadoPor)
+VALUES (@CargaId, @Folio, @Proyecto, @Tecnologia, @Inversionista, @MwAc, @MwDc, @SaeMw, @SaeMwh, @SaeHoras, @Cod,
+    @CapexTotal, @CapexCentral, @CapexBaterias, @CapexInterconexion, @DevEx, @RetornoProyecto, @RetornoPrivado, @RetornoObjetivo, @RetornoInterconexion,
+    @ParticipacionPrivada, @ContribucionCfe, @PrecioEnergia, @PlazoPpa, @PlazoReversion, @Apalancamiento, @PlazoDeuda, @TirAntesIsr, @TirDespuesIsr,
+    @MoicProyecto, @MoicPrivado, @EbitdaAcumulado, @IngresosAcumulados, @UtilidadAcumulada, @GeneracionAcumulada, @OpexAnio1, @Observaciones, @DatosJson,
+    @FileName, @Sha256, @Usuario);",
+                    new
+                    {
+                        CargaId = cargaId, r.Folio, r.Proyecto, r.Tecnologia, r.Inversionista, r.MwAc, r.MwDc, r.SaeMw, r.SaeMwh, r.SaeHoras, r.Cod,
+                        r.CapexTotal, r.CapexCentral, r.CapexBaterias, r.CapexInterconexion, r.DevEx, r.RetornoProyecto, r.RetornoPrivado, r.RetornoObjetivo, r.RetornoInterconexion,
+                        r.ParticipacionPrivada, r.ContribucionCfe, r.PrecioEnergia, r.PlazoPpa, r.PlazoReversion, r.Apalancamiento, r.PlazoDeuda, r.TirAntesIsr, r.TirDespuesIsr,
+                        r.MoicProyecto, r.MoicPrivado, r.EbitdaAcumulado, r.IngresosAcumulados, r.UtilidadAcumulada, r.GeneracionAcumulada, r.OpexAnio1, r.Observaciones,
+                        DatosJson = JsonConvert.SerializeObject(r.Campos), r.FileName, r.Sha256, Usuario = usuario
+                    }, tx);
+            }
+            tx.Commit();
+            return saved;
+        }
+        catch { tx.Rollback(); throw; }
+    }
+
+    private async Task<int?> UltimaCalculadoraCargaAsync(IDbConnection db)
+    {
+        if (!await db.ExecuteScalarAsync<bool>($"SELECT CASE WHEN OBJECT_ID(N'{CalculadoraCargaTable}',N'U') IS NULL THEN 0 ELSE 1 END")) return null;
+        return await db.QueryFirstOrDefaultAsync<int?>($"SELECT TOP 1 CargaId FROM {CalculadoraCargaTable} ORDER BY FechaCorte DESC, CargaId DESC;");
+    }
+
+    public async Task<CarteraConvocatoriaCalculadora?> ObtenerCalculadoraConvocatoriaAsync(string folio)
+    {
+        using var db = Connection;
+        var cargaId = await UltimaCalculadoraCargaAsync(db);
+        if (!cargaId.HasValue) return null;
+        var fila = await db.QueryFirstOrDefaultAsync<CarteraConvocatoriaCalculadora>($"SELECT {CalculadoraColumns} FROM {CalculadoraTable} WHERE CargaId=@cargaId AND Folio=@folio;", new { cargaId, folio });
+        if (fila == null) return null;
+        var json = await db.QueryFirstOrDefaultAsync<string?>($"SELECT DatosJson FROM {CalculadoraTable} WHERE CargaId=@cargaId AND Folio=@folio;", new { cargaId, folio });
+        if (!string.IsNullOrWhiteSpace(json))
+            fila.Campos = JsonConvert.DeserializeObject<List<ConvocatoriaCampoFuente>>(json) ?? new();
+        return fila;
+    }
+
+    public async Task<List<CarteraConvocatoriaCalculadora>> ObtenerCalculadorasConvocatoriaAsync()
+    {
+        using var db = Connection;
+        var cargaId = await UltimaCalculadoraCargaAsync(db);
+        if (!cargaId.HasValue) return new();
+        return (await db.QueryAsync<CarteraConvocatoriaCalculadora>($"SELECT {CalculadoraColumns} FROM {CalculadoraTable} WHERE CargaId=@cargaId;", new { cargaId })).ToList();
+    }
+
+    public async Task<List<CarteraConvocatoriaCalculadoraCarga>> ObtenerCalculadoraCargasConvocatoriaAsync()
+    {
+        using var db = Connection;
+        if (!await db.ExecuteScalarAsync<bool>($"SELECT CASE WHEN OBJECT_ID(N'{CalculadoraCargaTable}',N'U') IS NULL THEN 0 ELSE 1 END")) return new();
+        return (await db.QueryAsync<CarteraConvocatoriaCalculadoraCarga>($"SELECT CargaId, NombreArchivo AS FileName, Sha256, FechaCorte, Filas, CargadoUtc AS LoadedUtc, CargadoPor AS LoadedBy FROM {CalculadoraCargaTable} ORDER BY FechaCorte DESC, CargaId DESC;")).ToList();
+    }
+
     // Backfill específico: compara el corte con SQL y sólo inserta expedientes. No usa el upsert de cartera.
     public async Task<int> CompletarExpedientesConvocatoriaAsync(CarteraConvocatoriaImportDocument document, string usuario, bool aplicar = false)
     {

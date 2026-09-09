@@ -35,13 +35,13 @@ public sealed partial class CarteraConvocatoriaImportService
     private static void AttachMixtosIBackground(XLWorkbook book, Dictionary<string, CarteraConvocatoriaExpediente> dossiers)
     {
         if (!book.TryGetWorksheet("BD_MIXTOS_I", out var sheet)) return;
-        var headers = BuildHeaderMap(sheet, 1);
+        var (headerRow, headers) = FindHeaders(sheet, 1, "Folio");
         if (!headers.TryGetValue("FOLIO", out var folioColumn)) return;
         headers.TryGetValue("LLAVE", out var keyColumn);
         var byFolio = new Dictionary<string, IXLRow>(StringComparer.OrdinalIgnoreCase);
         var byKey = new Dictionary<string, IXLRow>(StringComparer.OrdinalIgnoreCase);
-        var last = sheet.LastRowUsed()?.RowNumber() ?? 1;
-        for (int number = 2; number <= last; number++)
+        var last = sheet.LastRowUsed()?.RowNumber() ?? headerRow;
+        for (int number = headerRow + 1; number <= last; number++)
         {
             var row = sheet.Row(number);
             var folio = Text(row.Cell(folioColumn));
@@ -81,11 +81,11 @@ public sealed partial class CarteraConvocatoriaImportService
     {
         var requirements = new List<CarteraConvocatoriaRequerimientoSistema>();
         if (!book.TryGetWorksheet("MAPA REQUERIMIENTOS", out var sheet)) return requirements;
-        var headers = BuildHeaderMap(sheet, 5);
+        var (headerRow, headers) = FindHeaders(sheet, 5, "Sistema");
         if (!headers.TryGetValue("SISTEMA", out var systemColumn)) return requirements;
         decimal? Value(IXLRow row, string header) => headers.TryGetValue(Normalize(header), out var column) ? Number(row.Cell(column)) : null;
-        var last = Math.Min(sheet.LastRowUsed()?.RowNumber() ?? 5, 40);
-        for (int number = 6; number <= last; number++)
+        var last = Math.Min(sheet.LastRowUsed()?.RowNumber() ?? headerRow, headerRow + 35);
+        for (int number = headerRow + 1; number <= last; number++)
         {
             var row = sheet.Row(number);
             var system = Text(row.Cell(systemColumn));
@@ -130,13 +130,13 @@ public sealed partial class CarteraConvocatoriaImportService
         foreach (var source in sources)
         {
             if (!book.TryGetWorksheet(source.Sheet, out var sheet)) continue;
-            var headers = BuildHeaderMap(sheet, source.Header);
+            var (sheetHeaderRow, headers) = FindHeaders(sheet, source.Header, source.Key);
             if (!headers.ContainsKey(Normalize(source.Key))) continue;
             // Vértices de BD_MIXTOS_II: el segundo bloque "Latitud/Longitud/Vértice" corresponde a la subestación.
             var substationStart = source.Sheet == "BD_MIXTOS_II" && headers.TryGetValue("LATITUD#2", out var secondLatitude) ? secondLatitude : int.MaxValue;
             var included = source.Fields?.Select(Normalize).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var last = sheet.LastRowUsed()?.RowNumber() ?? source.Header;
-            for (int number = source.Header + 1; number <= last; number++)
+            var last = sheet.LastRowUsed()?.RowNumber() ?? sheetHeaderRow;
+            for (int number = sheetHeaderRow + 1; number <= last; number++)
             {
                 var row = sheet.Row(number);
                 var key = CellText(row, headers, source.Key);

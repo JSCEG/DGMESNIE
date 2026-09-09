@@ -33,16 +33,18 @@ public sealed partial class CarteraConvocatoriaImportService
             for (var row = 1; row <= 10 && headers == null; row++)
             {
                 var candidate = BuildHeaderMap(sheet, row);
-                if (candidate.ContainsKey("FOLIO") && candidate.ContainsKey("CONSIDERAR") && candidate.ContainsKey("PREFERENTE")) { headerRow = row; headers = candidate; }
+                // El folio viene como "Folio" en el libro de selección y como "LLAVE" en el catálogo del libro de control.
+                if ((candidate.ContainsKey("FOLIO") || candidate.ContainsKey("LLAVE")) && candidate.ContainsKey("CONSIDERAR") && candidate.ContainsKey("PREFERENTE")) { headerRow = row; headers = candidate; }
             }
             if (headers == null) continue;
+            var folioHeader = headers.ContainsKey("FOLIO") ? "Folio" : "LLAVE";
 
             var last = sheet.LastRowUsed()?.RowNumber() ?? headerRow;
             for (var number = headerRow + 1; number <= last; number++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var row = sheet.Row(number);
-                var folio = CellText(row, headers, "Folio");
+                var folio = CellText(row, headers, folioHeader);
                 if (string.IsNullOrWhiteSpace(folio) || !folio.StartsWith("CFE-", StringComparison.OrdinalIgnoreCase)) continue;
                 document.Rows.Add(new CarteraConvocatoriaSeleccion
                 {
