@@ -89,6 +89,9 @@
   <style>
     .dg-boot { visibility: hidden !important; }
     html.dg-boot-ready .dg-boot, body.dg-boot-ready .dg-boot { visibility: visible !important; }
+    /* Base oscura sin proveedor de pago: OSM filtrado en pantalla. El mismo filtro
+       se replica en el canvas al exportar PNG/PDF (ver _captureMap). */
+    .dg-base-oscuro { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9) grayscale(.2); }
   </style>
 
   <header class="dg-header">
@@ -2138,11 +2141,17 @@ class Component extends DCLogic {
     this.bases = {
       // Cero solicitudes de mosaicos: el contorno de entidades funciona como base vectorial.
       sinmapa: L.layerGroup(),
-      // Mapa base colorido SIN etiquetas ni división política (CartoDB Voyager nolabels) — por defecto
+      // Mapas base de uso gratuito, compatibles con Leaflet y con CORS (indispensable
+      // para exportar PNG/PDF sin "tainted canvas"). Carto y Esri se retiraron: Carto
+      // ahora entrega una teja con marca de agua "API key" y Esri World_Imagery responde
+      // 403 sin token. OSM y EOX (Sentinel-2 cloudless + terrain-light) son libres y
+      // devuelven Access-Control-Allow-Origin.
       color:    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { subdomains:'abc', maxZoom:19, crossOrigin:'anonymous', attribution:'&copy; OpenStreetMap contributors' }),
-      claro:    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19, crossOrigin:'anonymous' }),
-      satelite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:19, crossOrigin:'anonymous', attribution:'Tiles &copy; Esri' }),
-      oscuro:   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains:'abcd', maxZoom:19, crossOrigin:'anonymous' }),
+      claro:    L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/terrain-light_3857/default/g/{z}/{y}/{x}.jpg', { maxZoom:19, maxNativeZoom:16, crossOrigin:'anonymous', attribution:'Terrain Light &copy; EOX · &copy; OpenStreetMap contributors' }),
+      satelite: L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2021_3857/default/g/{z}/{y}/{x}.jpg', { maxZoom:19, maxNativeZoom:16, crossOrigin:'anonymous', attribution:'Sentinel-2 cloudless 2021 &copy; EOX (datos Copernicus)' }),
+      // Sin proveedor de pago no hay base oscura con CORS; se deriva de OSM con un filtro
+      // (clase dg-base-oscuro) que el exportador reproduce en el canvas.
+      oscuro:   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { subdomains:'abc', maxZoom:19, crossOrigin:'anonymous', className:'dg-base-oscuro', attribution:'&copy; OpenStreetMap contributors' }),
     };
     // El mapa base sigue al tema de la plataforma: si se entra en oscuro, se
     // arranca con la base oscura, porque una teja clara a pantalla completa
@@ -14753,7 +14762,17 @@ class Component extends DCLogic {
     ctx.fillStyle='#e8e4de'; ctx.fillRect(0,0,w,h);
     const base=mapEl.getBoundingClientRect();
 
-    const drawImgEl = (img) => { if(!img.complete||!img.naturalWidth) return; const r=img.getBoundingClientRect(); try{ ctx.drawImage(img, r.left-base.left, r.top-base.top, r.width, r.height); }catch(e){} };
+    const drawImgEl = (img) => {
+      if(!img.complete||!img.naturalWidth) return;
+      const r=img.getBoundingClientRect();
+      // La base oscura es OSM con un filtro CSS; drawImage no lo aplica solo, así que
+      // se copia el filtro calculado al contexto para que el export respete el tono.
+      const filtered = img.closest('.dg-base-oscuro');
+      const prevFilter = ctx.filter;
+      if(filtered){ try{ const f=getComputedStyle(filtered).filter; if(f && f!=='none') ctx.filter=f; }catch(e){} }
+      try{ ctx.drawImage(img, r.left-base.left, r.top-base.top, r.width, r.height); }catch(e){}
+      if(filtered) ctx.filter = prevFilter || 'none';
+    };
     const drawCanvasEl = (c) => { const r=c.getBoundingClientRect(); try{ ctx.drawImage(c, r.left-base.left, r.top-base.top, r.width, r.height); }catch(e){} };
     // Renderer vectorial (SVG) propio de un pane: hijo DIRECTO del pane, con viewBox de todo el mapa.
     const drawRendererSvg = (svg) => {
