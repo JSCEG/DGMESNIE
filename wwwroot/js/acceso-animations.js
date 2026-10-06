@@ -13,6 +13,34 @@
 
     const qsa = (selector, scope = document) => Array.from(scope.querySelectorAll(selector));
 
+    // Controles del panel: deben terminar visibles pase lo que pase con la animación.
+    const PANEL_SELECTOR = [
+        '.auth-panel',
+        '.lock-badge',
+        '.login-title',
+        '.login-subtitle',
+        '.login-form .mb-3',
+        '.login-alert',
+        '.login-submit',
+        '.login-links',
+        '.access-note',
+        '.expired-alert',
+        '.security-alert-card',
+        '.security-countdown',
+        '.recovery-success'
+    ].join(',');
+
+    let entranceDone = false;
+
+    const finishEntrance = () => {
+        if (entranceDone) return;
+        entranceDone = true;
+        qsa(PANEL_SELECTOR).forEach((element) => {
+            element.style.opacity = '1';
+        });
+        document.documentElement.classList.add('access-motion-ready');
+    };
+
     const splitBrandTitles = () => {
         qsa('.brand-title').forEach((title) => {
             if (title.querySelector('.brand-title__line')) return;
@@ -106,7 +134,7 @@
         const timeline = anime.timeline({
             easing: 'easeOutExpo',
             duration: 760,
-            complete: () => document.documentElement.classList.add('access-motion-ready')
+            complete: finishEntrance
         });
 
         timeline
@@ -205,6 +233,20 @@
                 delay: anime.stagger(65),
                 duration: 560
             }, '-=430');
+
+        // Red de seguridad: si la línea de tiempo no llega al final, el formulario
+        // se muestra de todos modos. Con la pestaña oculta anime está suspendido.
+        const watchdog = () => {
+            if (entranceDone) return;
+            if (document.hidden) {
+                setTimeout(watchdog, 1000);
+                return;
+            }
+            timeline.pause();
+            timeline.seek(timeline.duration);
+            finishEntrance();
+        };
+        setTimeout(watchdog, timeline.duration + 1500);
     };
 
     const animateInteractions = () => {
@@ -243,8 +285,11 @@
             });
         });
 
+        // Durante la entrada no se toca el botón: anime.remove retiraría su tween de
+        // opacidad y quedaría invisible.
         qsa('.login-submit').forEach((button) => {
             button.addEventListener('mouseenter', () => {
+                if (!entranceDone) return;
                 anime.remove(button);
                 anime({
                     targets: button,
@@ -256,6 +301,7 @@
             });
 
             button.addEventListener('mouseleave', () => {
+                if (!entranceDone) return;
                 anime.remove(button);
                 anime({
                     targets: button,
@@ -272,7 +318,7 @@
         qsa('.login-form').forEach((form) => {
             form.addEventListener('submit', () => {
                 const button = form.querySelector('.login-submit');
-                if (!button) return;
+                if (!button || !entranceDone) return;
 
                 anime.remove(button);
                 anime({
