@@ -153,6 +153,11 @@
                                        title="Editar usuario" aria-label="Editar usuario @user.Nombre">
                                         <i class="bi bi-pencil"></i>
                                     </a>
+                                    <button type="button" class="is-mail alta-link"
+                                            data-id="@user.IdUsuario" data-nombre="@user.Nombre" data-correo="@user.Correo"
+                                            title="Enviar alta por correo" aria-label="Enviar alta por correo a @user.Nombre">
+                                        <i class="bi bi-envelope-arrow-up"></i>
+                                    </button>
                                     <a href="@Url.Action("Eliminar", "Usuarios", new { id = user.IdUsuario })"
                                        class="is-delete delete-link" title="Eliminar usuario"
                                        aria-label="Eliminar usuario @user.Nombre">
@@ -192,6 +197,32 @@
         </div>
     </div>
 
+
+    @*Modal para enviar el alta por correo*@
+    @Html.AntiForgeryToken()
+    <div class="modal fade" id="enviarAltaModal" tabindex="-1" aria-labelledby="enviarAltaModalLabel"
+         aria-hidden="true" data-url="@Url.Action("EnviarAlta", "Usuarios")">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-sec__header">
+                    <div>
+                        <span class="modal-sec__kicker">Gestión de usuarios</span>
+                        <h5 class="modal-sec__title" id="enviarAltaModalLabel">Enviar alta por correo</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-sec__body">
+                    <p class="mb-0" id="enviarAltaTexto"></p>
+                </div>
+                <div class="modal-sec__foot">
+                    <button type="button" class="btn-sec" data-bs-dismiss="modal" id="enviarAltaCerrar">Cancelar</button>
+                    <button type="button" class="btn-sec btn-sec--primary" id="enviarAltaConfirmar">
+                        <i class="bi bi-envelope-arrow-up"></i> Enviar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     @{
         var userMessage = TempData["UserMessage"] as string;
@@ -235,7 +266,7 @@
             // Los modales se cuelgan de <body>: dentro de <main>, que trae
             // isolation: isolate, su z-index no compite con el velo y quedarían
             // por debajo, sin forma de cerrarlos.
-            document.querySelectorAll('#confirmDeleteModal, #userMessageModal').forEach(function (el) {
+            document.querySelectorAll('#confirmDeleteModal, #userMessageModal, #enviarAltaModal').forEach(function (el) {
                 document.body.appendChild(el);
             });
 
@@ -261,6 +292,59 @@
                     });
                 });
             }
+        });
+    </script>
+
+    @*Alta por correo: confirma, envía y muestra el resultado en el mismo modal*@
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            var modalEl = document.getElementById("enviarAltaModal");
+            var texto = document.getElementById("enviarAltaTexto");
+            var confirmar = document.getElementById("enviarAltaConfirmar");
+            var cerrar = document.getElementById("enviarAltaCerrar");
+            var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            var idUsuario = null;
+
+            document.addEventListener("click", function (e) {
+                var boton = e.target.closest(".alta-link");
+                if (!boton) return;
+                idUsuario = boton.dataset.id;
+                texto.textContent = "Se enviará a " + boton.dataset.correo + " la dirección de la plataforma y el enlace para que " +
+                    boton.dataset.nombre + " defina su contraseña. Los enlaces enviados antes dejan de servir.";
+                confirmar.hidden = false;
+                confirmar.disabled = false;
+                cerrar.textContent = "Cancelar";
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            });
+
+            confirmar.addEventListener("click", function () {
+                confirmar.disabled = true;
+                texto.textContent = "Enviando correo…";
+
+                fetch(modalEl.dataset.url, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "RequestVerificationToken": token,
+                        "X-Requested-With": "XMLHttpRequest"
+                    },
+                    body: "id=" + encodeURIComponent(idUsuario)
+                })
+                    .then(function (respuesta) {
+                        return respuesta.json().catch(function () {
+                            return { success: false, message: "El servidor no devolvió una respuesta válida (" + respuesta.status + "). Revisa que la sesión siga abierta." };
+                        });
+                    })
+                    .catch(function () {
+                        return { success: false, message: "No se pudo contactar al servidor." };
+                    })
+                    .then(function (resultado) {
+                        texto.textContent = resultado.message;
+                        confirmar.hidden = resultado.success;
+                        confirmar.disabled = false;
+                        cerrar.textContent = "Cerrar";
+                    });
+            });
         });
     </script>
 

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Newtonsoft.Json;
 using NSIE.Models;
 using NSIE.Servicios;
 using System.Security.Cryptography;
@@ -14,12 +15,14 @@ namespace NSIE.Controllers
     {
         private readonly IRepositorioUsuarios repositorioUsuarios;
         private readonly IRepositorioAcceso repositorioAcceso;
+        private readonly IServicioEmailSMTP servicioEmailSMTP;
         private readonly ILogger<UsuariosController> logger;
 
-        public UsuariosController(IRepositorioUsuarios repositorioUsuarios, IRepositorioAcceso repositorioAcceso, ILogger<UsuariosController> logger)
+        public UsuariosController(IRepositorioUsuarios repositorioUsuarios, IRepositorioAcceso repositorioAcceso, IServicioEmailSMTP servicioEmailSMTP, ILogger<UsuariosController> logger)
         {
             this.repositorioUsuarios = repositorioUsuarios;
             this.repositorioAcceso = repositorioAcceso;
+            this.servicioEmailSMTP = servicioEmailSMTP;
             this.logger = logger;
         }
 
@@ -59,6 +62,96 @@ namespace NSIE.Controllers
             }
 
             return RedirectToAction("AdministrarUsuarios");
+        }
+
+        // Envía al correo registrado la dirección de la plataforma y el enlace para definir contraseña
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EnviarAlta(int id)
+        {
+            if (!EsAdministrador())
+            {
+                return StatusCode(StatusCodes.Status403Forbidden,
+                    new { success = false, message = "Solo un administrador puede enviar el alta por correo." });
+            }
+
+            var usuario = await repositorioAcceso.GetUserById(id);
+            if (usuario == null || string.IsNullOrWhiteSpace(usuario.Correo))
+            {
+                return NotFound(new { success = false, message = "El usuario no existe, no está vigente o no tiene correo registrado." });
+            }
+
+            try
+            {
+                // Un alta reenviada deja sin efecto los enlaces anteriores.
+                await repositorioAcceso.DeletePasswordResetToken(usuario.IdUsuario);
+                var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+                await repositorioAcceso.SavePasswordResetToken(usuario.IdUsuario, token, DateTime.Now);
+
+                var urlContrasena = Url.Action("ResetPassword", "Acceso", new { token }, protocol: Request.Scheme) ?? string.Empty;
+                var urlAcceso = Url.Action("Login", "Acceso", null, protocol: Request.Scheme) ?? string.Empty;
+
+                await servicioEmailSMTP.EnviarCorreo(
+                    usuario.Correo,
+                    "Alta en la plataforma institucional",
+                    CorreoAlta(usuario.Nombre, usuario.Correo, urlAcceso, urlContrasena));
+
+                logger.LogInformation("Alta por correo enviada al usuario {IdUsuario}", usuario.IdUsuario);
+                return Json(new
+                {
+                    success = true,
+                    message = $"Se envió el alta a {usuario.Correo}. El enlace para definir contraseña apunta a {Request.Host} y vence en 30 minutos."
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "No se pudo enviar el alta por correo al usuario {IdUsuario}", id);
+                return StatusCode(StatusCodes.Status500InternalServerError,
+                    new { success = false, message = "No fue posible enviar el correo de alta. Inténtelo de nuevo más tarde." });
+            }
+        }
+
+        // Los correos de alta no llevan firma: los manda el sistema, no una persona.
+        private static string CorreoAlta(string nombre, string correo, string urlAcceso, string urlContrasena)
+        {
+            return PlantillaCorreoInstitucional.Construir(new ContenidoCorreo
+            {
+                Antetitulo = "Alta de usuario",
+                Titulo = "Su acceso a la plataforma está listo",
+                Saludo = string.IsNullOrWhiteSpace(nombre) ? "Estimada(o)" : $"Estimada(o) {nombre}",
+                Parrafos = new[]
+                {
+                    "Se registró una cuenta a su nombre en la plataforma institucional.",
+                    "Para entrar por primera vez defina su contraseña con el botón de este correo. Por seguridad, el enlace tiene una vigencia de 30 minutos."
+                },
+                Datos = new[]
+                {
+                    new CampoCorreo("Usuario", correo),
+                    new CampoCorreo("Dirección de la plataforma", urlAcceso)
+                },
+                BotonTexto = "Definir mi contraseña",
+                BotonUrl = urlContrasena,
+                SeccionTitulo = "Cómo definir su contraseña",
+                Puntos = new[]
+                {
+                    new CampoCorreo("Paso 1", "Pulse «Definir mi contraseña» en este correo."),
+                    new CampoCorreo("Paso 2", "Escriba su nueva contraseña y confírmela."),
+                    new CampoCorreo("Paso 3", "Entre a la plataforma con su correo y la contraseña que eligió.")
+                },
+                Nota = "Si el enlace ya venció, abra la dirección de la plataforma, elija «¿Olvidaste tu contraseña?» y escriba este correo: recibirá un enlace nuevo.",
+                PieAviso = "Este correo se genera automáticamente y no requiere respuesta."
+            });
+        }
+
+        private bool EsAdministrador()
+        {
+            var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrEmpty(perfilJson)) return false;
+
+            var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
+            return perfil != null
+                && (perfil.IdUsuario == "1" || perfil.IdUsuario == "31" || perfil.IdUsuario == "86"
+                    || perfil.Rol == "Administrador" || perfil.Rol_Nombre == "Administrador");
         }
 
         // ============================
