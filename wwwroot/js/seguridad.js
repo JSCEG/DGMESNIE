@@ -6,9 +6,7 @@
 
     // Variables de configuración
     const config = {
-        isProduction: window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1',
-        maxWarnings: 3,
-        warningCount: 0
+        isProduction: window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
     };
 
     // Función para mostrar notificaciones de seguridad
@@ -16,9 +14,9 @@
         // Crear notificación simple sin modal complejo
         const notification = document.createElement('div');
         notification.style.cssText = `
-            position: fixed; top: 20px; right: 20px; 
+            position: fixed; top: 20px; right: 20px;
             background: #f44336; color: white; padding: 15px;
-            border-radius: 5px; z-index: 1000; font-size: 14px;
+            border-radius: 5px; z-index: 4000; font-size: 14px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         `;
         notification.textContent = message;
@@ -77,31 +75,9 @@
         }
     });
 
-    // Detección simple de herramientas de desarrollo
-    if (config.isProduction) {
-        let devtoolsDetected = false;
-
-        setInterval(function () {
-            const heightDiff = window.outerHeight - window.innerHeight;
-            const widthDiff = window.outerWidth - window.innerWidth;
-
-            if ((heightDiff > 150 || widthDiff > 150) && !devtoolsDetected) {
-                devtoolsDetected = true;
-                config.warningCount++;
-
-                showNotification('Herramientas de desarrollo detectadas');
-
-                if (config.warningCount >= config.maxWarnings) {
-                    window.location.href = '/';
-                }
-
-                // Reset después de 30 segundos
-                setTimeout(() => {
-                    devtoolsDetected = false;
-                }, 30000);
-            }
-        }, 2000);
-    }
+    // La detección de herramientas de desarrollo por diferencia outer/inner se retiró:
+    // el zoom del navegador, los paneles laterales y las barras de marcadores superan
+    // el umbral y expulsaban al login a usuarios legítimos tras tres avisos.
 
     // Mensaje informativo en consola
     if (config.isProduction) {
