@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
@@ -238,6 +239,17 @@ builder.Services.Configure<FormOptions>(options =>
 
 //Configurando la Sesión
 builder.Services.AddDistributedMemoryCache();
+// Llaves persistentes: sin esto las cookies se invalidan en cada reinicio/reciclaje.
+// En App Service viven en %HOME%\data, fuera de wwwroot, para sobrevivir a cada despliegue.
+var appServiceHome = Environment.GetEnvironmentVariable("HOME");
+var dataProtectionKeysPath =
+    !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID")) &&
+    !string.IsNullOrWhiteSpace(appServiceHome)
+        ? Path.Combine(appServiceHome, "data", "DataProtectionKeys")
+        : Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtectionKeys");
+builder.Services.AddDataProtection()
+    .SetApplicationName("DGMESNIE")
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
 
 builder.Services.AddSession(options =>
 {

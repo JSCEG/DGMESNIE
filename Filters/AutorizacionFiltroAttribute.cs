@@ -21,6 +21,7 @@ public class AutorizacionFiltro : ActionFilterAttribute
         "ActividadSospechosa",
         "Logout",
         "Heartbeat",
+        "RestaurarSesion",
         "ActualizarInicioSesion",
         "DevBypass"
     };
@@ -86,6 +87,14 @@ public class AutorizacionFiltro : ActionFilterAttribute
                 return;
             }
 
+            if (context.HttpContext.User?.Identity?.IsAuthenticated == true &&
+                HttpMethods.IsGet(context.HttpContext.Request.Method))
+            {
+                var retorno = context.HttpContext.Request.Path + context.HttpContext.Request.QueryString;
+                context.Result = new RedirectToActionResult("RestaurarSesion", "Acceso", new { returnUrl = retorno });
+                return;
+            }
+
             context.Result = new RedirectToActionResult("SesionExpirada", "Acceso", null);
         }
         else
@@ -132,7 +141,8 @@ public class AutorizacionFiltro : ActionFilterAttribute
                             if (seccion.Modulos == null) continue;
                             foreach (var mod in seccion.Modulos)
                             {
-                                if (string.Equals(mod.Controller, controllerAutorizacion, StringComparison.OrdinalIgnoreCase))
+                                if (string.Equals(mod.Controller, controllerAutorizacion, StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(mod.Controller, controller, StringComparison.OrdinalIgnoreCase))
                                 {
                                     if (string.Equals(controllerAutorizacion, "PlanMexico", StringComparison.OrdinalIgnoreCase))
                                     {

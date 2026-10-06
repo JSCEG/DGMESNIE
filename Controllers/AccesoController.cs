@@ -440,6 +440,51 @@ namespace NSIE.Controllers
             return View();
         }
 
+        /// <summary>
+        /// La sesión vive en memoria y se pierde al reciclar el servidor, pero la cookie
+        /// de autenticación (8 h) sigue vigente. Reconstruye la sesión desde la BD.
+        /// </summary>
+        [HttpGet]
+        public IActionResult RestaurarSesion(string returnUrl)
+        {
+            var destino = !string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl)
+                ? returnUrl
+                : Url.Action("Index", "DashboardProyectos");
+
+            if (User?.Identity?.IsAuthenticated != true ||
+                !int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out int idUsuario))
+            {
+                return RedirectToAction("SesionExpirada");
+            }
+
+            try
+            {
+                using var cn = new SqlConnection(_connectionString);
+                var perfilUsuario = cn.QuerySingleOrDefault<PerfilUsuario>(
+                    SpObtenerPerfilSesion,
+                    new { IdUsuario = idUsuario },
+                    commandType: CommandType.StoredProcedure);
+
+                if (perfilUsuario == null)
+                {
+                    return RedirectToAction("SesionExpirada");
+                }
+
+                HttpContext.Session.SetString("PerfilUsuario", JsonConvert.SerializeObject(perfilUsuario));
+                HttpContext.Session.SetString(
+                    "SeccionesUsuario",
+                    JsonConvert.SerializeObject(ObtenerSeccionesUsuario(cn, idUsuario)));
+                RegistrarSesionActiva(idUsuario);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "No se pudo restaurar la sesión del usuario {IdUsuario}", idUsuario);
+                return RedirectToAction("SesionExpirada");
+            }
+
+            return LocalRedirect(destino);
+        }
+
 
 
         public IActionResult ActividadSospechosa()
