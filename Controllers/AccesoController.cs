@@ -766,7 +766,17 @@ namespace NSIE.Controllers
                 commandType: CommandType.StoredProcedure
             );
 
-            return seccionesDict.Values.ToList();
+            // Los módulos de administración del sistema solo los ve su administrador,
+            // aunque el rol del usuario los tenga asignados en el catálogo.
+            if (idUsuario != AutorizacionFiltro.IdAdministradorSistema)
+            {
+                foreach (var seccion in seccionesDict.Values)
+                {
+                    seccion.Modulos?.RemoveAll(m => AutorizacionFiltro.EsSoloAdministrador(m.Controller, m.Action));
+                }
+            }
+
+            return seccionesDict.Values.Where(s => s.Modulos == null || s.Modulos.Count > 0).ToList();
         }
 
         private void RegistrarSesionActiva(int idUsuario)
@@ -1073,8 +1083,30 @@ namespace NSIE.Controllers
         }
 
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> ResetPasswordUser(string Clave, string ConfirmarClave, int IdUsuario)
         {
+            // Este controlador no lleva AutorizacionFiltro: la sesión se valida aquí. Solo el
+            // administrador cambia contraseñas ajenas; para el resto se usa la cuenta en sesión.
+            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
+            var perfilUsuario = string.IsNullOrEmpty(perfilUsuarioJson)
+                ? null
+                : JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+            if (perfilUsuario == null || !int.TryParse(perfilUsuario.IdUsuario, out var idUsuarioSesion))
+            {
+                return Unauthorized("Tu sesión expiró. Inicia sesión nuevamente.");
+            }
+
+            if (idUsuarioSesion != AutorizacionFiltro.IdAdministradorSistema || IdUsuario <= 0)
+            {
+                IdUsuario = idUsuarioSesion;
+            }
+
+            if (string.IsNullOrWhiteSpace(Clave))
+            {
+                return BadRequest("Escribe la nueva contraseña.");
+            }
+
             if (Clave != ConfirmarClave)
             {
                 return BadRequest("Las contraseñas no coinciden.");
@@ -1104,57 +1136,12 @@ namespace NSIE.Controllers
             }
         }
 
-        public async Task<IActionResult> Monitoreo()
+        // La vista anterior quedaba abierta sin iniciar sesión: este controlador no lleva
+        // AutorizacionFiltro. El monitoreo vive ahora en Bitacora/Dashboard, que es
+        // exclusivo del administrador del sistema.
+        public IActionResult Monitoreo()
         {
-            var totalAccesos = await _repositorioAcceso.GetTotalAccessCountAsync();
-            var fechaInicio = new DateTime(2023, 1, 1);
-            var fechaFin = new DateTime(2030, 12, 31);
-            var detallesAcceso = await _repositorioAcceso.GetDetallesAccesoAsync(fechaInicio, fechaFin);
-            var totalAccesosPorTipo = await _repositorioAcceso.GetTotalAccessCountByTypeAsync(fechaInicio, fechaFin);
-
-            var ultimoAccesoPorUsuario = detallesAcceso
-                .GroupBy(da => da.Nombre)
-                .Select(g => new UltimoAccesoUsuario
-                {
-                    Nombre = g.Key,
-                    UltimoAcceso = g.Max(x => x.FechaHoraLocal)
-                })
-                .ToList();
-
-            var accesosPorCargo = detallesAcceso
-                .GroupBy(da => da.Cargo)
-                .Select(g => new { Cargo = g.Key, TotalAccesos = g.Count() })
-                .ToList();
-
-            var accesosPorFecha = detallesAcceso
-                .GroupBy(da => da.FechaHoraLocal.Date)
-                .Select(g => new { Fecha = g.Key, TotalAccesos = g.Count() })
-                .OrderBy(g => g.Fecha)
-                .ToList();
-
-            ViewBag.AccesosPorFechaJson = JsonConvert.SerializeObject(accesosPorFecha);
-
-            var accesosPorUnidad = detallesAcceso
-                 .GroupBy(da => da.UnidadDeAdscripcion)
-                 .Select(g => new { UnidadDeAdscripcion = g.Key, TotalAccesos = g.Count() })
-                 .ToList();
-
-            ViewBag.AccesosPorUnidadJson = JsonConvert.SerializeObject(accesosPorUnidad);
-            var ipsUnicas = detallesAcceso.Select(da => da.IP).Distinct().ToList();
-            ViewBag.IpsUnicas = ipsUnicas;
-
-            var viewModel = new MonitoreoViewModel
-            {
-                TotalAccesos = totalAccesos,
-                DetallesAcceso = detallesAcceso,
-                TotalAccesosPorTipo = totalAccesosPorTipo,
-                UltimoAccesoPorUsuario = ultimoAccesoPorUsuario
-            };
-
-            ViewBag.JsonModel = JsonConvert.SerializeObject(viewModel);
-            ViewBag.AccesosPorCargoJson = JsonConvert.SerializeObject(accesosPorCargo);
-
-            return View(viewModel);
+            return RedirectToAction("Dashboard", "Bitacora");
         }
 
         public IActionResult Registro()

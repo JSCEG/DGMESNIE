@@ -52,6 +52,15 @@ namespace NSIE.Servicios
 
         // Obtener historial de acciones por página y elemento
         Task<IEnumerable<UserActivityModel>> ObtenerHistorialPorElementoAsync(string pageName, string idElemento = null, int? userId = null);
+
+        // Seguridad y Auditoría: accesos, sesiones y actividad por usuario
+        Task<AuditoriaResumen> ObtenerResumenAuditoriaAsync(DateTime inicioHoyLocal);
+        Task<List<AuditoriaUsuario>> ObtenerUsuariosAuditoriaAsync();
+        Task<List<AuditoriaSesion>> ObtenerSesionesAbiertasAsync(DateTime accionesDesdeLocal);
+        Task<List<AuditoriaAcceso>> ObtenerAccesosUsuarioAsync(int idUsuario, DateTime desdeUtc);
+        Task<List<AuditoriaSesion>> ObtenerSesionesUsuarioAsync(int idUsuario, DateTime desdeUtc);
+        Task<List<AuditoriaAccion>> ObtenerAccionesUsuarioAsync(int idUsuario, DateTime desdeLocal);
+        Task<List<AuditoriaAccesoFecha>> ObtenerAccesosDesdeAsync(DateTime desdeUtc);
     }
 
 
@@ -633,6 +642,115 @@ namespace NSIE.Servicios
             }
 
             return usuariosActivos;
+        }
+
+        // ============================
+        // Seguridad y Auditoría
+        // ============================
+
+        public async Task<AuditoriaResumen> ObtenerResumenAuditoriaAsync(DateTime inicioHoyLocal)
+        {
+            const string sql = @"
+SELECT
+    (SELECT COUNT(*) FROM [dgmesnie].[Acceso]) AS AccesosTotales,
+    (SELECT COUNT(*) FROM [dgmesnie].[Acceso] WHERE [FechaAcceso] >= DATEADD(DAY, -30, SYSUTCDATETIME())) AS Accesos30Dias,
+    (SELECT COUNT(DISTINCT [IdUsuario]) FROM [dgmesnie].[Acceso] WHERE [FechaAcceso] >= DATEADD(DAY, -30, SYSUTCDATETIME())) AS UsuariosDistintos30Dias,
+    (SELECT COUNT(*) FROM [dgmesnie].[Sesion] WHERE [Activa] = 1 AND [FechaExpiracion] > SYSUTCDATETIME()) AS SesionesAbiertas,
+    (SELECT COUNT(*) FROM [dgmesnie].[ActividadLog] WHERE [Timestamp] >= @InicioHoyLocal) AS AccionesHoy;";
+
+            using var connection = new SqlConnection(connectionString);
+            return await connection.QuerySingleAsync<AuditoriaResumen>(sql, new { InicioHoyLocal = inicioHoyLocal });
+        }
+
+        public async Task<List<AuditoriaUsuario>> ObtenerUsuariosAuditoriaAsync()
+        {
+            const string sql = @"
+SELECT
+    u.[IdUsuario], u.[Nombre], u.[Correo], u.[Cargo], u.[UnidadAdscripcion],
+    acc.[UltimoAcceso], ISNULL(acc.[Accesos], 0) AS Accesos,
+    ISNULL(ses.[SesionesAbiertas], 0) AS SesionesAbiertas,
+    act.[UltimaAccionLocal]
+FROM [dgmesnie].[Usuario] u
+OUTER APPLY (SELECT MAX(a.[FechaAcceso]) AS UltimoAcceso, COUNT(*) AS Accesos
+             FROM [dgmesnie].[Acceso] a WHERE a.[IdUsuario] = u.[IdUsuario]) acc
+OUTER APPLY (SELECT COUNT(*) AS SesionesAbiertas
+             FROM [dgmesnie].[Sesion] s
+             WHERE s.[IdUsuario] = u.[IdUsuario] AND s.[Activa] = 1 AND s.[FechaExpiracion] > SYSUTCDATETIME()) ses
+OUTER APPLY (SELECT MAX(l.[Timestamp]) AS UltimaAccionLocal
+             FROM [dgmesnie].[ActividadLog] l WHERE l.[IdUsuario] = u.[IdUsuario]) act
+WHERE u.[Vigente] = 1
+ORDER BY acc.[UltimoAcceso] DESC, u.[Nombre];";
+
+            using var connection = new SqlConnection(connectionString);
+            return (await connection.QueryAsync<AuditoriaUsuario>(sql)).ToList();
+        }
+
+        public async Task<List<AuditoriaSesion>> ObtenerSesionesAbiertasAsync(DateTime accionesDesdeLocal)
+        {
+            const string sql = @"
+SELECT
+    s.[IdSesion], s.[IdUsuario], u.[Nombre], u.[Cargo],
+    s.[FechaInicio], s.[UltimaActividad], s.[FechaExpiracion], s.[Activa], s.[Ip], s.[UserAgent],
+    (SELECT MAX(l.[Timestamp]) FROM [dgmesnie].[ActividadLog] l
+     WHERE l.[IdUsuario] = s.[IdUsuario] AND l.[Timestamp] >= @AccionesDesdeLocal) AS UltimaAccionLocal
+FROM [dgmesnie].[Sesion] s
+INNER JOIN [dgmesnie].[Usuario] u ON u.[IdUsuario] = s.[IdUsuario]
+WHERE s.[Activa] = 1 AND s.[FechaExpiracion] > SYSUTCDATETIME()
+ORDER BY s.[FechaInicio] DESC;";
+
+            using var connection = new SqlConnection(connectionString);
+            return (await connection.QueryAsync<AuditoriaSesion>(sql, new { AccionesDesdeLocal = accionesDesdeLocal })).ToList();
+        }
+
+        public async Task<List<AuditoriaAcceso>> ObtenerAccesosUsuarioAsync(int idUsuario, DateTime desdeUtc)
+        {
+            const string sql = @"
+SELECT TOP (2000) [IdAcceso], [FechaAcceso], [TipoAcceso], [Ip], [Exitoso]
+FROM [dgmesnie].[Acceso]
+WHERE [IdUsuario] = @IdUsuario AND [FechaAcceso] >= @DesdeUtc
+ORDER BY [FechaAcceso] DESC;";
+
+            using var connection = new SqlConnection(connectionString);
+            return (await connection.QueryAsync<AuditoriaAcceso>(sql, new { IdUsuario = idUsuario, DesdeUtc = desdeUtc })).ToList();
+        }
+
+        public async Task<List<AuditoriaSesion>> ObtenerSesionesUsuarioAsync(int idUsuario, DateTime desdeUtc)
+        {
+            const string sql = @"
+SELECT TOP (1000)
+    s.[IdSesion], s.[IdUsuario], u.[Nombre], u.[Cargo],
+    s.[FechaInicio], s.[UltimaActividad], s.[FechaExpiracion], s.[Activa], s.[Ip], s.[UserAgent]
+FROM [dgmesnie].[Sesion] s
+INNER JOIN [dgmesnie].[Usuario] u ON u.[IdUsuario] = s.[IdUsuario]
+WHERE s.[IdUsuario] = @IdUsuario AND s.[FechaInicio] >= @DesdeUtc
+ORDER BY s.[FechaInicio] DESC;";
+
+            using var connection = new SqlConnection(connectionString);
+            return (await connection.QueryAsync<AuditoriaSesion>(sql, new { IdUsuario = idUsuario, DesdeUtc = desdeUtc })).ToList();
+        }
+
+        public async Task<List<AuditoriaAccion>> ObtenerAccionesUsuarioAsync(int idUsuario, DateTime desdeLocal)
+        {
+            const string sql = @"
+SELECT TOP (3000)
+    [Timestamp] AS TimestampLocal, [Pagina], [Accion], [Controlador], [Tipo], [Elemento], [Valor]
+FROM [dgmesnie].[ActividadLog]
+WHERE [IdUsuario] = @IdUsuario AND [Timestamp] >= @DesdeLocal
+ORDER BY [Timestamp] DESC;";
+
+            using var connection = new SqlConnection(connectionString);
+            return (await connection.QueryAsync<AuditoriaAccion>(sql, new { IdUsuario = idUsuario, DesdeLocal = desdeLocal })).ToList();
+        }
+
+        public async Task<List<AuditoriaAccesoFecha>> ObtenerAccesosDesdeAsync(DateTime desdeUtc)
+        {
+            const string sql = @"
+SELECT [FechaAcceso], [IdUsuario]
+FROM [dgmesnie].[Acceso]
+WHERE [FechaAcceso] >= @DesdeUtc;";
+
+            using var connection = new SqlConnection(connectionString);
+            return (await connection.QueryAsync<AuditoriaAccesoFecha>(sql, new { DesdeUtc = desdeUtc })).ToList();
         }
 
     }

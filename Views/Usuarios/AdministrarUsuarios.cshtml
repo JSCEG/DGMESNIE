@@ -158,11 +158,10 @@
                                             title="Enviar alta por correo" aria-label="Enviar alta por correo a @user.Nombre">
                                         <i class="bi bi-envelope-arrow-up"></i>
                                     </button>
-                                    <a href="@Url.Action("Eliminar", "Usuarios", new { id = user.IdUsuario })"
-                                       class="is-delete delete-link" title="Eliminar usuario"
-                                       aria-label="Eliminar usuario @user.Nombre">
+                                    <button type="button" class="is-delete delete-link" data-id="@user.IdUsuario"
+                                            title="Eliminar usuario" aria-label="Eliminar usuario @user.Nombre">
                                         <i class="bi bi-trash"></i>
-                                    </a>
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -189,9 +188,13 @@
                 </div>
                 <div class="modal-sec__foot">
                     <button type="button" class="btn-sec" data-bs-dismiss="modal">Cancelar</button>
-                    <a href="#" class="btn-sec btn-sec--primary" id="confirmDeleteButton">
-                        <i class="bi bi-trash"></i> Eliminar
-                    </a>
+                    @* Eliminar va por POST con antiforgery: un enlace GET permitía borrar cuentas desde cualquier página *@
+                    <form asp-action="Eliminar" asp-controller="Usuarios" method="post" id="confirmDeleteForm" class="d-inline">
+                        <input type="hidden" name="id" id="confirmDeleteId" value="" />
+                        <button type="submit" class="btn-sec btn-sec--primary" id="confirmDeleteButton">
+                            <i class="bi bi-trash"></i> Eliminar
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -270,26 +273,21 @@
                 document.body.appendChild(el);
             });
 
-            var confirmDeleteButton = document.getElementById("confirmDeleteButton");
+            var confirmDeleteId = document.getElementById("confirmDeleteId");
+            var confirmDeleteForm = document.getElementById("confirmDeleteForm");
 
             document.addEventListener("click", function (e) {
                 var link = e.target.closest(".delete-link");
                 if (!link) return;
                 e.preventDefault();
-                confirmDeleteButton.href = link.href;
-                console.info("[Usuarios] Solicitud de eliminación preparada", {
-                    href: link.href,
-                    idUsuario: link.href.split('/').pop()
-                });
+                confirmDeleteId.value = link.dataset.id;
+                console.info("[Usuarios] Solicitud de eliminación preparada", { idUsuario: link.dataset.id });
                 new bootstrap.Modal(document.getElementById("confirmDeleteModal")).show();
             });
 
-            if (confirmDeleteButton) {
-                confirmDeleteButton.addEventListener("click", function () {
-                    console.info("[Usuarios] Confirmación de eliminación", {
-                        href: confirmDeleteButton.href,
-                        idUsuario: confirmDeleteButton.href.split('/').pop()
-                    });
+            if (confirmDeleteForm) {
+                confirmDeleteForm.addEventListener("submit", function () {
+                    console.info("[Usuarios] Confirmación de eliminación", { idUsuario: confirmDeleteId.value });
                 });
             }
         });

@@ -7,6 +7,41 @@ using System;
 
 public class AutorizacionFiltro : ActionFilterAttribute
 {
+    // Único usuario con acceso a la administración del sistema (auditoría de accesos y sesiones).
+    public const int IdAdministradorSistema = 1;
+
+    // Controladores reservados al administrador del sistema, con las acciones que
+    // aun así necesita cualquier usuario en sesión.
+    private static readonly Dictionary<string, HashSet<string>> ControladoresSoloAdministrador = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Bitacora"] = new(StringComparer.OrdinalIgnoreCase) { "RegistrarActividad", "GetUltimasAcciones" },
+        // La gestión de cuentas es del administrador. "Mi cuenta", notificaciones y ayuda
+        // siguen abiertas, pero el controlador las limita a la cuenta en sesión.
+        ["Usuarios"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "ModeloCuentaCompuesto",
+            "MonitoreoUsuario",
+            "GetNotifications",
+            "MarkNotificationAsRead",
+            "NotificationDetails",
+            "AllNotifications",
+            "DetalleNotificacion",
+            "DeleteNotification",
+            "Ayuda",
+            "Creditos",
+            "Guia_Consulta_Publica",
+            "Resena",
+            "Encuesta",
+            "EnviarEncuesta",
+            "Gracias"
+        }
+    };
+
+    // Indica si la acción del controlador está reservada al administrador del sistema.
+    public static bool EsSoloAdministrador(string controller, string? action) =>
+        ControladoresSoloAdministrador.TryGetValue(controller ?? string.Empty, out var accionesAbiertas)
+        && !accionesAbiertas.Contains(action ?? string.Empty);
+
     private static readonly HashSet<string> PublicAccesoActions = new(StringComparer.OrdinalIgnoreCase)
     {
         "Login",
@@ -108,6 +143,18 @@ public class AutorizacionFiltro : ActionFilterAttribute
 
             if (perfilUsuario != null && int.TryParse(perfilUsuario.IdUsuario, out int idUsuario))
             {
+                if (idUsuario != IdAdministradorSistema && EsSoloAdministrador(controller, action))
+                {
+                    Console.WriteLine($"Acceso denegado a administración: {perfilUsuario.Nombre} ({idUsuario}) intentó {controller}/{action}");
+                    var esAjax = string.Equals(context.HttpContext.Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase)
+                        || context.HttpContext.Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase)
+                        || !HttpMethods.IsGet(context.HttpContext.Request.Method);
+                    context.Result = esAjax
+                        ? new JsonResult(new { error = "Solo el administrador del sistema puede consultar esta información." }) { StatusCode = StatusCodes.Status403Forbidden }
+                        : new RedirectToActionResult("SinPermiso", "Acceso", new { modulo = controller });
+                    return;
+                }
+
                 var restrictedControllers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
                     "InformePormenorizado",

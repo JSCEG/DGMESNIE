@@ -40,6 +40,8 @@ namespace NSIE.Controllers
         }
 
         // Elimina un usuario por ID
+        [HttpPost]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Eliminar(int id)
         {
             try
@@ -143,16 +145,26 @@ namespace NSIE.Controllers
             });
         }
 
-        private bool EsAdministrador()
+        // IdUsuario de la cuenta en sesión; 0 si no hay perfil válido.
+        private int IdUsuarioSesion()
         {
             var perfilJson = HttpContext.Session.GetString("PerfilUsuario");
-            if (string.IsNullOrEmpty(perfilJson)) return false;
+            if (string.IsNullOrEmpty(perfilJson)) return 0;
 
             var perfil = JsonConvert.DeserializeObject<PerfilUsuario>(perfilJson);
-            return perfil != null
-                && (perfil.IdUsuario == "1" || perfil.IdUsuario == "31" || perfil.IdUsuario == "86"
-                    || perfil.Rol == "Administrador" || perfil.Rol_Nombre == "Administrador");
+            return perfil != null && int.TryParse(perfil.IdUsuario, out var idUsuario) ? idUsuario : 0;
         }
+
+        private bool EsAdministrador() => IdUsuarioSesion() == AutorizacionFiltro.IdAdministradorSistema;
+
+        // Solo el administrador consulta cuentas ajenas: para el resto el id del
+        // cliente se ignora y se usa la cuenta en sesión.
+        private int IdUsuarioPermitido(int idSolicitado) =>
+            EsAdministrador() && idSolicitado > 0 ? idSolicitado : IdUsuarioSesion();
+
+        // Una notificación solo la ve o modifica su destinatario (o el administrador).
+        private bool PuedeUsarNotificacion(Notificacion? notificacion) =>
+            notificacion != null && (EsAdministrador() || notificacion.ID_Usuario == IdUsuarioSesion());
 
         // ============================
         // 2. REGISTRO DE NUEVO USUARIO
@@ -383,7 +395,7 @@ namespace NSIE.Controllers
         // Muestra el modelo compuesto de cuenta
         public async Task<IActionResult> ModeloCuentaCompuesto(int id)
         {
-            var user = await repositorioUsuarios.ObtenerUsuarioPorId(id);
+            var user = await repositorioUsuarios.ObtenerUsuarioPorId(IdUsuarioPermitido(id));
             if (user == null) return NotFound();
 
             var model = new ModeloCuentaCompuesto
@@ -444,6 +456,10 @@ namespace NSIE.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ModeloCuentaCompuesto(ModeloCuentaCompuesto model)
         {
+            // Cambia datos y rol de la cuenta: el filtro deja abierta la acción por el GET de "Mi cuenta".
+            if (!EsAdministrador())
+                return RedirectToAction("SinPermiso", "Acceso", new { modulo = "Usuarios" });
+
             if (!ModelState.IsValid)
                 return View(model);
 
@@ -484,7 +500,7 @@ namespace NSIE.Controllers
         // Devuelve datos de monitoreo de usuario en JSON
         public async Task<IActionResult> MonitoreoUsuario(int id, string? nombre = null)
         {
-            var userViewModel = await repositorioUsuarios.ObtenerUsuarioPorId(id);
+            var userViewModel = await repositorioUsuarios.ObtenerUsuarioPorId(IdUsuarioPermitido(id));
             if (userViewModel == null)
                 return NotFound();
 
@@ -544,8 +560,9 @@ namespace NSIE.Controllers
         // ============================
 
         [HttpGet]
-        public async Task<IActionResult> GetNotifications(int userId)
+        public async Task<IActionResult> GetNotifications()
         {
+            var userId = IdUsuarioSesion();
             var totalUnreadCount = await repositorioUsuarios.GetUnreadNotificationsCountAsync(userId);
             var notifications = await repositorioUsuarios.GetNotificationsByUserIdAsync(userId);
             return Json(new { totalUnreadCount, notifications });
@@ -556,6 +573,9 @@ namespace NSIE.Controllers
         {
             try
             {
+                if (!PuedeUsarNotificacion(await repositorioUsuarios.ObtenerNotificacionPorId(notificationId)))
+                    return Json(new { success = false, message = "No se encontró la notificación." });
+
                 bool success = await repositorioUsuarios.MarkNotificationAsReadAsync(notificationId);
                 return Json(new { success, message = success ? null : "No se pudo actualizar la notificación." });
             }
@@ -570,7 +590,7 @@ namespace NSIE.Controllers
             if (id.HasValue && id.Value > 0)
             {
                 var notification = await repositorioUsuarios.ObtenerNotificacionPorId(id.Value);
-                if (notification == null)
+                if (!PuedeUsarNotificacion(notification))
                     return NotFound();
 
                 var modelFromDb = new NotificationDetails
@@ -596,9 +616,9 @@ namespace NSIE.Controllers
             return View(model);
         }
 
-        public async Task<IActionResult> AllNotifications(int userId)
+        public async Task<IActionResult> AllNotifications()
         {
-            var notificaciones = await repositorioUsuarios.GetAllNotificationsAsync(userId);
+            var notificaciones = await repositorioUsuarios.GetAllNotificationsAsync(IdUsuarioSesion());
             return View(notificaciones);
         }
 
@@ -619,7 +639,7 @@ namespace NSIE.Controllers
         public async Task<IActionResult> DetalleNotificacion(int id)
         {
             var notification = await repositorioUsuarios.ObtenerNotificacionPorId(id);
-            if (notification == null)
+            if (!PuedeUsarNotificacion(notification))
                 return NotFound();
             return View(notification);
         }
@@ -690,6 +710,10 @@ namespace NSIE.Controllers
         {
             try
             {
+                // Cada usuario borra sus notificaciones ya vistas desde AllNotifications.
+                if (!PuedeUsarNotificacion(await repositorioUsuarios.ObtenerNotificacionPorId(notificationId)))
+                    return Json(new { success = false, message = "No se encontró la notificación." });
+
                 var result = await repositorioUsuarios.DeleteNotificationAsync(notificationId);
 
                 if (result)
