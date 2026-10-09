@@ -517,6 +517,7 @@
     }
 
     function irALugar(lugar) {
+        state.map.invalidateSize({ pan: false });
         if (state.resaltado) state.map.removeLayer(state.resaltado);
         state.resaltado = L.geoJSON(lugar.feature, {
             style: { color: '#9B2247', weight: 2.5, fillColor: '#9B2247', fillOpacity: .12 },
@@ -534,6 +535,11 @@
         if (!state.capas[key].on) {
             if (chk) chk.checked = true;
             await toggleCapa(key, true);
+        } else if (!state.capas[key].indice) {
+            // La capa sigue descargándose: se espera para volar ya con el pin.
+            status(`Cargando ${MERCADO[key].label.toLowerCase()}…`);
+            state.map.setView([item.latitud || 23.6, item.longitud || -102.5], item.latitud ? 14 : 5);
+            await toggleCapa(key, true);
         }
         let mk = state.capas[key].indice && state.capas[key].indice.get(item.numeroPermiso);
         if (!mk && state.soloVigentes) {
@@ -544,6 +550,7 @@
         if (mk) {
             // zoomToShowLayer de MarkerCluster espera un _icon y los circleMarker (canvas)
             // no lo tienen; a zoom 16 ya no hay agrupación, así que basta con centrar.
+            state.map.invalidateSize({ pan: false });
             const ll = mk.getLatLng();
             const abrir = () => setTimeout(() => mk.openPopup(), 60);
             if (state.map.getZoom() >= 16 && state.map.getCenter().distanceTo(ll) < 5) abrir();
@@ -1220,6 +1227,12 @@
 
         state.map = L.map('map', { zoomControl: false, preferCanvas: true, minZoom: 4, maxZoom: 19, worldCopyJump: false });
         L.control.zoom({ position: 'bottomright' }).addTo(state.map);
+        // Si el contenedor cambia de tamaño (animación del Home, scrollbar, paneles,
+        // pantalla completa) Leaflet conserva el tamaño viejo y "centra" mal: el pin
+        // queda en la orilla o tapado. Se le avisa cada vez que cambia.
+        if (window.ResizeObserver) {
+            new ResizeObserver(() => state.map.invalidateSize({ pan: false })).observe(document.getElementById('map'));
+        }
         L.control.scale({ position: 'bottomright', imperial: false }).addTo(state.map);
         // La posición vive en el hash (#zoom/lat/lon) para compartir la vista, como antes.
         if (!/^#\d+\/-?[\d.]+\/-?[\d.]+/.test(location.hash)) state.map.fitBounds(MEXICO);

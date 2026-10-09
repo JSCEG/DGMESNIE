@@ -919,6 +919,10 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
     private const string CacheIndiceBusqueda = "permisos-energeticos:indice-busqueda";
     private static readonly TimeSpan VigenciaIndice = TimeSpan.FromMinutes(30);
 
+    // Un solo armado del índice a la vez: sin esto, al vencer la caché cada tecla del
+    // buscador lanzaba su propia consulta pesada y se encimaban en la base.
+    private static readonly SemaphoreSlim CandadoIndice = new(1, 1);
+
     private readonly IRepositorioPermisosEnergeticos _repository;
     private readonly IMemoryCache _cache;
 
@@ -1081,17 +1085,48 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
             return indice;
         }
 
-        var filas = await _repository.ObtenerIndiceBusquedaAsync(cancellationToken);
-        indice = filas
-            .Select(f => new EntradaIndice(
-                f,
-                Normalizar(string.Join(' ', f.NumeroPermiso, f.Nombre, f.Entidad, f.Municipio)),
-                Normalizar(f.NumeroPermiso),
-                Normalizar(f.Nombre)))
-            .ToList();
-        _cache.Set(CacheIndiceBusqueda, indice, VigenciaIndice);
-        return indice;
+        await CandadoIndice.WaitAsync(cancellationToken);
+        try
+        {
+            if (_cache.TryGetValue(CacheIndiceBusqueda, out indice) && indice is not null)
+            {
+                return indice;
+            }
+
+            // El armado no se cancela con la petición que lo inició: lo aprovechan las demás.
+            var filas = await _repository.ObtenerIndiceBusquedaAsync(CancellationToken.None);
+            indice = filas
+                .Select(CoordenadaValida)
+                .Select(f => new EntradaIndice(
+                    f,
+                    Normalizar(string.Join(' ', f.NumeroPermiso, f.Nombre, f.Entidad, f.Municipio)),
+                    Normalizar(f.NumeroPermiso),
+                    Normalizar(f.Nombre)))
+                .ToList();
+            _cache.Set(CacheIndiceBusqueda, indice, VigenciaIndice);
+            return indice;
+        }
+        finally
+        {
+            CandadoIndice.Release();
+        }
     }
+
+    // Mismo recorte que las capas: una coordenada fuera de México (p. ej. una longitud
+    // capturada sin punto decimal) haría volar el mapa al vacío.
+    private static PermisoEnergeticoBusquedaItem CoordenadaValida(PermisoEnergeticoBusquedaItem f) =>
+        f.Latitud is >= 14 and <= 33.5 && f.Longitud is >= -118 and <= -86
+            ? f
+            : new PermisoEnergeticoBusquedaItem
+            {
+                Tipo = f.Tipo,
+                NumeroPermiso = f.NumeroPermiso,
+                Nombre = f.Nombre,
+                Entidad = f.Entidad,
+                Municipio = f.Municipio,
+                TipoPermiso = f.TipoPermiso,
+                Estatus = f.Estatus
+            };
 
     private static string Normalizar(string? value)
     {
