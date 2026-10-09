@@ -129,3 +129,30 @@ public sealed class PermisoEnergeticoEnviarFichaInput
     public List<int> UsuarioIds { get; set; } = new();
     public string MensajeAdicional { get; set; } = string.Empty;
 }
+
+public sealed class PermisoEnergeticoBusquedaItem
+{
+    public string Tipo { get; init; } = string.Empty;
+    public string NumeroPermiso { get; init; } = string.Empty;
+    public string Nombre { get; init; } = string.Empty;
+    public string Entidad { get; init; } = string.Empty;
+    public string Municipio { get; init; } = string.Empty;
+    public string TipoPermiso { get; init; } = string.Empty;
+    public string Estatus { get; init; } = string.Empty;
+    public double? Latitud { get; init; }
+    public double? Longitud { get; init; }
+}
+
+public sealed class PermisoEnergeticoBusquedaConteo
+{
+    public string Tipo { get; init; } = string.Empty;
+    public int Total { get; init; }
+}
+
+public sealed class PermisosEnergeticosBusqueda
+{
+    public required string Termino { get; init; }
+    public int Total { get; init; }
+    public required IReadOnlyList<PermisoEnergeticoBusquedaConteo> PorTipo { get; init; }
+    public required IReadOnlyList<PermisoEnergeticoBusquedaItem> Resultados { get; init; }
+}

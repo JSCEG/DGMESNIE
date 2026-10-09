@@ -1,5 +1,6 @@
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Caching.Memory;
 using NSIE.Models;
 using System.Globalization;
 using System.Text;
@@ -21,6 +22,9 @@ public interface IRepositorioPermisosEnergeticos
         string numeroPermiso,
         PermisoEnergeticoContextoAcceso acceso,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PermisoEnergeticoBusquedaItem>> ObtenerIndiceBusquedaAsync(
+        CancellationToken cancellationToken);
 }
 
 public interface IServicioPermisosEnergeticos
@@ -40,10 +44,47 @@ public interface IServicioPermisosEnergeticos
         string numeroPermiso,
         PermisoEnergeticoContextoAcceso acceso,
         CancellationToken cancellationToken);
+
+    Task<PermisosEnergeticosBusqueda?> BuscarAsync(
+        string termino,
+        int limite,
+        CancellationToken cancellationToken);
 }
 
 public sealed class RepositorioPermisosEnergeticos : IRepositorioPermisosEnergeticos
 {
+    // Une los cuatro inventarios con entidad y municipio resueltos por clave INEGI.
+    // EfId/MpoId traen formatos distintos por vista ("09", "19-NUEVO LEÓN", "07 CHIAPAS"),
+    // pero los primeros 2/3 caracteres siempre son la clave.
+    private const string BusquedaCte = @"
+WITH P AS (
+    SELECT 'electricidad' AS Tipo, NumeroPermiso, RazonSocial, CONVERT(nvarchar(60), EfId) AS EfId, CONVERT(nvarchar(80), MpoId) AS MpoId, TipoPermiso, Estatus, LatitudGeo, LongitudGeo FROM dbo.vElectricidad_autorizado_mapa
+    UNION ALL
+    SELECT 'gas-natural', NumeroPermiso, RazonSocial, CONVERT(nvarchar(60), EfId), CONVERT(nvarchar(80), MpoId), TipoPermiso, Estatus, LatitudGeo, LongitudGeo FROM dbo.vGasNatural_autorizado_mapa
+    UNION ALL
+    SELECT 'gas-lp', NumeroPermiso, RazonSocial, CONVERT(nvarchar(60), EfId), CONVERT(nvarchar(80), MpoId), TipoPermiso, Estatus, LatitudGeo, LongitudGeo FROM dbo.vGasLP_autorizado_mapa
+    UNION ALL
+    SELECT 'petroliferos', NumeroPermiso, RazonSocial, CONVERT(nvarchar(60), EfId), CONVERT(nvarchar(80), MpoId), TipoPermiso, Estatus, LatitudGeo, LongitudGeo FROM dbo.vExpendios_autorizado_mapa
+),
+Q AS (
+    SELECT
+        p.Tipo,
+        COALESCE(p.NumeroPermiso, '') AS NumeroPermiso,
+        COALESCE(NULLIF(LTRIM(RTRIM(p.RazonSocial)), ''), p.NumeroPermiso, '') AS Nombre,
+        COALESCE(ef.EF_Nombre, '') AS Entidad,
+        COALESCE(m.Municipio_Nombre, '') AS Municipio,
+        COALESCE(LTRIM(RTRIM(p.TipoPermiso)), '') AS TipoPermiso,
+        COALESCE(p.Estatus, '') AS Estatus,
+        p.LatitudGeo AS Latitud,
+        p.LongitudGeo AS Longitud
+    FROM P p
+    LEFT JOIN dbo.Entidades_Federativas ef
+        ON ef.EF_ID COLLATE DATABASE_DEFAULT = LEFT(LTRIM(p.EfId), 2) COLLATE DATABASE_DEFAULT
+    LEFT JOIN dbo.Municipios m
+        ON m.EF_ID = ef.EF_ID
+       AND m.MunicipioID COLLATE DATABASE_DEFAULT = LEFT(LTRIM(p.MpoId), 3) COLLATE DATABASE_DEFAULT
+)";
+
     private const string BboxWhere = @"
 WHERE LatitudGeo BETWEEN @MinLat AND @MaxLat
   AND LongitudGeo BETWEEN @MinLon AND @MaxLon
@@ -441,6 +482,21 @@ ORDER BY Nombre_Campo;
             ["numerodemodulosdespachadores"] = "Módulos despachadores",
             ["tiendadeconveniencia"] = "Tienda de conveniencia"
         };
+
+    public async Task<IReadOnlyList<PermisoEnergeticoBusquedaItem>> ObtenerIndiceBusquedaAsync(
+        CancellationToken cancellationToken)
+    {
+        var command = new CommandDefinition(
+            BusquedaCte + @"
+SELECT Tipo, NumeroPermiso, Nombre, Entidad, Municipio, TipoPermiso, Estatus, Latitud, Longitud
+FROM Q;",
+            cancellationToken: cancellationToken);
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        var rows = await connection.QueryAsync<PermisoEnergeticoBusquedaItem>(command);
+        return rows.ToList();
+    }
 
     private static PermisoQueryDefinition? ObtenerDefinicion(string tipo)
     {
@@ -860,11 +916,16 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
     private static readonly IReadOnlyCollection<string> SupportedTypes =
         new[] { "electricidad", "gas-natural", "gas-lp", "petroliferos" };
 
-    private readonly IRepositorioPermisosEnergeticos _repository;
+    private const string CacheIndiceBusqueda = "permisos-energeticos:indice-busqueda";
+    private static readonly TimeSpan VigenciaIndice = TimeSpan.FromMinutes(30);
 
-    public ServicioPermisosEnergeticos(IRepositorioPermisosEnergeticos repository)
+    private readonly IRepositorioPermisosEnergeticos _repository;
+    private readonly IMemoryCache _cache;
+
+    public ServicioPermisosEnergeticos(IRepositorioPermisosEnergeticos repository, IMemoryCache cache)
     {
         _repository = repository;
+        _cache = cache;
     }
 
     public IReadOnlyCollection<string> TiposSoportados => SupportedTypes;
@@ -961,4 +1022,100 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
             acceso,
             cancellationToken);
     }
+
+    public async Task<PermisosEnergeticosBusqueda?> BuscarAsync(
+        string termino,
+        int limite,
+        CancellationToken cancellationToken)
+    {
+        var normalized = (termino ?? string.Empty).Trim();
+        if (normalized.Length < 2)
+        {
+            return null;
+        }
+
+        // Cada palabra debe aparecer en permiso, razón social, entidad o municipio,
+        // sin distinguir acentos ni mayúsculas ("pemex tabasco", "monterrey gas").
+        var palabras = Normalizar(normalized)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(6)
+            .ToArray();
+        if (palabras.Length == 0)
+        {
+            return null;
+        }
+
+        var indice = await ObtenerIndiceAsync(cancellationToken);
+        var permisoBuscado = Normalizar(normalized);
+        var coincidencias = indice
+            .Where(e => palabras.All(p => e.Texto.Contains(p, StringComparison.Ordinal)))
+            .ToList();
+
+        var resultados = coincidencias
+            .OrderBy(e => e.Permiso == permisoBuscado ? 0
+                : e.Permiso.StartsWith(permisoBuscado, StringComparison.Ordinal) ? 1
+                : e.NombreNormalizado.StartsWith(permisoBuscado, StringComparison.Ordinal) ? 2
+                : 3)
+            .ThenBy(e => e.Item.Nombre, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(e => e.Item.NumeroPermiso, StringComparer.Ordinal)
+            .Take(Math.Clamp(limite, 1, 500))
+            .Select(e => e.Item)
+            .ToList();
+
+        return new PermisosEnergeticosBusqueda
+        {
+            Termino = normalized,
+            Total = coincidencias.Count,
+            PorTipo = coincidencias
+                .GroupBy(e => e.Item.Tipo)
+                .Select(g => new PermisoEnergeticoBusquedaConteo { Tipo = g.Key, Total = g.Count() })
+                .ToList(),
+            Resultados = resultados
+        };
+    }
+
+    private async Task<IReadOnlyList<EntradaIndice>> ObtenerIndiceAsync(CancellationToken cancellationToken)
+    {
+        if (_cache.TryGetValue(CacheIndiceBusqueda, out IReadOnlyList<EntradaIndice>? indice) && indice is not null)
+        {
+            return indice;
+        }
+
+        var filas = await _repository.ObtenerIndiceBusquedaAsync(cancellationToken);
+        indice = filas
+            .Select(f => new EntradaIndice(
+                f,
+                Normalizar(string.Join(' ', f.NumeroPermiso, f.Nombre, f.Entidad, f.Municipio)),
+                Normalizar(f.NumeroPermiso),
+                Normalizar(f.Nombre)))
+            .ToList();
+        _cache.Set(CacheIndiceBusqueda, indice, VigenciaIndice);
+        return indice;
+    }
+
+    private static string Normalizar(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var decomposed = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(decomposed.Length);
+        foreach (var c in decomposed)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(char.IsWhiteSpace(c) ? ' ' : c);
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private sealed record EntradaIndice(
+        PermisoEnergeticoBusquedaItem Item,
+        string Texto,
+        string Permiso,
+        string NombreNormalizado);
 }

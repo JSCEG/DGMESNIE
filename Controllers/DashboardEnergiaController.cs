@@ -152,6 +152,45 @@ public sealed class DashboardEnergiaController : ControllerBase
         }
     }
 
+    [HttpGet("PermisosEnergeticos/Buscar")]
+    [ResponseCache(Duration = 120, Location = ResponseCacheLocation.Client)]
+    [ProducesResponseType(typeof(PermisosEnergeticosBusqueda), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PermisosEnergeticosBusqueda>> BuscarPermisosEnergeticos(
+        [FromQuery] string q,
+        [FromQuery] int limite = 200,
+        CancellationToken cancellationToken = default)
+    {
+        var termino = (q ?? string.Empty).Trim();
+        if (termino.Length < 2 || termino.Length > 120 || termino.Any(char.IsControl))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Búsqueda no válida",
+                detail: "Escribe entre 2 y 120 caracteres: número de permiso, razón social, entidad o municipio.");
+        }
+
+        try
+        {
+            var result = await _service.BuscarAsync(termino, limite, cancellationToken);
+            return result is null
+                ? Problem(statusCode: StatusCodes.Status400BadRequest, title: "Búsqueda no válida")
+                : Ok(result);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new EmptyResult();
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "Falló la búsqueda de permisos energéticos para {Termino}.", termino);
+            return Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Fuente de permisos no disponible",
+                detail: "No fue posible consultar el inventario institucional en este momento.");
+        }
+    }
+
     private PerfilUsuario? ObtenerPerfilUsuario()
     {
         var json = HttpContext.Session.GetString("PerfilUsuario");
