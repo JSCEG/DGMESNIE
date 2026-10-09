@@ -467,6 +467,7 @@
     }
 
     function mostrarSinUbicacion(key) {
+        $('#semResMapa').onclick = null;
         const lista = sinUbicacionFiltrados(key);
         const m = MERCADO[key];
         state.busqueda = null;
@@ -1029,6 +1030,8 @@
             state.busqueda = await r.json();
             state.filtroRes = new Set();
             $('#semResMapa').hidden = false;
+            $('#semResMapa').onclick = null;   // listas del cono / sin ubicación ponen el suyo
+            $('#semResCsv').onclick = null;
             status('');
             renderResultados();
             mostrarHits(true);
@@ -1217,6 +1220,7 @@
     }
 
     function programarAnalisis() {
+        if ((clima.conos || []).length) programarCono();
         clearTimeout(analisis.timer);
         analisis.timer = setTimeout(() => {
             if (!$('#semAnalisis').hidden) renderAnalisis();
@@ -1244,7 +1248,7 @@
             ? `<button type="button" data-ana-nacional="1">México</button> <i class="bi bi-chevron-right"></i> <strong>${esc(ENTIDADES[analisis.entidad] || analisis.entidad)}</strong>`
             : '<strong>México</strong> <span>· toca una entidad para ver sus municipios</span>';
         if (!activas.length) {
-            cuerpo.innerHTML = '<div class="sem-res-nota">Enciende al menos una capa de permisos para ver el análisis.</div>';
+            cuerpo.innerHTML = htmlConoAnalisis() + '<div class="sem-res-nota">Enciende al menos una capa de permisos para ver el análisis.</div>';
             analisis.ultimo = null;
             return;
         }
@@ -1281,7 +1285,7 @@
                 <span class="sem-bar-track"><span class="sem-bar-seg" style="width:${(t.n / maxTipo) * 100}%;background:var(--sem-${t.key})"></span></span>
                 <span class="sem-bar-val">${t.n.toLocaleString('es-MX')}</span></div>`).join('');
 
-        cuerpo.innerHTML = `
+        cuerpo.innerHTML = htmlConoAnalisis() + `
             <div class="sem-kpis">
                 <div class="sem-kpi sem-kpi--total"><span>${filas.length.toLocaleString('es-MX')}</span><small>permisos</small></div>
                 ${kpis}
@@ -1504,19 +1508,32 @@
         });
 
         const nombres = (data.tormentas || []).map(t => `${t.nombre} (${CLASES[t.clasificacion] || t.clasificacion})`);
-        return { grupo, resumen: nombres.length ? `Ciclones activos: ${nombres.join(' · ')}` : 'Sin ciclones tropicales activos en este momento.' };
+        const tormentaDe = f => (data.tormentas || []).find(t => t.id === f.properties.tormentaId)
+            || (data.tormentas || []).find(t => norm(f.properties.stormname).includes(norm(t.nombre))) || {};
+        const conos = capas.cono.map(f => {
+            const t = tormentaDe(f);
+            return {
+                feature: f,
+                nombre: t.nombre || f.properties.stormname || 'Ciclón',
+                clase: CLASES[t.clasificacion] || t.clasificacion || '',
+                categoria: categoriaSS(t.intensidadKt || 0)
+            };
+        });
+        return { grupo, conos, resumen: nombres.length ? `Ciclones activos: ${nombres.join(' · ')}` : 'Sin ciclones tropicales activos en este momento.' };
     }
 
     async function toggleHuracanes(on) {
         clearInterval(clima.timerHuracanes);
         if (clima.huracanes) { state.map.removeLayer(clima.huracanes); clima.huracanes = null; }
-        if (!on) return;
+        if (!on) { clima.conos = []; calcularEnCono(); return; }
         const pintar = async (avisar) => {
             try {
-                const { grupo, resumen } = await cargarHuracanes();
+                const { grupo, resumen, conos } = await cargarHuracanes();
                 if (!document.querySelector('input[data-extra="huracanes"]').checked) return;
                 if (clima.huracanes) state.map.removeLayer(clima.huracanes);
                 clima.huracanes = grupo.addTo(state.map);
+                clima.conos = conos;
+                calcularEnCono();
                 if (avisar) status(resumen, 6000);
             } catch (err) {
                 console.error(err);
@@ -1526,6 +1543,110 @@
         status('Consultando huracanes activos…');
         await pintar(true);
         clima.timerHuracanes = setInterval(() => pintar(false), 10 * 60 * 1000);
+    }
+
+    // ---------- infraestructura dentro del cono de pronóstico ----------
+    // Cruza los permisos de los cuatro mercados (con el filtro de estatus vigente) contra el
+    // cono de cada ciclón activo. Si un cono toca México se descargan los mercados que falten.
+    const MEXICO_BBOX = [-118.5, 14, -86.5, 33];
+    const tocaMexico = b => !(b[2] < MEXICO_BBOX[0] || b[0] > MEXICO_BBOX[2] || b[3] < MEXICO_BBOX[1] || b[1] > MEXICO_BBOX[3]);
+    let conoTimer = null;
+    function programarCono() { clearTimeout(conoTimer); conoTimer = setTimeout(calcularEnCono, 300); }
+
+    async function calcularEnCono() {
+        const conos = (clima.conos || []).filter(c => window.turf && c.feature && c.feature.geometry);
+        clima.enCono = [];
+        if (!conos.length) { pintarAvisoCono(); return; }
+        const cajas = conos.map(c => turf.bbox(c.feature));
+        if (cajas.some(tocaMexico)) {
+            await Promise.all(MERCADOS.map(m => state.capas[m.key].data ? null : cargarCapa(m.key)));
+        }
+        clima.enCono = conos.map((c, i) => {
+            const caja = cajas[i];
+            const items = [];
+            const porMercado = {};
+            for (const m of MERCADOS) {
+                for (const f of state.capas[m.key].data || []) {
+                    const p = f.properties || {};
+                    if (!pasaEstatus(p)) continue;
+                    const [lon, lat] = f.geometry.coordinates;
+                    if (lon < caja[0] || lon > caja[2] || lat < caja[1] || lat > caja[3]) continue;
+                    if (!turf.booleanPointInPolygon([lon, lat], c.feature)) continue;
+                    items.push({ key: m.key, p, lat, lon });
+                    porMercado[m.key] = (porMercado[m.key] || 0) + 1;
+                }
+            }
+            return { ...c, items, porMercado };
+        });
+        pintarAvisoCono();
+        if (!$('#semAnalisis').hidden) renderAnalisis();
+    }
+
+    const resumenMercados = pm => MERCADOS.filter(m => pm[m.key]).map(m => `${m.code} ${pm[m.key].toLocaleString('es-MX')}`).join(' · ');
+
+    function pintarAvisoCono() {
+        const el = $('#semCiclonAviso');
+        if (!el) return;
+        const con = (clima.enCono || []).filter(c => c.items.length);
+        if (!con.length) { el.hidden = true; return; }
+        el.innerHTML = `<i class="bi bi-hurricane"></i> ${con.map(c => `<span><b>${esc(c.nombre)}</b>: ${c.items.length.toLocaleString('es-MX')} permisos en el cono <small>(${resumenMercados(c.porMercado)})</small></span>`).join('')}`;
+        el.hidden = false;
+    }
+
+    function htmlConoAnalisis() {
+        const lista = clima.enCono || [];
+        if (!lista.length) return '';
+        return `<h4 class="sem-ana-h"><i class="bi bi-hurricane"></i> Infraestructura en el cono de pronóstico</h4>
+            <div class="sem-cono-lista">${lista.map((c, i) => `
+                <div class="sem-cono-item">
+                    <div><strong>${esc(c.nombre)}</strong> <small>${esc(c.clase)}${c.categoria ? ` · cat. ${c.categoria}` : ''}</small></div>
+                    <div class="sem-cono-num">${c.items.length.toLocaleString('es-MX')} <small>permisos</small></div>
+                    <div class="sem-cono-mercados">${c.items.length ? resumenMercados(c.porMercado) : 'Sin permisos dentro del cono'}</div>
+                    ${c.items.length ? `<div class="sem-cono-acciones">
+                        <button type="button" class="sem-btn" data-cono-lista="${i}"><i class="bi bi-list-ul"></i><span>Ver lista</span></button>
+                        <button type="button" class="sem-btn" data-cono-mapa="${i}"><i class="bi bi-pin-map"></i><span>Resaltar</span></button></div>` : ''}
+                </div>`).join('')}</div>
+            <p class="sem-ana-nota">Cono del National Hurricane Center (NOAA). Permisos ${{ vigentes: 'vigentes', 'no-vigentes': 'no vigentes', todos: 'vigentes y no vigentes' }[state.estatus]} con ubicación.</p>`;
+    }
+
+    function resaltarCono(i) {
+        const c = (clima.enCono || [])[i];
+        if (!c || !c.items.length) return;
+        if (state.hits) state.map.removeLayer(state.hits);
+        state.hits = L.layerGroup(c.items.map(x => L.marker([x.lat, x.lon], {
+            icon: L.divIcon({ className: '', html: '<div class="sem-hit" style="width:22px;height:22px"></div>', iconSize: [22, 22] }),
+            keyboard: false
+        }).on('click', () => irAPermiso({ tipo: x.key, numeroPermiso: x.p.numeroPermiso, latitud: x.lat, longitud: x.lon })))).addTo(state.map);
+        state.map.fitBounds(L.latLngBounds(c.items.map(x => [x.lat, x.lon])), { padding: [40, 40], maxZoom: 11 });
+    }
+
+    function listaCono(i) {
+        const c = (clima.enCono || [])[i];
+        if (!c) return;
+        state.busqueda = null;
+        $('#semResTitulo').textContent = `En el cono de ${c.nombre} (${c.items.length.toLocaleString('es-MX')})`;
+        $('#semResResumen').innerHTML = `<span class="sem-res-nota" style="padding:0">${esc(resumenMercados(c.porMercado))}</span>`;
+        const orden = MERCADOS.map(m => m.key);
+        const items = c.items.slice().sort((a, b) => orden.indexOf(a.key) - orden.indexOf(b.key) || String(a.p.nombre).localeCompare(String(b.p.nombre)));
+        clima.listaCono = items;
+        $('#semResLista').innerHTML = items.map((x, j) => `<div class="sem-res-fila">
+            <a class="sem-res-doc" href="${ligaPermisoCne(x.p.numeroPermiso)}" target="_blank" rel="noopener" title="Ver permiso"><i class="bi bi-file-earmark-text"></i></a>
+            <button type="button" class="sem-res-item" data-cono-ir="${j}"><span class="sem-chip sem-chip--${x.key}">${MERCADO[x.key].code}</span>
+            <span><strong>${esc(x.p.nombre)}</strong><small>${esc(x.p.numeroPermiso)} · ${esc([x.p.municipioNombre, x.p.entidadNombre].filter(Boolean).join(', '))}</small></span></button></div>`).join('');
+        $('#semResNota').textContent = '';
+        $('#semResMapa').hidden = false;
+        $('#semResMapa').onclick = () => resaltarCono(i);
+        $('#semResCsv').onclick = () => {
+            const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+            const filas = items.map(x => [c.nombre, MERCADO[x.key].label, x.p.numeroPermiso, x.p.nombre, x.p.estatus, x.p.entidadNombre, x.p.municipioNombre, x.lat, x.lon].map(q).join(','));
+            const blob = new Blob(['\ufeff' + ['Ciclon', 'Mercado', 'Permiso', 'RazonSocial', 'Estatus', 'Estado', 'Municipio', 'Latitud', 'Longitud'].join(',') + '\n' + filas.join('\n')], { type: 'text/csv;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `permisos_cono_${norm(c.nombre).replace(/[^a-z0-9]+/g, '_')}.csv`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        };
+        abrirPanel('resultados');
     }
 
     const colorViento = kmh => kmh >= 90 ? '#8A1F44' : kmh >= 60 ? '#C0552E' : kmh >= 40 ? '#E0A12E' : kmh >= 20 ? '#2E6FB0' : '#7FA7D4';
@@ -1660,6 +1781,10 @@
         $('#semAnalisis').addEventListener('click', e => {
             const ent = e.target.closest('[data-ent]');
             const mun = e.target.closest('[data-mun]');
+            const cl = e.target.closest('[data-cono-lista]');
+            const cm = e.target.closest('[data-cono-mapa]');
+            if (cl) { listaCono(Number(cl.dataset.conoLista)); return; }
+            if (cm) { resaltarCono(Number(cm.dataset.conoMapa)); return; }
             if (e.target.closest('[data-ana-nacional]')) elegirEntidad(null);
             else if (e.target.closest('[data-ana-todo]')) { analisis.verTodo = !analisis.verTodo; renderAnalisis(); }
             else if (e.target.closest('[data-ana-csv]')) descargarTablaAnalisis();
@@ -1707,12 +1832,19 @@
             renderResultados();
             mostrarHits(false);
         });
+        $('#semCiclonAviso').addEventListener('click', () => abrirPanel('analisis'));
         $('#semResLista').addEventListener('click', e => {
+            const ci = e.target.closest('[data-cono-ir]');
+            if (ci) {
+                const x = clima.listaCono[Number(ci.dataset.conoIr)];
+                if (x) irAPermiso({ tipo: x.key, numeroPermiso: x.p.numeroPermiso, latitud: x.lat, longitud: x.lon });
+                return;
+            }
             const b = e.target.closest('[data-res]');
             if (b) irAPermiso(resultadosFiltrados()[Number(b.dataset.res)]);
         });
-        $('#semResMapa').addEventListener('click', () => mostrarHits(true));
-        $('#semResCsv').addEventListener('click', exportarCsv);
+        $('#semResMapa').addEventListener('click', () => { if (state.busqueda) mostrarHits(true); });
+        $('#semResCsv').addEventListener('click', () => { if (state.busqueda) exportarCsv(); });
 
         window.addEventListener('themechange', () => {
             const dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
