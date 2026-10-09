@@ -36,5 +36,22 @@ namespace NSIE.Models
         public string Mercado_Vigente { get; set; }
         public string Mercado_FechaMod { get; set; }
         public string Mercado_Comentario { get; set; }
+
+        // sp_ObtenerPerfilSesion devuelve en Rol el nombre y deja Mercado_ID en NULL cuando
+        // el rol no tiene mercado. El resto del sistema compara Rol con el id numérico y
+        // usa Mercado_ID "0" como "Todos", así que se normaliza antes de guardar en sesión.
+        public PerfilUsuario NormalizarParaSesion()
+        {
+            if (!string.IsNullOrWhiteSpace(Rol_ID))
+            {
+                Rol_Nombre ??= Rol;
+                Rol = Rol_ID;
+            }
+            if (string.IsNullOrWhiteSpace(Mercado_ID))
+            {
+                Mercado_ID = "0";
+            }
+            return this;
+        }
     }
 }

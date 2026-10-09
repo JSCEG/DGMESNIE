@@ -470,7 +470,7 @@ namespace NSIE.Controllers
                     return RedirectToAction("SesionExpirada");
                 }
 
-                HttpContext.Session.SetString("PerfilUsuario", JsonConvert.SerializeObject(perfilUsuario));
+                HttpContext.Session.SetString("PerfilUsuario", JsonConvert.SerializeObject(perfilUsuario.NormalizarParaSesion()));
                 HttpContext.Session.SetString(
                     "SeccionesUsuario",
                     JsonConvert.SerializeObject(ObtenerSeccionesUsuario(cn, idUsuario)));
@@ -704,7 +704,7 @@ namespace NSIE.Controllers
                 return View("Login");
             }
 
-            var perfilUsuarioJson = JsonConvert.SerializeObject(perfilUsuario);
+            var perfilUsuarioJson = JsonConvert.SerializeObject(perfilUsuario.NormalizarParaSesion());
             HttpContext.Session.SetString("PerfilUsuario", perfilUsuarioJson);
             await IniciarSesionInterna(
                 idUsuario,

@@ -92,7 +92,7 @@ namespace NSIE.Controllers
                 if (perfilUsuario != null)
                 {
                     // Almacenar el perfil del usuario en la sesión
-                    var perfilUsuarioJson = JsonConvert.SerializeObject(perfilUsuario);
+                    var perfilUsuarioJson = JsonConvert.SerializeObject(perfilUsuario.NormalizarParaSesion());
                     HttpContext.Session.SetString("PerfilUsuario", perfilUsuarioJson);
 
                     // Redirigir a la vista de pre-registro
