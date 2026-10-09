@@ -25,7 +25,9 @@
     const state = {
         map: null,
         capas: {},          // key → { data, grupo, indice, on, cargando, meta }
-        soloVigentes: false,
+        estatus: 'vigentes',   // vigentes | no-vigentes | todos
+        soloExactas: false,
+        actualizacion: null,
         ductos: {},
         estadosLayer: null,
         municipiosListos: false,
@@ -48,7 +50,15 @@
         // 1900-01-01 es el valor de relleno de la fuente cuando no hay fecha.
         return isNaN(d) || d.getFullYear() < 1950 ? '' : d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
     };
-    const esVigente = estatus => norm(estatus).startsWith('vigente');
+    // Filtros de la capa: estatus (vigente según la carga CNE) y precisión de la coordenada.
+    const pasaEstatus = p => state.estatus === 'todos' || (state.estatus === 'vigentes' ? p.vigente !== false : p.vigente === false);
+    const pasaFiltros = p => pasaEstatus(p) && (!state.soloExactas || (p.precision || 'exacta') === 'exacta');
+    const TEXTO_PRECISION = {
+        exacta: 'Ubicación del permiso (fuente oficial)',
+        calle: 'Ubicación aproximada por dirección',
+        municipio: 'Ubicación aproximada (centro del municipio)'
+    };
+    const TABLA_MERCADO = { electricidad: 'Electricidad_autorizado', petroliferos: 'Expendios_autorizado', 'gas-lp': 'GasLP_autorizado', 'gas-natural': 'GasNatural_autorizado' };
     const esCelular = () => window.matchMedia('(max-width: 768px)').matches;
 
     // ---------- tipo de infraestructura → ícono ----------
@@ -90,12 +100,13 @@
     }
 
     const iconosCache = new Map();
-    function iconoPin(m, cat) {
-        const k = m.key + cat.icon;
+    function iconoPin(m, cat, mods) {
+        const extra = mods ? ` ${mods}` : '';
+        const k = m.key + cat.icon + extra;
         if (!iconosCache.has(k)) {
             iconosCache.set(k, L.divIcon({
                 className: 'sem-pin-wrap',
-                html: `<span class="sem-pin" style="--c:${m.color}"><i class="bi ${cat.icon}"></i></span>`,
+                html: `<span class="sem-pin${extra}" style="--c:${m.color}"><i class="bi ${cat.icon}"></i></span>`,
                 iconSize: [26, 26],
                 iconAnchor: [13, 13],
                 popupAnchor: [0, -12]
@@ -173,7 +184,8 @@
         if (capa.data || capa.cargando) return capa.cargando;
         const m = MERCADO[key];
         status(`Cargando ${m.label.toLowerCase()}…`);
-        const url = `${API}?tipo=${encodeURIComponent(key)}&minLat=14&minLon=-118&maxLat=33.5&maxLon=-86`;
+        // estatus=todos: el filtro Vigente / No vigente se aplica en pantalla.
+        const url = `${API}?tipo=${encodeURIComponent(key)}&minLat=14&minLon=-118.5&maxLat=33&maxLon=-86.5&estatus=todos`;
         // Un reintento: la primera consulta en frío puede tardar y cortarse.
         const pedir = () => fetch(url, { credentials: 'same-origin' }).then(r => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -208,10 +220,13 @@
         const marcadores = [];
         for (const f of capa.data) {
             const p = f.properties || {};
-            if (state.soloVigentes && !esVigente(p.estatus)) continue;
+            if (!pasaFiltros(p)) continue;
             const [lon, lat] = f.geometry.coordinates;
             const cat = categoria(key, p);
-            const mk = L.marker([lat, lon], { icon: iconoPin(m, cat), title: `${cat.label} · ${p.nombre}`, keyboard: false });
+            const prec = p.precision || 'exacta';
+            const mods = [p.vigente === false ? 'sem-pin--novig' : '', prec !== 'exacta' ? 'sem-pin--aprox' : ''].filter(Boolean).join(' ');
+            const titulo = prec !== 'exacta' ? TEXTO_PRECISION[prec] : `${cat.label} · ${p.nombre}`;
+            const mk = L.marker([lat, lon], { icon: iconoPin(m, cat, mods), title: titulo, keyboard: false });
             mk.feature = f;
             mk._semTipo = key;
             mk.bindPopup(() => popupHtml(key, p, lat, lon), { className: 'sem-popup', maxWidth: 340 });
@@ -235,7 +250,7 @@
         if (!capa.indice) pintarCapa(key);
         state.map.addLayer(capa.grupo);
         actualizarConteo(key);
-        actualizarCorte();
+        cargarSinUbicacion(key).then(() => pintarContadorSinUbicacion(key));
     }
 
     function actualizarConteo(key, n) {
@@ -255,7 +270,7 @@
         const porTipo = new Map();
         for (const f of capa.data) {
             const p = f.properties || {};
-            if (state.soloVigentes && !esVigente(p.estatus)) continue;
+            if (!pasaFiltros(p)) continue;
             const cat = categoria(key, p);
             const actual = porTipo.get(cat.label) || { cat, n: 0 };
             actual.n++;
@@ -268,13 +283,89 @@
             .join('');
     }
 
+    function fechaLarga(v) {
+        if (!v) return '';
+        const d = new Date(v);
+        return isNaN(d) ? '' : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    async function cargarActualizacion() {
+        try {
+            const r = await fetch(`${API}/Actualizacion`, { credentials: 'same-origin' });
+            state.actualizacion = r.ok ? await r.json() : { disponible: false };
+        } catch (e) {
+            state.actualizacion = { disponible: false };
+        }
+        actualizarCorte();
+    }
+
     function actualizarCorte() {
-        const el = $('#semCorte');
+        const a = state.actualizacion || {};
+        const general = a.disponible && a.general ? `Datos actualizados al ${fechaLarga(a.general)} · Fuente: CNE` : 'Fecha de actualización no disponible';
+        document.querySelectorAll('[data-sem-actualizacion]').forEach(el => { el.textContent = general; });
+        for (const m of MERCADOS) {
+            const el = document.querySelector(`[data-fecha="${m.key}"]`);
+            if (!el) continue;
+            const f = a.porTabla ? a.porTabla[TABLA_MERCADO[m.key]] : null;
+            el.textContent = f ? `Actualizado al ${fmtFecha(f)}` : 'Fecha de actualización no disponible';
+        }
+    }
+
+    // ---------- permisos sin ubicación (no se pintan; se listan) ----------
+    const sinUbicacion = {};
+    async function cargarSinUbicacion(key) {
+        if (sinUbicacion[key]) return sinUbicacion[key];
+        try {
+            const r = await fetch(`${API}/SinUbicacion?tipo=${encodeURIComponent(key)}&estatus=todos`, { credentials: 'same-origin' });
+            sinUbicacion[key] = r.ok ? await r.json() : [];
+        } catch (e) {
+            sinUbicacion[key] = [];
+        }
+        return sinUbicacion[key];
+    }
+    const sinUbicacionFiltrados = key => (sinUbicacion[key] || []).filter(x => pasaEstatus({ vigente: x.esVigente }));
+
+    function pintarContadorSinUbicacion(key) {
+        const el = document.querySelector(`[data-sinubic="${key}"]`);
         if (!el) return;
-        const partes = MERCADOS
-            .filter(m => state.capas[m.key].meta && state.capas[m.key].meta.fechaCorte)
-            .map(m => `${m.code} ${fmtFecha(state.capas[m.key].meta.fechaCorte)}`);
-        el.textContent = partes.length ? `Último otorgamiento cargado: ${partes.join(' · ')}` : '';
+        if (!sinUbicacion[key]) { el.hidden = true; return; }
+        const n = sinUbicacionFiltrados(key).length;
+        el.hidden = false;
+        el.textContent = `Permisos sin ubicación: ${n.toLocaleString('es-MX')}`;
+        el.disabled = n === 0;
+    }
+
+    function mostrarSinUbicacion(key) {
+        const lista = sinUbicacionFiltrados(key);
+        const m = MERCADO[key];
+        state.busqueda = null;
+        if (state.hits) { state.map.removeLayer(state.hits); state.hits = null; }
+        $('#semResTitulo').textContent = `Sin ubicación · ${m.label} (${lista.length.toLocaleString('es-MX')})`;
+        $('#semResResumen').innerHTML = '<span class="sem-res-nota" style="padding:0">No se pintan en el mapa: sus coordenadas faltan, valen 0 o caen fuera de México.</span>';
+        const grupos = new Map();
+        lista.forEach(x => {
+            const k = `${x.municipio || 'Municipio sin dato'}, ${x.entidad || 'Estado sin dato'}`;
+            if (!grupos.has(k)) grupos.set(k, []);
+            grupos.get(k).push(x);
+        });
+        $('#semResLista').innerHTML = [...grupos.entries()].map(([g, xs]) => `
+            <div class="sem-sinubic-grupo">${esc(g)} <span>${xs.length}</span></div>
+            ${xs.map(x => `<div class="sem-res-item is-static"><span class="sem-chip sem-chip--${key}">${m.code}</span>
+                <span><strong>${esc(x.nombre)}</strong><small>${esc(x.numeroPermiso)} · ${esc(x.estatus)}</small></span></div>`).join('')}`).join('')
+            || '<div class="sem-res-nota">Todos los permisos de esta capa tienen ubicación.</div>';
+        $('#semResNota').textContent = '';
+        $('#semResMapa').hidden = true;
+        $('#semResCsv').onclick = () => {
+            const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+            const filas = lista.map(x => [x.numeroPermiso, x.nombre, x.entidad, x.municipio, x.estatus].map(q).join(','));
+            const blob = new Blob(['\ufeff' + ['Permiso', 'RazonSocial', 'Estado', 'Municipio', 'Estatus'].join(',') + '\n' + filas.join('\n')], { type: 'text/csv;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `permisos_sin_ubicacion_${key}.csv`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        };
+        abrirPanel('resultados');
     }
 
     function popupHtml(key, p, lat, lon) {
@@ -282,17 +373,17 @@
         const cat = categoria(key, p);
         const filas = [];
         const add = (k, v) => { if (v) filas.push(`<dt>${k}</dt><dd>${esc(v)}</dd>`); };
+        add('Mercado', m.label);
         add('Infraestructura', cat.label);
         add('Tipo', p.tipoPermiso);
-        if (p.clasificacion && p.clasificacion !== p.tipoPermiso) add('Clasificación', p.clasificacion);
         add('Tecnología', p.tecnologia);
-        add('Estatus', p.estatus);
+        add('Estatus', `${p.estatus || ''}${p.vigente === false ? ' · no vigente' : ''}`);
+        add('Otorgamiento', fmtFecha(p.fechaOtorgamiento));
         const cap = p.capacidad > 0 ? `${fmtNum(p.capacidad)} ${p.unidadCapacidad || ''}`.trim()
             : (p.capacidadTexto && p.capacidadTexto !== '0' ? p.capacidadTexto : '');
         add('Capacidad', cap);
-        add('Ubicación', [nombreMunicipio(p.municipio, p.entidad), nombreEntidad(p.entidad)].filter(Boolean).join(', '));
-        add('Otorgamiento', fmtFecha(p.fechaOtorgamiento));
-        add('Operación', fmtFecha(p.fechaOperacion));
+        add('Ubicación', [p.municipioNombre || nombreMunicipio(p.municipio, p.entidad), p.entidadNombre || nombreEntidad(p.entidad)].filter(Boolean).join(', '));
+        add('Precisión', TEXTO_PRECISION[p.precision || 'exacta']);
 
         const ficha = `${API}/Ficha?tipo=${encodeURIComponent(key)}&numeroPermiso=${encodeURIComponent(p.numeroPermiso)}`;
         const street = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
@@ -669,9 +760,9 @@
             await toggleCapa(key, true);
         }
         let mk = state.capas[key].indice && state.capas[key].indice.get(item.numeroPermiso);
-        if (!mk && state.soloVigentes) {
-            // El permiso no está vigente: se quita el filtro para poder mostrarlo.
-            setSoloVigentes(false);
+        if (!mk && (state.estatus !== 'todos' || state.soloExactas)) {
+            // El permiso queda fuera por filtros (no vigente o ubicación aproximada): se abren.
+            setFiltros({ estatus: 'todos', soloExactas: false });
             mk = state.capas[key].indice && state.capas[key].indice.get(item.numeroPermiso);
         }
         if (mk) {
@@ -787,6 +878,7 @@
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             state.busqueda = await r.json();
             state.filtroRes = new Set();
+            $('#semResMapa').hidden = false;
             status('');
             renderResultados();
             mostrarHits(true);
@@ -817,7 +909,7 @@
             ? lista.map((r, i) => `<button type="button" class="sem-res-item" data-res="${i}">
                 <span class="sem-chip sem-chip--${r.tipo}">${MERCADO[r.tipo].code}</span>
                 <span><strong>${esc(r.nombre)}</strong><small>${esc(r.numeroPermiso)}</small>
-                <small>${esc([r.municipio, r.entidad].filter(Boolean).join(', '))}${r.estatus ? ' · ' + esc(r.estatus) : ''}</small></span></button>`).join('')
+                <small>${esc([r.municipio, r.entidad].filter(Boolean).join(', '))}${r.estatus ? ' · ' + esc(r.estatus) : ''}${r.vigente === false ? ' <span class="sem-tag-novig">No vigente</span>' : ''}${r.latitud == null ? ' <span class="sem-tag-novig">Sin ubicación</span>' : ''}</small></span></button>`).join('')
             : '<div class="sem-res-nota">Sin resultados con los filtros actuales.</div>';
         $('#semResNota').textContent = b.total > b.resultados.length
             ? `Se muestran los primeros ${b.resultados.length} de ${b.total.toLocaleString('es-MX')}. Agrega otra palabra (estado, municipio) para afinar.`
@@ -864,14 +956,17 @@
     }
 
     // ---------- filtro de estatus ----------
-    function setSoloVigentes(valor) {
-        state.soloVigentes = valor;
-        document.querySelectorAll('[data-estatus]').forEach(b => b.classList.toggle('is-on', (b.dataset.estatus === 'vigentes') === valor));
+    function setFiltros(cambios) {
+        Object.assign(state, cambios);
+        document.querySelectorAll('[data-estatus]').forEach(b => b.classList.toggle('is-on', b.dataset.estatus === state.estatus));
+        const ex = document.querySelector('[data-exactas]');
+        if (ex) ex.classList.toggle('is-on', state.soloExactas);
         for (const m of MERCADOS) {
             const capa = state.capas[m.key];
             if (!capa.data) continue;
             pintarCapa(m.key);
             if (!capa.on) actualizarConteo(m.key);
+            pintarContadorSinUbicacion(m.key);
         }
     }
 
@@ -947,7 +1042,7 @@
             if (!capa.on || !capa.data) continue;
             for (const f of capa.data) {
                 const p = f.properties || {};
-                if (state.soloVigentes && !esVigente(p.estatus)) continue;
+                if (!pasaFiltros(p)) continue;
                 filas.push({ key: m.key, ent: claveEnt(p), mun: claveMun(p), munRaw: p.municipio, entRaw: p.entidad, cat: categoria(m.key, p) });
             }
         }
@@ -1048,7 +1143,7 @@
             <div class="sem-bars">${filasTipo}</div>
             <div class="sem-ana-pie">
                 <button type="button" class="sem-btn" data-ana-csv="1"><i class="bi bi-filetype-csv"></i><span>Descargar tabla</span></button>
-                <span>Según capas encendidas${state.soloVigentes ? ' · solo vigentes' : ''}.</span>
+                <span>Según capas encendidas · ${{ vigentes: 'solo vigentes', 'no-vigentes': 'solo no vigentes', todos: 'vigentes y no vigentes' }[state.estatus]}${state.soloExactas ? ' · ubicaciones exactas' : ''}.</span>
             </div>`;
         analisis.ultimo = { grupos, campo };
     }
@@ -1342,6 +1437,8 @@
                 <span class="sem-layer-name">${m.label}<small>${m.sub}</small></span>
                 <span class="sem-layer-count" data-conteo="${m.key}"></span>
             </label>
+            <div class="sem-layer-meta"><span data-fecha="${m.key}"></span>
+                <button type="button" class="sem-sinubic" data-sinubic="${m.key}" hidden></button></div>
             <ul class="sem-layer-tipos" data-tipos="${m.key}"></ul>`).join('');
         $('#semCapasPermisos').innerHTML = html;
     }
@@ -1380,7 +1477,16 @@
             else if (t.matches('input[data-extra]')) toggleExtra(t.dataset.extra, t.checked);
             else if (t.matches('input[name="semBase"]')) setBase(t.value);
         });
-        document.querySelectorAll('[data-estatus]').forEach(b => b.addEventListener('click', () => setSoloVigentes(b.dataset.estatus === 'vigentes')));
+        document.querySelectorAll('[data-estatus]').forEach(b => b.addEventListener('click', () => setFiltros({ estatus: b.dataset.estatus })));
+        const exactas = document.querySelector('[data-exactas]');
+        if (exactas) exactas.addEventListener('click', () => setFiltros({ soloExactas: !state.soloExactas }));
+        document.getElementById('semCapasPermisos').addEventListener('click', e => {
+            const b = e.target.closest('[data-sinubic]');
+            if (b) { e.preventDefault(); mostrarSinUbicacion(b.dataset.sinubic); }
+        });
+        // El botón "Ver en mapa" se oculta en la lista de sin ubicación; vuelve con cada búsqueda.
+        $('#semQBtn').addEventListener('click', () => { $('#semResMapa').hidden = false; });
+        cargarActualizacion();
 
         // eventos: barra
         $('#semCapasBtn').addEventListener('click', () => togglePanel('capas'));

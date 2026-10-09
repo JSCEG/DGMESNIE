@@ -36,8 +36,11 @@ public sealed class DashboardEnergiaController : ControllerBase
         [FromQuery] double minLon,
         [FromQuery] double maxLat,
         [FromQuery] double maxLon,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] string? estatus = null)
     {
+        // Por omisión sólo vigentes (como siempre vio el dashboard); el mapa SEM pide "todos".
+        var soloVigentes = !string.Equals(estatus, "todos", StringComparison.OrdinalIgnoreCase);
         var normalizedType = (tipo ?? string.Empty).Trim().ToLowerInvariant();
         if (!_service.TiposSoportados.Contains(normalizedType, StringComparer.Ordinal))
         {
@@ -63,6 +66,7 @@ public sealed class DashboardEnergiaController : ControllerBase
                 minLon,
                 maxLat,
                 maxLon,
+                soloVigentes,
                 cancellationToken);
 
             return result is null
@@ -153,6 +157,42 @@ public sealed class DashboardEnergiaController : ControllerBase
                 title: "Fuente de permisos no disponible",
                 detail: "No fue posible consultar la ficha del permiso en este momento.");
         }
+    }
+
+    [HttpGet("PermisosEnergeticos/SinUbicacion")]
+    [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]
+    public async Task<ActionResult<IReadOnlyList<PermisoSinUbicacion>>> PermisosSinUbicacion(
+        [FromQuery] string tipo,
+        [FromQuery] string? estatus,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.ObtenerSinUbicacionAsync(
+                tipo,
+                !string.Equals(estatus, "todos", StringComparison.OrdinalIgnoreCase),
+                cancellationToken);
+            return result is null
+                ? Problem(statusCode: StatusCodes.Status400BadRequest, title: "Tipo de permiso no válido")
+                : Ok(result);
+        }
+        catch (Exception ex) when (cancellationToken.IsCancellationRequested &&
+                                   ex is OperationCanceledException or InvalidOperationException)
+        {
+            return new EmptyResult();
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "Falló la consulta de permisos sin ubicación para {Tipo}.", tipo);
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Fuente de permisos no disponible");
+        }
+    }
+
+    [HttpGet("PermisosEnergeticos/Actualizacion")]
+    [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]
+    public async Task<ActionResult<ActualizacionPermisosCne>> ActualizacionPermisos(CancellationToken cancellationToken)
+    {
+        return Ok(await _service.ObtenerActualizacionAsync(cancellationToken));
     }
 
     [HttpGet("PermisosEnergeticos/Buscar")]

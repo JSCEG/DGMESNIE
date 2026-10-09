@@ -17,6 +17,10 @@ public sealed class PermisoEnergeticoRegistro
     public DateTime? FechaOperacion { get; init; }
     public double Latitud { get; init; }
     public double Longitud { get; init; }
+    public bool EsVigente { get; init; }
+    public string Comentarios { get; init; } = string.Empty;
+    public string EntidadNombre { get; init; } = string.Empty;
+    public string MunicipioNombre { get; init; } = string.Empty;
 }
 
 public sealed class PermisosEnergeticosDatos
@@ -25,6 +29,7 @@ public sealed class PermisosEnergeticosDatos
     public required string Mercado { get; init; }
     public required string Fuente { get; init; }
     public DateTime? FechaCorte { get; init; }
+    public int SinUbicacion { get; init; }
     public required IReadOnlyList<PermisoEnergeticoRegistro> Registros { get; init; }
 }
 
@@ -42,6 +47,7 @@ public sealed class PermisosEnergeticosMeta
     public required string Fuente { get; init; }
     public DateTime? FechaCorte { get; init; }
     public int Conteo { get; init; }
+    public int SinUbicacion { get; init; }
 }
 
 public sealed class PermisoEnergeticoFeature
@@ -74,6 +80,11 @@ public sealed class PermisoEnergeticoProperties
     public DateTime? FechaOtorgamiento { get; init; }
     public DateTime? FechaOperacion { get; init; }
     public required string Fuente { get; init; }
+    public bool Vigente { get; init; } = true;
+    // exacta | calle | municipio (según Comentarios de la carga CNE)
+    public string Precision { get; init; } = "exacta";
+    public string EntidadNombre { get; init; } = string.Empty;
+    public string MunicipioNombre { get; init; } = string.Empty;
 }
 
 public sealed class PermisoEnergeticoDetalle
@@ -141,6 +152,7 @@ public sealed class PermisoEnergeticoBusquedaItem
     public string Estatus { get; init; } = string.Empty;
     public double? Latitud { get; init; }
     public double? Longitud { get; init; }
+    public bool Vigente { get; init; } = true;
 }
 
 public sealed class PermisoEnergeticoBusquedaConteo
@@ -155,4 +167,22 @@ public sealed class PermisosEnergeticosBusqueda
     public int Total { get; init; }
     public required IReadOnlyList<PermisoEnergeticoBusquedaConteo> PorTipo { get; init; }
     public required IReadOnlyList<PermisoEnergeticoBusquedaItem> Resultados { get; init; }
+}
+
+public sealed class PermisoSinUbicacion
+{
+    public string NumeroPermiso { get; init; } = string.Empty;
+    public string Nombre { get; init; } = string.Empty;
+    public string Entidad { get; init; } = string.Empty;
+    public string Municipio { get; init; } = string.Empty;
+    public string Estatus { get; init; } = string.Empty;
+    public bool EsVigente { get; init; }
+}
+
+public sealed class ActualizacionPermisosCne
+{
+    public bool Disponible { get; init; }
+    public DateTime? General { get; init; }
+    public string Fuente { get; init; } = "CNE";
+    public Dictionary<string, DateTime?> PorTabla { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }

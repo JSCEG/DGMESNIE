@@ -15,7 +15,15 @@ public interface IRepositorioPermisosEnergeticos
         double minLon,
         double maxLat,
         double maxLon,
+        bool soloVigentes,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PermisoSinUbicacion>> ObtenerSinUbicacionAsync(
+        string tipo,
+        bool soloVigentes,
+        CancellationToken cancellationToken);
+
+    Task<ActualizacionPermisosCne> ObtenerActualizacionAsync(CancellationToken cancellationToken);
 
     Task<PermisoEnergeticoDetalle?> ObtenerDetalleAsync(
         string tipo,
@@ -37,6 +45,7 @@ public interface IServicioPermisosEnergeticos
         double minLon,
         double maxLat,
         double maxLon,
+        bool soloVigentes,
         CancellationToken cancellationToken);
 
     Task<PermisoEnergeticoDetalle?> ObtenerDetalleAsync(
@@ -44,6 +53,13 @@ public interface IServicioPermisosEnergeticos
         string numeroPermiso,
         PermisoEnergeticoContextoAcceso acceso,
         CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PermisoSinUbicacion>?> ObtenerSinUbicacionAsync(
+        string tipo,
+        bool soloVigentes,
+        CancellationToken cancellationToken);
+
+    Task<ActualizacionPermisosCne> ObtenerActualizacionAsync(CancellationToken cancellationToken);
 
     Task<PermisosEnergeticosBusqueda?> BuscarAsync(
         string termino,
@@ -53,43 +69,71 @@ public interface IServicioPermisosEnergeticos
 
 public sealed class RepositorioPermisosEnergeticos : IRepositorioPermisosEnergeticos
 {
-    // Une los cuatro inventarios con entidad y municipio resueltos por clave INEGI.
-    // EfId/MpoId traen formatos distintos por vista ("09", "19-NUEVO LEÓN", "07 CHIAPAS"),
-    // pero los primeros 2/3 caracteres siempre son la clave.
-    private const string BusquedaCte = @"
-WITH P AS (
-    SELECT 'electricidad' AS Tipo, NumeroPermiso, RazonSocial, CONVERT(nvarchar(60), EfId) AS EfId, CONVERT(nvarchar(80), MpoId) AS MpoId, TipoPermiso, Estatus, LatitudGeo, LongitudGeo FROM dbo.vElectricidad_autorizado_mapa
-    UNION ALL
-    SELECT 'gas-natural', NumeroPermiso, RazonSocial, CONVERT(nvarchar(60), EfId), CONVERT(nvarchar(80), MpoId), TipoPermiso, Estatus, LatitudGeo, LongitudGeo FROM dbo.vGasNatural_autorizado_mapa
-    UNION ALL
-    SELECT 'gas-lp', NumeroPermiso, RazonSocial, CONVERT(nvarchar(60), EfId), CONVERT(nvarchar(80), MpoId), TipoPermiso, Estatus, LatitudGeo, LongitudGeo FROM dbo.vGasLP_autorizado_mapa
-    UNION ALL
-    SELECT 'petroliferos', NumeroPermiso, RazonSocial, CONVERT(nvarchar(60), EfId), CONVERT(nvarchar(80), MpoId), TipoPermiso, Estatus, LatitudGeo, LongitudGeo FROM dbo.vExpendios_autorizado_mapa
-),
-Q AS (
-    SELECT
-        p.Tipo,
-        COALESCE(p.NumeroPermiso, '') AS NumeroPermiso,
-        COALESCE(NULLIF(LTRIM(RTRIM(p.RazonSocial)), ''), p.NumeroPermiso, '') AS Nombre,
-        COALESCE(ef.EF_Nombre, '') AS Entidad,
-        COALESCE(m.Municipio_Nombre, '') AS Municipio,
-        COALESCE(LTRIM(RTRIM(p.TipoPermiso)), '') AS TipoPermiso,
-        COALESCE(p.Estatus, '') AS Estatus,
-        p.LatitudGeo AS Latitud,
-        p.LongitudGeo AS Longitud
-    FROM P p
-    LEFT JOIN dbo.Entidades_Federativas ef
-        ON ef.EF_ID COLLATE DATABASE_DEFAULT = LEFT(LTRIM(p.EfId), 2) COLLATE DATABASE_DEFAULT
-    LEFT JOIN dbo.Municipios m
-        ON m.EF_ID = ef.EF_ID
-       AND m.MunicipioID COLLATE DATABASE_DEFAULT = LEFT(LTRIM(p.MpoId), 3) COLLATE DATABASE_DEFAULT
-)";
+    // Fuente única: las tablas base actualizadas contra el registro público de la CNE
+    // (9-oct-2026). Las vistas v*_autorizado_mapa dejaban fuera no vigentes y permisos
+    // sin coordenadas, y vElectricidad_autorizado trae nombres ficticios: no se usan.
+    private static readonly IReadOnlyDictionary<string, FuentePermisos> Fuentes = new Dictionary<string, FuentePermisos>(StringComparer.Ordinal)
+    {
+        ["electricidad"] = new("electricidad", "Electricidad", "Electricidad_autorizado", "Razón_social", "Longitud_GEO",
+            "COALESCE(LTRIM(RTRIM(t.[Tecnología])), '')", "COALESCE(LTRIM(RTRIM(t.[Clasifica_Menú])), '')",
+            "TRY_CONVERT(float, t.Capacidad_autorizada_MW)", "MW", "''", "TRY_CONVERT(date, t.Inicio_operaciones)"),
+        ["gas-natural"] = new("gas-natural", "Hidrocarburos · Gas natural", "GasNatural_autorizado", "Razón_Social", "longitud_GEO",
+            "''", "COALESCE(LTRIM(RTRIM(t.Tipo_permiso)), '')",
+            "CAST(NULL AS float)", "", "COALESCE(CONVERT(nvarchar(200), t.[Capacidad_diseño]), '')", "CAST(NULL AS date)"),
+        ["gas-lp"] = new("gas-lp", "Hidrocarburos · Gas LP", "GasLP_autorizado", "Razón_social", "Longitud_GEO",
+            "''", "COALESCE(LTRIM(RTRIM(t.Tipo_permiso)), '')",
+            "COALESCE(TRY_CONVERT(float, t.Capacidad_litros), TRY_CONVERT(float, t.[Capacidad_Instalación]))", "litros",
+            "COALESCE(CONVERT(nvarchar(100), t.[Capacidad_Instalación]), '')", "TRY_CONVERT(date, t.Inicio_operaciones)"),
+        ["petroliferos"] = new("petroliferos", "Hidrocarburos · Petrolíferos", "Expendios_autorizado", "Razón_social", "Longitud_GEO",
+            "''", "COALESCE(LTRIM(RTRIM(t.Tipo_permiso)), '')",
+            "TRY_CONVERT(float, t.Capacidad_autorizada_barriles)", "barriles", "''", "TRY_CONVERT(date, t.Inicio_operaciones)")
+    };
 
-    private const string BboxWhere = @"
-WHERE LatitudGeo BETWEEN @MinLat AND @MaxLat
-  AND LongitudGeo BETWEEN @MinLon AND @MaxLon
-  AND LatitudGeo BETWEEN 14 AND 33.5
-  AND LongitudGeo BETWEEN -118 AND -86";
+    private const string FuenteCne = "CNE · Registro público de permisos";
+
+    // Coordenada utilizable: ni NULL, ni 0, ni fuera de México.
+    private const string CoordenadaValida =
+        "COALESCE(Latitud, 0) BETWEEN 14 AND 33 AND COALESCE(Longitud, 0) BETWEEN -118.5 AND -86.5";
+
+    // Vigente: 'Vigente', 'Operando', 'En construcción', 'Por iniciar operaciones/obras'.
+    private const string EsVigenteSql = @"CAST(CASE WHEN LTRIM(t.Estatus) COLLATE Latin1_General_CI_AI LIKE 'vigente%'
+    OR LTRIM(t.Estatus) COLLATE Latin1_General_CI_AI LIKE 'operando%'
+    OR LTRIM(t.Estatus) COLLATE Latin1_General_CI_AI LIKE 'en construccion%'
+    OR LTRIM(t.Estatus) COLLATE Latin1_General_CI_AI LIKE 'por iniciar%' THEN 1 ELSE 0 END AS bit)";
+
+    private static string SqlBase(FuentePermisos f) => $@"
+SELECT
+    COALESCE(NULLIF(LTRIM(RTRIM(t.[{f.ColumnaRazon}])), ''), LTRIM(RTRIM(t.NumeroPermiso)), '') AS Nombre,
+    COALESCE(LTRIM(RTRIM(t.NumeroPermiso)), '') AS NumeroPermiso,
+    COALESCE(LTRIM(RTRIM(t.EF_ID)), '') AS Entidad,
+    COALESCE(LTRIM(RTRIM(t.MPO_ID)), '') AS Municipio,
+    COALESCE(LTRIM(RTRIM(ef.EF_Nombre)), '') AS EntidadNombre,
+    COALESCE(LTRIM(RTRIM(m.Municipio_Nombre)), '') AS MunicipioNombre,
+    COALESCE(LTRIM(RTRIM(t.Estatus)), '') AS Estatus,
+    {EsVigenteSql} AS EsVigente,
+    COALESCE(LTRIM(RTRIM(t.Tipo_permiso)), '') AS TipoPermiso,
+    {f.Tecnologia} AS Tecnologia,
+    {f.Clasificacion} AS Clasificacion,
+    {f.Capacidad} AS Capacidad,
+    '{f.Unidad}' AS UnidadCapacidad,
+    {f.CapacidadTexto} AS CapacidadTexto,
+    TRY_CONVERT(date, t.FechaOtorgamiento) AS FechaOtorgamiento,
+    {f.Operacion} AS FechaOperacion,
+    TRY_CONVERT(float, t.Latitud_GEO) AS Latitud,
+    TRY_CONVERT(float, t.[{f.ColumnaLongitud}]) AS Longitud,
+    COALESCE(CONVERT(nvarchar(max), t.Comentarios), '') AS Comentarios
+FROM dbo.[{f.Tabla}] t
+LEFT JOIN dbo.Entidades_Federativas ef ON ef.EF_ID = t.EF_ID
+LEFT JOIN dbo.Municipios m ON m.EF_ID = t.EF_ID AND m.MunicipioID = t.MPO_ID";
+
+    // Los cuatro inventarios para el buscador; sin coordenada utilizable, Latitud/Longitud van NULL.
+    private static readonly string BusquedaCte = "WITH Q AS (" + string.Join(Environment.NewLine + "UNION ALL" + Environment.NewLine,
+        Fuentes.Values.Select(f => $@"SELECT '{f.Tipo}' AS Tipo, NumeroPermiso, Nombre, EntidadNombre AS Entidad, MunicipioNombre AS Municipio,
+    TipoPermiso, Estatus,
+    CASE WHEN {CoordenadaValida} THEN Latitud END AS Latitud,
+    CASE WHEN {CoordenadaValida} THEN Longitud END AS Longitud,
+    EsVigente AS Vigente
+FROM ({SqlBase(f)}) b")) + ")";
 
     private readonly string _connectionString;
 
@@ -105,25 +149,33 @@ WHERE LatitudGeo BETWEEN @MinLat AND @MaxLat
         double minLon,
         double maxLat,
         double maxLon,
+        bool soloVigentes,
         CancellationToken cancellationToken)
     {
-        var definition = ObtenerDefinicion(tipo);
-        if (definition is null)
+        if (!Fuentes.TryGetValue(tipo, out var fuente))
         {
             return null;
         }
 
-        var parameters = new
-        {
-            MinLat = minLat,
-            MinLon = minLon,
-            MaxLat = maxLat,
-            MaxLon = maxLon
-        };
+        var baseSql = SqlBase(fuente);
+        var sql = $@"
+WITH B AS ({baseSql})
+SELECT TOP (60000) *
+FROM B
+WHERE {CoordenadaValida}
+  AND Latitud BETWEEN @MinLat AND @MaxLat
+  AND Longitud BETWEEN @MinLon AND @MaxLon
+  AND (@SoloVigentes = 0 OR EsVigente = 1)
+ORDER BY FechaOtorgamiento DESC, NumeroPermiso;
+
+SELECT MAX(TRY_CONVERT(date, FechaOtorgamiento)) FROM dbo.[{fuente.Tabla}];
+
+WITH B AS ({baseSql})
+SELECT COUNT(*) FROM B WHERE NOT ({CoordenadaValida}) AND (@SoloVigentes = 0 OR EsVigente = 1);";
 
         var command = new CommandDefinition(
-            definition.Query + Environment.NewLine + definition.CutoffQuery,
-            parameters,
+            sql,
+            new { MinLat = minLat, MinLon = minLon, MaxLat = maxLat, MaxLon = maxLon, SoloVigentes = soloVigentes },
             cancellationToken: cancellationToken);
 
         await using var connection = new SqlConnection(_connectionString);
@@ -131,14 +183,72 @@ WHERE LatitudGeo BETWEEN @MinLat AND @MaxLat
         using var multi = await connection.QueryMultipleAsync(command);
         var rows = (await multi.ReadAsync<PermisoEnergeticoRegistro>()).ToList();
         var cutoff = await multi.ReadFirstOrDefaultAsync<DateTime?>();
+        var sinUbicacion = await multi.ReadFirstOrDefaultAsync<int>();
 
         return new PermisosEnergeticosDatos
         {
-            Tipo = definition.Tipo,
-            Mercado = definition.Mercado,
-            Fuente = definition.Fuente,
+            Tipo = fuente.Tipo,
+            Mercado = fuente.Mercado,
+            Fuente = FuenteCne,
             FechaCorte = cutoff,
+            SinUbicacion = sinUbicacion,
             Registros = rows
+        };
+    }
+
+    public async Task<IReadOnlyList<PermisoSinUbicacion>> ObtenerSinUbicacionAsync(
+        string tipo,
+        bool soloVigentes,
+        CancellationToken cancellationToken)
+    {
+        if (!Fuentes.TryGetValue(tipo, out var fuente))
+        {
+            return Array.Empty<PermisoSinUbicacion>();
+        }
+
+        var sql = $@"
+WITH B AS ({SqlBase(fuente)})
+SELECT NumeroPermiso, Nombre, EntidadNombre AS Entidad, MunicipioNombre AS Municipio, Estatus, EsVigente
+FROM B
+WHERE NOT ({CoordenadaValida}) AND (@SoloVigentes = 0 OR EsVigente = 1)
+ORDER BY EntidadNombre, MunicipioNombre, Nombre;";
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        var rows = await connection.QueryAsync<PermisoSinUbicacion>(
+            new CommandDefinition(sql, new { SoloVigentes = soloVigentes }, cancellationToken: cancellationToken));
+        return rows.ToList();
+    }
+
+    public async Task<ActualizacionPermisosCne> ObtenerActualizacionAsync(CancellationToken cancellationToken)
+    {
+        // La tabla de control la crea el proceso de carga; si aún no existe no debe tronar.
+        const string sql = @"
+IF OBJECT_ID(N'dbo.Control_Actualizacion_CNE', N'U') IS NULL
+    SELECT CAST(NULL AS nvarchar(256)) AS Tabla, CAST(NULL AS datetime2) AS Fecha WHERE 1 = 0;
+ELSE
+    EXEC(N'SELECT Tabla, MAX(TRY_CONVERT(datetime2, FechaActualizacion)) AS Fecha FROM dbo.Control_Actualizacion_CNE GROUP BY Tabla');
+SELECT CAST(CASE WHEN OBJECT_ID(N'dbo.Control_Actualizacion_CNE', N'U') IS NULL THEN 0 ELSE 1 END AS bit);";
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        using var multi = await connection.QueryMultipleAsync(new CommandDefinition(sql, cancellationToken: cancellationToken));
+        var filas = (await multi.ReadAsync<(string Tabla, DateTime? Fecha)>()).ToList();
+        var existe = await multi.ReadFirstOrDefaultAsync<bool>();
+
+        var porTabla = new Dictionary<string, DateTime?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (tabla, fecha) in filas.Where(f => !string.IsNullOrWhiteSpace(f.Tabla)))
+        {
+            var clave = tabla.Trim();
+            var corta = clave.Contains('.') ? clave[(clave.LastIndexOf('.') + 1)..].Trim('[', ']') : clave.Trim('[', ']');
+            porTabla[corta] = fecha;
+        }
+
+        return new ActualizacionPermisosCne
+        {
+            Disponible = existe && porTabla.Values.Any(v => v is not null),
+            General = porTabla.Values.Where(v => v is not null).DefaultIfEmpty(null).Max(),
+            PorTabla = porTabla
         };
     }
 
@@ -174,6 +284,15 @@ FROM dbo.[{definition.ViewName}];
         using var multi = await connection.QueryMultipleAsync(command);
         var row = await multi.ReadFirstOrDefaultAsync();
         var cutoff = await multi.ReadFirstOrDefaultAsync<DateTime?>();
+        if (row is null && Fuentes.TryGetValue(definition.Tipo, out var fuenteBase))
+        {
+            // La vista excluye no vigentes y permisos sin coordenadas: se lee la tabla base.
+            row = await connection.QueryFirstOrDefaultAsync(new CommandDefinition(
+                $"SELECT TOP (1) * FROM dbo.[{fuenteBase.Tabla}] WHERE LTRIM(RTRIM(NumeroPermiso)) = @NumeroPermiso",
+                new { NumeroPermiso = normalizedPermit },
+                cancellationToken: cancellationToken));
+        }
+
         if (row is not IDictionary<string, object> values)
         {
             return null;
@@ -226,6 +345,8 @@ FROM dbo.[{definition.ViewName}];
                 values,
                 "RazonSocial",
                 "RazónSocial",
+                "Razón_social",
+                "Razón_Social",
                 "Nombre",
                 "Titular",
                 "Permisionario") ?? normalizedPermit,
@@ -488,7 +609,7 @@ ORDER BY Nombre_Campo;
     {
         var command = new CommandDefinition(
             BusquedaCte + @"
-SELECT Tipo, NumeroPermiso, Nombre, Entidad, Municipio, TipoPermiso, Estatus, Latitud, Longitud
+SELECT Tipo, NumeroPermiso, Nombre, Entidad, Municipio, TipoPermiso, Estatus, Latitud, Longitud, Vigente
 FROM Q;",
             cancellationToken: cancellationToken);
 
@@ -496,118 +617,6 @@ FROM Q;",
         await connection.OpenAsync(cancellationToken);
         var rows = await connection.QueryAsync<PermisoEnergeticoBusquedaItem>(command);
         return rows.ToList();
-    }
-
-    private static PermisoQueryDefinition? ObtenerDefinicion(string tipo)
-    {
-        return tipo switch
-        {
-            "electricidad" => new PermisoQueryDefinition(
-                "electricidad",
-                "Electricidad",
-                "CRE · Inventario de permisos eléctricos DGMESNIE",
-                @"
-SELECT TOP (25000)
-    COALESCE(NULLIF(LTRIM(RTRIM(RazonSocial)), ''), NULLIF(LTRIM(RTRIM(NumeroPermiso)), ''), 'Permiso eléctrico') AS Nombre,
-    COALESCE(NumeroPermiso, '') AS NumeroPermiso,
-    COALESCE(EfId, '') AS Entidad,
-    COALESCE(MpoId, '') AS Municipio,
-    COALESCE(Estatus, '') AS Estatus,
-    COALESCE(TipoPermiso, '') AS TipoPermiso,
-    COALESCE([Tecnología], '') AS Tecnologia,
-    COALESCE([Clasifica_Menú], '') AS Clasificacion,
-    TRY_CONVERT(float, CapacidadAutorizadaMW) AS Capacidad,
-    'MW' AS UnidadCapacidad,
-    '' AS CapacidadTexto,
-    FechaOtorgamiento,
-    InicioOperaciones AS FechaOperacion,
-    LatitudGeo AS Latitud,
-    LongitudGeo AS Longitud
-FROM dbo.vElectricidad_autorizado_mapa
-" + BboxWhere + @"
-ORDER BY FechaOtorgamiento DESC, NumeroPermiso;",
-                "SELECT MAX(FechaOtorgamiento) AS FechaCorte FROM dbo.vElectricidad_autorizado_mapa;"),
-
-            "gas-natural" => new PermisoQueryDefinition(
-                "gas-natural",
-                "Hidrocarburos · Gas natural",
-                "CRE · Inventario de permisos de gas natural DGMESNIE",
-                @"
-SELECT TOP (25000)
-    COALESCE(NULLIF(LTRIM(RTRIM(RazonSocial)), ''), NULLIF(LTRIM(RTRIM(NumeroPermiso)), ''), 'Permiso de gas natural') AS Nombre,
-    COALESCE(NumeroPermiso, '') AS NumeroPermiso,
-    COALESCE(EfId, '') AS Entidad,
-    COALESCE(MpoId, '') AS Municipio,
-    COALESCE(Estatus, '') AS Estatus,
-    COALESCE(TipoPermiso, '') AS TipoPermiso,
-    '' AS Tecnologia,
-    COALESCE(TipoPermiso, '') AS Clasificacion,
-    NULL AS Capacidad,
-    '' AS UnidadCapacidad,
-    COALESCE(CapacidadDiseño, '') AS CapacidadTexto,
-    FechaOtorgamiento,
-    NULL AS FechaOperacion,
-    LatitudGeo AS Latitud,
-    LongitudGeo AS Longitud
-FROM dbo.vGasNatural_autorizado_mapa
-" + BboxWhere + @"
-ORDER BY FechaOtorgamiento DESC, NumeroPermiso;",
-                "SELECT MAX(FechaOtorgamiento) AS FechaCorte FROM dbo.vGasNatural_autorizado_mapa;"),
-
-            "gas-lp" => new PermisoQueryDefinition(
-                "gas-lp",
-                "Hidrocarburos · Gas LP",
-                "CRE · Inventario de permisos de Gas LP DGMESNIE",
-                @"
-SELECT TOP (25000)
-    COALESCE(NULLIF(LTRIM(RTRIM(RazonSocial)), ''), NULLIF(LTRIM(RTRIM(NumeroPermiso)), ''), 'Permiso de Gas LP') AS Nombre,
-    COALESCE(NumeroPermiso, '') AS NumeroPermiso,
-    COALESCE(EfId, '') AS Entidad,
-    COALESCE(MpoId, '') AS Municipio,
-    COALESCE(Estatus, '') AS Estatus,
-    COALESCE(TipoPermiso, '') AS TipoPermiso,
-    '' AS Tecnologia,
-    COALESCE(NULLIF(SubTipo, ''), TipoPermiso, '') AS Clasificacion,
-    TRY_CONVERT(float, CapacidadInstalacion) AS Capacidad,
-    '' AS UnidadCapacidad,
-    COALESCE(CONVERT(nvarchar(100), CapacidadInstalacion), '') AS CapacidadTexto,
-    FechaDeOtorgamiento AS FechaOtorgamiento,
-    inicioOperaciones AS FechaOperacion,
-    LatitudGeo AS Latitud,
-    LongitudGeo AS Longitud
-FROM dbo.vGasLP_autorizado_mapa
-" + BboxWhere + @"
-ORDER BY FechaDeOtorgamiento DESC, NumeroPermiso;",
-                "SELECT MAX(FechaDeOtorgamiento) AS FechaCorte FROM dbo.vGasLP_autorizado_mapa;"),
-
-            "petroliferos" => new PermisoQueryDefinition(
-                "petroliferos",
-                "Hidrocarburos · Petrolíferos",
-                "CRE · Inventario de permisos de petrolíferos DGMESNIE",
-                @"
-SELECT TOP (25000)
-    COALESCE(NULLIF(LTRIM(RTRIM(RazonSocial)), ''), NULLIF(LTRIM(RTRIM(NumeroPermiso)), ''), 'Permiso de petrolíferos') AS Nombre,
-    COALESCE(NumeroPermiso, '') AS NumeroPermiso,
-    COALESCE(EfId, '') AS Entidad,
-    COALESCE(MpoId, '') AS Municipio,
-    COALESCE(Estatus, '') AS Estatus,
-    COALESCE(TipoPermiso, '') AS TipoPermiso,
-    '' AS Tecnologia,
-    COALESCE(NULLIF(TipoDeEstacion, ''), TipoPermiso, '') AS Clasificacion,
-    TRY_CONVERT(float, CapacidadAutorizadaBarriles) AS Capacidad,
-    'barriles' AS UnidadCapacidad,
-    COALESCE(CONVERT(nvarchar(100), CapacidadAutorizadaBarriles), '') AS CapacidadTexto,
-    FechaOtorgamiento,
-    InicioOperaciones AS FechaOperacion,
-    LatitudGeo AS Latitud,
-    LongitudGeo AS Longitud
-FROM dbo.vExpendios_autorizado_mapa
-" + BboxWhere + @"
-ORDER BY FechaOtorgamiento DESC, NumeroPermiso;",
-                "SELECT MAX(FechaOtorgamiento) AS FechaCorte FROM dbo.vExpendios_autorizado_mapa;"),
-
-            _ => null
-        };
     }
 
     private static PermisoDetailQueryDefinition? ObtenerDefinicionDetalle(string tipo)
@@ -878,12 +887,18 @@ ORDER BY FechaOtorgamiento DESC;",
         };
     }
 
-    private sealed record PermisoQueryDefinition(
+    private sealed record FuentePermisos(
         string Tipo,
         string Mercado,
-        string Fuente,
-        string Query,
-        string CutoffQuery);
+        string Tabla,
+        string ColumnaRazon,
+        string ColumnaLongitud,
+        string Tecnologia,
+        string Clasificacion,
+        string Capacidad,
+        string Unidad,
+        string CapacidadTexto,
+        string Operacion);
 
     private sealed record PermisoDetailQueryDefinition(
         string Tipo,
@@ -940,6 +955,7 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
         double minLon,
         double maxLat,
         double maxLon,
+        bool soloVigentes,
         CancellationToken cancellationToken)
     {
         var normalizedType = (tipo ?? string.Empty).Trim().ToLowerInvariant();
@@ -954,6 +970,7 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
             minLon,
             maxLat,
             maxLon,
+            soloVigentes,
             cancellationToken);
 
         if (data is null)
@@ -965,8 +982,8 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
             .Where(row =>
                 double.IsFinite(row.Latitud) &&
                 double.IsFinite(row.Longitud) &&
-                row.Latitud is >= 14 and <= 33.5 &&
-                row.Longitud is >= -118 and <= -86)
+                row.Latitud is >= 14 and <= 33 &&
+                row.Longitud is >= -118.5 and <= -86.5)
             .Select(row => new PermisoEnergeticoFeature
             {
                 Geometry = new PermisoEnergeticoPoint
@@ -989,7 +1006,11 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
                     CapacidadTexto = row.CapacidadTexto,
                     FechaOtorgamiento = row.FechaOtorgamiento,
                     FechaOperacion = row.FechaOperacion,
-                    Fuente = data.Fuente
+                    Fuente = data.Fuente,
+                    Vigente = row.EsVigente,
+                    Precision = ClasificarPrecision(row.Comentarios),
+                    EntidadNombre = row.EntidadNombre,
+                    MunicipioNombre = row.MunicipioNombre
                 }
             })
             .ToList();
@@ -1002,7 +1023,8 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
                 Mercado = data.Mercado,
                 Fuente = data.Fuente,
                 FechaCorte = data.FechaCorte,
-                Conteo = features.Count
+                Conteo = features.Count,
+                SinUbicacion = data.SinUbicacion
             },
             Features = features
         };
@@ -1025,6 +1047,61 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
             numeroPermiso,
             acceso,
             cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PermisoSinUbicacion>?> ObtenerSinUbicacionAsync(
+        string tipo,
+        bool soloVigentes,
+        CancellationToken cancellationToken)
+    {
+        var normalizedType = (tipo ?? string.Empty).Trim().ToLowerInvariant();
+        if (!SupportedTypes.Contains(normalizedType, StringComparer.Ordinal))
+        {
+            return null;
+        }
+
+        return await _repository.ObtenerSinUbicacionAsync(normalizedType, soloVigentes, cancellationToken);
+    }
+
+    public async Task<ActualizacionPermisosCne> ObtenerActualizacionAsync(CancellationToken cancellationToken)
+    {
+        if (_cache.TryGetValue("permisos-energeticos:actualizacion", out ActualizacionPermisosCne? cached) && cached is not null)
+        {
+            return cached;
+        }
+
+        ActualizacionPermisosCne resultado;
+        try
+        {
+            resultado = await _repository.ObtenerActualizacionAsync(cancellationToken);
+        }
+        catch (SqlException)
+        {
+            resultado = new ActualizacionPermisosCne { Disponible = false };
+        }
+
+        _cache.Set("permisos-energeticos:actualizacion", resultado, TimeSpan.FromMinutes(10));
+        return resultado;
+    }
+
+    // Precisión de la coordenada según la nota que deja la carga CNE en Comentarios.
+    public static string ClasificarPrecision(string? comentarios)
+    {
+        var c = Normalizar(comentarios);
+        if (c.Length == 0)
+        {
+            return "exacta";
+        }
+
+        if ((c.Contains("geocodificad", StringComparison.Ordinal) && c.Contains("centroide de municipio", StringComparison.Ordinal)) ||
+            c.Contains("confianza baja", StringComparison.Ordinal))
+        {
+            return "municipio";
+        }
+
+        return c.Contains("precision: calle", StringComparison.Ordinal) || c.Contains("precision calle", StringComparison.Ordinal)
+            ? "calle"
+            : "exacta";
     }
 
     public async Task<PermisosEnergeticosBusqueda?> BuscarAsync(
@@ -1115,7 +1192,7 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
     // Mismo recorte que las capas: una coordenada fuera de México (p. ej. una longitud
     // capturada sin punto decimal) haría volar el mapa al vacío.
     private static PermisoEnergeticoBusquedaItem CoordenadaValida(PermisoEnergeticoBusquedaItem f) =>
-        f.Latitud is >= 14 and <= 33.5 && f.Longitud is >= -118 and <= -86
+        f.Latitud is >= 14 and <= 33 && f.Longitud is >= -118.5 and <= -86.5
             ? f
             : new PermisoEnergeticoBusquedaItem
             {
@@ -1125,7 +1202,8 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
                 Entidad = f.Entidad,
                 Municipio = f.Municipio,
                 TipoPermiso = f.TipoPermiso,
-                Estatus = f.Estatus
+                Estatus = f.Estatus,
+                Vigente = f.Vigente
             };
 
     private static string Normalizar(string? value)
