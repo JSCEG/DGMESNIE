@@ -52,13 +52,14 @@
     };
     // Filtros de la capa: estatus (vigente según la carga CNE) y precisión de la coordenada.
     const pasaEstatus = p => state.estatus === 'todos' || (state.estatus === 'vigentes' ? p.vigente !== false : p.vigente === false);
-    const pasaFiltros = p => pasaEstatus(p) && (!state.soloExactas || (p.precision || 'exacta') === 'exacta');
+    const pasaFiltros = p => pasaEstatus(p) && (!state.soloExactas || ['exacta', 'central'].includes(p.precision || 'exacta'));
     const TEXTO_PRECISION = {
         exacta: 'Ubicación del permiso (fuente oficial)',
         calle: 'Ubicación aproximada por dirección',
         municipio: 'Ubicación aproximada (centro del municipio)',
         'sin-coordenadas': 'Ubicación aproximada (centro del municipio): el permiso no trae coordenadas',
-        'sin-coordenadas-estado': 'Ubicación aproximada (centro del estado): el permiso no trae coordenadas'
+        'sin-coordenadas-estado': 'Ubicación aproximada (centro del estado): el permiso no trae coordenadas',
+        central: 'Ubicación de la central en operación (el permiso no trae coordenadas)'
     };
     const ligaPermisoCne = numero => `${API}/DocumentoCne?numero=${encodeURIComponent(numero || '')}`;
     const TABLA_MERCADO = { electricidad: 'Electricidad_autorizado', petroliferos: 'Expendios_autorizado', 'gas-lp': 'GasLP_autorizado', 'gas-natural': 'GasNatural_autorizado' };
@@ -215,8 +216,12 @@
     function pintarCapa(key) {
         const capa = state.capas[key];
         const m = MERCADO[key];
-        if (!capa.grupo) capa.grupo = crearGrupo(m);
-        capa.grupo.clearLayers();
+        // Grupo nuevo en cada repintado: vaciar uno que sigue cargando por bloques
+        // (chunkedLoading) deja a MarkerCluster con límites corruptos y truena al hacer zoom.
+        const enMapa = capa.grupo && state.map.hasLayer(capa.grupo);
+        if (capa.grupo) state.map.removeLayer(capa.grupo);
+        capa.grupo = crearGrupo(m);
+        if (enMapa) state.map.addLayer(capa.grupo);
         capa.indice = new Map();
         if (!capa.data) return;
 
@@ -227,12 +232,14 @@
             const [lon, lat] = f.geometry.coordinates;
             const cat = categoria(key, p);
             const prec = p.precision || 'exacta';
-            const mods = [p.vigente === false ? 'sem-pin--novig' : '', prec !== 'exacta' ? 'sem-pin--aprox' : ''].filter(Boolean).join(' ');
-            const titulo = prec !== 'exacta' ? TEXTO_PRECISION[prec] : `${cat.label} · ${p.nombre}`;
+            const aprox = prec !== 'exacta' && prec !== 'central';
+            const mods = [p.vigente === false ? 'sem-pin--novig' : '', aprox ? 'sem-pin--aprox' : '', p.operacion ? 'sem-pin--oper' : ''].filter(Boolean).join(' ');
+            const titulo = aprox ? TEXTO_PRECISION[prec] : `${p.operacion ? 'En operación · ' : ''}${cat.label} · ${p.nombre}`;
             const mk = L.marker([lat, lon], { icon: iconoPin(m, cat, mods), title: titulo, keyboard: false });
             mk.feature = f;
             mk._semTipo = key;
             mk.bindPopup(() => popupHtml(key, p, lat, lon), { className: 'sem-popup', maxWidth: 340 });
+            mk.on('popupopen', ev => completarLigas(ev.popup));
             capa.indice.set(p.numeroPermiso, mk);
             marcadores.push(mk);
         }
@@ -253,7 +260,8 @@
         if (!capa.indice) pintarCapa(key);
         state.map.addLayer(capa.grupo);
         actualizarConteo(key);
-        cargarSinUbicacion(key).then(() => { pintarContadorSinUbicacion(key); return aproximarSinCoordenadas(key); });
+        const previo = key === 'electricidad' ? marcarEnOperacion() : Promise.resolve();
+        Promise.all([previo, cargarSinUbicacion(key)]).then(() => { pintarContadorSinUbicacion(key); return aproximarSinCoordenadas(key); });
     }
 
     function actualizarConteo(key, n) {
@@ -314,6 +322,55 @@
         }
     }
 
+    // ---------- centrales en operación (se cruzan con los permisos de generación) ----------
+    // El archivo de centrales del dashboard es un subconjunto de los permisos de generación
+    // (las 908 están en Electricidad_autorizado). No se pinta aparte: marca los permisos que
+    // operan y agrega sus datos de generación; su coordenada sirve si el permiso no trae.
+    const URL_CENTRALES = 'https://cdn.sassoapps.com/geojson/Centrales_El%C3%A9ctricas_privadas_y_de_CFE.geojson';
+    let centralesPromesa = null;
+    function cargarCentrales() {
+        if (!centralesPromesa) {
+            centralesPromesa = fetch(URL_CENTRALES)
+                .then(r => r.ok ? r.json() : { features: [] })
+                .catch(() => ({ features: [] }))
+                .then(geo => {
+                    const mapa = new Map();
+                    (geo.features || []).forEach(f => {
+                        const p = f.properties || {};
+                        const num = String(p.NumeroPermiso || '').trim().toUpperCase();
+                        if (!num) return;
+                        const c = f.geometry && f.geometry.coordinates;
+                        mapa.set(num, {
+                            empresa: p['Tipo_Empresa'],
+                            tecnologia: p['Tecnología_1'] || p['Tecnología'],
+                            capacidadOperacion: p['Capacidad_operacion_MW'],
+                            generacionNeta: p['Generacion_neta_gwh'],
+                            combustible: p['Combustible_autorizado'] || p['Energetico_primario'],
+                            factorPlanta: p['factor_planta_calculado'] || p['Factor_planta_reportado'],
+                            lat: c ? c[1] : null,
+                            lon: c ? c[0] : null
+                        });
+                    });
+                    return mapa;
+                });
+        }
+        return centralesPromesa;
+    }
+
+    async function marcarEnOperacion() {
+        const capa = state.capas.electricidad;
+        if (!capa.data || capa.conOperacion) return;
+        const centrales = await cargarCentrales();
+        if (capa.conOperacion) return;
+        capa.conOperacion = true;
+        capa.data.forEach(f => {
+            const p = f.properties || {};
+            const c = centrales.get(String(p.numeroPermiso || '').trim().toUpperCase());
+            if (c) p.operacion = c;
+        });
+        pintarCapa('electricidad');
+    }
+
     // ---------- permisos sin ubicación (no se pintan; se listan) ----------
     const sinUbicacion = {};
     async function cargarSinUbicacion(key) {
@@ -347,6 +404,7 @@
         capa.aproximados = true;
         const mpios = new Map();
         if (typeof municipios_mapa !== 'undefined') municipios_mapa.features.forEach(f => mpios.set(f.properties.CVE_ENT + f.properties.CVE_MUN, f));
+        const centrales = key === 'electricidad' ? await cargarCentrales() : new Map();
         const porLugar = new Map();
         const nuevos = [];
         for (const x of lista) {
@@ -354,6 +412,20 @@
             const mun = String(x.municipioClave || '').trim().padStart(3, '0');
             let centro = null;
             let precision = 'sin-coordenadas';
+            const central = centrales.get(String(x.numeroPermiso || '').trim().toUpperCase());
+            if (central && central.lat >= 14 && central.lat <= 33 && central.lon >= -118.5 && central.lon <= -86.5) {
+                nuevos.push({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [central.lon, central.lat] },
+                    properties: {
+                        nombre: x.nombre, numeroPermiso: x.numeroPermiso, estatus: x.estatus, vigente: x.esVigente,
+                        tipoPermiso: x.tipoPermiso, clasificacion: x.tipoPermiso, fechaOtorgamiento: x.fechaOtorgamiento,
+                        entidad: ent, municipio: mun, entidadNombre: x.entidad, municipioNombre: x.municipio,
+                        tecnologia: central.tecnologia, operacion: central, precision: 'central'
+                    }
+                });
+                continue;
+            }
             const fm = mpios.get(ent + mun);
             if (fm) centro = centroDe(fm, ent + mun);
             if (!centro) {
@@ -427,6 +499,34 @@
         abrirPanel('resultados');
     }
 
+    // Ligas oficiales desde dbo.Ligas_Permisos_CNE (vía /Ligas); se piden al abrir el popup.
+    const ligasCache = new Map();
+    async function completarLigas(popup) {
+        const cont = popup.getElement() && popup.getElement().querySelector('[data-ligas]');
+        if (!cont || cont.dataset.listo) return;
+        cont.dataset.listo = '1';
+        const numero = cont.dataset.ligas;
+        try {
+            if (!ligasCache.has(numero)) {
+                const r = await fetch(`${API}/Ligas?numero=${encodeURIComponent(numero)}`, { credentials: 'same-origin' });
+                ligasCache.set(numero, r.ok ? await r.json() : null);
+            }
+            const l = ligasCache.get(numero);
+            if (!l || !l.encontrado) return;   // queda la liga de respaldo (búsqueda en la API de la CNE)
+            const boton = (href, icono, texto, primario) => href
+                ? `<a class="${primario ? 'is-primary' : ''}" href="${esc(href)}" target="_blank" rel="noopener"><i class="bi ${icono}"></i> ${texto}</a>` : '';
+            let html = boton(l.ligaPermiso || l.ligaRespaldo, 'bi-file-earmark-text', 'Ver permiso', true)
+                + boton(l.ligaResolucion, 'bi-journal-text', 'Ver resolución', false);
+            const res = l.resoluciones || [];
+            if (res.length > 1) {
+                html += `<details class="sem-pop-res"><summary>Resoluciones (${res.length})</summary><ul>${res
+                    .map(x => `<li><a href="${esc(x.liga)}" target="_blank" rel="noopener">${esc(x.numero)}</a></li>`).join('')}</ul></details>`;
+            }
+            cont.innerHTML = html;
+            popup.update();
+        } catch (e) { /* se queda la liga de respaldo */ }
+    }
+
     function popupHtml(key, p, lat, lon) {
         const m = MERCADO[key];
         const cat = categoria(key, p);
@@ -443,6 +543,14 @@
         add('Capacidad', cap);
         add('Ubicación', [p.municipioNombre || nombreMunicipio(p.municipio, p.entidad), p.entidadNombre || nombreEntidad(p.entidad)].filter(Boolean).join(', '));
         add('Precisión', TEXTO_PRECISION[p.precision || 'exacta']);
+        if (p.operacion) {
+            const o = p.operacion;
+            filas.push('<dt class="sem-pop-sep">En operación</dt><dd class="sem-pop-sep"><span class="sem-tag-oper">Central con datos de generación</span></dd>');
+            add('Empresa', o.empresa);
+            add('Capacidad en operación', o.capacidadOperacion ? `${fmtNum(o.capacidadOperacion)} MW` : '');
+            add('Generación neta', o.generacionNeta ? `${fmtNum(o.generacionNeta)} GWh/año` : '');
+            add('Combustible', o.combustible && o.combustible !== 'NULL' ? o.combustible : '');
+        }
 
         const ficha = `${API}/Ficha?tipo=${encodeURIComponent(key)}&numeroPermiso=${encodeURIComponent(p.numeroPermiso)}`;
         const street = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
@@ -451,7 +559,7 @@
                 <div><strong>${esc(p.nombre)}</strong><div class="sem-pop-permiso">${esc(p.numeroPermiso)}</div></div></div>
             <dl>${filas.join('')}</dl>
             <div class="sem-pop-actions">
-                <a class="is-primary" href="${ligaPermisoCne(p.numeroPermiso)}" target="_blank" rel="noopener" title="Documento oficial en el registro público de la CNE"><i class="bi bi-file-earmark-text"></i> Ver permiso (CNE)</a>
+                <span class="sem-pop-ligas" data-ligas="${esc(p.numeroPermiso)}"><a class="is-primary" href="${ligaPermisoCne(p.numeroPermiso)}" target="_blank" rel="noopener" title="Documento oficial en el registro público de la CNE"><i class="bi bi-file-earmark-text"></i> Ver permiso</a></span>
                 <a href="${ficha}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Ficha · PDF · correo</a>
                 ${String(p.precision || 'exacta').startsWith('sin-coordenadas') ? '' : `<a href="${street}" target="_blank" rel="noopener"><i class="bi bi-person-walking"></i> Street View</a>`}
             </div></div>`;
@@ -636,28 +744,6 @@
                     ]), { className: 'sem-popup' });
                 }
             }), p => `<span class="sem-etiqueta-dem"><b>${esc(p.region)}</b>${p.demand_mw != null ? Number(p.demand_mw).toLocaleString('es-MX') + ' MW' : ''}</span>`)
-        },
-        'centrales': {
-            url: 'https://cdn.sassoapps.com/geojson/Centrales_El%C3%A9ctricas_privadas_y_de_CFE.geojson',
-            crear: data => L.geoJSON(data, {
-                pointToLayer: (f, ll) => {
-                    const p = f.properties || {};
-                    const cat = categoria('electricidad', { tecnologia: p['Tecnología_1'] || p['Tecnología'] });
-                    return L.marker(ll, { icon: iconoPin({ key: 'central', color: '#1E5B4F' }, cat), keyboard: false, title: p['Razón_social'] || '' });
-                },
-                onEachFeature: (f, l) => {
-                    const p = f.properties || {};
-                    l.bindPopup(lineaPopup(p['Razón_social'] || 'Central eléctrica', [
-                        ['Tecnología', p['Tecnología_1'] || p['Tecnología']],
-                        ['Empresa', p['Tipo_Empresa']],
-                        ['Capacidad', p['Capacidad_autorizada_MW'] ? `${fmtNum(p['Capacidad_autorizada_MW'])} MW` : ''],
-                        ['Generación neta', p['Generacion_neta_gwh'] ? `${fmtNum(p['Generacion_neta_gwh'])} GWh` : ''],
-                        ['Estatus', p['Estatus_instalacion'] || p['Estatus']],
-                        ['Ubicación', p['Ubicación_Planta'] || p['Ubicación']],
-                        ['Permiso', p['NumeroPermiso']]
-                    ]), { className: 'sem-popup' });
-                }
-            })
         },
         'presas': {
             url: CDN_MAPAS + 'presas.geojson',
@@ -1560,6 +1646,15 @@
         $('#semResCerrar').addEventListener('click', () => cerrarPanel('resultados'));
         // En pantallas angostas el panel taparía el mapa: arranca cerrado.
         if (esAngosta()) cerrarPanel('capas');
+
+        // Ligas externas del mapa (Street View, permiso, resolución, ficha): siempre en pestaña
+        // nueva para no perder el mapa, aunque el navegador ignore target="_blank".
+        $('#semApp').addEventListener('click', e => {
+            const a = e.target.closest('a[target="_blank"]');
+            if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+            e.preventDefault();
+            window.open(a.href, '_blank', 'noopener');   // con noopener devuelve null: no se usa
+        });
 
         // eventos: análisis
         $('#semAnalisis').addEventListener('click', e => {

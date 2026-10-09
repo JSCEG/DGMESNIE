@@ -242,7 +242,7 @@ SELECT CAST(CASE WHEN OBJECT_ID(N'dbo.Control_Actualizacion_CNE', N'U') IS NULL 
         {
             var clave = tabla.Trim();
             var corta = clave.Contains('.') ? clave[(clave.LastIndexOf('.') + 1)..].Trim('[', ']') : clave.Trim('[', ']');
-            porTabla[corta] = fecha;
+            porTabla[corta] = HoraMexico.DesdeUtc(fecha);   // la tabla guarda UTC
         }
 
         return new ActualizacionPermisosCne
@@ -1094,13 +1094,18 @@ public sealed class ServicioPermisosEnergeticos : IServicioPermisosEnergeticos
             return "exacta";
         }
 
-        if ((c.Contains("geocodificad", StringComparison.Ordinal) && c.Contains("centroide de municipio", StringComparison.Ordinal)) ||
-            c.Contains("confianza baja", StringComparison.Ordinal))
+        // "coordenadas geocodificadas (Nominatim/OSM, precisión: …)": centroide de municipio o
+        // localidad, o confianza baja → centro del municipio; cualquier otra geocodificación
+        // (calle, colonia, establecimiento, número) → aproximada por dirección. El resto
+        // (Libro CNE, fuente oficial) es la ubicación del permiso.
+        if (c.Contains("confianza baja", StringComparison.Ordinal) ||
+            c.Contains("centroide de municipio", StringComparison.Ordinal) ||
+            c.Contains("precision: localidad", StringComparison.Ordinal))
         {
             return "municipio";
         }
 
-        return c.Contains("precision: calle", StringComparison.Ordinal) || c.Contains("precision calle", StringComparison.Ordinal)
+        return c.Contains("geocodificad", StringComparison.Ordinal) || c.Contains("precision: calle", StringComparison.Ordinal)
             ? "calle"
             : "exacta";
     }

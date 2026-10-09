@@ -208,6 +208,31 @@ public sealed class DashboardEnergiaController : ControllerBase
         return Redirect(url ?? PermisoCneDocumentoServicio.UrlBusquedaCne);
     }
 
+    /// <summary>Ligas oficiales (permiso, resolución de otorgamiento y resoluciones) de un permiso.</summary>
+    [HttpGet("PermisosEnergeticos/Ligas")]
+    [ResponseCache(Duration = 600, Location = ResponseCacheLocation.Client)]
+    public async Task<IActionResult> LigasPermiso([FromQuery] string numero, CancellationToken cancellationToken)
+    {
+        var permiso = (numero ?? string.Empty).Trim();
+        if (permiso.Length == 0 || permiso.Length > 120 || permiso.Any(char.IsControl))
+        {
+            return BadRequest(new { mensaje = "Número de permiso no válido." });
+        }
+
+        var ligas = await _documentoCne.ObtenerLigasAsync(permiso, cancellationToken);
+        return Ok(new
+        {
+            encontrado = ligas is not null,
+            numeroPermiso = permiso,
+            ligaPermiso = ligas?.LigaPermiso,
+            ligaResolucion = ligas?.LigaResolucion,
+            resoluciones = ligas?.Resoluciones ?? Array.Empty<ResolucionPermisoCne>(),
+            fechaActualizacion = ligas?.FechaActualizacion,
+            // Respaldo cuando el permiso no está en Ligas_Permisos_CNE.
+            ligaRespaldo = Url.Action(nameof(DocumentoCne), new { numero = permiso })
+        });
+    }
+
     [HttpGet("PermisosEnergeticos/Actualizacion")]
     [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client)]
     public async Task<ActionResult<ActualizacionPermisosCne>> ActualizacionPermisos(CancellationToken cancellationToken)
