@@ -50,10 +50,6 @@
     };
     const esVigente = estatus => norm(estatus).startsWith('vigente');
     const esCelular = () => window.matchMedia('(max-width: 768px)').matches;
-    function cerrarCapas() {
-        $('#semCapas').hidden = true;
-        $('#semCapasBtn').classList.remove('is-on');
-    }
 
     // ---------- tipo de infraestructura → ícono ----------
     // Petrolíferos y gas LP por tipo de permiso; electricidad por tecnología.
@@ -245,6 +241,8 @@
         const m = MERCADO[key];
         const el = document.querySelector(`[data-conteo="${key}"]`);
         const lista = document.querySelector(`[data-tipos="${key}"]`);
+        // Cualquier cambio de capas o filtros vuelve a contar análisis y coropleta.
+        programarAnalisis();
         if (!el) return;
         if (!capa.data) { el.textContent = ''; if (lista) lista.innerHTML = ''; return; }
         const visibles = n ?? (capa.indice ? capa.indice.size : 0);
@@ -337,7 +335,7 @@
             ENTIDADES[f.properties.CVE_ENT] = f.properties.NOMGEO;
         }
         state.estadosLayer = L.geoJSON(estados, {
-            style: { color: '#8F8882', weight: 1, fill: false, opacity: .7 },
+            style: { color: '#5E5A55', weight: 1.6, fill: false, opacity: .8 },
             interactive: false
         });
     }
@@ -372,6 +370,8 @@
             : clave === 'ductos-glp' ? state.ductos.glp
             : null;
         if (clave === 'radar') { toggleRadar(on); return; }
+        if (clave === 'municipios') { toggleMunicipios(on); return; }
+        if (clave === 'coropleta') { toggleCoropleta(on); return; }
         if (!capa) return;
         if (on) capa.addTo(state.map); else state.map.removeLayer(capa);
     }
@@ -460,7 +460,7 @@
         } else {
             status('Este permiso no tiene coordenadas registradas.', 4000);
         }
-        if (esCelular()) $('#semResultados').hidden = true;
+        if (esCelular()) cerrarPanel('resultados');
     }
 
     // ---------- buscador ----------
@@ -594,8 +594,7 @@
         $('#semResNota').textContent = b.total > b.resultados.length
             ? `Se muestran los primeros ${b.resultados.length} de ${b.total.toLocaleString('es-MX')}. Agrega otra palabra (estado, municipio) para afinar.`
             : '';
-        if (esCelular()) cerrarCapas();
-        panel.hidden = false;
+        abrirPanel('resultados');
     }
 
     function mostrarHits(ajustar) {
@@ -617,7 +616,7 @@
         $('#semQ').value = '';
         $('#semQClear').hidden = true;
         $('#semSuggest').hidden = true;
-        $('#semResultados').hidden = true;
+        cerrarPanel('resultados');
         state.busqueda = null;
         if (state.hits) { state.map.removeLayer(state.hits); state.hits = null; }
     }
@@ -704,6 +703,269 @@
         else if (app.requestFullscreen) app.requestFullscreen().catch(() => status('Tu navegador no permitió pantalla completa.', 3000));
     }
 
+    // ---------- análisis por entidad / municipio ----------
+    // Cuenta los permisos de las capas encendidas (respetando "solo vigentes").
+    // Nacional: barras por entidad. Con una entidad elegida: barras por municipio.
+    const RAMPA = ['#F6E3E9', '#E7B3C3', '#CF7C97', '#B0476B', '#8A1F44'];   // guinda, claro → oscuro
+    const analisis = { entidad: null, verTodo: false, timer: null, coropleta: false, capaCoro: null, municipiosLayer: null, ultimo: null };
+
+    function claveEnt(p) { return String(p.entidad ?? '').trim().slice(0, 2); }
+    function claveMun(p) { return claveEnt(p) + String(p.municipio ?? '').trim().slice(0, 3); }
+
+    function filasActivas() {
+        const filas = [];
+        for (const m of MERCADOS) {
+            const capa = state.capas[m.key];
+            if (!capa.on || !capa.data) continue;
+            for (const f of capa.data) {
+                const p = f.properties || {};
+                if (state.soloVigentes && !esVigente(p.estatus)) continue;
+                filas.push({ key: m.key, ent: claveEnt(p), mun: claveMun(p), munRaw: p.municipio, entRaw: p.entidad, cat: categoria(m.key, p) });
+            }
+        }
+        return filas;
+    }
+
+    function agrupar(filas, campo) {
+        const grupos = new Map();
+        for (const r of filas) {
+            const k = r[campo];
+            if (!grupos.has(k)) grupos.set(k, { clave: k, total: 0, por: {}, muestra: r });
+            const g = grupos.get(k);
+            g.total++;
+            g.por[r.key] = (g.por[r.key] || 0) + 1;
+        }
+        return [...grupos.values()].sort((a, b) => b.total - a.total);
+    }
+
+    function nombreGrupo(g, campo) {
+        if (campo === 'ent') return ENTIDADES[g.clave] || nombreEntidad(g.muestra.entRaw) || 'Sin entidad';
+        return MUNICIPIOS[g.clave] || nombreMunicipio(g.muestra.munRaw, g.muestra.entRaw) || `Municipio ${g.clave.slice(2)}`;
+    }
+
+    function programarAnalisis() {
+        clearTimeout(analisis.timer);
+        analisis.timer = setTimeout(() => {
+            if (!$('#semAnalisis').hidden) renderAnalisis();
+            if (analisis.coropleta) pintarCoropleta();
+        }, 120);
+    }
+
+    function barraApilada(g, max, campo) {
+        const presentes = MERCADOS.filter(m => g.por[m.key]);
+        const segs = presentes
+            .map(m => `<span class="sem-bar-seg" style="width:${(g.por[m.key] / max) * 100}%;background:var(--sem-${m.key})"></span>`)
+            .join('');
+        const detalle = presentes.map(m => `${m.label}: ${g.por[m.key].toLocaleString('es-MX')}`).join(' · ');
+        const nombre = nombreGrupo(g, campo);
+        return `<button type="button" class="sem-bar-row" data-${campo}="${esc(g.clave)}" title="${esc(nombre)} — ${esc(detalle)}">
+            <span class="sem-bar-label">${esc(nombre)}</span>
+            <span class="sem-bar-track">${segs}</span>
+            <span class="sem-bar-val">${g.total.toLocaleString('es-MX')}</span></button>`;
+    }
+
+    function renderAnalisis() {
+        const cuerpo = $('#semAnaCuerpo');
+        const activas = MERCADOS.filter(m => state.capas[m.key].on && state.capas[m.key].data);
+        $('#semAnaRuta').innerHTML = analisis.entidad
+            ? `<button type="button" data-ana-nacional="1">México</button> <i class="bi bi-chevron-right"></i> <strong>${esc(ENTIDADES[analisis.entidad] || analisis.entidad)}</strong>`
+            : '<strong>México</strong> <span>· toca una entidad para ver sus municipios</span>';
+        if (!activas.length) {
+            cuerpo.innerHTML = '<div class="sem-res-nota">Enciende al menos una capa de permisos para ver el análisis.</div>';
+            analisis.ultimo = null;
+            return;
+        }
+
+        let filas = filasActivas();
+        if (analisis.entidad) filas = filas.filter(r => r.ent === analisis.entidad);
+        const porMercado = {};
+        filas.forEach(r => { porMercado[r.key] = (porMercado[r.key] || 0) + 1; });
+
+        const campo = analisis.entidad ? 'mun' : 'ent';
+        const grupos = agrupar(filas, campo);
+        const limite = analisis.verTodo ? grupos.length : 12;
+        const max = grupos.length ? grupos[0].total : 1;
+
+        const tipos = new Map();
+        for (const r of filas) {
+            const k = r.key + '|' + r.cat.label;
+            if (!tipos.has(k)) tipos.set(k, { key: r.key, cat: r.cat, n: 0 });
+            tipos.get(k).n++;
+        }
+        const listaTipos = [...tipos.values()].sort((a, b) => b.n - a.n);
+        const maxTipo = listaTipos.length ? listaTipos[0].n : 1;
+
+        const kpis = activas.map(m => `<div class="sem-kpi"><span>${(porMercado[m.key] || 0).toLocaleString('es-MX')}</span>
+            <small><i class="sem-dot" style="background:var(--sem-${m.key})"></i>${m.label}</small></div>`).join('');
+        const barras = grupos.slice(0, limite).map(g => barraApilada(g, max, campo)).join('')
+            || '<div class="sem-res-nota">Sin permisos en este ámbito.</div>';
+        const mas = grupos.length > 12
+            ? `<button type="button" class="sem-ana-mas" data-ana-todo="1">${analisis.verTodo ? 'Ver solo los 12 primeros' : `Ver los ${grupos.length}`}</button>`
+            : '';
+        const filasTipo = listaTipos.map(t => `
+            <div class="sem-bar-row is-static" title="${esc(MERCADO[t.key].label)} · ${esc(t.cat.label)}: ${t.n.toLocaleString('es-MX')}">
+                <span class="sem-bar-label"><i class="bi ${t.cat.icon}"></i> ${esc(t.cat.label)}</span>
+                <span class="sem-bar-track"><span class="sem-bar-seg" style="width:${(t.n / maxTipo) * 100}%;background:var(--sem-${t.key})"></span></span>
+                <span class="sem-bar-val">${t.n.toLocaleString('es-MX')}</span></div>`).join('');
+
+        cuerpo.innerHTML = `
+            <div class="sem-kpis">
+                <div class="sem-kpi sem-kpi--total"><span>${filas.length.toLocaleString('es-MX')}</span><small>permisos</small></div>
+                ${kpis}
+            </div>
+            <h4 class="sem-ana-h">Permisos por ${analisis.entidad ? 'municipio' : 'entidad'}</h4>
+            <div class="sem-bars">${barras}</div>
+            ${mas}
+            <h4 class="sem-ana-h">Tipos de infraestructura</h4>
+            <div class="sem-bars">${filasTipo}</div>
+            <div class="sem-ana-pie">
+                <button type="button" class="sem-btn" data-ana-csv="1"><i class="bi bi-filetype-csv"></i><span>Descargar tabla</span></button>
+                <span>Según capas encendidas${state.soloVigentes ? ' · solo vigentes' : ''}.</span>
+            </div>`;
+        analisis.ultimo = { grupos, campo };
+    }
+
+    function descargarTablaAnalisis() {
+        const u = analisis.ultimo;
+        if (!u) return;
+        const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const cols = [u.campo === 'ent' ? 'Entidad' : 'Municipio', ...MERCADOS.map(m => m.label), 'Total'];
+        const filas = u.grupos.map(g => [nombreGrupo(g, u.campo), ...MERCADOS.map(m => g.por[m.key] || 0), g.total].map(q).join(','));
+        const blob = new Blob(['﻿' + cols.map(q).join(',') + '\n' + filas.join('\n')], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = analisis.entidad ? `permisos_municipios_${analisis.entidad}.csv` : 'permisos_por_entidad.csv';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    function featureEntidad(clave) {
+        return typeof estados !== 'undefined' ? estados.features.find(f => f.properties.CVE_ENT === clave) : null;
+    }
+
+    async function elegirEntidad(clave) {
+        analisis.entidad = clave;
+        analisis.verTodo = false;
+        const f = clave && featureEntidad(clave);
+        if (f) irALugar({ feature: f });
+        else if (!clave) state.map.fitBounds(MEXICO);
+        renderAnalisis();
+        if (clave) {
+            await cargarMunicipios();
+            renderAnalisis();   // ya con nombres de municipio
+        }
+        if (analisis.coropleta) pintarCoropleta();
+    }
+
+    function elegirMunicipio(clave) {
+        if (typeof municipios_mapa === 'undefined') return;
+        const f = municipios_mapa.features.find(x => x.properties.CVE_ENT + x.properties.CVE_MUN === clave);
+        if (f) irALugar({ feature: f });
+    }
+
+    // ---------- coropleta (estados, o municipios de la entidad elegida) ----------
+    function colorRampa(n, max) {
+        if (!n) return null;
+        const i = Math.min(RAMPA.length - 1, Math.floor(Math.sqrt(n / max) * RAMPA.length));
+        return RAMPA[i];
+    }
+
+    function pintarCoropleta() {
+        if (analisis.capaCoro) { state.map.removeLayer(analisis.capaCoro); analisis.capaCoro = null; }
+        const leyenda = $('#semCoroLeyenda');
+        if (!analisis.coropleta) { leyenda.hidden = true; return; }
+
+        let filas = filasActivas();
+        let features, campo, claveDe;
+        if (analisis.entidad && typeof municipios_mapa !== 'undefined') {
+            filas = filas.filter(r => r.ent === analisis.entidad);
+            features = municipios_mapa.features.filter(f => f.properties.CVE_ENT === analisis.entidad);
+            campo = 'mun';
+            claveDe = f => f.properties.CVE_ENT + f.properties.CVE_MUN;
+        } else if (typeof estados !== 'undefined') {
+            features = estados.features;
+            campo = 'ent';
+            claveDe = f => f.properties.CVE_ENT;
+        } else {
+            return;
+        }
+
+        const conteo = new Map(agrupar(filas, campo).map(g => [g.clave, g.total]));
+        const max = Math.max(1, ...conteo.values());
+        analisis.capaCoro = L.geoJSON({ type: 'FeatureCollection', features }, {
+            renderer: L.canvas({ padding: .3 }),
+            style: f => {
+                const c = colorRampa(conteo.get(claveDe(f)) || 0, max);
+                return { color: '#ffffff', weight: .8, fillColor: c || '#000000', fillOpacity: c ? .62 : 0 };
+            },
+            onEachFeature: (f, l) => {
+                const n = conteo.get(claveDe(f)) || 0;
+                const nombre = campo === 'ent' ? f.properties.NOMGEO : `${f.properties.NOM_MUN}, ${f.properties.NOMGEO}`;
+                l.bindTooltip(`${esc(nombre)}: <strong>${n.toLocaleString('es-MX')}</strong> permisos`, { sticky: true, className: 'sem-tip' });
+                if (campo === 'ent') l.on('click', () => { abrirPanel('analisis'); elegirEntidad(f.properties.CVE_ENT); });
+            }
+        }).addTo(state.map);
+        analisis.capaCoro.bringToBack();
+
+        const corte = Math.max(1, Math.round(max * Math.pow(1 / RAMPA.length, 2)));
+        leyenda.innerHTML = `<strong>Permisos por ${campo === 'ent' ? 'entidad' : 'municipio'}</strong>
+            <div class="sem-coro-escala">${RAMPA.map(c => `<i style="background:${c}"></i>`).join('')}</div>
+            <div class="sem-coro-ejes"><span>1–${corte.toLocaleString('es-MX')}</span><span>${max.toLocaleString('es-MX')}</span></div>`;
+        leyenda.hidden = false;
+    }
+
+    async function toggleCoropleta(on) {
+        analisis.coropleta = on;
+        if (on && analisis.entidad) await cargarMunicipios();
+        pintarCoropleta();
+    }
+
+    async function toggleMunicipios(on) {
+        if (!on) {
+            if (analisis.municipiosLayer) state.map.removeLayer(analisis.municipiosLayer);
+            return;
+        }
+        status('Cargando municipios…');
+        await cargarMunicipios();
+        status('');
+        if (typeof municipios_mapa === 'undefined') {
+            status('No se pudo cargar la capa de municipios.', 4000);
+            const chk = document.querySelector('input[data-extra="municipios"]');
+            if (chk) chk.checked = false;
+            return;
+        }
+        if (!analisis.municipiosLayer) {
+            analisis.municipiosLayer = L.geoJSON(municipios_mapa, {
+                renderer: L.canvas({ padding: .3 }),
+                style: { color: '#6F6B66', weight: .9, fill: false, opacity: .75, dashArray: '3 3' },
+                interactive: false
+            });
+        }
+        analisis.municipiosLayer.addTo(state.map);
+    }
+
+    // ---------- paneles: en pantallas angostas sólo uno a la vez ----------
+    const PANELES = { capas: ['#semCapas', '#semCapasBtn'], resultados: ['#semResultados', null], analisis: ['#semAnalisis', '#semAnaBtn'] };
+    const esAngosta = () => window.matchMedia('(max-width: 1023px)').matches;
+    function abrirPanel(nombre) {
+        const [sel, btn] = PANELES[nombre];
+        $(sel).hidden = false;
+        if (btn) $(btn).classList.add('is-on');
+        // Resultados y análisis comparten el costado derecho.
+        const choca = nombre === 'resultados' ? ['analisis'] : nombre === 'analisis' ? ['resultados'] : [];
+        const cerrar = esAngosta() ? Object.keys(PANELES).filter(k => k !== nombre) : choca;
+        cerrar.forEach(cerrarPanel);
+        if (nombre === 'analisis') renderAnalisis();
+    }
+    function cerrarPanel(nombre) {
+        const [sel, btn] = PANELES[nombre];
+        $(sel).hidden = true;
+        if (btn) $(btn).classList.remove('is-on');
+    }
+    function togglePanel(nombre) {
+        if ($(PANELES[nombre][0]).hidden) abrirPanel(nombre); else cerrarPanel(nombre);
+    }
+
     // ---------- arranque ----------
     function construirPanelCapas() {
         const html = MERCADOS.map(m => `
@@ -747,16 +1009,24 @@
         document.querySelectorAll('[data-estatus]').forEach(b => b.addEventListener('click', () => setSoloVigentes(b.dataset.estatus === 'vigentes')));
 
         // eventos: barra
-        $('#semCapasBtn').addEventListener('click', () => {
-            const p = $('#semCapas');
-            p.hidden = !p.hidden;
-            $('#semCapasBtn').classList.toggle('is-on', !p.hidden);
-            if (!p.hidden && esCelular()) $('#semResultados').hidden = true;
+        $('#semCapasBtn').addEventListener('click', () => togglePanel('capas'));
+        $('#semAnaBtn').addEventListener('click', () => togglePanel('analisis'));
+        $('#semCapasCerrar').addEventListener('click', () => cerrarPanel('capas'));
+        $('#semAnaCerrar').addEventListener('click', () => cerrarPanel('analisis'));
+        $('#semResCerrar').addEventListener('click', () => cerrarPanel('resultados'));
+        // En pantallas angostas el panel taparía el mapa: arranca cerrado.
+        if (esAngosta()) cerrarPanel('capas');
+
+        // eventos: análisis
+        $('#semAnalisis').addEventListener('click', e => {
+            const ent = e.target.closest('[data-ent]');
+            const mun = e.target.closest('[data-mun]');
+            if (e.target.closest('[data-ana-nacional]')) elegirEntidad(null);
+            else if (e.target.closest('[data-ana-todo]')) { analisis.verTodo = !analisis.verTodo; renderAnalisis(); }
+            else if (e.target.closest('[data-ana-csv]')) descargarTablaAnalisis();
+            else if (ent) elegirEntidad(ent.dataset.ent);
+            else if (mun) elegirMunicipio(mun.dataset.mun);
         });
-        $('#semCapasCerrar').addEventListener('click', cerrarCapas);
-        // En celular el panel taparía el mapa: arranca cerrado.
-        if (esCelular()) cerrarCapas();
-        $('#semResCerrar').addEventListener('click', () => { $('#semResultados').hidden = true; });
         $('#semMedir').addEventListener('click', toggleMedir);
         $('#semLimpiar').addEventListener('click', limpiarHerramientas);
         $('#semMexico').addEventListener('click', () => state.map.fitBounds(MEXICO));
