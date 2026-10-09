@@ -387,9 +387,43 @@
     const lineaPopup = (titulo, filas) => `<div class="sem-pop"><strong>${esc(titulo)}</strong><dl>${filas
         .filter(([, v]) => v !== undefined && v !== null && v !== '')
         .map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></div>`;
-    const kvEstilo = kv => kv >= 400 ? { color: '#1E6F86', weight: 2.6 }
-        : kv >= 230 ? { color: '#1E9CB8', weight: 2 }
-        : { color: '#58BCD4', weight: 1.3 };
+    // Código cromático de tensión de las DACG/DOF, idéntico al dashboard territorial.
+    const KV_COLORS = [
+        { min: 400, color: '#00A9CE' },
+        { min: 230, color: '#F2C94C' },
+        { min: 138, color: '#3DAA5D' },
+        { min: 60, color: '#C84FA3' },
+        { min: 13.2, color: '#FFFFFF' },
+        { min: 0, color: '#F28C38' }
+    ];
+    const colorKv = kv => (KV_COLORS.find(k => kv >= k.min) || KV_COLORS[KV_COLORS.length - 1]).color;
+    const grosorKv = kv => kv >= 400 ? 3 : kv >= 230 ? 2.4 : kv >= 138 ? 1.8 : 1.3;
+
+    // Demanda en tiempo real (misma escala que el dashboard) y colores institucionales de GCR.
+    const colorDemanda = mw => !Number.isFinite(mw) ? '#C7C2BA' : mw < 2000 ? '#D9EFF5' : mw < 4000 ? '#83C5D2'
+        : mw < 6500 ? '#2D9AB3' : mw < 9000 ? '#2E6FB0' : '#9B2247';
+    const GCR_COLORS = { noreste: '#3E8174', peninsular: '#A33052', oriental: '#6FA89A', central: '#B24C6C', occidental: '#A57F2C', bcalifornia: '#7E3B52', noroeste: '#1E5B4F', norte: '#9B2247', bcsur: '#A9CDC3', mulege: '#E0CA8E' };
+    const claveGcr = nombre => {
+        const n = norm(nombre).replace(/[^a-z]/g, '');
+        if (n.includes('bajacaliforniasur')) return 'bcsur';
+        if (n.includes('mulege')) return 'mulege';
+        if (n.includes('bajacalifornia')) return 'bcalifornia';
+        return ['noroeste', 'noreste', 'norte', 'peninsular', 'oriental', 'occidental', 'central'].find(k => n.includes(k)) || '';
+    };
+    const etiquetaPoligono = (capa, html) => {
+        try {
+            return L.marker(capa.getBounds().getCenter(), {
+                icon: L.divIcon({ className: 'sem-etiqueta', html, iconSize: null }),
+                interactive: false,
+                keyboard: false
+            });
+        } catch (e) { return null; }
+    };
+    const grupoConEtiquetas = (geo, etiqueta) => {
+        const grupo = L.featureGroup([geo]);
+        geo.eachLayer(l => { const m = etiquetaPoligono(l, etiqueta(l.feature.properties || {})); if (m) grupo.addLayer(m); });
+        return grupo;
+    };
     const REDES = {
         'gas-sistrangas': {
             url: CDN_MAPAS + 'Ductos%20integrados%20a%20SISTRANGAS.geojson',
@@ -403,9 +437,14 @@
         },
         'red-lineas': {
             url: '/DashboardProyectos/RedElectrica/Grafo/GeoJson/Aristas',
-            crear: data => L.geoJSON(data, {
-                renderer: L.canvas({ padding: .3, tolerance: 6 }),
-                style: f => Object.assign({ opacity: .9 }, kvEstilo(Number(f.properties.voltage_kv) || 0)),
+            crear: data => {
+                const renderer = L.canvas({ padding: .3, tolerance: 6 });
+                const kv = f => Number(f.properties.voltage_kv) || 0;
+                // Contorno oscuro debajo: el blanco (44–13.2 kV) y el amarillo se leen sobre el mapa claro.
+                const contorno = L.geoJSON(data, { renderer, interactive: false, style: f => ({ color: '#2B2724', weight: grosorKv(kv(f)) + 2, opacity: .45 }) });
+                const lineas = L.geoJSON(data, {
+                renderer,
+                style: f => ({ color: colorKv(kv(f)), weight: grosorKv(kv(f)), opacity: 1 }),
                 onEachFeature: (f, l) => {
                     const p = f.properties || {};
                     l.bindPopup(lineaPopup(p.name || `${p.from_name || ''} – ${p.to_name || ''}`, [
@@ -415,6 +454,78 @@
                         ['A', p.to_name],
                         ['Circuitos', p.circuits],
                         ['Longitud', p.length_km ? `${fmtNum(p.length_km)} km` : '']
+                    ]), { className: 'sem-popup' });
+                }
+                });
+                return L.featureGroup([contorno, lineas]);
+            }
+        },
+        'gcr': {
+            url: '/DashboardProyectos/AtlasSen/Demanda/GeoJson',
+            crear: data => grupoConEtiquetas(L.geoJSON(data, {
+                style: f => { const c = GCR_COLORS[claveGcr(f.properties.region)] || '#9B2247'; return { color: c, weight: 1.6, fillColor: c, fillOpacity: .28 }; },
+                onEachFeature: (f, l) => l.bindTooltip(`Gerencia de Control Regional ${esc(f.properties.region)}`, { sticky: true, className: 'sem-tip' })
+            }), p => `<span class="sem-etiqueta-gcr">GCR ${esc(p.region)}</span>`)
+        },
+        'demanda': {
+            url: '/DashboardProyectos/AtlasSen/Demanda/GeoJson',
+            refrescarMin: 10,
+            crear: data => grupoConEtiquetas(L.geoJSON(data, {
+                style: f => ({ color: '#ffffff', weight: 1.2, fillColor: colorDemanda(Number(f.properties.demand_mw)), fillOpacity: .62 }),
+                onEachFeature: (f, l) => {
+                    const p = f.properties || {};
+                    const mw = v => v == null || v === '' ? '' : `${Number(v).toLocaleString('es-MX')} MW`;
+                    l.bindPopup(lineaPopup(`Demanda · ${p.region}`, [
+                        ['Demanda', mw(p.demand_mw)],
+                        ['Generación', mw(p.generation_mw)],
+                        ['Pronóstico', mw(p.forecast_mw)],
+                        ['Balance', mw(p.balance_mw)],
+                        ['Hora', p.hour != null ? `${p.hour}:00 h (${p.operating_date || ''})` : ''],
+                        ['Fuente', 'CENACE · demanda en tiempo real']
+                    ]), { className: 'sem-popup' });
+                }
+            }), p => `<span class="sem-etiqueta-dem"><b>${esc(p.region)}</b>${p.demand_mw != null ? Number(p.demand_mw).toLocaleString('es-MX') + ' MW' : ''}</span>`)
+        },
+        'centrales': {
+            url: 'https://cdn.sassoapps.com/geojson/Centrales_El%C3%A9ctricas_privadas_y_de_CFE.geojson',
+            crear: data => L.geoJSON(data, {
+                pointToLayer: (f, ll) => {
+                    const p = f.properties || {};
+                    const cat = categoria('electricidad', { tecnologia: p['Tecnología_1'] || p['Tecnología'] });
+                    return L.marker(ll, { icon: iconoPin({ key: 'central', color: '#1E5B4F' }, cat), keyboard: false, title: p['Razón_social'] || '' });
+                },
+                onEachFeature: (f, l) => {
+                    const p = f.properties || {};
+                    l.bindPopup(lineaPopup(p['Razón_social'] || 'Central eléctrica', [
+                        ['Tecnología', p['Tecnología_1'] || p['Tecnología']],
+                        ['Empresa', p['Tipo_Empresa']],
+                        ['Capacidad', p['Capacidad_autorizada_MW'] ? `${fmtNum(p['Capacidad_autorizada_MW'])} MW` : ''],
+                        ['Generación neta', p['Generacion_neta_gwh'] ? `${fmtNum(p['Generacion_neta_gwh'])} GWh` : ''],
+                        ['Estatus', p['Estatus_instalacion'] || p['Estatus']],
+                        ['Ubicación', p['Ubicación_Planta'] || p['Ubicación']],
+                        ['Permiso', p['NumeroPermiso']]
+                    ]), { className: 'sem-popup' });
+                }
+            })
+        },
+        'presas': {
+            url: CDN_MAPAS + 'presas.geojson',
+            crear: data => L.geoJSON(data, {
+                pointToLayer: (f, ll) => L.marker(ll, { icon: iconoPin({ key: 'presa', color: '#1E9CB8' }, { icon: 'bi-water' }), keyboard: false }),
+                onEachFeature: (f, l) => l.bindPopup(lineaPopup(`Presa ${f.properties.id || ''}`, []), { className: 'sem-popup' })
+            })
+        },
+        'anp': {
+            url: 'https://cdn.sassoapps.com/Mapas/ANP2025.geojson',
+            crear: data => L.geoJSON(data, {
+                renderer: L.canvas({ padding: .3 }),
+                style: { color: '#0E8A6E', weight: 1, fillColor: '#0E8A6E', fillOpacity: .18 },
+                onEachFeature: (f, l) => {
+                    const p = f.properties || {};
+                    l.bindPopup(lineaPopup(p.NOMBRE || 'Área natural protegida', [
+                        ['Categoría', p.CAT_MANEJO],
+                        ['Estados', p.ESTADOS],
+                        ['Superficie', p.SUPERFICIE ? `${fmtNum(p.SUPERFICIE)} ha` : '']
                     ]), { className: 'sem-popup' });
                 }
             })
@@ -445,11 +556,27 @@
     }
 
     const redesCapas = {};
+    const redesTimers = {};
     async function toggleRed(clave, on) {
         const def = REDES[clave];
+        clearInterval(redesTimers[clave]);
         if (!on) {
             if (redesCapas[clave]) state.map.removeLayer(redesCapas[clave]);
             return;
+        }
+        if (def.refrescarMin) {
+            // Datos en vivo (demanda CENACE): se vuelven a pedir mientras la capa esté encendida.
+            redesTimers[clave] = setInterval(async () => {
+                try {
+                    const r = await fetch(def.url, { credentials: 'same-origin', cache: 'no-store' });
+                    if (!r.ok) return;
+                    const nueva = def.crear(await r.json());
+                    if (redesCapas[clave]) state.map.removeLayer(redesCapas[clave]);
+                    redesCapas[clave] = nueva;
+                    const chk = document.querySelector(`input[data-extra="${clave}"]`);
+                    if (chk && chk.checked) nueva.addTo(state.map);
+                } catch (e) { /* se reintenta en el siguiente ciclo */ }
+            }, def.refrescarMin * 60 * 1000);
         }
         if (!redesCapas[clave]) {
             const chk = document.querySelector(`input[data-extra="${clave}"]`);
