@@ -174,11 +174,13 @@
         const m = MERCADO[key];
         status(`Cargando ${m.label.toLowerCase()}…`);
         const url = `${API}?tipo=${encodeURIComponent(key)}&minLat=14&minLon=-118&maxLat=33.5&maxLon=-86`;
-        capa.cargando = fetch(url, { credentials: 'same-origin' })
-            .then(r => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-            })
+        // Un reintento: la primera consulta en frío puede tardar y cortarse.
+        const pedir = () => fetch(url, { credentials: 'same-origin' }).then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.json();
+        });
+        capa.cargando = pedir()
+            .catch(() => new Promise(res => setTimeout(res, 1500)).then(pedir))
             .then(json => {
                 capa.data = json.features || [];
                 capa.meta = json.meta || {};

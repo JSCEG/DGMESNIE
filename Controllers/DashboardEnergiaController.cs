@@ -71,8 +71,11 @@ public sealed class DashboardEnergiaController : ControllerBase
                     title: "Tipo de permiso no válido")
                 : Ok(result);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (cancellationToken.IsCancellationRequested &&
+                                   ex is OperationCanceledException or InvalidOperationException)
         {
+            // El cliente cerró la petición a media lectura; Dapper lo reporta como
+            // "reader is closed" en lugar de una cancelación.
             return new EmptyResult();
         }
         catch (SqlException ex)
