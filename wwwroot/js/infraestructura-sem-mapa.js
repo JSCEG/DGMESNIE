@@ -55,6 +55,59 @@
         $('#semCapasBtn').classList.remove('is-on');
     }
 
+    // ---------- tipo de infraestructura → ícono ----------
+    // Petrolíferos y gas LP por tipo de permiso; electricidad por tecnología.
+    const TECNOLOGIAS = [
+        ['fotovolt', 'bi-sun', 'Fotovoltaica'],
+        ['eolic', 'bi-wind', 'Eólica'],
+        ['hidro', 'bi-water', 'Hidroeléctrica'],
+        ['ciclo combinado', 'bi-arrow-repeat', 'Ciclo combinado'],
+        ['turbogas', 'bi-fan', 'Turbogás'],
+        ['combustion interna', 'bi-gear-wide-connected', 'Combustión interna'],
+        ['termoelectrica', 'bi-thermometer-high', 'Termoeléctrica convencional'],
+        ['cogeneracion', 'bi-recycle', 'Cogeneración'],
+        ['bioenerg', 'bi-tree', 'Bioenergía'],
+        ['geoterm', 'bi-thermometer-sun', 'Geotérmica'],
+        ['carbo', 'bi-fire', 'Carboeléctrica'],
+        ['lecho', 'bi-fire', 'Lecho fluidizado'],
+        ['nucle', 'bi-radioactive', 'Nucleoeléctrica'],
+        ['importacion', 'bi-arrow-left-right', 'Importación'],
+        ['cinetica', 'bi-speedometer2', 'Energía cinética']
+    ];
+    function categoria(key, p) {
+        const t = norm(p.tipoPermiso);
+        if (key === 'electricidad') {
+            const tec = norm(p.tecnologia);
+            const hit = TECNOLOGIAS.find(([k]) => tec.includes(k));
+            return hit ? { icon: hit[1], label: hit[2] } : { icon: 'bi-lightning-charge', label: p.tecnologia || 'Otra tecnología' };
+        }
+        if (key === 'gas-natural') {
+            return t.includes('distribu') ? { icon: 'bi-truck', label: 'Distribución' } : { icon: 'bi-fuel-pump', label: 'Expendio de GNC' };
+        }
+        if (t.includes('aerodromo')) return { icon: 'bi-airplane', label: 'Almacenamiento en aeródromos' };
+        if (t.includes('almacenamiento')) return { icon: 'bi-database', label: 'Almacenamiento' };
+        if (t.includes('autoconsumo')) return { icon: 'bi-fuel-pump-diesel', label: 'Autoconsumo' };
+        if (t.includes('planta')) return { icon: 'bi-building-gear', label: 'Planta de distribución' };
+        if (t.includes('distribu')) return { icon: 'bi-truck', label: 'Distribución' };
+        if (t.includes('expendio')) return { icon: 'bi-fuel-pump', label: key === 'gas-lp' ? 'Estación de carburación' : 'Estación de servicio' };
+        return { icon: 'bi-geo-alt', label: p.tipoPermiso || 'Sin clasificar' };
+    }
+
+    const iconosCache = new Map();
+    function iconoPin(m, cat) {
+        const k = m.key + cat.icon;
+        if (!iconosCache.has(k)) {
+            iconosCache.set(k, L.divIcon({
+                className: 'sem-pin-wrap',
+                html: `<span class="sem-pin" style="--c:${m.color}"><i class="bi ${cat.icon}"></i></span>`,
+                iconSize: [26, 26],
+                iconAnchor: [13, 13],
+                popupAnchor: [0, -12]
+            }));
+        }
+        return iconosCache.get(k);
+    }
+
     // ---------- entidades (de la capa de estados del CDN) ----------
     const ENTIDADES = {};
     const MUNICIPIOS = {};   // "09017" → nombre, cuando ya cargó la capa de municipios
@@ -159,13 +212,8 @@
             const p = f.properties || {};
             if (state.soloVigentes && !esVigente(p.estatus)) continue;
             const [lon, lat] = f.geometry.coordinates;
-            const mk = L.circleMarker([lat, lon], {
-                radius: 6,
-                color: '#ffffff',
-                weight: 1.5,
-                fillColor: m.color,
-                fillOpacity: .95
-            });
+            const cat = categoria(key, p);
+            const mk = L.marker([lat, lon], { icon: iconoPin(m, cat), title: `${cat.label} · ${p.nombre}`, keyboard: false });
             mk.feature = f;
             mk._semTipo = key;
             mk.bindPopup(() => popupHtml(key, p, lat, lon), { className: 'sem-popup', maxWidth: 340 });
@@ -194,6 +242,7 @@
 
     function actualizarConteo(key, n) {
         const capa = state.capas[key];
+        const m = MERCADO[key];
         const el = document.querySelector(`[data-conteo="${key}"]`);
         const lista = document.querySelector(`[data-tipos="${key}"]`);
         if (!el) return;
@@ -207,13 +256,15 @@
         for (const f of capa.data) {
             const p = f.properties || {};
             if (state.soloVigentes && !esVigente(p.estatus)) continue;
-            const t = (p.clasificacion || p.tipoPermiso || 'Sin clasificar').trim();
-            porTipo.set(t, (porTipo.get(t) || 0) + 1);
+            const cat = categoria(key, p);
+            const actual = porTipo.get(cat.label) || { cat, n: 0 };
+            actual.n++;
+            porTipo.set(cat.label, actual);
         }
-        lista.innerHTML = [...porTipo.entries()]
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 6)
-            .map(([t, c]) => `<li><span title="${esc(t)}">${esc(t)}</span><span>${c.toLocaleString('es-MX')}</span></li>`)
+        lista.innerHTML = [...porTipo.values()]
+            .sort((a, b) => b.n - a.n)
+            .slice(0, 10)
+            .map(({ cat, n }) => `<li><span title="${esc(cat.label)}"><i class="bi ${cat.icon}" style="color:${m.color}"></i> ${esc(cat.label)}</span><span>${n.toLocaleString('es-MX')}</span></li>`)
             .join('');
     }
 
@@ -228,8 +279,10 @@
 
     function popupHtml(key, p, lat, lon) {
         const m = MERCADO[key];
+        const cat = categoria(key, p);
         const filas = [];
         const add = (k, v) => { if (v) filas.push(`<dt>${k}</dt><dd>${esc(v)}</dd>`); };
+        add('Infraestructura', cat.label);
         add('Tipo', p.tipoPermiso);
         if (p.clasificacion && p.clasificacion !== p.tipoPermiso) add('Clasificación', p.clasificacion);
         add('Tecnología', p.tecnologia);
@@ -244,7 +297,7 @@
         const ficha = `${API}/Ficha?tipo=${encodeURIComponent(key)}&numeroPermiso=${encodeURIComponent(p.numeroPermiso)}`;
         const street = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
         return `<div class="sem-pop">
-            <div class="sem-pop-head"><span class="sem-chip sem-chip--${key}">${m.code}</span>
+            <div class="sem-pop-head"><span class="sem-pin" style="--c:${m.color}" title="${esc(cat.label)}"><i class="bi ${cat.icon}"></i></span>
                 <div><strong>${esc(p.nombre)}</strong><div class="sem-pop-permiso">${esc(p.numeroPermiso)}</div></div></div>
             <dl>${filas.join('')}</dl>
             <div class="sem-pop-actions">
@@ -300,7 +353,9 @@
             const frames = (data.radar && data.radar.past) || [];
             const ultimo = frames[frames.length - 1];
             if (!ultimo) throw new Error('sin cuadros');
-            state.radar = L.tileLayer(`${data.host}${ultimo.path}/256/{z}/{x}/{y}/3/1_1.png`, { opacity: .7, maxZoom: 10 });
+            // RainViewer sólo sirve tejas hasta zoom 7; más cerca devuelve "Zoom Level
+            // Not Supported". Con maxNativeZoom Leaflet amplía las de zoom 7.
+            state.radar = L.tileLayer(`${data.host}${ultimo.path}/256/{z}/{x}/{y}/3/1_1.png`, { opacity: .7, maxNativeZoom: 7, maxZoom: 19 });
             state.radar.addTo(state.map);
             status(`Radar de lluvia · ${new Date(ultimo.time * 1000).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`, 3500);
         } catch (err) {
