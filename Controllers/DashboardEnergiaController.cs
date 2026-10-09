@@ -12,15 +12,18 @@ public sealed class DashboardEnergiaController : ControllerBase
 {
     private readonly IServicioPermisosEnergeticos _service;
     private readonly IPoliticaAccesoPermisosEnergeticos _accessPolicy;
+    private readonly IPermisoCneDocumentoServicio _documentoCne;
     private readonly ILogger<DashboardEnergiaController> _logger;
 
     public DashboardEnergiaController(
         IServicioPermisosEnergeticos service,
         IPoliticaAccesoPermisosEnergeticos accessPolicy,
+        IPermisoCneDocumentoServicio documentoCne,
         ILogger<DashboardEnergiaController> logger)
     {
         _service = service;
         _accessPolicy = accessPolicy;
+        _documentoCne = documentoCne;
         _logger = logger;
     }
 
@@ -186,6 +189,23 @@ public sealed class DashboardEnergiaController : ControllerBase
             _logger.LogError(ex, "Falló la consulta de permisos sin ubicación para {Tipo}.", tipo);
             return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Fuente de permisos no disponible");
         }
+    }
+
+    /// <summary>
+    /// Abre el documento oficial del permiso en la CNE. Si la CNE no lo encuentra
+    /// (o no responde) se manda a su buscador público de permisos.
+    /// </summary>
+    [HttpGet("PermisosEnergeticos/DocumentoCne")]
+    public async Task<IActionResult> DocumentoCne([FromQuery] string numero, CancellationToken cancellationToken)
+    {
+        var permiso = (numero ?? string.Empty).Trim();
+        if (permiso.Length == 0 || permiso.Length > 120 || permiso.Any(char.IsControl))
+        {
+            return Redirect(PermisoCneDocumentoServicio.UrlBusquedaCne);
+        }
+
+        var url = await _documentoCne.ObtenerUrlDocumentoAsync(permiso, cancellationToken);
+        return Redirect(url ?? PermisoCneDocumentoServicio.UrlBusquedaCne);
     }
 
     [HttpGet("PermisosEnergeticos/Actualizacion")]

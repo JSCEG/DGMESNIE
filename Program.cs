@@ -205,6 +205,11 @@ builder.Services.AddHttpClient<IInegiTerritorialService, InegiTerritorialService
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-Territorial/1.0");
 });
+builder.Services.AddHttpClient<IPermisoCneDocumentoServicio, PermisoCneDocumentoServicio>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) DGMESNIE-Territorial/1.0");
+});
 builder.Services.AddHttpClient<IClimaServicio, ClimaServicio>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(25);

@@ -208,7 +208,8 @@ SELECT COUNT(*) FROM B WHERE NOT ({CoordenadaValida}) AND (@SoloVigentes = 0 OR 
 
         var sql = $@"
 WITH B AS ({SqlBase(fuente)})
-SELECT NumeroPermiso, Nombre, EntidadNombre AS Entidad, MunicipioNombre AS Municipio, Estatus, EsVigente
+SELECT NumeroPermiso, Nombre, EntidadNombre AS Entidad, MunicipioNombre AS Municipio, Estatus, EsVigente,
+       Entidad AS EntidadClave, Municipio AS MunicipioClave, TipoPermiso, FechaOtorgamiento
 FROM B
 WHERE NOT ({CoordenadaValida}) AND (@SoloVigentes = 0 OR EsVigente = 1)
 ORDER BY EntidadNombre, MunicipioNombre, Nombre;";

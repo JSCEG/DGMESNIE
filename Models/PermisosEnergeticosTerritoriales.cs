@@ -177,6 +177,10 @@ public sealed class PermisoSinUbicacion
     public string Municipio { get; init; } = string.Empty;
     public string Estatus { get; init; } = string.Empty;
     public bool EsVigente { get; init; }
+    public string EntidadClave { get; init; } = string.Empty;
+    public string MunicipioClave { get; init; } = string.Empty;
+    public string TipoPermiso { get; init; } = string.Empty;
+    public DateTime? FechaOtorgamiento { get; init; }
 }
 
 public sealed class ActualizacionPermisosCne

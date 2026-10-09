@@ -56,8 +56,11 @@
     const TEXTO_PRECISION = {
         exacta: 'Ubicación del permiso (fuente oficial)',
         calle: 'Ubicación aproximada por dirección',
-        municipio: 'Ubicación aproximada (centro del municipio)'
+        municipio: 'Ubicación aproximada (centro del municipio)',
+        'sin-coordenadas': 'Ubicación aproximada (centro del municipio): el permiso no trae coordenadas',
+        'sin-coordenadas-estado': 'Ubicación aproximada (centro del estado): el permiso no trae coordenadas'
     };
+    const ligaPermisoCne = numero => `${API}/DocumentoCne?numero=${encodeURIComponent(numero || '')}`;
     const TABLA_MERCADO = { electricidad: 'Electricidad_autorizado', petroliferos: 'Expendios_autorizado', 'gas-lp': 'GasLP_autorizado', 'gas-natural': 'GasNatural_autorizado' };
     const esCelular = () => window.matchMedia('(max-width: 768px)').matches;
 
@@ -250,7 +253,7 @@
         if (!capa.indice) pintarCapa(key);
         state.map.addLayer(capa.grupo);
         actualizarConteo(key);
-        cargarSinUbicacion(key).then(() => pintarContadorSinUbicacion(key));
+        cargarSinUbicacion(key).then(() => { pintarContadorSinUbicacion(key); return aproximarSinCoordenadas(key); });
     }
 
     function actualizarConteo(key, n) {
@@ -323,6 +326,62 @@
         }
         return sinUbicacion[key];
     }
+    // Los permisos sin coordenadas se colocan en el centro de su municipio (o de su estado)
+    // y se marcan como ubicación aproximada. Se agregan a la capa como un punto más, así los
+    // cuentan el análisis, el buscador y los filtros ("Solo ubicaciones exactas" los oculta).
+    const centros = new Map();
+    function centroDe(feature, clave) {
+        if (!centros.has(clave)) {
+            try { centros.set(clave, L.geoJSON(feature).getBounds().getCenter()); } catch (e) { centros.set(clave, null); }
+        }
+        return centros.get(clave);
+    }
+
+    async function aproximarSinCoordenadas(key) {
+        const capa = state.capas[key];
+        if (!capa.data || capa.aproximados) return;
+        const lista = await cargarSinUbicacion(key);
+        if (!lista.length) return;
+        await cargarMunicipios();
+        if (capa.aproximados) return;
+        capa.aproximados = true;
+        const mpios = new Map();
+        if (typeof municipios_mapa !== 'undefined') municipios_mapa.features.forEach(f => mpios.set(f.properties.CVE_ENT + f.properties.CVE_MUN, f));
+        const porLugar = new Map();
+        const nuevos = [];
+        for (const x of lista) {
+            const ent = String(x.entidadClave || '').trim().padStart(2, '0');
+            const mun = String(x.municipioClave || '').trim().padStart(3, '0');
+            let centro = null;
+            let precision = 'sin-coordenadas';
+            const fm = mpios.get(ent + mun);
+            if (fm) centro = centroDe(fm, ent + mun);
+            if (!centro) {
+                const fe = featureEntidad(ent);
+                if (fe) { centro = centroDe(fe, ent); precision = 'sin-coordenadas-estado'; }
+            }
+            if (!centro) continue;
+            // Espiral pequeña para que los del mismo municipio no queden encimados.
+            const k = `${centro.lat},${centro.lng}`;
+            const i = porLugar.get(k) || 0;
+            porLugar.set(k, i + 1);
+            const ang = i * 2.399963, r = i ? 0.004 * Math.sqrt(i) : 0;
+            nuevos.push({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [centro.lng + r * Math.cos(ang), centro.lat + r * Math.sin(ang)] },
+                properties: {
+                    nombre: x.nombre, numeroPermiso: x.numeroPermiso, estatus: x.estatus, vigente: x.esVigente,
+                    tipoPermiso: x.tipoPermiso, clasificacion: x.tipoPermiso, fechaOtorgamiento: x.fechaOtorgamiento,
+                    entidad: ent, municipio: mun, entidadNombre: x.entidad, municipioNombre: x.municipio,
+                    precision
+                }
+            });
+        }
+        if (!nuevos.length) return;
+        capa.data = capa.data.concat(nuevos);
+        pintarCapa(key);
+    }
+
     const sinUbicacionFiltrados = key => (sinUbicacion[key] || []).filter(x => pasaEstatus({ vigente: x.esVigente }));
 
     function pintarContadorSinUbicacion(key) {
@@ -331,7 +390,7 @@
         if (!sinUbicacion[key]) { el.hidden = true; return; }
         const n = sinUbicacionFiltrados(key).length;
         el.hidden = false;
-        el.textContent = `Permisos sin ubicación: ${n.toLocaleString('es-MX')}`;
+        el.textContent = `Sin coordenadas: ${n.toLocaleString('es-MX')} · ubicación aproximada`;
         el.disabled = n === 0;
     }
 
@@ -341,7 +400,7 @@
         state.busqueda = null;
         if (state.hits) { state.map.removeLayer(state.hits); state.hits = null; }
         $('#semResTitulo').textContent = `Sin ubicación · ${m.label} (${lista.length.toLocaleString('es-MX')})`;
-        $('#semResResumen').innerHTML = '<span class="sem-res-nota" style="padding:0">No se pintan en el mapa: sus coordenadas faltan, valen 0 o caen fuera de México.</span>';
+        $('#semResResumen').innerHTML = '<span class="sem-res-nota" style="padding:0">Sus coordenadas faltan, valen 0 o caen fuera de México. En el mapa se ubican en el centro de su municipio (o de su estado) con anillo punteado.</span>';
         const grupos = new Map();
         lista.forEach(x => {
             const k = `${x.municipio || 'Municipio sin dato'}, ${x.entidad || 'Estado sin dato'}`;
@@ -351,7 +410,7 @@
         $('#semResLista').innerHTML = [...grupos.entries()].map(([g, xs]) => `
             <div class="sem-sinubic-grupo">${esc(g)} <span>${xs.length}</span></div>
             ${xs.map(x => `<div class="sem-res-item is-static"><span class="sem-chip sem-chip--${key}">${m.code}</span>
-                <span><strong>${esc(x.nombre)}</strong><small>${esc(x.numeroPermiso)} · ${esc(x.estatus)}</small></span></div>`).join('')}`).join('')
+                <span><strong>${esc(x.nombre)}</strong><small>${esc(x.numeroPermiso)} · ${esc(x.estatus)} · <a href="${ligaPermisoCne(x.numeroPermiso)}" target="_blank" rel="noopener">Ver permiso</a></small></span></div>`).join('')}`).join('')
             || '<div class="sem-res-nota">Todos los permisos de esta capa tienen ubicación.</div>';
         $('#semResNota').textContent = '';
         $('#semResMapa').hidden = true;
@@ -392,8 +451,9 @@
                 <div><strong>${esc(p.nombre)}</strong><div class="sem-pop-permiso">${esc(p.numeroPermiso)}</div></div></div>
             <dl>${filas.join('')}</dl>
             <div class="sem-pop-actions">
-                <a class="is-primary" href="${ficha}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Ficha · PDF · correo</a>
-                <a href="${street}" target="_blank" rel="noopener"><i class="bi bi-person-walking"></i> Street View</a>
+                <a class="is-primary" href="${ligaPermisoCne(p.numeroPermiso)}" target="_blank" rel="noopener" title="Documento oficial en el registro público de la CNE"><i class="bi bi-file-earmark-text"></i> Ver permiso (CNE)</a>
+                <a href="${ficha}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Ficha · PDF · correo</a>
+                ${String(p.precision || 'exacta').startsWith('sin-coordenadas') ? '' : `<a href="${street}" target="_blank" rel="noopener"><i class="bi bi-person-walking"></i> Street View</a>`}
             </div></div>`;
     }
 
@@ -759,6 +819,10 @@
             state.map.setView([item.latitud || 23.6, item.longitud || -102.5], item.latitud ? 14 : 5);
             await toggleCapa(key, true);
         }
+        if (item.latitud == null) {
+            // Sin coordenadas: se espera a que quede ubicado en el centro de su municipio.
+            await aproximarSinCoordenadas(key);
+        }
         let mk = state.capas[key].indice && state.capas[key].indice.get(item.numeroPermiso);
         if (!mk && (state.estatus !== 'todos' || state.soloExactas)) {
             // El permiso queda fuera por filtros (no vigente o ubicación aproximada): se abren.
@@ -906,10 +970,10 @@
             .join('');
         const lista = resultadosFiltrados();
         $('#semResLista').innerHTML = lista.length
-            ? lista.map((r, i) => `<button type="button" class="sem-res-item" data-res="${i}">
+            ? lista.map((r, i) => `<div class="sem-res-fila"><a class="sem-res-doc" href="${ligaPermisoCne(r.numeroPermiso)}" target="_blank" rel="noopener" title="Ver permiso en la CNE"><i class="bi bi-file-earmark-text"></i></a><button type="button" class="sem-res-item" data-res="${i}">
                 <span class="sem-chip sem-chip--${r.tipo}">${MERCADO[r.tipo].code}</span>
                 <span><strong>${esc(r.nombre)}</strong><small>${esc(r.numeroPermiso)}</small>
-                <small>${esc([r.municipio, r.entidad].filter(Boolean).join(', '))}${r.estatus ? ' · ' + esc(r.estatus) : ''}${r.vigente === false ? ' <span class="sem-tag-novig">No vigente</span>' : ''}${r.latitud == null ? ' <span class="sem-tag-novig">Sin ubicación</span>' : ''}</small></span></button>`).join('')
+                <small>${esc([r.municipio, r.entidad].filter(Boolean).join(', '))}${r.estatus ? ' · ' + esc(r.estatus) : ''}${r.vigente === false ? ' <span class="sem-tag-novig">No vigente</span>' : ''}${r.latitud == null ? ' <span class="sem-tag-novig">Ubicación aproximada</span>' : ''}</small></span></button></div>`).join('')
             : '<div class="sem-res-nota">Sin resultados con los filtros actuales.</div>';
         $('#semResNota').textContent = b.total > b.resultados.length
             ? `Se muestran los primeros ${b.resultados.length} de ${b.total.toLocaleString('es-MX')}. Agrega otra palabra (estado, municipio) para afinar.`
