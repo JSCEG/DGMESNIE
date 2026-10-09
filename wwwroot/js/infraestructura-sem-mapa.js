@@ -1243,7 +1243,8 @@
 
         crearEstados();
         crearDuctos();
-        toggleExtra('estados', true);
+        // Capas complementarias que vienen marcadas en el panel (límites estatales y huracanes).
+        document.querySelectorAll('input[data-extra]:checked').forEach(c => toggleExtra(c.dataset.extra, true));
 
         // eventos: capas
         document.addEventListener('change', e => {
