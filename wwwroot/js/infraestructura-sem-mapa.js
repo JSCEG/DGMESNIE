@@ -373,6 +373,8 @@
         if (clave === 'municipios') { toggleMunicipios(on); return; }
         if (clave === 'coropleta') { toggleCoropleta(on); return; }
         if (REDES[clave]) { toggleRed(clave, on); return; }
+        if (clave === 'huracanes') { toggleHuracanes(on); return; }
+        if (clave === 'viento') { toggleViento(on); return; }
         if (!capa) return;
         if (on) capa.addTo(state.map); else state.map.removeLayer(capa);
     }
@@ -1054,6 +1056,145 @@
     }
     function togglePanel(nombre) {
         if ($(PANELES[nombre][0]).hidden) abrirPanel(nombre); else cerrarPanel(nombre);
+    }
+
+    // ---------- clima: huracanes (NOAA NHC) y viento (Open-Meteo) ----------
+    const KT_KMH = 1.852;
+    const CLASES = { HU: 'Huracán', MH: 'Huracán mayor', TS: 'Tormenta tropical', TD: 'Depresión tropical', STS: 'Tormenta subtropical', STD: 'Depresión subtropical', PTC: 'Potencial ciclón tropical', PC: 'Postciclón', DB: 'Perturbación', LO: 'Baja' };
+    const colorCiclon = (tipo, kt) => {
+        if (kt >= 96 || tipo === 'MH') return '#8A1F44';   // categoría 3+
+        if (kt >= 64 || tipo === 'HU') return '#C0552E';   // huracán 1–2
+        if (kt >= 34 || /TS|STS/.test(tipo || '')) return '#E0A12E';
+        return '#4A8FD6';
+    };
+    const categoriaSS = kt => kt >= 137 ? 5 : kt >= 113 ? 4 : kt >= 96 ? 3 : kt >= 83 ? 2 : kt >= 64 ? 1 : 0;
+    const clima = { huracanes: null, timerHuracanes: null, viento: null, vientoCtrl: null, vientoTimer: null };
+
+    async function cargarHuracanes() {
+        const r = await fetch('/Clima/Huracanes', { credentials: 'same-origin' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        const grupo = L.featureGroup();
+        const capas = { cono: [], historico: [], pronostico: [], punto: [] };
+        (data.features || []).forEach(f => (capas[f.properties.capa] || []).push(f));
+
+        L.geoJSON(capas.cono, { style: { color: '#5E5A55', weight: 1.2, dashArray: '4 3', fillColor: '#ffffff', fillOpacity: .28 }, interactive: false }).addTo(grupo);
+        L.geoJSON(capas.historico, { style: { color: '#5E5A55', weight: 2, opacity: .8 }, interactive: false }).addTo(grupo);
+        L.geoJSON(capas.pronostico, { style: { color: '#1c1b1a', weight: 2, dashArray: '6 4' }, interactive: false }).addTo(grupo);
+        L.geoJSON(capas.punto, {
+            pointToLayer: (f, ll) => {
+                const p = f.properties;
+                return L.circleMarker(ll, { radius: 6, color: '#ffffff', weight: 1.5, fillColor: colorCiclon(p.stormtype, p.maxwind), fillOpacity: 1 });
+            },
+            onEachFeature: (f, l) => {
+                const p = f.properties;
+                l.bindPopup(lineaPopup(`${p.stormname || ''} · ${p.datelbl || ''}`, [
+                    ['Pronóstico', p.tau ? `+${p.tau} h` : 'Posición actual'],
+                    ['Tipo', p.tcdvlp],
+                    ['Viento máx.', p.maxwind ? `${Math.round(p.maxwind * KT_KMH)} km/h` : ''],
+                    ['Ráfagas', p.gust ? `${Math.round(p.gust * KT_KMH)} km/h` : ''],
+                    ['Presión', p.mslp && p.mslp < 9999 ? `${p.mslp} mb` : '']
+                ]), { className: 'sem-popup' });
+            }
+        }).addTo(grupo);
+
+        (data.tormentas || []).forEach(t => {
+            if (t.latitud == null || t.longitud == null) return;
+            const kmh = t.intensidadKt ? Math.round(t.intensidadKt * KT_KMH) : null;
+            const cat = categoriaSS(t.intensidadKt || 0);
+            const clase = CLASES[t.clasificacion] || t.clasificacion || 'Ciclón';
+            L.marker([t.latitud, t.longitud], {
+                icon: L.divIcon({
+                    className: 'sem-pin-wrap',
+                    html: `<span class="sem-ciclon" style="--c:${colorCiclon(t.clasificacion, t.intensidadKt)}"><i class="bi bi-hurricane"></i>${cat ? `<b>${cat}</b>` : ''}</span>
+                           <span class="sem-ciclon-nombre">${esc(t.nombre)}</span>`,
+                    iconSize: [34, 34],
+                    iconAnchor: [17, 17]
+                }),
+                zIndexOffset: 2000
+            }).bindPopup(lineaPopup(`${clase} ${t.nombre}`, [
+                ['Categoría', cat ? `${cat} (Saffir-Simpson)` : ''],
+                ['Viento sostenido', kmh ? `${kmh} km/h` : ''],
+                ['Presión', t.presionMb ? `${t.presionMb} mb` : ''],
+                ['Movimiento', t.velocidadMph ? `${Math.round(t.velocidadMph * 1.609)} km/h hacia ${t.rumbo}°` : ''],
+                ['Actualizado', t.actualizado ? new Date(t.actualizado).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '']
+            ]) + (t.aviso ? `<div class="sem-pop-actions"><a href="${esc(t.aviso)}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Aviso NHC</a></div>` : ''),
+            { className: 'sem-popup' }).addTo(grupo);
+        });
+
+        const nombres = (data.tormentas || []).map(t => `${t.nombre} (${CLASES[t.clasificacion] || t.clasificacion})`);
+        return { grupo, resumen: nombres.length ? `Ciclones activos: ${nombres.join(' · ')}` : 'Sin ciclones tropicales activos en este momento.' };
+    }
+
+    async function toggleHuracanes(on) {
+        clearInterval(clima.timerHuracanes);
+        if (clima.huracanes) { state.map.removeLayer(clima.huracanes); clima.huracanes = null; }
+        if (!on) return;
+        const pintar = async (avisar) => {
+            try {
+                const { grupo, resumen } = await cargarHuracanes();
+                if (!document.querySelector('input[data-extra="huracanes"]').checked) return;
+                if (clima.huracanes) state.map.removeLayer(clima.huracanes);
+                clima.huracanes = grupo.addTo(state.map);
+                if (avisar) status(resumen, 6000);
+            } catch (err) {
+                console.error(err);
+                if (avisar) status('No fue posible consultar al National Hurricane Center.', 5000);
+            }
+        };
+        status('Consultando huracanes activos…');
+        await pintar(true);
+        clima.timerHuracanes = setInterval(() => pintar(false), 10 * 60 * 1000);
+    }
+
+    const colorViento = kmh => kmh >= 90 ? '#8A1F44' : kmh >= 60 ? '#C0552E' : kmh >= 40 ? '#E0A12E' : kmh >= 20 ? '#2E6FB0' : '#7FA7D4';
+
+    async function pintarViento() {
+        if (clima.vientoCtrl) clima.vientoCtrl.abort();
+        clima.vientoCtrl = new AbortController();
+        const b = state.map.getBounds();
+        const q = `minLat=${Math.max(-85, b.getSouth()).toFixed(3)}&minLon=${Math.max(-180, b.getWest()).toFixed(3)}&maxLat=${Math.min(85, b.getNorth()).toFixed(3)}&maxLon=${Math.min(180, b.getEast()).toFixed(3)}`;
+        try {
+            const r = await fetch(`/Clima/Viento?${q}`, { credentials: 'same-origin', signal: clima.vientoCtrl.signal });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const puntos = await r.json();
+            if (!document.querySelector('input[data-extra="viento"]').checked) return;
+            const grupo = L.layerGroup(puntos.filter(p => p.velocidad != null).map(p => {
+                const rot = ((p.direccion || 0) + 180) % 360;   // la dirección es "de dónde viene"
+                const c = colorViento(p.velocidad);
+                return L.marker([p.lat, p.lon], {
+                    icon: L.divIcon({
+                        className: 'sem-pin-wrap',
+                        html: `<span class="sem-viento" style="--c:${c}"><i class="bi bi-arrow-up" style="transform:rotate(${rot}deg)"></i><b>${Math.round(p.velocidad)}</b></span>`,
+                        iconSize: [44, 22],
+                        iconAnchor: [22, 11]
+                    }),
+                    keyboard: false
+                }).bindTooltip(`Viento ${Math.round(p.velocidad)} km/h · ráfagas ${Math.round(p.rafagas || 0)} km/h · de ${Math.round(p.direccion || 0)}°`, { className: 'sem-tip' });
+            }));
+            if (clima.viento) state.map.removeLayer(clima.viento);
+            clima.viento = grupo.addTo(state.map);
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                console.error(err);
+                status('No fue posible consultar el viento.', 4000);
+            }
+        }
+    }
+
+    function programarViento() {
+        clearTimeout(clima.vientoTimer);
+        clima.vientoTimer = setTimeout(pintarViento, 500);
+    }
+
+    function toggleViento(on) {
+        state.map.off('moveend', programarViento);
+        if (clima.viento) { state.map.removeLayer(clima.viento); clima.viento = null; }
+        $('#semVientoLeyenda').hidden = !on;
+        if (!on) return;
+        state.map.on('moveend', programarViento);
+        status('Viento en superficie · Open-Meteo (km/h)', 3500);
+        pintarViento();
     }
 
     // ---------- arranque ----------

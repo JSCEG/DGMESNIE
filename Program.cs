@@ -205,6 +205,12 @@ builder.Services.AddHttpClient<IInegiTerritorialService, InegiTerritorialService
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
     client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-Territorial/1.0");
 });
+builder.Services.AddHttpClient<IClimaServicio, ClimaServicio>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(25);
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("DGMESNIE-Territorial/1.0");
+});
 builder.Services.AddHttpClient<ICneFuelPriceService, CneFuelPriceService>(client =>
 {
     client.BaseAddress = new Uri("https://publicacionexterna.azurewebsites.net/");
