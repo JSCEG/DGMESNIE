@@ -24,6 +24,48 @@ namespace NSIE.Controllers
             this.repositorioIndicadores = repositorioIndicadores;
         }
 
+        private bool TryGetRolYMercado(out int rolId, out int mercadoId)
+        {
+            rolId = 0;
+            mercadoId = 0;
+
+            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
+            if (string.IsNullOrWhiteSpace(perfilUsuarioJson))
+            {
+                return false;
+            }
+
+            PerfilUsuario perfilUsuario;
+            try
+            {
+                perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+
+            if (perfilUsuario == null)
+            {
+                return false;
+            }
+
+            // sp_ObtenerPerfilSesion devuelve en Rol el nombre; el id viene en Rol_ID.
+            if (!int.TryParse(perfilUsuario.Rol_ID, out rolId) &&
+                !int.TryParse(perfilUsuario.Rol, out rolId))
+            {
+                return false;
+            }
+
+            // MercadoId NULL en UsuarioRol equivale a "Todos" (0) en CamposMapas.
+            if (!int.TryParse(perfilUsuario.Mercado_ID, out mercadoId))
+            {
+                mercadoId = 0;
+            }
+
+            return true;
+        }
+
         //Devuelve la vista del Mecanismo desde el Menu
         public IActionResult Menu_Mecanismo()
         {
@@ -306,13 +348,10 @@ namespace NSIE.Controllers
         [HttpGet]
         public async Task<IActionResult> GetCamposVisibles()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
             var camposVisibles = await repositorioIndicadores.ObtenerCamposVisibles(rolId, mercadoId);
 
@@ -331,13 +370,10 @@ namespace NSIE.Controllers
         [HttpGet]
         public async Task<IActionResult> GetCamposVisiblesPET_Infra()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
             var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesPET_Infra(rolId, mercadoId);
 
@@ -379,13 +415,10 @@ namespace NSIE.Controllers
         [HttpGet]
         public async Task<IActionResult> GetCamposVisiblesGLP()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
             var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesGLP(rolId, mercadoId);
 
@@ -404,13 +437,10 @@ namespace NSIE.Controllers
         [HttpGet]
         public async Task<IActionResult> GetCamposVisiblesGLP_Infra()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
             var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesGLP_Infra(rolId, mercadoId);
 
@@ -431,13 +461,10 @@ namespace NSIE.Controllers
         [HttpGet]
         public async Task<IActionResult> GetCamposVisiblesGN_Infra()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
             var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesGN_Infra(rolId, mercadoId);
 
@@ -458,15 +485,12 @@ namespace NSIE.Controllers
         [HttpGet]
         public async Task<IActionResult> GetCamposVisiblesElectricidad()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
-
-            var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesGLP(rolId, mercadoId);
+            var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesElectricidad(rolId, mercadoId);
 
             return Json(camposVisibles);
         }
@@ -482,13 +506,10 @@ namespace NSIE.Controllers
         //
         public async Task<IActionResult> GetCamposVisiblesElectricidad_Infra()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
             var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesElectricidad_Infra(rolId, mercadoId);
 
@@ -499,13 +520,10 @@ namespace NSIE.Controllers
         //Refinerías, Despuntadoras y Complejos de Gas
         public async Task<IActionResult> GetCamposVisiblesCG_Infra()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
             var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesCG_Infra(rolId, mercadoId);
 
@@ -513,13 +531,10 @@ namespace NSIE.Controllers
         }
         public async Task<IActionResult> GetCamposVisiblesRyS_Infra()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
             var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesRyS_Infra(rolId, mercadoId);
 
@@ -527,13 +542,10 @@ namespace NSIE.Controllers
         }
         public async Task<IActionResult> GetCamposVisiblesPI_Infra()
         {
-            var perfilUsuarioJson = HttpContext.Session.GetString("PerfilUsuario");
-            var perfilUsuario = JsonConvert.DeserializeObject<PerfilUsuario>(perfilUsuarioJson);
-
-            //pasando de String a Int
-            int rolId = int.Parse(perfilUsuario.Rol);
-            int mercadoId = int.Parse(perfilUsuario.Mercado_ID);
-
+            if (!TryGetRolYMercado(out var rolId, out var mercadoId))
+            {
+                return BadRequest(new { message = "Perfil de usuario no disponible." });
+            }
 
             var camposVisibles = await repositorioIndicadores.ObtenerCamposVisiblesPI_Infra(rolId, mercadoId);
 
