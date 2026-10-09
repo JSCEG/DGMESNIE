@@ -372,8 +372,98 @@
         if (clave === 'radar') { toggleRadar(on); return; }
         if (clave === 'municipios') { toggleMunicipios(on); return; }
         if (clave === 'coropleta') { toggleCoropleta(on); return; }
+        if (REDES[clave]) { toggleRed(clave, on); return; }
         if (!capa) return;
         if (on) capa.addTo(state.map); else state.map.removeLayer(capa);
+    }
+
+    // ---------- ductos y red eléctrica (mismas fuentes que el dashboard territorial) ----------
+    // Se descargan la primera vez que se encienden.
+    const CDN_MAPAS = 'https://cdn.sassoapps.com/Mapas/Electricidad/';
+    const lineaPopup = (titulo, filas) => `<div class="sem-pop"><strong>${esc(titulo)}</strong><dl>${filas
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></div>`;
+    const kvEstilo = kv => kv >= 400 ? { color: '#1E6F86', weight: 2.6 }
+        : kv >= 230 ? { color: '#1E9CB8', weight: 2 }
+        : { color: '#58BCD4', weight: 1.3 };
+    const REDES = {
+        'gas-sistrangas': {
+            url: CDN_MAPAS + 'Ductos%20integrados%20a%20SISTRANGAS.geojson',
+            crear: data => L.geoJSON(data, { style: { color: '#2E6FB0', weight: 3, opacity: .9 } })
+                .bindPopup(lineaPopup('Gasoducto integrado al SISTRANGAS', []), { className: 'sem-popup' })
+        },
+        'gas-importacion': {
+            url: CDN_MAPAS + 'Ductos%20de%20Importacion.geojson',
+            crear: data => L.geoJSON(data, { style: { color: '#6F7681', weight: 3, opacity: .9, dashArray: '8 4' } })
+                .bindPopup(lineaPopup('Gasoducto de importación', []), { className: 'sem-popup' })
+        },
+        'red-lineas': {
+            url: '/DashboardProyectos/RedElectrica/Grafo/GeoJson/Aristas',
+            crear: data => L.geoJSON(data, {
+                renderer: L.canvas({ padding: .3, tolerance: 6 }),
+                style: f => Object.assign({ opacity: .9 }, kvEstilo(Number(f.properties.voltage_kv) || 0)),
+                onEachFeature: (f, l) => {
+                    const p = f.properties || {};
+                    l.bindPopup(lineaPopup(p.name || `${p.from_name || ''} – ${p.to_name || ''}`, [
+                        ['Tensión', p.voltage_kv ? `${p.voltage_kv} kV` : ''],
+                        ['Nivel', p.network_level_label],
+                        ['De', p.from_name],
+                        ['A', p.to_name],
+                        ['Circuitos', p.circuits],
+                        ['Longitud', p.length_km ? `${fmtNum(p.length_km)} km` : '']
+                    ]), { className: 'sem-popup' });
+                }
+            })
+        },
+        'red-se-trans': {
+            url: '/DashboardProyectos/RedElectrica/InventarioSubestaciones/GeoJson?networkLevel=transmision',
+            crear: data => capaSubestaciones(data, '#3C4859', 4.5)
+        },
+        'red-se-dist': {
+            url: '/DashboardProyectos/RedElectrica/InventarioSubestaciones/GeoJson?networkLevel=subtransmision%2Cdistribucion%2Cindeterminado',
+            crear: data => capaSubestaciones(data, '#FF9652', 3.5)
+        }
+    };
+
+    function capaSubestaciones(data, color, radio) {
+        const renderer = L.canvas({ padding: .3, tolerance: 4 });
+        return L.geoJSON(data, {
+            pointToLayer: (f, ll) => L.circleMarker(ll, { renderer, radius: radio, color: '#ffffff', weight: 1, fillColor: color, fillOpacity: .95 }),
+            onEachFeature: (f, l) => {
+                const p = f.properties || {};
+                l.bindPopup(lineaPopup(p.name || 'Subestación', [
+                    ['Tensión', p.voltage_kv ? `${p.voltage_kv} kV` : ''],
+                    ['Nivel', p.network_level],
+                    ['Fuente', p.source]
+                ]), { className: 'sem-popup' });
+            }
+        });
+    }
+
+    const redesCapas = {};
+    async function toggleRed(clave, on) {
+        const def = REDES[clave];
+        if (!on) {
+            if (redesCapas[clave]) state.map.removeLayer(redesCapas[clave]);
+            return;
+        }
+        if (!redesCapas[clave]) {
+            const chk = document.querySelector(`input[data-extra="${clave}"]`);
+            status('Cargando capa…');
+            try {
+                const r = await fetch(def.url, { credentials: def.url.startsWith('/') ? 'same-origin' : 'omit' });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                redesCapas[clave] = def.crear(await r.json());
+                status('');
+            } catch (err) {
+                console.error('No se pudo cargar', clave, err);
+                status('No se pudo cargar la capa. Intenta de nuevo.', 4000);
+                if (chk) chk.checked = false;
+                return;
+            }
+            if (chk && !chk.checked) return;   // la apagaron mientras cargaba
+        }
+        redesCapas[clave].addTo(state.map);
     }
 
     // ---------- municipios (8.8 MB: se cargan en segundo plano) ----------
