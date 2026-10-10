@@ -513,10 +513,11 @@
                 ligasCache.set(numero, r.ok ? await r.json() : null);
             }
             const l = ligasCache.get(numero);
-            if (!l || !l.encontrado) return;   // queda la liga de respaldo (búsqueda en la API de la CNE)
+            // Sin liga en Ligas_Permisos_CNE (p. ej. ~113 expendios): el popup queda sin botones.
+            if (!l || !l.encontrado) return;
             const boton = (href, icono, texto, primario) => href
                 ? `<a class="${primario ? 'is-primary' : ''}" href="${esc(href)}" target="_blank" rel="noopener"><i class="bi ${icono}"></i> ${texto}</a>` : '';
-            let html = boton(l.ligaPermiso || l.ligaRespaldo, 'bi-file-earmark-text', 'Ver permiso', true)
+            let html = boton(l.ligaPermiso, 'bi-file-earmark-text', 'Ver permiso', true)
                 + boton(l.ligaResolucion, 'bi-journal-text', 'Ver resolución', false);
             const res = l.resoluciones || [];
             if (res.length > 1) {
@@ -525,7 +526,7 @@
             }
             cont.innerHTML = html;
             popup.update();
-        } catch (e) { /* se queda la liga de respaldo */ }
+        } catch (e) { /* sin ligas: el popup sigue funcionando */ }
     }
 
     function popupHtml(key, p, lat, lon) {
@@ -560,7 +561,7 @@
                 <div><strong>${esc(p.nombre)}</strong><div class="sem-pop-permiso">${esc(p.numeroPermiso)}</div></div></div>
             <dl>${filas.join('')}</dl>
             <div class="sem-pop-actions">
-                <span class="sem-pop-ligas" data-ligas="${esc(p.numeroPermiso)}"><a class="is-primary" href="${ligaPermisoCne(p.numeroPermiso)}" target="_blank" rel="noopener" title="Documento oficial en el registro público de la CNE"><i class="bi bi-file-earmark-text"></i> Ver permiso</a></span>
+                <span class="sem-pop-ligas" data-ligas="${esc(p.numeroPermiso)}"></span>
                 <a href="${ficha}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Ficha · PDF · correo</a>
                 ${String(p.precision || 'exacta').startsWith('sin-coordenadas') ? '' : `<a href="${street}" target="_blank" rel="noopener"><i class="bi bi-person-walking"></i> Street View</a>`}
             </div></div>`;
