@@ -534,7 +534,7 @@
         add('Infraestructura', cat.label);
         add('Tipo', p.tipoPermiso);
         add('Tecnología', p.tecnologia);
-        add('Estatus', `${p.estatus || ''}${p.vigente === false ? ' · no vigente' : ''}`);
+        add('Estatus', `${p.estatus || ''}${p.vigente === false && !norm(p.estatus).includes('vigente') ? ' · no vigente' : ''}`);
         add('Otorgamiento', fmtFecha(p.fechaOtorgamiento));
         const cap = p.capacidad > 0 ? `${fmtNum(p.capacidad)} ${p.unidadCapacidad || ''}`.trim()
             : (p.capacidadTexto && p.capacidadTexto !== '0' ? p.capacidadTexto : '');
