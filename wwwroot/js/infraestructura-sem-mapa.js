@@ -239,7 +239,7 @@
             mk.feature = f;
             mk._semTipo = key;
             mk.bindPopup(() => popupHtml(key, p, lat, lon), { className: 'sem-popup', maxWidth: 340 });
-            mk.on('popupopen', ev => completarLigas(ev.popup));
+            mk.on('popupopen', ev => completarLigas(ev.popup, p.numeroPermiso));
             capa.indice.set(p.numeroPermiso, mk);
             marcadores.push(mk);
         }
@@ -501,32 +501,28 @@
     }
 
     // Ligas oficiales desde dbo.Ligas_Permisos_CNE (vía /Ligas); se piden al abrir el popup.
+    // El contenido del popup es una función y popup.update() la vuelve a ejecutar: las ligas
+    // entran por esta caché, no inyectándolas en el DOM (update las borraría).
     const ligasCache = new Map();
-    async function completarLigas(popup) {
-        const cont = popup.getElement() && popup.getElement().querySelector('[data-ligas]');
-        if (!cont || cont.dataset.listo) return;
-        cont.dataset.listo = '1';
-        const numero = cont.dataset.ligas;
+    function ligasHtml(numero) {
+        const l = ligasCache.get(numero);
+        // Sin liga en Ligas_Permisos_CNE (p. ej. ~113 expendios): el popup queda sin botones.
+        if (!l || !l.encontrado) return '';
+        const boton = (href, icono, texto, primario) => href
+            ? `<a class="${primario ? 'is-primary' : ''}" href="${esc(href)}" target="_blank" rel="noopener"><i class="bi ${icono}"></i> ${texto}</a>` : '';
+        const res = l.resoluciones || [];
+        return boton(l.ligaPermiso, 'bi-file-earmark-text', 'Ver permiso', true)
+            + boton(l.ligaResolucion, 'bi-journal-text', 'Ver resolución', false)
+            + (res.length > 1 ? `<details class="sem-pop-res"><summary>Resoluciones (${res.length})</summary><ul>${res
+                .map(x => `<li><a href="${esc(x.liga)}" target="_blank" rel="noopener">${esc(x.numero)}</a></li>`).join('')}</ul></details>` : '');
+    }
+    async function completarLigas(popup, numero) {
+        if (ligasCache.has(numero)) return;
         try {
-            if (!ligasCache.has(numero)) {
-                const r = await fetch(`${API}/Ligas?numero=${encodeURIComponent(numero)}`, { credentials: 'same-origin' });
-                ligasCache.set(numero, r.ok ? await r.json() : null);
-            }
-            const l = ligasCache.get(numero);
-            // Sin liga en Ligas_Permisos_CNE (p. ej. ~113 expendios): el popup queda sin botones.
-            if (!l || !l.encontrado) return;
-            const boton = (href, icono, texto, primario) => href
-                ? `<a class="${primario ? 'is-primary' : ''}" href="${esc(href)}" target="_blank" rel="noopener"><i class="bi ${icono}"></i> ${texto}</a>` : '';
-            let html = boton(l.ligaPermiso, 'bi-file-earmark-text', 'Ver permiso', true)
-                + boton(l.ligaResolucion, 'bi-journal-text', 'Ver resolución', false);
-            const res = l.resoluciones || [];
-            if (res.length > 1) {
-                html += `<details class="sem-pop-res"><summary>Resoluciones (${res.length})</summary><ul>${res
-                    .map(x => `<li><a href="${esc(x.liga)}" target="_blank" rel="noopener">${esc(x.numero)}</a></li>`).join('')}</ul></details>`;
-            }
-            cont.innerHTML = html;
-            popup.update();
-        } catch (e) { /* sin ligas: el popup sigue funcionando */ }
+            const r = await fetch(`${API}/Ligas?numero=${encodeURIComponent(numero)}`, { credentials: 'same-origin' });
+            ligasCache.set(numero, r.ok ? await r.json() : null);
+            if (popup.isOpen()) popup.update();
+        } catch (e) { ligasCache.set(numero, null); /* sin ligas: el popup sigue funcionando */ }
     }
 
     function popupHtml(key, p, lat, lon) {
@@ -561,7 +557,7 @@
                 <div><strong>${esc(p.nombre)}</strong><div class="sem-pop-permiso">${esc(p.numeroPermiso)}</div></div></div>
             <dl>${filas.join('')}</dl>
             <div class="sem-pop-actions">
-                <span class="sem-pop-ligas" data-ligas="${esc(p.numeroPermiso)}"></span>
+                <span class="sem-pop-ligas">${ligasHtml(p.numeroPermiso)}</span>
                 <a href="${ficha}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Ficha · PDF · correo</a>
                 ${String(p.precision || 'exacta').startsWith('sin-coordenadas') ? '' : `<a href="${street}" target="_blank" rel="noopener"><i class="bi bi-person-walking"></i> Street View</a>`}
             </div></div>`;
